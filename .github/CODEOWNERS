@@ -1,0 +1,10 @@
+# AI Rule Governance
+/.cursor/rules/ @oleg-pm
+/.cursor/hooks/ @oleg-pm
+
+# Core infrastructure
+/charts/ @platform-engineering
+/install.sh @platform-engineering
+/gateway/ @platform-engineering
+/agents/ @platform-engineering
+/guardrails/ @security-team

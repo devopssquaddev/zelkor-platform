@@ -1,0 +1,39 @@
+# Base Tier defaults — production-oriented toggles
+# Enterprise features are disabled in the open-source tier.
+
+global:
+  tier: oss
+
+highAvailability:
+  enabled: false
+
+security:
+  mTLS:
+    enabled: false
+  sandbox:
+    runtimeClass: gvisor
+
+auth:
+  sso:
+    enabled: false  # Enterprise: set true with OAuth2 Proxy overlay
+
+aegra:
+  enabled: true
+
+litellm:
+  enabled: true
+
+langfuse:
+  enabled: true
+
+qdrant:
+  enabled: true
+
+postgresql:
+  enabled: true
+
+valkey:
+  enabled: true
+
+clickhouse:
+  enabled: true

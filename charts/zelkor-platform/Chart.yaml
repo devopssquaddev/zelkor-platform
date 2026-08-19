@@ -1,0 +1,6 @@
+apiVersion: v2
+name: zelkor-platform
+description: Unified Helm chart for the Zelkor Platform Base Tier
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

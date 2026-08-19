@@ -1,0 +1,43 @@
+# Local development overrides (kind)
+# Used by ./install.sh — sensible defaults for TTFV < 5 minutes
+
+global:
+  tier: oss
+
+highAvailability:
+  enabled: false
+
+security:
+  mTLS:
+    enabled: false
+  sandbox:
+    runtimeClass: gvisor
+
+auth:
+  sso:
+    enabled: false
+
+aegra:
+  enabled: true
+  replicaCount: 1
+
+litellm:
+  enabled: true
+  replicaCount: 1
+
+langfuse:
+  enabled: true
+  replicaCount: 1
+
+qdrant:
+  enabled: true
+  replicaCount: 1
+
+postgresql:
+  enabled: true
+
+valkey:
+  enabled: true
+
+clickhouse:
+  enabled: true

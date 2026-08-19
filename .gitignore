@@ -1,0 +1,18 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Test artifacts
+*.trace
+**/*.trace
+red-team-report.xml
+
+# Local kind/kubeconfig overrides
+kubeconfig
+*.kubeconfig

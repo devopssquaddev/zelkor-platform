@@ -1,0 +1,45 @@
+name: AI Red Team & Guardrail Evals
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'gateway/**'     # LiteLLM configs
+      - 'agents/**'      # Aegra/LangGraph logic
+      - 'guardrails/**'  # Llama Guard / NeMo policies
+
+jobs:
+  adversarial-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Stand up Local Test Environment
+        run: |
+          # Spins up LiteLLM, Llama Guard (mocked/quantized), and Langfuse for CI testing
+          docker compose -f docker-compose.test.yml up -d
+          sleep 15 # Wait for services to become healthy
+
+      - name: Run Red Team Prompt Injections
+        run: |
+          # Executes synthetic payload of prompt injections against the Gateway
+          # Ensures Llama Guard and Presidio (PII masking) are actively blocking
+          pytest tests/adversarial/test_prompt_injections.py --junitxml=red-team-report.xml
+
+      - name: Run Langfuse LLM-as-a-Judge Evals
+        env:
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_HOST: "http://localhost:3000"
+        run: |
+          # Compares PR outputs against the golden dataset in Langfuse
+          python scripts/evals/run_langfuse_evals.py
+
+      - name: Enforce Security Boundaries
+        run: |
+          # If the red team scripts successfully bypassed the LLM gateway, fail the build
+          if grep -q "failures=\"[1-9]\"" red-team-report.xml; then
+            echo "🚨 RED TEAM BREECH DETECTED: Guardrails failed to block adversarial input."
+            exit 1
+          fi
