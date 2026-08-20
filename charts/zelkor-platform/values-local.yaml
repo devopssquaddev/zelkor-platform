@@ -3,6 +3,10 @@
 
 global:
   tier: oss
+  imagePullPolicy: IfNotPresent
+
+databases:
+  mode: in-cluster-basic
 
 highAvailability:
   enabled: false
@@ -11,27 +15,22 @@ security:
   mTLS:
     enabled: false
   sandbox:
+    enabled: true
     runtimeClass: gvisor
 
 auth:
   sso:
     enabled: false
 
-aegra:
+ingress:
   enabled: true
-  replicaCount: 1
-
-litellm:
-  enabled: true
-  replicaCount: 1
-
-langfuse:
-  enabled: true
-  replicaCount: 1
-
-qdrant:
-  enabled: true
-  replicaCount: 1
+  className: "nginx"
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    langfuse: "langfuse.localhost"
+    litellm: "litellm.localhost"
+    aegra: "aegra.localhost"
 
 postgresql:
   enabled: true
@@ -41,3 +40,18 @@ valkey:
 
 clickhouse:
   enabled: true
+
+qdrant:
+  enabled: true
+
+litellm:
+  enabled: true
+  replicaCount: 1
+
+langfuse:
+  enabled: true
+  replicaCount: 1
+
+aegra:
+  enabled: true
+  replicaCount: 1

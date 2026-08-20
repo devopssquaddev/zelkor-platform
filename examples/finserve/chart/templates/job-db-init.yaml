@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "finserve.fullname" . }}-db-init-{{ randAlphaNum 5 | lower }}
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "finserve.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: db-init
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              export PGPASSWORD="{{ .Values.platform.postgresPassword }}"
+              until pg_isready -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}"; do
+                echo "Waiting for postgresql..."
+                sleep 2
+              done
+              psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d "{{ .Values.platform.postgresDatabase }}" -f /scripts/init.sql
+              echo "Database seeded successfully."
+          volumeMounts:
+            - name: sql-scripts
+              mountPath: /scripts
+      volumes:
+        - name: sql-scripts
+          configMap:
+            name: {{ include "finserve.fullname" . }}-code

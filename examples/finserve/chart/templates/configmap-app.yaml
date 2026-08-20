@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "finserve.fullname" . }}-code
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS portfolios (
+        id SERIAL PRIMARY KEY,
+        tenant_id VARCHAR(50) NOT NULL,
+        account_number VARCHAR(20) NOT NULL,
+        client_name VARCHAR(100) NOT NULL,
+        ssn VARCHAR(20) NOT NULL,
+        balance NUMERIC(15, 2) NOT NULL,
+        risk_profile VARCHAR(20) NOT NULL,
+        holdings JSONB NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_portfolios_tenant_id ON portfolios(tenant_id);
+    INSERT INTO portfolios (tenant_id, account_number, client_name, ssn, balance, risk_profile, holdings)
+    VALUES
+    ('Bank_Alpha', 'ACC-ALPHA-001', 'Alice Johnson', '111-22-3333', 250000.00, 'Moderate', '{"AAPL": 40, "MSFT": 30, "GOOGL": 30}'::jsonb),
+    ('Bank_Alpha', 'ACC-ALPHA-002', 'Bob Smith', '222-33-4444', 500000.00, 'Aggressive', '{"NVDA": 50, "TSLA": 30, "AMZN": 20}'::jsonb),
+    ('Bank_Beta', 'ACC-BETA-001', 'Charlie Brown', '333-44-5555', 750000.00, 'Conservative', '{"BND": 60, "VTI": 30, "GLD": 10}'::jsonb),
+    ('Bank_Beta', 'ACC-BETA-002', 'Diana Prince', '444-55-6666', 1200000.00, 'Moderate', '{"SPY": 50, "QQQ": 30, "CASH": 20}'::jsonb)
+    ON CONFLICT DO NOTHING;
+
+  executor_server.py: |
+    import subprocess
+    import tempfile
+    import os
+    from fastapi import FastAPI, Request
+    from pydantic import BaseModel
+    import uvicorn
+
+    app = FastAPI(title="FinServe Sandboxed Python Code Executor")
+
+    class CodePayload(BaseModel):
+        code: str
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "service": "code-executor"}
+
+    @app.post("/execute")
+    async def execute(payload: CodePayload):
+        code = payload.code
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(code)
+            temp_path = f.name
+        try:
+            res = subprocess.run(
+                ["python", temp_path],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return {
+                "status": "success" if res.returncode == 0 else "error",
+                "stdout": res.stdout,
+                "stderr": res.stderr,
+                "exit_code": res.returncode
+            }
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+
+  agent_server.py: |
+    import os
+    import sys
+    import json
+    import logging
+    from fastapi import FastAPI, Request, Header, HTTPException
+    from pydantic import BaseModel
+    import uvicorn
+
+    sys.path.insert(0, "/app")
+    from finserve_agent import FinServeAgent
+
+    app = FastAPI(title="FinServe AI Agent")
+
+    class PromptPayload(BaseModel):
+        prompt: str
+        thread_id: str = "default-thread"
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "service": "finserve-agent"}
+
+    @app.post("/chat")
+    async def chat(payload: PromptPayload, request: Request, authorization: str = Header(None), x_tenant_id: str = Header(None)):
+        # Extract tenant identity
+        tenant_id = None
+        if authorization and authorization.startswith("Bearer dev:"):
+            tenant_id = authorization.split("Bearer dev:", 1)[1].strip()
+        elif x_tenant_id:
+            tenant_id = x_tenant_id
+        else:
+            tenant_id = "Bank_Alpha"  # default demo tenant
+
+        agent = FinServeAgent(tenant_id=tenant_id)
+        result = await agent.handle_prompt(payload.prompt, thread_id=payload.thread_id)
+        return result
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)

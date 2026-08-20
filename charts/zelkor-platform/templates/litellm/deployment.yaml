@@ -1,0 +1,94 @@
+{{- if .Values.litellm.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-litellm
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4000
+      targetPort: 4000
+      name: http
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-litellm
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: litellm
+spec:
+  replicas: {{ .Values.litellm.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: litellm
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: litellm
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-postgresql 5432; do
+                echo "Waiting for postgresql..."
+                sleep 1
+              done
+              echo "Postgres ready."
+      containers:
+        - name: litellm
+          image: "{{ .Values.litellm.image.repository | default "ghcr.io/berriai/litellm" }}:{{ .Values.litellm.image.tag | default "main-v1.44.1" }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          args:
+            - "--config"
+            - "/app/config.yaml"
+            - "--port"
+            - "4000"
+          ports:
+            - containerPort: 4000
+              name: http
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.auth.username | default "zelkor" }}:{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}@{{ include "zelkor-platform.fullname" . }}-postgresql:5432/litellm"
+            - name: LITELLM_MASTER_KEY
+              value: {{ .Values.litellm.masterKey | default "sk-zelkor-master-key" | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+          startupProbe:
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: 4000
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 4000
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.litellm.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "zelkor-platform.fullname" . }}-litellm-config
+{{- end }}

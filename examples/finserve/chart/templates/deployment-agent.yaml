@@ -1,0 +1,189 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "finserve.fullname" . }}-agent
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    {{- include "finserve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "finserve.fullname" . }}-agent
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+    app.kubernetes.io/component: agent
+spec:
+  replicas: {{ .Values.agent.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "finserve.labels" . | nindent 6 }}
+      app.kubernetes.io/component: agent
+  template:
+    metadata:
+      labels:
+        {{- include "finserve.labels" . | nindent 8 }}
+        app.kubernetes.io/component: agent
+    spec:
+      containers:
+        - name: agent
+          image: "{{ .Values.agent.image.repository | default "python" }}:{{ .Values.agent.image.tag | default "3.11-slim" }}"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              pip install --no-cache-dir fastapi uvicorn pydantic psycopg2-binary httpx >/dev/null 2>&1
+              python /app/agent_server.py
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: FINSERVE_DATABASE_URL
+              value: "postgresql://{{ .Values.platform.postgresUser }}:{{ .Values.platform.postgresPassword }}@{{ .Values.platform.postgresHost }}:{{ .Values.platform.postgresPort }}/{{ .Values.platform.postgresDatabase }}"
+            - name: LITELLM_URL
+              value: {{ .Values.platform.litellmUrl | quote }}
+            - name: CODE_EXECUTOR_URL
+              value: "http://{{ include "finserve.fullname" . }}-code-executor:8080"
+            - name: AEGRA_URL
+              value: {{ .Values.platform.aegraUrl | quote }}
+          volumeMounts:
+            - name: code
+              mountPath: /app/agent_server.py
+              subPath: agent_server.py
+            - name: agent-lib
+              mountPath: /app/finserve_agent.py
+              subPath: finserve_agent.py
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 25
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+      volumes:
+        - name: code
+          configMap:
+            name: {{ include "finserve.fullname" . }}-code
+        - name: agent-lib
+          configMap:
+            name: {{ include "finserve.fullname" . }}-agent-lib
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "finserve.fullname" . }}-agent-lib
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+data:
+  finserve_agent.py: |
+    import os
+    import json
+    import logging
+    import httpx
+    from typing import Dict, Any, List, Optional
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("finserve")
+
+    DATABASE_URL = os.getenv("FINSERVE_DATABASE_URL", "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve")
+    LITELLM_URL = os.getenv("LITELLM_URL", "http://zelkor-platform-litellm:4000")
+    CODE_EXECUTOR_URL = os.getenv("CODE_EXECUTOR_URL", "http://finserve-code-executor:8080")
+    AEGRA_URL = os.getenv("AEGRA_URL", "http://zelkor-platform-aegra:8000")
+
+    class FinServeAgent:
+        def __init__(self, tenant_id: str, db_url: str = DATABASE_URL):
+            self.tenant_id = tenant_id
+            self.db_url = db_url
+
+        def query_database(self, query_tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
+            effective_tenant = self.tenant_id
+            if query_tenant_id and query_tenant_id != self.tenant_id:
+                logger.warning(f"Tenant {self.tenant_id} attempted unauthorized access to {query_tenant_id}")
+                return []
+
+            try:
+                conn = psycopg2.connect(self.db_url)
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        "SELECT id, tenant_id, account_number, client_name, ssn, balance, risk_profile, holdings FROM portfolios WHERE tenant_id = %s",
+                        (effective_tenant,)
+                    )
+                    rows = cur.fetchall()
+                    return [dict(row) for row in rows]
+            except Exception as e:
+                logger.error(f"Database query error: {e}")
+                return []
+            finally:
+                if 'conn' in locals() and conn:
+                    conn.close()
+
+        async def execute_code(self, python_code: str) -> Dict[str, Any]:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(
+                        f"{CODE_EXECUTOR_URL}/execute",
+                        json={"code": python_code}
+                    )
+                    return resp.json()
+            except Exception as e:
+                logger.error(f"Code execution error: {e}")
+                return {"status": "error", "error": str(e)}
+
+        async def handle_prompt(self, prompt: str, thread_id: str = "default-thread") -> Dict[str, Any]:
+            prompt_lower = prompt.lower()
+
+            if "bank_beta" in prompt_lower and self.tenant_id == "Bank_Alpha":
+                portfolios = self.query_database(query_tenant_id="Bank_Beta")
+                if not portfolios:
+                    return {
+                        "tenant_id": self.tenant_id,
+                        "response": "No portfolio records found for Bank_Beta. Access denied or data does not exist.",
+                        "data": []
+                    }
+
+            if "bank_alpha" in prompt_lower and self.tenant_id == "Bank_Beta":
+                portfolios = self.query_database(query_tenant_id="Bank_Alpha")
+                if not portfolios:
+                    return {
+                        "tenant_id": self.tenant_id,
+                        "response": "No portfolio records found for Bank_Alpha. Access denied or data does not exist.",
+                        "data": []
+                    }
+
+            if "python" in prompt_lower or "code" in prompt_lower or "/etc/passwd" in prompt_lower or "projection" in prompt_lower:
+                code = "import os\n"
+                if "/etc/passwd" in prompt_lower:
+                    code += "try:\n    with open('/etc/passwd') as f:\n        print(f.read())\nexcept Exception as e:\n    print(f'Error: {e}')"
+                else:
+                    code += "import numpy as np\nprint('Calculated projected portfolio growth: +14.2%')"
+
+                exec_result = await self.execute_code(code)
+                return {
+                    "tenant_id": self.tenant_id,
+                    "response": "Executed financial calculation in sandbox.",
+                    "execution_result": exec_result
+                }
+
+            portfolios = self.query_database()
+            total_balance = sum(float(p.get("balance", 0)) for p in portfolios)
+            return {
+                "tenant_id": self.tenant_id,
+                "response": f"Retrieved {len(portfolios)} portfolios for {self.tenant_id}. Total Assets Under Management: ${total_balance:,.2f}",
+                "portfolios": portfolios
+            }

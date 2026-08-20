@@ -1,0 +1,26 @@
+# FinServe Demo Local Overrides (kind)
+global:
+  tier: oss
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+  host: "finserve.localhost"
+
+agent:
+  replicaCount: 1
+
+executor:
+  replicaCount: 1
+  runtimeClassName: gvisor
+
+platform:
+  postgresHost: "zelkor-platform-postgresql"
+  postgresPort: 5432
+  postgresUser: "zelkor"
+  postgresPassword: "zelkor-dev-password"
+  postgresDatabase: "finserve"
+  litellmUrl: "http://zelkor-platform-litellm:4000"
+  aegraUrl: "http://zelkor-platform-aegra:8000"

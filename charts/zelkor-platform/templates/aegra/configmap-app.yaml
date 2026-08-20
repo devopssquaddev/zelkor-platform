@@ -1,0 +1,101 @@
+{{- if .Values.aegra.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aegra-app
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aegra
+data:
+  server.py: |
+    import os
+    import sys
+    import json
+    import logging
+    from fastapi import FastAPI, Request, HTTPException, Depends, Header
+    from fastapi.responses import JSONResponse
+    import uvicorn
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("aegra")
+
+    # Import tenant auth module if available
+    sys.path.insert(0, "/app")
+    try:
+        from agents.tenant_auth import auth, authenticate_request
+    except Exception as e:
+        logger.warning(f"Failed to load tenant auth module: {e}")
+        auth = None
+        authenticate_request = None
+
+    app = FastAPI(title="Aegra Agent Runtime", version="0.1.0")
+
+    # In-memory threads store for checkpointing / state
+    threads_store = {}
+
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "service": "aegra"}
+
+    @app.get("/api/v1/health")
+    async def api_health():
+        return {"status": "ok", "service": "aegra"}
+
+    @app.post("/threads/{thread_id}/runs")
+    async def create_run(thread_id: str, request: Request, authorization: str = Header(None), x_tenant_id: str = Header(None)):
+        headers = dict(request.headers)
+        if authenticate_request:
+            auth_context = await authenticate_request(headers)
+            identity = auth_context.get("identity")
+        else:
+            identity = x_tenant_id or "default"
+
+        body = await request.json()
+        input_data = body.get("input", {})
+
+        if thread_id not in threads_store:
+            threads_store[thread_id] = {
+                "tenant_id": identity,
+                "history": [],
+                "state": {}
+            }
+
+        thread = threads_store[thread_id]
+        if thread["tenant_id"] != identity:
+            raise HTTPException(status_code=403, detail="Cross-tenant access forbidden")
+
+        thread["history"].append(input_data)
+        return {
+            "run_id": f"run-{len(thread['history'])}",
+            "thread_id": thread_id,
+            "tenant_id": identity,
+            "status": "completed",
+            "output": {"message": f"Processed for tenant {identity}"}
+        }
+
+    @app.get("/threads/{thread_id}/state")
+    async def get_state(thread_id: str, request: Request, authorization: str = Header(None), x_tenant_id: str = Header(None)):
+        headers = dict(request.headers)
+        if authenticate_request:
+            auth_context = await authenticate_request(headers)
+            identity = auth_context.get("identity")
+        else:
+            identity = x_tenant_id or "default"
+
+        if thread_id not in threads_store:
+            raise HTTPException(status_code=404, detail="Thread not found")
+
+        thread = threads_store[thread_id]
+        if thread["tenant_id"] != identity:
+            raise HTTPException(status_code=403, detail="Cross-tenant access forbidden")
+
+        return {
+            "thread_id": thread_id,
+            "tenant_id": identity,
+            "values": thread["state"],
+            "history": thread["history"]
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8000)
+{{- end }}

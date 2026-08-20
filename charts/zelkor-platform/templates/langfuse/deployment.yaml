@@ -1,0 +1,125 @@
+{{- if .Values.langfuse.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse
+type: Opaque
+stringData:
+  nextauth-secret: {{ .Values.langfuse.nextauthSecret | default "zelkor-langfuse-nextauth-secret-12345" | quote }}
+  salt: {{ .Values.langfuse.salt | default "zelkor-langfuse-salt-123456789" | quote }}
+  encryption-key: {{ .Values.langfuse.encryptionKey | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse
+spec:
+  replicas: {{ .Values.langfuse.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: langfuse
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: langfuse
+    spec:
+      initContainers:
+        - name: wait-for-dbs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-postgresql 5432; do
+                echo "Waiting for postgresql..."
+                sleep 1
+              done
+              until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-clickhouse 8123; do
+                echo "Waiting for clickhouse..."
+                sleep 1
+              done
+              echo "Databases ready."
+      containers:
+        - name: langfuse
+          image: "{{ .Values.langfuse.image.repository | default "langfuse/langfuse" }}:{{ .Values.langfuse.image.tag | default "2" }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.auth.username | default "zelkor" }}:{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}@{{ include "zelkor-platform.fullname" . }}-postgresql:5432/langfuse"
+            - name: CLICKHOUSE_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-clickhouse:8123"
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://{{ include "zelkor-platform.fullname" . }}-clickhouse:9000/default"
+            - name: CLICKHOUSE_USER
+              value: "default"
+            - name: CLICKHOUSE_PASSWORD
+              value: ""
+            - name: CLICKHOUSE_DB
+              value: "default"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: nextauth-secret
+            - name: SALT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: salt
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: encryption-key
+            - name: NEXTAUTH_URL
+              value: "http://localhost:3000"
+            - name: TELEMETRY_ENABLED
+              value: "false"
+          startupProbe:
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.langfuse.resources | nindent 12 }}
+{{- end }}

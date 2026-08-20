@@ -1,50 +1,145 @@
 # Zelkor Community Edition — production defaults for values.yaml
 # Local dev (kind): use values-local.yaml (in-chart DBs, HA off, FinServe demo).
 #
-# Target production toggles (Phase 1 Helm implementation):
-#   highAvailability.enabled: true       # stateless apps + HPA
-#   ingress.tls.enabled: true            # cert-manager
-#   backups.enabled: true                # CNPG Barman Cloud Plugin → object store
-#   databases.mode: operators
-#   databases.postgresql.instances: 3    # CNPG HA
-#   databases.clickhouse.ha: false       # Pro overlay: true
-#   databases.valkey.ha: false           # Pro overlay: true
-#
-# Pro / Enterprise overlays: zelkor-platform-enterprise (SSO, GitOps, compliance).
+# Production defaults:
+#   databases.mode: operators           # Gate B: CNPG HA Postgres, Barman, ClickHouse/Valkey operators
+#   databases.postgresql.instances: 3   # CNPG HA
+#   highAvailability.enabled: true      # stateless apps + HPA
+#   ingress.tls.enabled: true           # cert-manager
+#   backups.enabled: true               # CNPG Barman Cloud Plugin → object store
 
 global:
   tier: oss
+  imagePullPolicy: IfNotPresent
+
+databases:
+  mode: in-cluster-basic  # in-cluster-basic (Gate A) | operators (Gate B)
 
 highAvailability:
-  enabled: false  # flip to true when Phase 1 HA templates land
+  enabled: false  # Gate B production toggle
 
 security:
   mTLS:
     enabled: false
   sandbox:
+    enabled: true
     runtimeClass: gvisor
 
 auth:
   sso:
     enabled: false  # Pro overlay: OAuth2 Proxy
 
-aegra:
-  enabled: true
-
-litellm:
-  enabled: true
-
-langfuse:
-  enabled: true
-
-qdrant:
-  enabled: true
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    langfuse: "langfuse.localhost"
+    litellm: "litellm.localhost"
+    aegra: "aegra.localhost"
+  tls: []
 
 postgresql:
   enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  auth:
+    username: zelkor
+    password: zelkor-dev-password
+    postgresPassword: zelkor-postgres-pass
+    database: zelkor
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
 valkey:
   enabled: true
+  image:
+    repository: valkey/valkey
+    tag: "7.2.5-alpine"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
 
 clickhouse:
   enabled: true
+  image:
+    repository: clickhouse/clickhouse-server
+    tag: "24.3-alpine"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+qdrant:
+  enabled: true
+  image:
+    repository: qdrant/qdrant
+    tag: "v1.9.2"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+litellm:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/berriai/litellm
+    tag: "main-v1.44.1"
+  masterKey: "sk-zelkor-master-key"
+  openaiApiKey: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+langfuse:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: langfuse/langfuse
+    tag: "2"
+  nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
+  salt: "zelkor-langfuse-salt-123456789"
+  encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+aegra:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: python
+    tag: "3.11-slim"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi

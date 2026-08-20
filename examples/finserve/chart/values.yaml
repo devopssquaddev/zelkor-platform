@@ -1,0 +1,35 @@
+# FinServe Demo Helm Values
+global:
+  tier: oss
+
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+  host: "finserve.localhost"
+  tls: []
+
+agent:
+  replicaCount: 1
+  image:
+    repository: python
+    tag: "3.11-slim"
+  port: 8080
+
+executor:
+  replicaCount: 1
+  image:
+    repository: python
+    tag: "3.11-slim"
+  port: 8080
+  runtimeClassName: gvisor  # gVisor runtime class for untrusted code execution
+
+platform:
+  postgresHost: "zelkor-platform-postgresql"
+  postgresPort: 5432
+  postgresUser: "zelkor"
+  postgresPassword: "zelkor-dev-password"
+  postgresDatabase: "finserve"
+  litellmUrl: "http://zelkor-platform-litellm:4000"
+  aegraUrl: "http://zelkor-platform-aegra:8000"

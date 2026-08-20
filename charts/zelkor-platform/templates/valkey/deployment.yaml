@@ -1,0 +1,57 @@
+{{- if and .Values.valkey.enabled (eq .Values.databases.mode "in-cluster-basic") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-valkey
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: valkey
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-valkey
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: valkey
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: valkey
+    spec:
+      containers:
+        - name: valkey
+          image: "{{ .Values.valkey.image.repository | default "valkey/valkey" }}:{{ .Values.valkey.image.tag | default "7.2.5-alpine" }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 6379
+              name: valkey
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.valkey.resources | nindent 12 }}
+{{- end }}

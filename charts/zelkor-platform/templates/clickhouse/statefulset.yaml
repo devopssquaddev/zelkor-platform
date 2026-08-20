@@ -1,0 +1,72 @@
+{{- if and .Values.clickhouse.enabled (eq .Values.databases.mode "in-cluster-basic") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-clickhouse
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8123
+      targetPort: 8123
+      name: http
+    - port: 9000
+      targetPort: 9000
+      name: native
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-clickhouse
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  serviceName: {{ include "zelkor-platform.fullname" . }}-clickhouse
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: clickhouse
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: clickhouse
+    spec:
+      containers:
+        - name: clickhouse
+          image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "24.3-alpine" }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8123
+              name: http
+            - containerPort: 9000
+              name: native
+          env:
+            - name: CLICKHOUSE_DB
+              value: default
+            - name: CLICKHOUSE_USER
+              value: default
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8123
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+{{- end }}

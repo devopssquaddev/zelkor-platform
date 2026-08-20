@@ -1,0 +1,65 @@
+{{- if and .Values.qdrant.enabled (eq .Values.databases.mode "in-cluster-basic") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-qdrant
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6333
+      targetPort: 6333
+      name: http
+    - port: 6334
+      targetPort: 6334
+      name: grpc
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-qdrant
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: qdrant
+spec:
+  serviceName: {{ include "zelkor-platform.fullname" . }}-qdrant
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: qdrant
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: "{{ .Values.qdrant.image.repository | default "qdrant/qdrant" }}:{{ .Values.qdrant.image.tag | default "v1.9.2" }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 6333
+              name: http
+            - containerPort: 6334
+              name: grpc
+          livenessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.qdrant.resources | nindent 12 }}
+{{- end }}
