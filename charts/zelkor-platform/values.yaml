@@ -1,11 +1,22 @@
-# Base Tier defaults — production-oriented toggles
-# Enterprise features are disabled in the open-source tier.
+# Zelkor Community Edition — production defaults for values.yaml
+# Local dev (kind): use values-local.yaml (in-chart DBs, HA off, FinServe demo).
+#
+# Target production toggles (Phase 1 Helm implementation):
+#   highAvailability.enabled: true       # stateless apps + HPA
+#   ingress.tls.enabled: true            # cert-manager
+#   backups.enabled: true                # CNPG Barman Cloud Plugin → object store
+#   databases.mode: operators
+#   databases.postgresql.instances: 3    # CNPG HA
+#   databases.clickhouse.ha: false       # Pro overlay: true
+#   databases.valkey.ha: false           # Pro overlay: true
+#
+# Pro / Enterprise overlays: zelkor-platform-enterprise (SSO, GitOps, compliance).
 
 global:
   tier: oss
 
 highAvailability:
-  enabled: false
+  enabled: false  # flip to true when Phase 1 HA templates land
 
 security:
   mTLS:
@@ -15,7 +26,7 @@ security:
 
 auth:
   sso:
-    enabled: false  # Enterprise: set true with OAuth2 Proxy overlay
+    enabled: false  # Pro overlay: OAuth2 Proxy
 
 aegra:
   enabled: true
