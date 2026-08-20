@@ -67,10 +67,15 @@ Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
 ## Pull Requests
 
 1. Branch from `main`
-2. Squash merge after CI passes and review
-3. CI runs adversarial evals on changes to `gateway/`, `agents/`, `guardrails/`
+2. Complete the **Minimal PR checklist** (multi-root workspace: `internal/requirements/dev/agent_code_review.md`):
+   - [ ] Bugbot on branch changes — no open Critical/High findings
+   - [ ] Security Review if Helm, Terraform, auth, or security paths changed
+   - [ ] Phase requirements checked when the change maps to a roadmap phase
+   - [ ] Tests added/updated for behavior changes
+   - [ ] CI green (adversarial eval when `gateway/`, `agents/`, or `guardrails/` changed)
+   - [ ] Test-server validation via `internal/dev/` after merge
+3. Squash merge after CI passes and review
 4. Keep PRs focused — one feature or fix per PR
-5. Definition of done: merged to `main` and validated on the test server via `internal/dev/` orchestration
 
 ## License
 
