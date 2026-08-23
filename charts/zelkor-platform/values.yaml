@@ -104,6 +104,11 @@ aiGateway:
   image:
     repository: python
     tag: "3.11-slim"
+  langfuse:
+    enabled: true
+    publicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    secretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    host: ""
   resources:
     requests:
       cpu: 50m
@@ -145,6 +150,17 @@ langfuse:
   nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
   salt: "zelkor-langfuse-salt-123456789"
   encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  init:
+    enabled: false
+    orgId: "zelkor-dev"
+    orgName: "Zelkor Dev"
+    projectId: "finserve"
+    projectName: "FinServe AI"
+    projectPublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    userEmail: "admin@zelkor.local"
+    userName: "Zelkor Admin"
+    userPassword: "zelkor-dev-password"
   resources:
     requests:
       cpu: 100m

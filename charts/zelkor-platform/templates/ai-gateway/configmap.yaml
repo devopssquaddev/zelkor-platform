@@ -17,8 +17,9 @@ data:
     import os
     import time
     import uuid
+    import datetime
     import logging
-    from fastapi import FastAPI, Request, Response, HTTPException, Header
+    from fastapi import FastAPI, Request, Response, HTTPException, Header, BackgroundTasks
     from fastapi.responses import JSONResponse
     import uvicorn
     import httpx
@@ -26,7 +27,76 @@ data:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("envoy-ai-gateway")
 
+    LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://zelkor-platform-langfuse:3000")
+    LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
+    LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000")
+
     app = FastAPI(title="Envoy AI Gateway", version="0.1.0")
+
+    async def emit_langfuse_trace(tenant_id: str, provider: str, model: str, messages: list, completion_text: str, prompt_tokens: int, completion_tokens: int, start_time: float, duration_ms: float):
+        if not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
+            return
+        try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            start_iso = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).isoformat()
+            end_iso = now.isoformat()
+            trace_id = f"trace-{uuid.uuid4().hex}"
+            gen_id = f"gen-{uuid.uuid4().hex}"
+
+            payload = {
+                "batch": [
+                    {
+                        "id": str(uuid.uuid4()),
+                        "type": "trace-create",
+                        "timestamp": end_iso,
+                        "body": {
+                            "id": trace_id,
+                            "name": f"ai-gateway:{provider}",
+                            "userId": tenant_id,
+                            "tags": ["envoy-ai-gateway", provider, tenant_id],
+                            "input": messages,
+                            "output": completion_text,
+                            "metadata": {
+                                "provider": provider,
+                                "model": model,
+                                "latency_ms": round(duration_ms, 2)
+                            }
+                        }
+                    },
+                    {
+                        "id": str(uuid.uuid4()),
+                        "type": "generation-create",
+                        "timestamp": end_iso,
+                        "body": {
+                            "id": gen_id,
+                            "traceId": trace_id,
+                            "name": "chat_completion",
+                            "model": model,
+                            "startTime": start_iso,
+                            "endTime": end_iso,
+                            "input": messages,
+                            "output": {"role": "assistant", "content": completion_text},
+                            "usage": {
+                                "promptTokens": prompt_tokens,
+                                "completionTokens": completion_tokens,
+                                "totalTokens": prompt_tokens + completion_tokens
+                            },
+                            "metadata": {
+                                "tenant_id": tenant_id,
+                                "provider": provider
+                            }
+                        }
+                    }
+                ]
+            }
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                await client.post(
+                    f"{LANGFUSE_HOST}/api/public/ingestion",
+                    auth=(LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY),
+                    json=payload
+                )
+        except Exception as e:
+            logger.debug(f"Langfuse trace emission skipped: {e}")
 
     @app.get("/healthz")
     async def healthz():
@@ -86,6 +156,18 @@ data:
             f"GenAI Telemetry: tenant={tenant_id} provider={provider} model={model} "
             f"prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} "
             f"latency={duration_ms:.2f}ms status=200"
+        )
+
+        await emit_langfuse_trace(
+            tenant_id=tenant_id,
+            provider=provider,
+            model=model,
+            messages=messages,
+            completion_text=completion_text,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            start_time=start_time,
+            duration_ms=duration_ms
         )
 
         return {

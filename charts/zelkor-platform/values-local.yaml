@@ -48,11 +48,26 @@ qdrant:
 aiGateway:
   enabled: true
   replicaCount: 1
+  langfuse:
+    enabled: true
+    publicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    secretKey: "sk-lf-zelkor-dev-00000000000000000000"
 
 langfuse:
   enabled: true
   replicaCount: 1
   nextauthUrl: "http://langfuse.localhost:8088"
+  init:
+    enabled: true
+    orgId: "zelkor-dev"
+    orgName: "Zelkor Dev"
+    projectId: "finserve"
+    projectName: "FinServe AI"
+    projectPublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    userEmail: "admin@zelkor.local"
+    userName: "Zelkor Admin"
+    userPassword: "zelkor-dev-password"
 
 aegra:
   enabled: true

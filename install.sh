@@ -160,12 +160,65 @@ cat <<EOF
 
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
-  Langfuse UI             zelkor-platform-langfuse    http://langfuse.localhost:8088
+  Langfuse Observability  zelkor-platform-langfuse    http://langfuse.localhost:8088
   Envoy AI Gateway        zelkor-platform-ai-gateway  http://ai-gateway.localhost:8088
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
   FinServe Demo Agent     finserve-agent              http://finserve.localhost:8088/docs
 
-  (Kubernetes Gateway API / Envoy Gateway on host port 8088)
+  (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
+
+======================================================================
+  Local Dev Access Credentials & Tokens
+======================================================================
+
+  [Langfuse UI & API]
+    URL:              http://langfuse.localhost:8088
+    User / Password:  admin@zelkor.local / zelkor-dev-password
+    Organization:     Zelkor Dev (zelkor-dev)
+    Project:          FinServe AI (finserve)
+    Public API Key:   pk-lf-zelkor-dev-00000000000000000000
+    Secret API Key:   sk-lf-zelkor-dev-00000000000000000000
+
+  [Envoy AI Gateway]
+    URL:              http://ai-gateway.localhost:8088/v1/chat/completions
+    Bearer Token:     dev-key (or zelkor-community-key)
+    Tenant Header:    X-Tenant-ID: Bank_Alpha
+
+  [FinServe Demo Agent]
+    URL:              http://finserve.localhost:8088/runs/stream
+    Bearer Tokens:    Authorization: Bearer dev:Bank_Alpha
+                      Authorization: Bearer dev:Bank_Beta
+
+  [Aegra Agent Runtime]
+    URL:              http://aegra.localhost:8088
+    Bearer Token:     Authorization: Bearer dev-key
+
+  [Databases (Internal Cluster / Port-Forward)]
+    PostgreSQL:       postgresql://zelkor:zelkor-dev-password@localhost:5432/finserve
+    Valkey (Redis):   localhost:6379
+    ClickHouse:       http://localhost:8123 (user: default)
+    Qdrant:           http://localhost:6333
+
+======================================================================
+  Quick Test Commands (Instant Live Tracing)
+======================================================================
+
+  1. Test Envoy AI Gateway:
+     curl -X POST http://ai-gateway.localhost:8088/v1/chat/completions \\
+       -H "Content-Type: application/json" \\
+       -H "Authorization: Bearer dev-key" \\
+       -H "X-Tenant-ID: Bank_Alpha" \\
+       -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
+
+  2. Test FinServe Agent Stream:
+     curl -X POST http://finserve.localhost:8088/runs/stream \\
+       -H "Content-Type: application/json" \\
+       -H "Authorization: Bearer dev:Bank_Alpha" \\
+       -d '{"assistant_id":"finserve_agent","input":{"messages":[{"role":"user","content":"What is my portfolio valuation?"}]}}'
+
+  3. View Traces:
+     Open http://langfuse.localhost:8088 -> Log in -> Project: FinServe AI -> Traces
+
 ======================================================================
   Total Installation Time: ${MINUTES}m ${SECONDS}s (${TOTAL_DURATION} seconds)
 ======================================================================

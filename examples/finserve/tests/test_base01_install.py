@@ -43,3 +43,12 @@ def test_base01_finserve_runs_stream_api():
     assert data.get("tenant_id") == "Bank_Alpha"
     assert "data" in data
     assert "Bank_Alpha" in data["data"].get("response", "")
+
+def test_base01_langfuse_observability_endpoint():
+    """
+    BASE-01 / Path A: Verify Langfuse UI / API health endpoint is reachable on port 8088.
+    """
+    url = "http://127.0.0.1:8088/api/public/health"
+    headers = {"Host": "langfuse.localhost"}
+    resp = httpx.get(url, headers=headers, timeout=10.0)
+    assert resp.status_code == 200, f"Failed Langfuse health check: {resp.text}"

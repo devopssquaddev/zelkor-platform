@@ -9,6 +9,7 @@ FinServe AI is a reference wealth management agent designed to validate multi-te
 - **Tenant Isolation:** Enforced via Aegra authentication handlers and database query scoping (`Bank_Alpha` vs `Bank_Beta`). Supports `Bearer dev:<tenant_id>` and `X-Tenant-ID` headers.
 - **Untrusted Code Execution:** Sandboxed via `RuntimeClass: gvisor` on the `finserve-code-executor` workload to isolate execution in user-space.
 - **Stateful Memory:** Managed via Aegra checkpointing backed by PostgreSQL and Valkey.
+- **Instant Observability:** Pre-instrumented with Langfuse tracing (`http://langfuse.localhost:8088`). Captures PostgreSQL queries, Qdrant semantic vector search spans, and sandboxed code execution events under the pre-seeded `finserve` project.
 
 ## Deployment
 

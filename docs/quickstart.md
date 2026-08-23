@@ -24,12 +24,24 @@ The script will:
 2. Create a `kind` cluster named `zelkor` (if it doesn't exist)
 3. Deploy the unified Helm chart with `values-local.yaml`
 
-## Verify
+## Verify & Access
 
 ```bash
 kubectl --context kind-zelkor get pods -A
 helm --kube-context kind-zelkor list
 ```
+
+All services and Web UIs are accessible via Kubernetes Gateway API on port `8088`:
+
+| Component | URL | Dev Credentials |
+| :--- | :--- | :--- |
+| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Project: `FinServe AI`) |
+| **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
+| **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev-key` |
+| **FinServe Demo Agent** | [http://finserve.localhost:8088/docs](http://finserve.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
+
+### Instant Observability
+The local development environment pre-seeds a Langfuse user, organization, and API keys. Requests sent through the Envoy AI Gateway or the FinServe demo agent automatically appear as live traces in the Langfuse dashboard under the `finserve` project.
 
 ## Configuration
 

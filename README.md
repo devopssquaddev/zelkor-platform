@@ -23,7 +23,7 @@ See [docs/quickstart.md](docs/quickstart.md) for details.
 | **Aegra** | Stateful agent orchestrator (LangGraph alternative) |
 | **Envoy AI Gateway** | LLM API gateway, MCP router, and OTel GenAI telemetry |
 | **NeMo Guardrails** | CPU-native conversational boundaries and dialog rails |
-| **Langfuse** | Observability, tracing, and evaluations |
+| **Langfuse** | Observability, tracing, and evaluations (pre-seeded for zero-friction local tracing) |
 | **Qdrant** | Semantic memory and vector search |
 | **PostgreSQL / Valkey / ClickHouse** | Databases for state, cache, and analytics |
 

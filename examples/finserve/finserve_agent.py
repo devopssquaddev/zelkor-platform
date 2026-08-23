@@ -1,5 +1,8 @@
 import os
 import json
+import time
+import uuid
+import datetime
 import logging
 import httpx
 from typing import Dict, Any, List, Optional
@@ -19,6 +22,10 @@ CODE_EXECUTOR_URL = os.getenv("CODE_EXECUTOR_URL", "http://finserve-code-executo
 AEGRA_URL = os.getenv("AEGRA_URL", "http://zelkor-platform-aegra:8000")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://zelkor-platform-qdrant:6333")
 CONSUMER_API_KEY = os.getenv("ZELKOR_CONSUMER_KEY", "zelkor-community-key")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://zelkor-platform-langfuse:3000")
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000")
+LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "true").lower() in ("1", "true", "yes")
 
 # Reference seed documents for Qdrant policy collection
 SEED_POLICIES = [
@@ -62,6 +69,68 @@ class FinServeAgent:
         self.tenant_id = tenant_id
         self.db_url = db_url
         self.qdrant_url = qdrant_url
+
+    async def emit_trace(
+        self,
+        trace_id: str,
+        name: str,
+        prompt: str,
+        response_data: Any,
+        thread_id: str,
+        spans: List[Dict[str, Any]],
+        start_time: float,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        if not LANGFUSE_ENABLED or not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
+            return
+        try:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            start_iso = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).isoformat()
+            end_iso = now.isoformat()
+
+            batch = [
+                {
+                    "id": str(uuid.uuid4()),
+                    "type": "trace-create",
+                    "timestamp": end_iso,
+                    "body": {
+                        "id": trace_id,
+                        "name": name,
+                        "userId": self.tenant_id,
+                        "sessionId": thread_id,
+                        "input": prompt,
+                        "output": response_data,
+                        "tags": ["finserve", self.tenant_id, "wealth-management"],
+                        "metadata": metadata or {}
+                    }
+                }
+            ]
+
+            for span in spans:
+                batch.append({
+                    "id": str(uuid.uuid4()),
+                    "type": "span-create",
+                    "timestamp": span.get("endTime", end_iso),
+                    "body": {
+                        "id": span.get("id", str(uuid.uuid4())),
+                        "traceId": trace_id,
+                        "name": span.get("name", "span"),
+                        "startTime": span.get("startTime", start_iso),
+                        "endTime": span.get("endTime", end_iso),
+                        "input": span.get("input"),
+                        "output": span.get("output"),
+                        "metadata": span.get("metadata", {})
+                    }
+                })
+
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                await client.post(
+                    f"{LANGFUSE_HOST}/api/public/ingestion",
+                    auth=(LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY),
+                    json={"batch": batch}
+                )
+        except Exception as e:
+            logger.debug(f"Langfuse trace emission skipped: {e}")
 
     def query_database(self, query_tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
@@ -163,41 +232,101 @@ class FinServeAgent:
         - Financial math: invokes sandboxed Python code execution
         - Stateful memory: checkpointed via thread_id
         """
+        start_time = time.time()
+        trace_id = f"trace-{uuid.uuid4().hex}"
+        spans: List[Dict[str, Any]] = []
         prompt_lower = prompt.lower()
+        result: Dict[str, Any] = {}
 
         # Check for cross-tenant injection / IDOR
         if "bank_beta" in prompt_lower and self.tenant_id == "Bank_Alpha":
+            t0 = time.time()
             portfolios = self.query_database(query_tenant_id="Bank_Beta")
+            spans.append({
+                "id": f"span-{uuid.uuid4().hex[:12]}",
+                "name": "query_database_postgres",
+                "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
+                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "input": {"tenant_id": self.tenant_id, "query_tenant_id": "Bank_Beta"},
+                "output": {"record_count": len(portfolios)},
+                "metadata": {"database": "finserve", "table": "portfolios", "cross_tenant_check": True}
+            })
+            t1 = time.time()
             policies = await self.search_policies(prompt, query_tenant_id="Bank_Beta")
+            spans.append({
+                "id": f"span-{uuid.uuid4().hex[:12]}",
+                "name": "search_policies_qdrant",
+                "startTime": datetime.datetime.fromtimestamp(t1, tz=datetime.timezone.utc).isoformat(),
+                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "input": {"query": prompt, "tenant_id": self.tenant_id, "query_tenant_id": "Bank_Beta"},
+                "output": {"matched_policies": len(policies)},
+                "metadata": {"collection": "finserve_policies", "cross_tenant_check": True}
+            })
             if not portfolios and not policies:
-                return {
+                result = {
                     "tenant_id": self.tenant_id,
                     "response": "No portfolio records found for Bank_Beta. Access denied or data does not exist.",
                     "data": [],
                     "policies": []
                 }
+                await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+                return result
 
         if "bank_alpha" in prompt_lower and self.tenant_id == "Bank_Beta":
+            t0 = time.time()
             portfolios = self.query_database(query_tenant_id="Bank_Alpha")
+            spans.append({
+                "id": f"span-{uuid.uuid4().hex[:12]}",
+                "name": "query_database_postgres",
+                "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
+                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "input": {"tenant_id": self.tenant_id, "query_tenant_id": "Bank_Alpha"},
+                "output": {"record_count": len(portfolios)},
+                "metadata": {"database": "finserve", "table": "portfolios", "cross_tenant_check": True}
+            })
+            t1 = time.time()
             policies = await self.search_policies(prompt, query_tenant_id="Bank_Alpha")
+            spans.append({
+                "id": f"span-{uuid.uuid4().hex[:12]}",
+                "name": "search_policies_qdrant",
+                "startTime": datetime.datetime.fromtimestamp(t1, tz=datetime.timezone.utc).isoformat(),
+                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "input": {"query": prompt, "tenant_id": self.tenant_id, "query_tenant_id": "Bank_Alpha"},
+                "output": {"matched_policies": len(policies)},
+                "metadata": {"collection": "finserve_policies", "cross_tenant_check": True}
+            })
             if not portfolios and not policies:
-                return {
+                result = {
                     "tenant_id": self.tenant_id,
                     "response": "No portfolio records found for Bank_Alpha. Access denied or data does not exist.",
                     "data": [],
                     "policies": []
                 }
+                await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+                return result
 
         # Semantic Policy Search in Qdrant (e.g. "What is our asset allocation policy for high-growth tech?")
         if any(w in prompt_lower for w in ["policy", "allocation", "guideline", "disclosure", "risk limit", "mandate", "tech"]):
+            t0 = time.time()
             policies = await self.search_policies(prompt)
+            spans.append({
+                "id": f"span-{uuid.uuid4().hex[:12]}",
+                "name": "search_policies_qdrant",
+                "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
+                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "input": {"query": prompt, "tenant_id": self.tenant_id},
+                "output": {"matched_policies": len(policies)},
+                "metadata": {"collection": "finserve_policies"}
+            })
             policy_texts = "\n- ".join([f"{p.get('title')}: {p.get('content')}" for p in policies])
-            return {
+            result = {
                 "tenant_id": self.tenant_id,
                 "response": f"Retrieved policy guidelines from Qdrant semantic memory for {self.tenant_id}:\n- {policy_texts}",
                 "policies": policies,
                 "source": "qdrant:finserve_policies"
             }
+            await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+            return result
 
         # Code execution request (e.g., Monte Carlo, projections, or adversarial syscall test)
         if "python" in prompt_lower or "code" in prompt_lower or "read /etc/passwd" in prompt_lower or "projection" in prompt_lower or "predict" in prompt_lower:
@@ -207,18 +336,42 @@ class FinServeAgent:
             else:
                 code += "import numpy as np\nprint('Calculated projected portfolio growth: +14.2%')"
 
+            t0 = time.time()
             exec_result = await self.execute_code(code)
-            return {
+            spans.append({
+                "id": f"span-{uuid.uuid4().hex[:12]}",
+                "name": "execute_code_gvisor",
+                "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
+                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "input": {"code": code},
+                "output": exec_result,
+                "metadata": {"sandbox": "gvisor", "runtimeClassName": "gvisor"}
+            })
+            result = {
                 "tenant_id": self.tenant_id,
                 "response": "Executed financial calculation in sandbox.",
                 "execution_result": exec_result
             }
+            await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+            return result
 
         # Standard portfolio summary query
+        t0 = time.time()
         portfolios = self.query_database()
+        spans.append({
+            "id": f"span-{uuid.uuid4().hex[:12]}",
+            "name": "query_database_postgres",
+            "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
+            "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "input": {"tenant_id": self.tenant_id},
+            "output": {"record_count": len(portfolios)},
+            "metadata": {"database": "finserve", "table": "portfolios"}
+        })
         total_balance = sum(float(p.get("balance", 0)) for p in portfolios)
-        return {
+        result = {
             "tenant_id": self.tenant_id,
             "response": f"Retrieved {len(portfolios)} portfolios for {self.tenant_id}. Total Assets Under Management: ${total_balance:,.2f}",
             "portfolios": portfolios
         }
+        await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+        return result

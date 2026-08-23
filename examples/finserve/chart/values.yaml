@@ -34,3 +34,6 @@ platform:
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
   aiGatewayUrl: "http://zelkor-platform-ai-gateway:8080"
   aegraUrl: "http://zelkor-platform-aegra:8000"
+  langfuseHost: "http://zelkor-platform-langfuse:3000"
+  langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+  langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"

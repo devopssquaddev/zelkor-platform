@@ -11,6 +11,10 @@ stringData:
   nextauth-secret: {{ .Values.langfuse.nextauthSecret | default "zelkor-langfuse-nextauth-secret-12345" | quote }}
   salt: {{ .Values.langfuse.salt | default "zelkor-langfuse-salt-123456789" | quote }}
   encryption-key: {{ .Values.langfuse.encryptionKey | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" | quote }}
+  {{- if and .Values.langfuse.init .Values.langfuse.init.enabled }}
+  init-user-password: {{ .Values.langfuse.init.userPassword | default "zelkor-dev-password" | quote }}
+  init-secret-key: {{ .Values.langfuse.init.projectSecretKey | default "sk-lf-zelkor-dev-00000000000000000000" | quote }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -105,6 +109,32 @@ spec:
               value: "true"
             - name: TELEMETRY_ENABLED
               value: "false"
+            {{- if and .Values.langfuse.init .Values.langfuse.init.enabled }}
+            - name: LANGFUSE_INIT_ORG_ID
+              value: {{ .Values.langfuse.init.orgId | default "zelkor-dev" | quote }}
+            - name: LANGFUSE_INIT_ORG_NAME
+              value: {{ .Values.langfuse.init.orgName | default "Zelkor Dev" | quote }}
+            - name: LANGFUSE_INIT_PROJECT_ID
+              value: {{ .Values.langfuse.init.projectId | default "finserve" | quote }}
+            - name: LANGFUSE_INIT_PROJECT_NAME
+              value: {{ .Values.langfuse.init.projectName | default "FinServe AI" | quote }}
+            - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+              value: {{ .Values.langfuse.init.projectPublicKey | default "pk-lf-zelkor-dev-00000000000000000000" | quote }}
+            - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: init-secret-key
+            - name: LANGFUSE_INIT_USER_EMAIL
+              value: {{ .Values.langfuse.init.userEmail | default "admin@zelkor.local" | quote }}
+            - name: LANGFUSE_INIT_USER_NAME
+              value: {{ .Values.langfuse.init.userName | default "Zelkor Admin" | quote }}
+            - name: LANGFUSE_INIT_USER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: init-user-password
+            {{- end }}
           startupProbe:
             httpGet:
               path: /api/public/health
