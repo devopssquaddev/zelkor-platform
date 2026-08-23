@@ -41,6 +41,8 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 ## Engineering Rules
 
 - All LLM calls route through **Envoy AI Gateway** — never connect agents directly to providers
+- **Gateway API Standard (No Ingress-NGINX):** Never use `ingress-nginx` (retired in 2026). Ingress and external routing must use **Kubernetes Gateway API (`gateway.networking.k8s.io/v1`)** with **Envoy Gateway**
+- **Deprecation & Lifecycle Policy:** Always verify all third-party components, base images, and libraries are actively maintained and not deprecated or EOL
 - **Langfuse** tracing must be enabled on all agent executions
 - Untrusted workloads use **gVisor** (`RuntimeClass: gvisor`)
 - Tenant isolation via Aegra `@auth.authenticate` handlers

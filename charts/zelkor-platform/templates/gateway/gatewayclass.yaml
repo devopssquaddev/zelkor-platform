@@ -1,0 +1,17 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: {{ .Values.gateway.gatewayClassName | default "eg" }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  {{- if and .Values.gateway.envoyProxy .Values.gateway.envoyProxy.enabled }}
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: {{ include "zelkor-platform.fullname" . }}-envoy-proxy-config
+    namespace: {{ .Release.Namespace }}
+  {{- end }}
+{{- end }}

@@ -2,11 +2,10 @@
 global:
   tier: oss
 
-ingress:
+gateway:
   enabled: true
-  className: "nginx"
-  annotations:
-    ingress.kubernetes.io/ssl-redirect: "false"
+  gatewayName: "zelkor-platform-gateway"
+  namespace: "default"
   host: "finserve.localhost"
 
 agent:
@@ -22,5 +21,8 @@ platform:
   postgresUser: "zelkor"
   postgresPassword: "zelkor-dev-password"
   postgresDatabase: "finserve"
+  qdrantHost: "zelkor-platform-qdrant"
+  qdrantPort: 6333
+  qdrantUrl: "http://zelkor-platform-qdrant:6333"
   aiGatewayUrl: "http://zelkor-platform-ai-gateway:8080"
   aegraUrl: "http://zelkor-platform-aegra:8000"

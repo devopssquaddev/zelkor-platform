@@ -22,11 +22,12 @@ auth:
   sso:
     enabled: false
 
-ingress:
+gateway:
   enabled: true
-  className: "nginx"
-  annotations:
-    ingress.kubernetes.io/ssl-redirect: "false"
+  gatewayClassName: "eg"
+  envoyProxy:
+    enabled: true
+    hostNetwork: true
   hosts:
     langfuse: "langfuse.localhost"
     aiGateway: "ai-gateway.localhost"
@@ -51,6 +52,7 @@ aiGateway:
 langfuse:
   enabled: true
   replicaCount: 1
+  nextauthUrl: "http://langfuse.localhost:8088"
 
 aegra:
   enabled: true

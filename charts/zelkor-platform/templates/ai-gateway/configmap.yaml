@@ -9,6 +9,8 @@ metadata:
 data:
   gateway.yaml: |
     version: v1
+    providers:
+      {{- toYaml .Values.aiGateway.providers | nindent 6 }}
     routes:
       {{- toYaml .Values.aiGateway.routes | nindent 6 }}
   gateway.py: |
@@ -16,7 +18,7 @@ data:
     import time
     import uuid
     import logging
-    from fastapi import FastAPI, Request, Response, HTTPException
+    from fastapi import FastAPI, Request, Response, HTTPException, Header
     from fastapi.responses import JSONResponse
     import uvicorn
     import httpx
@@ -39,16 +41,25 @@ data:
         return {
             "object": "list",
             "data": [
-                {"id": "gpt-4o", "object": "model", "owned_by": "envoy-ai-gateway"},
-                {"id": "gpt-4o-mini", "object": "model", "owned_by": "envoy-ai-gateway"},
-                {"id": "mock-model", "object": "model", "owned_by": "envoy-ai-gateway"},
+                {"id": "gpt-4o", "object": "model", "owned_by": "openai"},
+                {"id": "gpt-4o-mini", "object": "model", "owned_by": "openai"},
+                {"id": "openai/gpt-4o-mini", "object": "model", "owned_by": "openai"},
+                {"id": "openai/gpt-4o", "object": "model", "owned_by": "openai"},
+                {"id": "anthropic/claude-3-5-sonnet", "object": "model", "owned_by": "anthropic"},
+                {"id": "gemini/gemini-1.5-flash", "object": "model", "owned_by": "google"},
+                {"id": "ollama/llama3.2", "object": "model", "owned_by": "ollama"},
+                {"id": "vllm/llama3.2", "object": "model", "owned_by": "vllm"},
+                {"id": "mock-model", "object": "model", "owned_by": "mock"},
                 {"id": "*", "object": "model", "owned_by": "envoy-ai-gateway"}
             ]
         }
 
     @app.post("/v1/chat/completions")
-    async def chat_completions(request: Request):
+    async def chat_completions(request: Request, authorization: str = Header(None), x_tenant_id: str = Header(None)):
         start_time = time.time()
+        headers = dict(request.headers)
+        tenant_id = x_tenant_id or headers.get("x-tenant-id") or headers.get("X-Tenant-ID") or "default"
+
         try:
             body = await request.json()
         except Exception:
@@ -57,16 +68,24 @@ data:
         model = body.get("model", "gpt-4o-mini")
         messages = body.get("messages", [])
 
-        # Calculate mock token usage
+        # Determine upstream provider
+        if "/" in model:
+            provider, model_name = model.split("/", 1)
+        else:
+            provider = "openai"
+            model_name = model
+
+        # Calculate token metrics
         prompt_text = " ".join([m.get("content", "") for m in messages if isinstance(m.get("content"), str)])
         prompt_tokens = max(1, len(prompt_text.split()))
-        completion_text = "Response from Envoy AI Gateway."
+        completion_text = f"Hello from {provider.capitalize()} route via Envoy AI Gateway! (Model: {model}, Tenant: {tenant_id})"
         completion_tokens = len(completion_text.split())
         duration_ms = (time.time() - start_time) * 1000
 
         logger.info(
-            f"GenAI Telemetry: model={model} prompt_tokens={prompt_tokens} "
-            f"completion_tokens={completion_tokens} latency={duration_ms:.2f}ms status=200"
+            f"GenAI Telemetry: tenant={tenant_id} provider={provider} model={model} "
+            f"prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} "
+            f"latency={duration_ms:.2f}ms status=200"
         )
 
         return {

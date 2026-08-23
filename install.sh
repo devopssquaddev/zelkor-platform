@@ -9,6 +9,8 @@
 
 set -euo pipefail
 
+START_TIME=$(date +%s)
+
 CLUSTER_NAME="${CLUSTER_NAME:-zelkor}"
 CHART_PATH="${CHART_PATH:-charts/zelkor-platform}"
 VALUES_FILE="${VALUES_FILE:-${CHART_PATH}/values-local.yaml}"
@@ -44,9 +46,10 @@ if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
 
   # Install runsc (gVisor) binary on kind control plane node
   log "Configuring gVisor (runsc) on kind node..."
-  docker exec "${CLUSTER_NAME}-control-plane" sh -c "curl -fsSL https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/runsc -o /usr/local/bin/runsc && curl -fsSL https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/containerd-shim-runsc-v1 -o /usr/local/bin/containerd-shim-runsc-v1 && chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1 && /usr/local/bin/runsc install && systemctl restart containerd" || true
+  docker exec "${CLUSTER_NAME}-control-plane" sh -c "curl -fsSL https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/runsc -o /usr/local/bin/runsc && curl -fsSL https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/containerd-shim-runsc-v1 -o /usr/local/bin/containerd-shim-runsc-v1 && chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1" || true
 else
   log "Kind cluster already exists: $CLUSTER_NAME"
+  kind export kubeconfig --name "$CLUSTER_NAME"
 fi
 
 kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null
@@ -57,25 +60,59 @@ fi
 
 KCTX="kind-${CLUSTER_NAME}"
 
-# Ensure ingress-nginx is deployed
-log "Deploying NGINX Ingress Controller for kind..."
-kubectl apply --context "$KCTX" -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+# Ensure Envoy Gateway & Gateway API CRDs are deployed
+log "Deploying Envoy Gateway & Gateway API CRDs..."
+kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.0/install.yaml
 
-log "Waiting for Ingress controller readiness..."
-kubectl --context "$KCTX" wait --namespace ingress-nginx \
-  --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller \
-  --timeout=5m
-
-log "Waiting for Ingress admission webhook..."
-kubectl --context "$KCTX" wait --namespace ingress-nginx \
-  --for=condition=complete job --all \
-  --timeout=2m || true
+log "Waiting for Envoy Gateway controller readiness..."
+kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
 
 log "Applying Platform Helm chart from $CHART_PATH..."
-helm upgrade --install zelkor-platform "$CHART_PATH" \
-  --kube-context "$KCTX" \
-  -f "$VALUES_FILE"
+HELM_EXTRA_ARGS=()
+if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.openai.apiKey=${OPENAI_API_KEY}")
+fi
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.anthropic.apiKey=${ANTHROPIC_API_KEY}")
+fi
+if [[ -n "${GEMINI_API_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.gemini.apiKey=${GEMINI_API_KEY}")
+fi
+if [[ -n "${OLLAMA_API_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.ollama.apiKey=${OLLAMA_API_KEY}")
+fi
+if [[ -n "${OLLAMA_HOST:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.ollama.host=${OLLAMA_HOST}")
+fi
+if [[ -n "${AZURE_OPENAI_API_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
+fi
+if [[ -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
+fi
+if [[ -n "${AWS_REGION:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.region=${AWS_REGION}")
+fi
+if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
+fi
+if [[ -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
+fi
+if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
+fi
+
+if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then
+  helm upgrade --install zelkor-platform "$CHART_PATH" \
+    --kube-context "$KCTX" \
+    -f "$VALUES_FILE" \
+    "${HELM_EXTRA_ARGS[@]}"
+else
+  helm upgrade --install zelkor-platform "$CHART_PATH" \
+    --kube-context "$KCTX" \
+    -f "$VALUES_FILE"
+fi
 
 log "Tracking platform rollout progress..."
 log "  -> [1/4] Databases (PostgreSQL, Valkey, ClickHouse, Qdrant)..."
@@ -108,7 +145,12 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   kubectl --context "$KCTX" rollout status deployment/finserve-agent --timeout=5m
 fi
 
-log "Done. Zelkor Platform and components are deployed and healthy on kind cluster: $CLUSTER_NAME"
+END_TIME=$(date +%s)
+TOTAL_DURATION=$((END_TIME - START_TIME))
+MINUTES=$((TOTAL_DURATION / 60))
+SECONDS=$((TOTAL_DURATION % 60))
+
+log "Done. Zelkor Platform and components are deployed and healthy on kind cluster: $CLUSTER_NAME (installation took ${MINUTES}m ${SECONDS}s / ${TOTAL_DURATION}s)"
 
 cat <<EOF
 
@@ -123,6 +165,8 @@ cat <<EOF
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
   FinServe Demo Agent     finserve-agent              http://finserve.localhost:8088/docs
 
-  (Direct Ingress access on host port 8088)
+  (Kubernetes Gateway API / Envoy Gateway on host port 8088)
+======================================================================
+  Total Installation Time: ${MINUTES}m ${SECONDS}s (${TOTAL_DURATION} seconds)
 ======================================================================
 EOF

@@ -100,7 +100,9 @@ spec:
                   name: {{ include "zelkor-platform.fullname" . }}-langfuse
                   key: encryption-key
             - name: NEXTAUTH_URL
-              value: "http://localhost:3000"
+              value: {{ .Values.langfuse.nextauthUrl | default (printf "http://%s" (.Values.gateway.hosts.langfuse | default "langfuse.localhost")) | quote }}
+            - name: AUTH_TRUST_HOST
+              value: "true"
             - name: TELEMETRY_ENABLED
               value: "false"
           startupProbe:

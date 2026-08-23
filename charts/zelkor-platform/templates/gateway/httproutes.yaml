@@ -1,0 +1,74 @@
+{{- if and .Values.gateway.enabled .Values.langfuse.enabled .Values.gateway.hosts.langfuse }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+  hostnames:
+    - {{ .Values.gateway.hosts.langfuse | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-langfuse
+          port: 3000
+---
+{{- end }}
+{{- if and .Values.gateway.enabled .Values.aiGateway.enabled .Values.gateway.hosts.aiGateway }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+  hostnames:
+    - {{ .Values.gateway.hosts.aiGateway | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-ai-gateway
+          port: 8080
+---
+{{- end }}
+{{- if and .Values.gateway.enabled .Values.aegra.enabled .Values.gateway.hosts.aegra }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aegra-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aegra
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+  hostnames:
+    - {{ .Values.gateway.hosts.aegra | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-aegra
+          port: 8000
+{{- end }}
