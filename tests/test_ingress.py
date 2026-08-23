@@ -48,7 +48,7 @@ def test_ingress_resources_configured(kubecontext):
                 all_hosts.append(rule["host"])
 
     assert "langfuse.localhost" in all_hosts, f"langfuse.localhost not in {all_hosts}"
-    assert "litellm.localhost" in all_hosts, f"litellm.localhost not in {all_hosts}"
+    assert "ai-gateway.localhost" in all_hosts, f"ai-gateway.localhost not in {all_hosts}"
     assert "aegra.localhost" in all_hosts, f"aegra.localhost not in {all_hosts}"
 
 def test_ingress_routing_http_endpoints():
@@ -57,7 +57,7 @@ def test_ingress_routing_http_endpoints():
     """
     endpoints = [
         ("langfuse.localhost", "/api/public/health"),
-        ("litellm.localhost", "/health/liveliness"),
+        ("ai-gateway.localhost", "/ready"),
         ("aegra.localhost", "/health"),
         ("finserve.localhost", "/health"),
     ]

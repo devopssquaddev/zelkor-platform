@@ -71,8 +71,8 @@ spec:
               value: "redis://{{ include "zelkor-platform.fullname" . }}-valkey:6379/0"
             - name: AEGRA_CONFIG
               value: "/app/agents/aegra.json"
-            - name: LITELLM_URL
-              value: "http://{{ include "zelkor-platform.fullname" . }}-litellm:4000"
+            - name: AI_GATEWAY_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-ai-gateway:8080/v1"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
           volumeMounts:

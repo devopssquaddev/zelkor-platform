@@ -3,16 +3,21 @@ import json
 import logging
 import httpx
 from typing import Dict, Any, List, Optional
-import psycopg2
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("finserve")
 
 DATABASE_URL = os.getenv("FINSERVE_DATABASE_URL", "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve")
-LITELLM_URL = os.getenv("LITELLM_URL", "http://zelkor-platform-litellm:4000")
+AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", os.getenv("LITELLM_URL", "http://zelkor-platform-ai-gateway:8080"))
 CODE_EXECUTOR_URL = os.getenv("CODE_EXECUTOR_URL", "http://finserve-code-executor:8080")
 AEGRA_URL = os.getenv("AEGRA_URL", "http://zelkor-platform-aegra:8000")
+CONSUMER_API_KEY = os.getenv("ZEKOR_CONSUMER_KEY", "zelkor-community-key")
 
 class FinServeAgent:
     """

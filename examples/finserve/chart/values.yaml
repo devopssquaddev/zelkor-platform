@@ -31,5 +31,5 @@ platform:
   postgresUser: "zelkor"
   postgresPassword: "zelkor-dev-password"
   postgresDatabase: "finserve"
-  litellmUrl: "http://zelkor-platform-litellm:4000"
+  aiGatewayUrl: "http://zelkor-platform-ai-gateway:8080"
   aegraUrl: "http://zelkor-platform-aegra:8000"

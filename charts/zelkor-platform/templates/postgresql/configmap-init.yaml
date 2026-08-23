@@ -7,14 +7,12 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
 data:
-  01-init-databases.sql: |
-    CREATE DATABASE aegra;
-    CREATE DATABASE litellm;
-    CREATE DATABASE langfuse;
-    CREATE DATABASE finserve;
-    ALTER USER {{ .Values.postgresql.auth.username | default "zelkor" }} WITH PASSWORD '{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}';
-    GRANT ALL PRIVILEGES ON DATABASE aegra TO {{ .Values.postgresql.auth.username | default "zelkor" }};
-    GRANT ALL PRIVILEGES ON DATABASE litellm TO {{ .Values.postgresql.auth.username | default "zelkor" }};
-    GRANT ALL PRIVILEGES ON DATABASE langfuse TO {{ .Values.postgresql.auth.username | default "zelkor" }};
-    GRANT ALL PRIVILEGES ON DATABASE finserve TO {{ .Values.postgresql.auth.username | default "zelkor" }};
+    01-init-databases.sql: |
+      CREATE DATABASE aegra;
+      CREATE DATABASE langfuse;
+      CREATE DATABASE finserve;
+      ALTER USER {{ .Values.postgresql.auth.username | default "zelkor" }} WITH PASSWORD '{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}';
+      GRANT ALL PRIVILEGES ON DATABASE aegra TO {{ .Values.postgresql.auth.username | default "zelkor" }};
+      GRANT ALL PRIVILEGES ON DATABASE langfuse TO {{ .Values.postgresql.auth.username | default "zelkor" }};
+      GRANT ALL PRIVILEGES ON DATABASE finserve TO {{ .Values.postgresql.auth.username | default "zelkor" }};
 {{- end }}

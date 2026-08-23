@@ -29,7 +29,7 @@ ingress:
     ingress.kubernetes.io/ssl-redirect: "false"
   hosts:
     langfuse: "langfuse.localhost"
-    litellm: "litellm.localhost"
+    aiGateway: "ai-gateway.localhost"
     aegra: "aegra.localhost"
 
 postgresql:
@@ -44,7 +44,7 @@ clickhouse:
 qdrant:
   enabled: true
 
-litellm:
+aiGateway:
   enabled: true
   replicaCount: 1
 

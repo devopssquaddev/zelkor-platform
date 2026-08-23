@@ -24,17 +24,17 @@ spec:
                 port:
                   number: 3000
     {{- end }}
-    {{- if and .Values.litellm.enabled .Values.ingress.hosts.litellm }}
-    - host: {{ .Values.ingress.hosts.litellm | quote }}
+    {{- if and .Values.aiGateway.enabled .Values.ingress.hosts.aiGateway }}
+    - host: {{ .Values.ingress.hosts.aiGateway | quote }}
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: {{ include "zelkor-platform.fullname" . }}-litellm
+                name: {{ include "zelkor-platform.fullname" . }}-ai-gateway
                 port:
-                  number: 4000
+                  number: 8080
     {{- end }}
     {{- if and .Values.aegra.enabled .Values.ingress.hosts.aegra }}
     - host: {{ .Values.ingress.hosts.aegra | quote }}

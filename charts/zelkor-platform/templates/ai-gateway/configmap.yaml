@@ -1,0 +1,96 @@
+{{- if .Values.aiGateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-config
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+data:
+  gateway.yaml: |
+    version: v1
+    routes:
+      {{- toYaml .Values.aiGateway.routes | nindent 6 }}
+  gateway.py: |
+    import os
+    import time
+    import uuid
+    import logging
+    from fastapi import FastAPI, Request, Response, HTTPException
+    from fastapi.responses import JSONResponse
+    import uvicorn
+    import httpx
+
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("envoy-ai-gateway")
+
+    app = FastAPI(title="Envoy AI Gateway", version="0.1.0")
+
+    @app.get("/healthz")
+    async def healthz():
+        return {"status": "healthy", "service": "envoy-ai-gateway"}
+
+    @app.get("/ready")
+    async def ready():
+        return {"status": "ready", "service": "envoy-ai-gateway"}
+
+    @app.get("/v1/models")
+    async def list_models():
+        return {
+            "object": "list",
+            "data": [
+                {"id": "gpt-4o", "object": "model", "owned_by": "envoy-ai-gateway"},
+                {"id": "gpt-4o-mini", "object": "model", "owned_by": "envoy-ai-gateway"},
+                {"id": "mock-model", "object": "model", "owned_by": "envoy-ai-gateway"},
+                {"id": "*", "object": "model", "owned_by": "envoy-ai-gateway"}
+            ]
+        }
+
+    @app.post("/v1/chat/completions")
+    async def chat_completions(request: Request):
+        start_time = time.time()
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        model = body.get("model", "gpt-4o-mini")
+        messages = body.get("messages", [])
+
+        # Calculate mock token usage
+        prompt_text = " ".join([m.get("content", "") for m in messages if isinstance(m.get("content"), str)])
+        prompt_tokens = max(1, len(prompt_text.split()))
+        completion_text = "Response from Envoy AI Gateway."
+        completion_tokens = len(completion_text.split())
+        duration_ms = (time.time() - start_time) * 1000
+
+        logger.info(
+            f"GenAI Telemetry: model={model} prompt_tokens={prompt_tokens} "
+            f"completion_tokens={completion_tokens} latency={duration_ms:.2f}ms status=200"
+        )
+
+        return {
+            "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": completion_text
+                    },
+                    "finish_reason": "stop"
+                }
+            ],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens
+            }
+        }
+
+    if __name__ == "__main__":
+        uvicorn.run(app, host="0.0.0.0", port=8080)
+{{- end }}

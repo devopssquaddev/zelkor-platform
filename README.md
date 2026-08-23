@@ -2,7 +2,7 @@
 
 Self-hosted infrastructure to deploy, test, govern, and run AI agents in production.
 
-Zelkor wraps battle-tested open-source components — **Aegra**, **LiteLLM**, **Langfuse**, and **Qdrant** — into a unified Kubernetes deployment. It is an open-source alternative to LangGraph Platform and LangSmith for teams that need to run agents on their own infrastructure.
+Zelkor wraps battle-tested open-source components — **Aegra**, **Envoy AI Gateway**, **Langfuse**, **NeMo Guardrails**, and **Qdrant** — into a unified Kubernetes deployment. It is an open-source alternative to LangGraph Platform and LangSmith for teams that need to run agents on their own infrastructure.
 
 ## Quick Start
 
@@ -21,7 +21,8 @@ See [docs/quickstart.md](docs/quickstart.md) for details.
 | Component | Role |
 |-----------|------|
 | **Aegra** | Stateful agent orchestrator (LangGraph alternative) |
-| **LiteLLM** | LLM API gateway and MCP router |
+| **Envoy AI Gateway** | LLM API gateway, MCP router, and OTel GenAI telemetry |
+| **NeMo Guardrails** | CPU-native conversational boundaries and dialog rails |
 | **Langfuse** | Observability, tracing, and evaluations |
 | **Qdrant** | Semantic memory and vector search |
 | **PostgreSQL / Valkey / ClickHouse** | Databases for state, cache, and analytics |
@@ -33,14 +34,14 @@ Baseline sandboxing via **gVisor** (`runsc`) for untrusted code execution worklo
 ```
 ┌─────────────────────────────────────────────────┐
 │              Kubernetes Cluster                  │
-│  ┌─────────┐  ┌─────────┐  ┌────────────────┐ │
-│  │  Aegra  │  │ LiteLLM │  │   Langfuse     │ │
-│  │(runtime)│  │(gateway)│  │ (observability)│ │
-│  └────┬────┘  └────┬────┘  └───────┬────────┘ │
-│       │            │               │           │
-│  ┌────┴────────────┴───────────────┴────────┐  │
-│  │  PostgreSQL │ Valkey │ ClickHouse │ Qdrant│ │
-│  └──────────────────────────────────────────┘  │
+│  ┌─────────┐  ┌─────────────┐  ┌──────────────┐ │
+│  │  Aegra  │  │   Envoy     │  │   Langfuse   │ │
+│  │(runtime)│  │ AI Gateway  │  │(observability│ │
+│  └────┬────┘  └──────┬──────┘  └───────┬──────┘ │
+│       │              │                 │        │
+│  ┌────┴──────────────┴─────────────────┴──────┐ │
+│  │  PostgreSQL │ Valkey │ ClickHouse │ Qdrant │ │
+│  └────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────┘
 ```
 

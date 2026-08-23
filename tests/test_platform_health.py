@@ -16,7 +16,7 @@ def test_platform_pods_running(kubecontext):
     items = data.get("items", [])
     assert len(items) > 0, "No pods found in cluster"
 
-    expected_components = ["postgresql", "valkey", "clickhouse", "qdrant", "litellm", "langfuse", "aegra"]
+    expected_components = ["postgresql", "valkey", "clickhouse", "qdrant", "ai-gateway", "langfuse", "aegra"]
     pod_names = [p["metadata"]["name"] for p in items]
 
     for comp in expected_components:

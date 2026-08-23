@@ -40,7 +40,7 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 
 ## Engineering Rules
 
-- All LLM calls route through **LiteLLM** — never connect agents directly to providers
+- All LLM calls route through **Envoy AI Gateway** — never connect agents directly to providers
 - **Langfuse** tracing must be enabled on all agent executions
 - Untrusted workloads use **gVisor** (`RuntimeClass: gvisor`)
 - Tenant isolation via Aegra `@auth.authenticate` handlers

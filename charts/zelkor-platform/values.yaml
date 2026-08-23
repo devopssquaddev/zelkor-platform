@@ -36,7 +36,7 @@ ingress:
     ingress.kubernetes.io/ssl-redirect: "false"
   hosts:
     langfuse: "langfuse.localhost"
-    litellm: "litellm.localhost"
+    aiGateway: "ai-gateway.localhost"
     aegra: "aegra.localhost"
   tls: []
 
@@ -97,21 +97,24 @@ qdrant:
       cpu: 500m
       memory: 512Mi
 
-litellm:
+aiGateway:
   enabled: true
   replicaCount: 1
   image:
-    repository: ghcr.io/berriai/litellm
-    tag: "main-v1.44.1"
-  masterKey: "sk-zelkor-master-key"
-  openaiApiKey: ""
+    repository: python
+    tag: "3.11-slim"
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 50m
+      memory: 64Mi
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 256Mi
+  routes:
+    - name: default-openai
+      provider: openai
+      model: gpt-4o-mini
+      secretRef: openai-api-key
 
 langfuse:
   enabled: true

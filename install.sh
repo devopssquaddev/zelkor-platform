@@ -84,8 +84,8 @@ kubectl --context "$KCTX" rollout status deployment/zelkor-platform-valkey --tim
 kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-clickhouse --timeout=5m
 kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-qdrant --timeout=5m
 
-log "  -> [2/4] LLM Gateway (LiteLLM)..."
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-litellm --timeout=5m
+log "  -> [2/4] LLM Gateway (Envoy AI Gateway)..."
+kubectl --context "$KCTX" rollout status deployment/zelkor-platform-ai-gateway --timeout=5m
 
 log "  -> [3/4] Observability (Langfuse)..."
 kubectl --context "$KCTX" rollout status deployment/zelkor-platform-langfuse --timeout=5m
@@ -119,7 +119,7 @@ cat <<EOF
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
   Langfuse UI             zelkor-platform-langfuse    http://langfuse.localhost:8088
-  LiteLLM Gateway         zelkor-platform-litellm     http://litellm.localhost:8088
+  Envoy AI Gateway        zelkor-platform-ai-gateway  http://ai-gateway.localhost:8088
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
   FinServe Demo Agent     finserve-agent              http://finserve.localhost:8088/docs
 
