@@ -2,6 +2,7 @@ import pytest
 import httpx
 import uuid
 import datetime
+import time
 
 LANGFUSE_HOST_HEADER = "langfuse.localhost"
 AI_GATEWAY_HOST_HEADER = "ai-gateway.localhost"
@@ -105,3 +106,60 @@ def test_finserve_agent_generates_traces_and_spans():
     assert data.get("tenant_id") == "Bank_Alpha"
     assert "data" in data
     assert "Retrieved policy guidelines" in data["data"].get("response", "")
+
+def test_langfuse_traces_gvisor_outbreak_prevention():
+    """
+    Verify that an adversarial code outbreak attempt is executed inside gVisor sandbox,
+    prevented safely, and traced in Langfuse with 'gvisor-sandbox' and 'outbreak-prevention-verified' tags.
+    """
+    url = f"{GATEWAY_BASE_URL}/runs/stream"
+    headers = {
+        "Host": FINSERVE_HOST_HEADER,
+        "Content-Type": "application/json",
+        "Authorization": "Bearer dev:Bank_Alpha"
+    }
+    adversarial_code = """import os, stat
+results = {}
+try:
+    os.mknod('/tmp/fake_sda_langfuse', stat.S_IFBLK | 0o660, os.makedev(8, 1))
+    with open('/tmp/fake_sda_langfuse', 'rb') as f:
+        f.read(10)
+    results['mknod_escape'] = 'EXPLOIT_SUCCEEDED'
+except Exception as e:
+    results['mknod_escape'] = f'BLOCKED: {type(e).__name__}'
+
+print(results)
+"""
+    payload = {
+        "assistant_id": "finserve_agent",
+        "input": {
+            "messages": [{"role": "user", "content": f"Execute this Python code:\n```python\n{adversarial_code}\n```"}]
+        }
+    }
+    resp = httpx.post(url, headers=headers, json=payload, timeout=10.0)
+    assert resp.status_code == 200, f"FinServe outbreak execution call failed: {resp.text}"
+    data = resp.json()
+    assert data.get("tenant_id") == "Bank_Alpha"
+    stdout = data.get("data", {}).get("execution_result", {}).get("stdout", "")
+    assert "BLOCKED" in stdout
+    assert "EXPLOIT_SUCCEEDED" not in stdout
+
+    # Query Langfuse API to verify trace with outbreak-prevention-verified tag exists
+    time.sleep(1.0)
+    langfuse_url = f"{GATEWAY_BASE_URL}/api/public/traces"
+    langfuse_headers = {"Host": LANGFUSE_HOST_HEADER}
+    traces_resp = httpx.get(
+        langfuse_url,
+        headers=langfuse_headers,
+        auth=(DEV_PUBLIC_KEY, DEV_SECRET_KEY),
+        timeout=10.0
+    )
+    assert traces_resp.status_code == 200, f"Langfuse traces fetch failed: {traces_resp.text}"
+    traces_data = traces_resp.json().get("data", [])
+    
+    # Check that a trace exists containing gvisor or outbreak tags
+    outbreak_traces = [
+        t for t in traces_data
+        if any(tag in ["gvisor-sandbox", "outbreak-prevention-verified"] for tag in t.get("tags", []))
+    ]
+    assert len(outbreak_traces) > 0, f"Expected outbreak prevention trace in Langfuse, found tags: {[t.get('tags') for t in traces_data]}"
