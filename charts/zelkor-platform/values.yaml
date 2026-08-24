@@ -182,3 +182,15 @@ aegra:
     limits:
       cpu: 500m
       memory: 512Mi
+
+guardrails:
+  nemo:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: python
+      tag: "3.11-slim"
+  # Enterprise only:
+  # llamaGuard:
+  #   enabled: false
+

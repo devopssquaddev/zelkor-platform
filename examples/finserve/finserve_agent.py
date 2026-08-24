@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import uuid
@@ -17,10 +18,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("finserve")
 
 DATABASE_URL = os.getenv("FINSERVE_DATABASE_URL", "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve")
-AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", os.getenv("LITELLM_URL", "http://zelkor-platform-ai-gateway:8080"))
+AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", os.getenv("LITELLM_URL", "http://zelkor-platform-ai-gateway:8080/v1"))
 CODE_EXECUTOR_URL = os.getenv("CODE_EXECUTOR_URL", "http://finserve-code-executor:8080")
 AEGRA_URL = os.getenv("AEGRA_URL", "http://zelkor-platform-aegra:8000")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://zelkor-platform-qdrant:6333")
+NEMO_URL = os.getenv("NEMO_URL", "http://zelkor-platform-nemo:8000/v1/guardrails/input")
 CONSUMER_API_KEY = os.getenv("ZELKOR_CONSUMER_KEY", "zelkor-community-key")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://zelkor-platform-langfuse:3000")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
@@ -59,11 +61,18 @@ SEED_POLICIES = [
     }
 ]
 
+OFF_TOPIC_PATTERNS = [
+    r"\bpoem\b", r"\bjoke\b", r"\bquantum\b", r"\bcat(s)?\b", r"\bdog(s)?\b",
+    r"\bweather\b", r"\brecipe\b", r"\bmovie\b", r"\bsong\b", r"\bstory\b"
+]
+
 class FinServeAgent:
     """
     FinServe AI Wealth Management Agent.
-    Enforces tenant boundaries, queries PostgreSQL portfolios, performs semantic vector search in Qdrant,
-    and routes untrusted code execution to sandboxed nodes.
+    Enforces tenant boundaries, evaluates NeMo conversational guardrails,
+    queries PostgreSQL portfolios, performs semantic vector search in Qdrant,
+    routes untrusted code execution to gVisor sandboxed nodes, invokes AI Gateway,
+    and checkpoints state in Aegra.
     """
     def __init__(self, tenant_id: str, db_url: str = DATABASE_URL, qdrant_url: str = QDRANT_URL):
         self.tenant_id = tenant_id
@@ -134,6 +143,82 @@ class FinServeAgent:
         except Exception as e:
             logger.debug(f"Langfuse trace emission skipped: {e}")
 
+    async def check_guardrails(self, prompt: str) -> Dict[str, Any]:
+        """
+        Evaluate input prompt against NeMo Guardrails CPU service.
+        """
+        prompt_lower = prompt.lower()
+        # Local fallback evaluation
+        for pat in OFF_TOPIC_PATTERNS:
+            if re.search(pat, prompt_lower):
+                return {
+                    "allowed": False,
+                    "reason": "off-topic",
+                    "response": "I am the FinServe Wealth Management Assistant. I can only assist with financial portfolios, asset allocation, and wealth management queries."
+                }
+
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.post(
+                    NEMO_URL,
+                    json={"prompt": prompt, "tenant_id": self.tenant_id}
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+        except Exception as e:
+            logger.debug(f"NeMo service check fallback: {e}")
+
+        return {"allowed": True, "reason": "passed", "response": ""}
+
+    async def get_system_prompt(self) -> str:
+        """
+        Retrieve prompt template from Langfuse if available, with default fallback.
+        """
+        fallback_prompt = f"You are the FinServe Autonomous Wealth Management AI. Provide accurate, tenant-isolated portfolio summaries and risk analytics for {self.tenant_id}."
+        if not LANGFUSE_ENABLED or not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
+            return fallback_prompt
+
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.get(
+                    f"{LANGFUSE_HOST}/api/public/v2/prompts/finserve-system",
+                    auth=(LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    prompt_text = data.get("prompt")
+                    if prompt_text:
+                        return prompt_text.replace("{tenant_id}", self.tenant_id)
+        except Exception as e:
+            logger.debug(f"Langfuse prompt retrieval fallback: {e}")
+
+        return fallback_prompt
+
+    async def checkpoint_aegra(self, thread_id: str, prompt: str, output: Any):
+        """
+        Save conversation step and state to Aegra agent orchestrator.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                headers = {
+                    "Authorization": f"Bearer dev:{self.tenant_id}",
+                    "X-Tenant-ID": self.tenant_id
+                }
+                payload = {
+                    "input": {
+                        "prompt": prompt,
+                        "output": output,
+                        "tenant_id": self.tenant_id
+                    }
+                }
+                await client.post(
+                    f"{AEGRA_URL}/threads/{thread_id}/runs",
+                    headers=headers,
+                    json=payload
+                )
+        except Exception as e:
+            logger.debug(f"Aegra checkpoint skipped: {e}")
+
     def query_database(self, query_tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Query portfolios for the authenticated tenant only.
@@ -145,6 +230,8 @@ class FinServeAgent:
             return []
 
         try:
+            if not psycopg2:
+                return []
             conn = psycopg2.connect(self.db_url)
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
@@ -229,16 +316,43 @@ class FinServeAgent:
     async def handle_prompt(self, prompt: str, thread_id: str = "default-thread") -> Dict[str, Any]:
         """
         Process user prompts:
+        - NeMo Guardrails CPU validation (off-topic refusal)
         - Cross-tenant queries: filtered via tenant_id
         - Semantic Vector Search (Qdrant): retrieves policy chunks scoped by tenant
         - Financial math: invokes sandboxed Python code execution
-        - Stateful memory: checkpointed via thread_id
+        - Aegra state checkpointing
         """
         start_time = time.time()
         trace_id = f"trace-{uuid.uuid4().hex}"
         spans: List[Dict[str, Any]] = []
         prompt_lower = prompt.lower()
         result: Dict[str, Any] = {}
+
+        # 1. NeMo Guardrails Check
+        t_nemo = time.time()
+        guardrail_check = await self.check_guardrails(prompt)
+        spans.append({
+            "id": f"span-{uuid.uuid4().hex[:12]}",
+            "name": "nemo_guardrails_input_check",
+            "startTime": datetime.datetime.fromtimestamp(t_nemo, tz=datetime.timezone.utc).isoformat(),
+            "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "input": {"prompt": prompt, "tenant_id": self.tenant_id},
+            "output": guardrail_check,
+            "metadata": {"engine": "nemo-guardrails-cpu"}
+        })
+
+        if not guardrail_check.get("allowed", True):
+            result = {
+                "tenant_id": self.tenant_id,
+                "guardrail_triggered": True,
+                "guardrail_blocked": True,
+                "response": guardrail_check.get("response", "I am the FinServe Wealth Management Assistant. I can only assist with financial portfolios, asset allocation, and wealth management queries."),
+                "data": [],
+                "policies": []
+            }
+            await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time, tags=["finserve", self.tenant_id, "guardrail-refusal"])
+            await self.checkpoint_aegra(thread_id, prompt, result)
+            return result
 
         # Check for cross-tenant injection / IDOR
         if "bank_beta" in prompt_lower and self.tenant_id == "Bank_Alpha":
@@ -272,6 +386,7 @@ class FinServeAgent:
                     "policies": []
                 }
                 await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+                await self.checkpoint_aegra(thread_id, prompt, result)
                 return result
 
         if "bank_alpha" in prompt_lower and self.tenant_id == "Bank_Beta":
@@ -305,6 +420,7 @@ class FinServeAgent:
                     "policies": []
                 }
                 await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+                await self.checkpoint_aegra(thread_id, prompt, result)
                 return result
 
         # Semantic Policy Search in Qdrant (e.g. "What is our asset allocation policy for high-growth tech?")
@@ -328,6 +444,7 @@ class FinServeAgent:
                 "source": "qdrant:finserve_policies"
             }
             await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+            await self.checkpoint_aegra(thread_id, prompt, result)
             return result
 
         # Code execution request (e.g., Monte Carlo, projections, or adversarial syscall test / outbreak attempt)
@@ -407,6 +524,7 @@ class FinServeAgent:
                 "execution_result": exec_result
             }
             await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time, metadata=trace_metadata, tags=trace_tags)
+            await self.checkpoint_aegra(thread_id, prompt, result)
             return result
 
         # Standard portfolio summary query
@@ -428,4 +546,5 @@ class FinServeAgent:
             "portfolios": portfolios
         }
         await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+        await self.checkpoint_aegra(thread_id, prompt, result)
         return result

@@ -15,6 +15,9 @@ data:
     from fastapi import FastAPI, Request, HTTPException, Depends, Header
     from fastapi.responses import JSONResponse
     import uvicorn
+    import psycopg2
+    import psycopg2.extras
+    import redis
 
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("aegra")
@@ -28,10 +31,115 @@ data:
         auth = None
         authenticate_request = None
 
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra")
+    VALKEY_URL = os.getenv("VALKEY_URL", "redis://zelkor-platform-valkey:6379/0")
+
+    # Initialize Valkey client
+    r_client = None
+    try:
+        r_client = redis.from_url(VALKEY_URL, decode_responses=True)
+        r_client.ping()
+        logger.info("Connected to Valkey.")
+    except Exception as e:
+        logger.warning(f"Valkey connection failed: {e}")
+        r_client = None
+
+    def get_db():
+        return psycopg2.connect(DATABASE_URL)
+
+    def init_db():
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS aegra_threads (
+                            thread_id VARCHAR(255) PRIMARY KEY,
+                            tenant_id VARCHAR(255) NOT NULL,
+                            state JSONB NOT NULL DEFAULT '{}'::jsonb,
+                            history JSONB NOT NULL DEFAULT '[]'::jsonb,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                        );
+                    """)
+                conn.commit()
+            logger.info("Initialized PostgreSQL aegra_threads table.")
+        except Exception as e:
+            logger.error(f"Failed to initialize PostgreSQL table: {e}")
+
+    init_db()
+
     app = FastAPI(title="Aegra Agent Runtime", version="0.1.0")
 
-    # In-memory threads store for checkpointing / state
-    threads_store = {}
+    # Local fallback memory cache
+    memory_threads_store = {}
+
+    def get_thread(thread_id: str):
+        # 1. Check Valkey
+        if r_client:
+            try:
+                cached = r_client.get(f"aegra:thread:{thread_id}")
+                if cached:
+                    return json.loads(cached)
+            except Exception as e:
+                logger.warning(f"Valkey get error: {e}")
+
+        # 2. Check Postgres
+        try:
+            with get_db() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute("SELECT thread_id, tenant_id, state, history FROM aegra_threads WHERE thread_id = %s", (thread_id,))
+                    row = cur.fetchone()
+                    if row:
+                        t_data = {
+                            "thread_id": row["thread_id"],
+                            "tenant_id": row["tenant_id"],
+                            "state": row["state"] if isinstance(row["state"], dict) else json.loads(row["state"]),
+                            "history": row["history"] if isinstance(row["history"], list) else json.loads(row["history"])
+                        }
+                        if r_client:
+                            try:
+                                r_client.setex(f"aegra:thread:{thread_id}", 3600, json.dumps(t_data))
+                            except Exception:
+                                pass
+                        return t_data
+        except Exception as e:
+            logger.warning(f"Postgres get error: {e}")
+
+        # 3. Fallback to memory
+        return memory_threads_store.get(thread_id)
+
+    def save_thread(thread_id: str, tenant_id: str, state: dict, history: list):
+        t_data = {
+            "thread_id": thread_id,
+            "tenant_id": tenant_id,
+            "state": state,
+            "history": history
+        }
+        memory_threads_store[thread_id] = t_data
+
+        # 1. Save to Valkey
+        if r_client:
+            try:
+                r_client.setex(f"aegra:thread:{thread_id}", 3600, json.dumps(t_data))
+            except Exception as e:
+                logger.warning(f"Valkey save error: {e}")
+
+        # 2. Save to Postgres
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO aegra_threads (thread_id, tenant_id, state, history, updated_at)
+                        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                        ON CONFLICT (thread_id) DO UPDATE SET
+                            tenant_id = EXCLUDED.tenant_id,
+                            state = EXCLUDED.state,
+                            history = EXCLUDED.history,
+                            updated_at = CURRENT_TIMESTAMP;
+                    """, (thread_id, tenant_id, json.dumps(state), json.dumps(history)))
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Postgres save error: {e}")
 
     @app.get("/health")
     async def health():
@@ -53,18 +161,23 @@ data:
         body = await request.json()
         input_data = body.get("input", {})
 
-        if thread_id not in threads_store:
-            threads_store[thread_id] = {
+        thread = get_thread(thread_id)
+        if not thread:
+            thread = {
+                "thread_id": thread_id,
                 "tenant_id": identity,
                 "history": [],
                 "state": {}
             }
-
-        thread = threads_store[thread_id]
-        if thread["tenant_id"] != identity:
+        elif thread["tenant_id"] != identity:
             raise HTTPException(status_code=403, detail="Cross-tenant access forbidden")
 
         thread["history"].append(input_data)
+        if "state" in input_data and isinstance(input_data["state"], dict):
+            thread["state"].update(input_data["state"])
+
+        save_thread(thread_id, identity, thread["state"], thread["history"])
+
         return {
             "run_id": f"run-{len(thread['history'])}",
             "thread_id": thread_id,
@@ -82,10 +195,10 @@ data:
         else:
             identity = x_tenant_id or "default"
 
-        if thread_id not in threads_store:
+        thread = get_thread(thread_id)
+        if not thread:
             raise HTTPException(status_code=404, detail="Thread not found")
 
-        thread = threads_store[thread_id]
         if thread["tenant_id"] != identity:
             raise HTTPException(status_code=403, detail="Cross-tenant access forbidden")
 

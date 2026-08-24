@@ -1,0 +1,101 @@
+{{- if .Values.aiGateway.enabled }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aigateway-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  hostnames:
+    - {{ .Values.gateway.hosts.aiGateway | quote }}
+  rules:
+    {{- if .Values.aiGateway.providers.openai.apiKey }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: openai/gpt-4o
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: openai/gpt-4o-mini
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gpt-4o-mini
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+    {{- end }}
+    {{- if .Values.aiGateway.providers.anthropic.apiKey }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: anthropic/claude-3-5-sonnet
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: claude-3-5-sonnet
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+    {{- end }}
+    {{- if .Values.aiGateway.providers.gemini.apiKey }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gemini/gemini-1.5-flash
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: gemini-1.5-flash
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+    {{- end }}
+    {{- if .Values.aiGateway.providers.ollama.apiKey }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: ollama/llama3.2
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: llama3.2
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+    {{- else }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: ollama/llama3.2
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: llama3.2
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+    {{- end }}
+    - backendRefs:
+        {{- if .Values.aiGateway.providers.openai.apiKey }}
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+        {{- else if .Values.aiGateway.providers.ollama.apiKey }}
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+        {{- else if .Values.aiGateway.providers.anthropic.apiKey }}
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+        {{- else }}
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+        {{- end }}
+{{- end }}

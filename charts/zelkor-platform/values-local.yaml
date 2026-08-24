@@ -72,3 +72,10 @@ langfuse:
 aegra:
   enabled: true
   replicaCount: 1
+
+guardrails:
+  nemo:
+    enabled: true
+  # llamaGuard:
+  #   enabled: false
+

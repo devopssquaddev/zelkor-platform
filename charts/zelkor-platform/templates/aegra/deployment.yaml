@@ -59,7 +59,7 @@ spec:
             - /bin/bash
             - -c
             - |
-              pip install --no-cache-dir fastapi uvicorn pyjwt httpx pydantic >/dev/null 2>&1
+              pip install --no-cache-dir fastapi uvicorn pyjwt httpx pydantic psycopg2-binary redis >/dev/null 2>&1
               python /app/server.py
           ports:
             - containerPort: 8000

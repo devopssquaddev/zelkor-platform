@@ -64,8 +64,64 @@ KCTX="kind-${CLUSTER_NAME}"
 log "Deploying Envoy Gateway & Gateway API CRDs..."
 kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.0/install.yaml
 
+# Enable Backend extension API in Envoy Gateway config
+log "Enabling Backend extension API in Envoy Gateway config..."
+kubectl --context "$KCTX" apply -f - <<'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: envoy-gateway-config
+  namespace: envoy-gateway-system
+data:
+  envoy-gateway.yaml: |
+    apiVersion: gateway.envoyproxy.io/v1alpha1
+    kind: EnvoyGateway
+    extensionApis:
+      enableBackend: true
+    gateway:
+      controllerName: gateway.envoyproxy.io/gatewayclass-controller
+    logging:
+      level:
+        default: info
+    provider:
+      kubernetes:
+        rateLimitDeployment:
+          container:
+            image: docker.io/envoyproxy/ratelimit:17b1956c
+          patch:
+            type: StrategicMerge
+            value:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - imagePullPolicy: IfNotPresent
+                      name: envoy-ratelimit
+        shutdownManager:
+          image: envoyproxy/gateway:v1.9.0
+      type: Kubernetes
+EOF
+kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
+
 log "Waiting for Envoy Gateway controller readiness..."
 kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
+
+# Ensure Envoy AI Gateway CRDs & Controller are deployed
+log "Deploying Envoy AI Gateway CRDs & Controller..."
+helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+  --kube-context "$KCTX" \
+  --version v1.0.0 \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace
+
+helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+  --kube-context "$KCTX" \
+  --version v1.0.0 \
+  --namespace envoy-ai-gateway-system \
+  --create-namespace
+
+log "Waiting for Envoy AI Gateway controller readiness..."
+kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
 
 log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
@@ -122,13 +178,18 @@ kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-clickhouse 
 kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-qdrant --timeout=5m
 
 log "  -> [2/4] LLM Gateway (Envoy AI Gateway)..."
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-ai-gateway --timeout=5m
+kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
 
 log "  -> [3/4] Observability (Langfuse)..."
 kubectl --context "$KCTX" rollout status deployment/zelkor-platform-langfuse --timeout=5m
 
 log "  -> [4/4] Agent Orchestrator (Aegra)..."
 kubectl --context "$KCTX" rollout status deployment/zelkor-platform-aegra --timeout=5m
+
+if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
+  log "  -> Guardrails (NeMo CPU)..."
+  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-nemo --timeout=5m
+fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   log "Applying FinServe demo chart from $FINSERVE_CHART_PATH..."
@@ -161,9 +222,11 @@ cat <<EOF
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
   Langfuse Observability  zelkor-platform-langfuse    http://langfuse.localhost:8088
-  Envoy AI Gateway        zelkor-platform-ai-gateway  http://ai-gateway.localhost:8088
+  Envoy AI Gateway        ai-gateway-controller       http://ai-gateway.localhost:8088
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
   FinServe Demo Agent     finserve-agent              http://finserve.localhost:8088/docs
+  NeMo Guardrails (CPU)   zelkor-platform-nemo        http://zelkor-platform-nemo:8000
+  Engine Sink             zelkor-platform-engine-sink http://zelkor-platform-engine-sink:8080
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
 
@@ -183,6 +246,7 @@ cat <<EOF
     URL:              http://ai-gateway.localhost:8088/v1/chat/completions
     Bearer Token:     dev-key (or zelkor-community-key)
     Tenant Header:    X-Tenant-ID: Bank_Alpha
+    Default Provider: Ollama (Local: host.docker.internal / Cloud: ollama.com)
 
   [FinServe Demo Agent]
     URL:              http://finserve.localhost:8088/runs/stream
@@ -191,7 +255,7 @@ cat <<EOF
 
   [Aegra Agent Runtime]
     URL:              http://aegra.localhost:8088
-    Bearer Token:     Authorization: Bearer dev-key
+    Bearer Token:     Authorization: Bearer dev:Bank_Alpha
 
   [Databases (Internal Cluster / Port-Forward)]
     PostgreSQL:       postgresql://zelkor:zelkor-dev-password@localhost:5432/finserve
@@ -208,7 +272,7 @@ cat <<EOF
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer dev-key" \\
        -H "X-Tenant-ID: Bank_Alpha" \\
-       -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
+       -d '{"model":"ollama/llama3.2","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
 
   2. Test FinServe Agent Stream:
      curl -X POST http://finserve.localhost:8088/runs/stream \\

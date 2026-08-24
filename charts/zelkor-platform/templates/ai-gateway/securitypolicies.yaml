@@ -1,0 +1,65 @@
+{{- if .Values.aiGateway.enabled }}
+{{- if .Values.aiGateway.providers.openai.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-openai-apikey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+{{- if .Values.aiGateway.providers.anthropic.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-anthropic-apikey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+{{- if .Values.aiGateway.providers.ollama.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-ollama-apikey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+{{- end }}

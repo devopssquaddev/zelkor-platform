@@ -1,0 +1,115 @@
+{{- if and .Values.langfuse.enabled .Values.langfuse.init .Values.langfuse.init.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-seed
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse-seed
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: langfuse-seed
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-langfuse
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-langfuse 3000; do
+                echo "Waiting for Langfuse API..."
+                sleep 2
+              done
+              echo "Langfuse is reachable."
+      containers:
+        - name: seed
+          image: python:3.11-slim
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              pip install --no-cache-dir requests >/dev/null 2>&1
+              cat << 'EOF' > /tmp/seed.py
+              import os
+              import time
+              import requests
+              from requests.auth import HTTPBasicAuth
+
+              BASE_URL = os.getenv("LANGFUSE_HOST", "http://{{ include "zelkor-platform.fullname" . }}-langfuse:3000")
+              PK = os.getenv("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
+              SK = os.getenv("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000")
+              auth = HTTPBasicAuth(PK, SK)
+
+              print(f"Connecting to Langfuse at {BASE_URL}...")
+              for attempt in range(20):
+                  try:
+                      r = requests.get(f"{BASE_URL}/api/public/health", timeout=5)
+                      if r.status_code == 200:
+                          print("Langfuse API is healthy.")
+                          break
+                  except Exception as e:
+                      print(f"Attempt {attempt+1}: {e}")
+                  time.sleep(3)
+
+              # 1. Seed Prompt: finserve-system
+              prompt_payload = {
+                  "name": "finserve-system",
+                  "prompt": "You are the FinServe Autonomous Wealth Management AI. Provide accurate, tenant-isolated portfolio summaries and risk analytics for tenant {tenant_id}.",
+                  "type": "text",
+                  "isActive": True
+              }
+              try:
+                  res = requests.post(f"{BASE_URL}/api/public/v2/prompts", json=prompt_payload, auth=auth, timeout=10)
+                  print(f"Seed Prompt response: {res.status_code} - {res.text[:100]}")
+              except Exception as e:
+                  print(f"Failed to seed prompt: {e}")
+
+              # 2. Seed Dataset: finserve-eval-dataset
+              dataset_payload = {
+                  "name": "finserve-eval-dataset",
+                  "description": "Gold validation dataset for FinServe autonomous wealth management agent"
+              }
+              try:
+                  res = requests.post(f"{BASE_URL}/api/public/datasets", json=dataset_payload, auth=auth, timeout=10)
+                  print(f"Seed Dataset response: {res.status_code} - {res.text[:100]}")
+                  
+                  # Seed Dataset items
+                  sample_items = [
+                      {"input": {"query": "What is my total portfolio valuation and risk breakdown?"}, "expectedOutput": {"contains": ["Bank_Alpha", "Valuation", "Risk"]}},
+                      {"input": {"query": "Show current holdings for my account."}, "expectedOutput": {"contains": ["Holdings", "Shares"]}},
+                      {"input": {"query": "Summarize User B's portfolio at Bank_Beta."}, "expectedOutput": {"contains": ["No portfolio records found for Bank_Beta"]}},
+                      {"input": {"query": "Rebalance portfolio to target 60% equities 40% bonds."}, "expectedOutput": {"contains": ["Rebalance", "Execution"]}},
+                      {"input": {"query": "What is our asset allocation policy for high-growth tech?"}, "expectedOutput": {"contains": ["Allocation", "Policy"]}}
+                  ]
+                  for item in sample_items:
+                      requests.post(f"{BASE_URL}/api/public/dataset-items", json={"datasetName": "finserve-eval-dataset", "input": item["input"], "expectedOutput": item["expectedOutput"]}, auth=auth, timeout=10)
+                  print("Seeded dataset items successfully.")
+              except Exception as e:
+                  print(f"Failed to seed dataset items: {e}")
+
+              print("Langfuse seeding job finished successfully.")
+              EOF
+              python3 /tmp/seed.py
+          env:
+            - name: LANGFUSE_HOST
+              value: "http://{{ include "zelkor-platform.fullname" . }}-langfuse:3000"
+            - name: LANGFUSE_PUBLIC_KEY
+              value: {{ .Values.langfuse.init.projectPublicKey | default "pk-lf-zelkor-dev-00000000000000000000" | quote }}
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: init-secret-key
+{{- end }}

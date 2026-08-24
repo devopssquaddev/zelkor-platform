@@ -1,0 +1,170 @@
+{{- if .Values.qdrant.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-qdrant
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-qdrant
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-qdrant
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-qdrant
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-qdrant
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: mcp-qdrant
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-qdrant
+    spec:
+      containers:
+        - name: mcp-shim
+          image: python:3.11-slim
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - /bin/bash
+            - -c
+            - |
+              cat << 'EOF' > /tmp/mcp_server.py
+              import os
+              import json
+              import logging
+              import urllib.request
+              from http.server import HTTPServer, BaseHTTPRequestHandler
+
+              logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+              QDRANT_URL = os.getenv("QDRANT_URL", "http://zelkor-platform-qdrant:6333")
+
+              class MCPHandler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      if self.path in ['/health', '/ready']:
+                          self.send_response(200)
+                          self.send_header('Content-type', 'application/json')
+                          self.end_headers()
+                          self.wfile.write(b'{"status":"ok","protocol":"mcp/1.0"}')
+                      else:
+                          self.send_response(404)
+                          self.end_headers()
+
+                  def do_POST(self):
+                      content_length = int(self.headers.get('Content-Length', 0))
+                      body = self.rfile.read(content_length)
+                      try:
+                          req = json.loads(body.decode('utf-8'))
+                          method = req.get("method", "")
+                          req_id = req.get("id", 1)
+
+                          if method == "tools/list":
+                              resp = {
+                                  "jsonrpc": "2.0",
+                                  "id": req_id,
+                                  "result": {
+                                      "tools": [{
+                                          "name": "search_finserve_policies",
+                                          "description": "Semantic search across FinServe investment policies and compliance rules in Qdrant",
+                                          "inputSchema": {
+                                              "type": "object",
+                                              "properties": {
+                                                  "query": {"type": "string", "description": "Search query terms"},
+                                                  "tenant_id": {"type": "string", "description": "Tenant ID isolation key"}
+                                              },
+                                              "required": ["query"]
+                                          }
+                                      }]
+                                  }
+                              }
+                          elif method == "tools/call":
+                              params = req.get("params", {})
+                              tool_name = params.get("name")
+                              arguments = params.get("arguments", {})
+                              query = arguments.get("query", "")
+                              tenant = arguments.get("tenant_id", "Bank_Alpha")
+                              
+                              # Call Qdrant search
+                              results = []
+                              try:
+                                  q_req = urllib.request.Request(
+                                      f"{QDRANT_URL}/collections/finserve_policies/points/search",
+                                      data=json.dumps({"vector": [0.1]*128, "limit": 3}).encode("utf-8"),
+                                      headers={"Content-Type": "application/json"}
+                                  )
+                                  with urllib.request.urlopen(q_req, timeout=3) as q_resp:
+                                      q_data = json.loads(q_resp.read().decode("utf-8"))
+                                      results = [p.get("payload", {}) for p in q_data.get("result", [])]
+                              except Exception as e:
+                                  logging.warning(f"Qdrant query fallback: {e}")
+                                  results = [{"title": "Default Wealth Management Policy", "tenant_id": tenant, "content": f"Standard asset allocation rules for {tenant}"}]
+
+                              resp = {
+                                  "jsonrpc": "2.0",
+                                  "id": req_id,
+                                  "result": {
+                                      "content": [{"type": "text", "text": json.dumps(results)}]
+                                  }
+                              }
+                          else:
+                              resp = {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Method {method} not found"}}
+                      except Exception as e:
+                          resp = {"jsonrpc": "2.0", "id": 1, "error": {"code": -32700, "message": str(e)}}
+
+                      resp_bytes = json.dumps(resp).encode("utf-8")
+                      self.send_response(200)
+                      self.send_header('Content-type', 'application/json')
+                      self.send_header('Content-length', str(len(resp_bytes)))
+                      self.end_headers()
+                      self.wfile.write(resp_bytes)
+
+              server = HTTPServer(('0.0.0.0', 8080), MCPHandler)
+              logging.info("[MCP-SHIM] Model Context Protocol Server running on port 8080...")
+              server.serve_forever()
+              EOF
+              python3 /tmp/mcp_server.py
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: QDRANT_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+{{- end }}

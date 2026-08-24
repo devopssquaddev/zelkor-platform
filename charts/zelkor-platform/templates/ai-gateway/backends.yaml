@@ -1,0 +1,186 @@
+{{- if .Values.aiGateway.enabled }}
+# Local Ollama Backend (defaults to host.docker.internal)
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: host.docker.internal
+        port: 11434
+---
+
+# Ollama Cloud Backend
+{{- if or .Values.aiGateway.providers.ollama.apiKey (hasPrefix "https://ollama.com" (.Values.aiGateway.providers.ollama.host | default "")) }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: ollama.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+  validation:
+    wellKnownCACertificates: System
+    hostname: ollama.com
+---
+{{- end }}
+
+# OpenAI Backend
+{{- if .Values.aiGateway.providers.openai.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.openai.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-openai-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-openai
+  validation:
+    wellKnownCACertificates: System
+    hostname: api.openai.com
+---
+{{- end }}
+
+# Anthropic Backend
+{{- if .Values.aiGateway.providers.anthropic.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: Anthropic
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: api.anthropic.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+  validation:
+    wellKnownCACertificates: System
+    hostname: api.anthropic.com
+---
+{{- end }}
+{{- end }}
