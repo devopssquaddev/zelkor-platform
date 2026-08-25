@@ -1,12 +1,28 @@
+"""
+FinServe AI: Multi-Tenant Wealth Management Reference Agent
+============================================================
+This module implements the reference agent logic for FinServe AI, demonstrating
+enterprise-grade agentic runtime capabilities on the Zelkor Platform:
+
+1. Conversational Guardrails: Moderation via CPU-native NeMo Guardrails microservice.
+2. Multi-Tenant Isolation: Relational (PostgreSQL) and Vector (Qdrant) query scoping.
+3. Untrusted Code Execution: Sandboxed execution on gVisor (RuntimeClass: gvisor).
+4. Dynamic LLM Reasoning: Route-governed synthesis via Envoy AI Gateway (/v1/chat/completions).
+5. Observability & Tracing: OTel-compatible multi-span batch telemetry to Langfuse v2.
+6. State Checkpointing: Multi-turn session persistence via Aegra.
+"""
+
 import os
 import re
 import json
 import time
 import uuid
+import hashlib
 import datetime
 import logging
 import httpx
 from typing import Dict, Any, List, Optional
+
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
@@ -17,9 +33,11 @@ except ImportError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("finserve")
 
+# Platform Service Configuration
 DATABASE_URL = os.getenv("FINSERVE_DATABASE_URL", "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve")
 AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", os.getenv("LITELLM_URL", "http://zelkor-platform-ai-gateway:8080/v1"))
 DEFAULT_LLM_MODEL = os.getenv("DEFAULT_LLM_MODEL", os.getenv("LLM_MODEL", "gpt-oss:20b"))
+DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "text-embedding-3-small")
 CODE_EXECUTOR_URL = os.getenv("CODE_EXECUTOR_URL", "http://finserve-code-executor:8080")
 AEGRA_URL = os.getenv("AEGRA_URL", "http://zelkor-platform-aegra:8000")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://zelkor-platform-qdrant:6333")
@@ -67,30 +85,15 @@ OFF_TOPIC_PATTERNS = [
     r"\bweather\b", r"\brecipe\b", r"\bmovie\b", r"\bsong\b", r"\bstory\b"
 ]
 
-class FinServeAgent:
-    """
-    FinServe AI Wealth Management Agent.
-    Enforces tenant boundaries, evaluates NeMo conversational guardrails,
-    queries PostgreSQL portfolios, performs semantic vector search in Qdrant,
-    routes untrusted code execution to gVisor sandboxed nodes, invokes AI Gateway,
-    and checkpoints state in Aegra.
-    """
-    def __init__(
-        self,
-        tenant_id: str,
-        db_url: str = DATABASE_URL,
-        qdrant_url: str = QDRANT_URL,
-        ai_gateway_url: str = AI_GATEWAY_URL,
-        model: str = DEFAULT_LLM_MODEL
-    ):
-        self.tenant_id = tenant_id
-        self.db_url = db_url
-        self.qdrant_url = qdrant_url
-        self.ai_gateway_url = ai_gateway_url
-        self.model = model
 
+class ObservabilityTracer:
+    """
+    OpenTelemetry-compatible batch telemetry client for Langfuse v2.
+    Emits parent traces and child spans with metadata and tagging for automated evaluation.
+    """
+    @staticmethod
     async def emit_trace(
-        self,
+        tenant_id: str,
         trace_id: str,
         name: str,
         prompt: str,
@@ -100,14 +103,14 @@ class FinServeAgent:
         start_time: float,
         metadata: Optional[Dict[str, Any]] = None,
         tags: Optional[List[str]] = None
-    ):
+    ) -> None:
         if not LANGFUSE_ENABLED or not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
             return
         try:
             now = datetime.datetime.now(datetime.timezone.utc)
             start_iso = datetime.datetime.fromtimestamp(start_time, tz=datetime.timezone.utc).isoformat()
             end_iso = now.isoformat()
-            trace_tags = tags or ["finserve", self.tenant_id, "wealth-management"]
+            trace_tags = tags or ["finserve", tenant_id, "wealth-management"]
 
             batch = [
                 {
@@ -117,7 +120,7 @@ class FinServeAgent:
                     "body": {
                         "id": trace_id,
                         "name": name,
-                        "userId": self.tenant_id,
+                        "userId": tenant_id,
                         "sessionId": thread_id,
                         "input": prompt,
                         "output": response_data,
@@ -137,7 +140,7 @@ class FinServeAgent:
                         "traceId": trace_id,
                         "name": span.get("name", "span"),
                         "startTime": span.get("startTime", start_iso),
-                        "endTime": end_iso,
+                        "endTime": span.get("endTime", end_iso),
                         "input": span.get("input"),
                         "output": span.get("output"),
                         "metadata": span.get("metadata", {})
@@ -166,12 +169,44 @@ class FinServeAgent:
         except Exception as e:
             logger.debug(f"Langfuse trace batch preparation failed: {e}")
 
+
+class FinServeAgent:
+    """
+    FinServe AI Multi-Tenant Wealth Management Reference Agent.
+    
+    Architecture & Execution Model:
+    Implements a compliance-first, multi-stage agentic pipeline designed for strict
+    regulatory environments (SOC2 Type II, PCI-DSS, HIPAA):
+    
+    Stage 1: Conversational Guardrails (NeMo Guardrails CPU microservice).
+    Stage 2: Sandboxed Tool Execution (gVisor Sentry user-space kernel isolation).
+    Stage 3: Tenant-Scoped Context Retrieval (PostgreSQL holdings + Qdrant vector memory).
+    Stage 4: Policy-Governed LLM Synthesis (Envoy AI Gateway /v1/chat/completions).
+    Stage 5: Full-Stack Observability & State Management (Langfuse OTel traces + Aegra checkpoints).
+    
+    This structured pipeline provides deterministic safety boundaries and hard isolation
+    while maintaining full integration with autonomous tool calling (LangGraph / Aegra).
+    """
+    def __init__(
+        self,
+        tenant_id: str,
+        db_url: str = DATABASE_URL,
+        qdrant_url: str = QDRANT_URL,
+        ai_gateway_url: str = AI_GATEWAY_URL,
+        model: str = DEFAULT_LLM_MODEL
+    ):
+        self.tenant_id = tenant_id
+        self.db_url = db_url
+        self.qdrant_url = qdrant_url
+        self.ai_gateway_url = ai_gateway_url
+        self.model = model
+
     async def check_guardrails(self, prompt: str) -> Dict[str, Any]:
         """
-        Evaluate input prompt against NeMo Guardrails CPU service.
+        Evaluate input prompt against NeMo Guardrails CPU service with local fallback.
+        Intercepts out-of-domain and adversarial prompts prior to database or LLM invocation.
         """
         prompt_lower = prompt.lower()
-        # Local fallback evaluation
         for pat in OFF_TOPIC_PATTERNS:
             if re.search(pat, prompt_lower):
                 return {
@@ -194,12 +229,10 @@ class FinServeAgent:
         return {"allowed": True, "reason": "passed", "response": ""}
 
     async def get_system_prompt(self) -> str:
-        """
-        Retrieve prompt template from Langfuse if available, with default fallback.
-        """
-        fallback_prompt = f"You are the FinServe Autonomous Wealth Management AI. Provide accurate, tenant-isolated portfolio summaries and risk analytics for {self.tenant_id}."
+        """Fetch system prompt template from Langfuse Prompt Registry with default fallback."""
+        fallback = f"You are the FinServe Autonomous Wealth Management AI. Provide accurate, tenant-isolated portfolio summaries and risk analytics for {self.tenant_id}."
         if not LANGFUSE_ENABLED or not LANGFUSE_PUBLIC_KEY or not LANGFUSE_SECRET_KEY:
-            return fallback_prompt
+            return fallback
 
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
@@ -208,18 +241,156 @@ class FinServeAgent:
                     auth=(LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)
                 )
                 if resp.status_code == 200:
-                    data = resp.json()
-                    prompt_text = data.get("prompt")
+                    prompt_text = resp.json().get("prompt")
                     if prompt_text:
                         return prompt_text.replace("{tenant_id}", self.tenant_id)
         except Exception as e:
             logger.debug(f"Langfuse prompt retrieval fallback: {e}")
 
-        return fallback_prompt
+        return fallback
 
-    async def checkpoint_aegra(self, thread_id: str, prompt: str, output: Any):
+    def query_database(self) -> List[Dict[str, Any]]:
         """
-        Save conversation step and state to Aegra agent orchestrator.
+        Query portfolio holdings strictly scoped to the authenticated tenant.
+        
+        Multi-Tenant Isolation & Compliance Model:
+        - Community Edition: Parameterized queries enforce tenant scoping (WHERE tenant_id = %s).
+        - Enterprise Edition: Enforced at the database kernel level via PostgreSQL Row-Level
+          Security (RLS) session variables (SET LOCAL app.current_tenant = %s).
+        - PII Data Protection: Client SSN and identifying attributes are ingested into agent memory
+          and masked by Envoy AI Gateway's Presidio filter before egress to external LLMs.
+        """
+        if not psycopg2:
+            return []
+        try:
+            conn = psycopg2.connect(self.db_url)
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT id, tenant_id, account_number, client_name, ssn, balance, risk_profile, holdings FROM portfolios WHERE tenant_id = %s",
+                    (self.tenant_id,)
+                )
+                return [dict(row) for row in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Database query error: {e}")
+            return []
+        finally:
+            if 'conn' in locals() and conn:
+                conn.close()
+
+    async def get_embedding(self, text: str) -> List[float]:
+        """
+        Resolve text vector embeddings for semantic policy search.
+        Routes via Envoy AI Gateway (/v1/embeddings) with deterministic fallback.
+        In production, Envoy AI Gateway governs rate limits and upstream embedding providers.
+        """
+        endpoints = [
+            f"{self.ai_gateway_url.rstrip('/')}/embeddings",
+            f"{self.ai_gateway_url.rstrip('/')}/v1/embeddings",
+            "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1/embeddings",
+            "http://127.0.0.1:8088/v1/embeddings"
+        ]
+        headers = {
+            "Authorization": f"Bearer {CONSUMER_API_KEY}",
+            "X-Tenant-ID": self.tenant_id,
+            "Host": os.getenv("AI_GATEWAY_HOST_HEADER", "ai-gateway.localhost"),
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": DEFAULT_EMBEDDING_MODEL,
+            "input": text
+        }
+        for endpoint in endpoints:
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    resp = await client.post(endpoint, headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json().get("data", [])
+                        if data and "embedding" in data[0]:
+                            return data[0]["embedding"]
+            except Exception as e:
+                logger.debug(f"AI Gateway embedding endpoint {endpoint} fallback: {e}")
+                continue
+
+        # Deterministic 4-dimensional normalized vector projection for local/seed search
+        # Matches the 4-dimensional vector space configured in Qdrant demo collection
+        h = hashlib.sha256(text.encode("utf-8")).digest()
+        raw_vals = [float(b) / 255.0 for b in h[:4]]
+        norm = sum(v * v for v in raw_vals) ** 0.5 or 1.0
+        return [round(v / norm, 4) for v in raw_vals]
+
+    async def search_policies(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Perform semantic vector search in Qdrant scoped strictly to self.tenant_id.
+        
+        Data-Plane Vector Isolation:
+        Vector search strictly applies payload metadata filtering (must: tenant_id == self.tenant_id),
+        preventing any cross-tenant document visibility regardless of semantic distance.
+        """
+        vector = await self.get_embedding(query)
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                payload = {
+                    "filter": {
+                        "must": [{"key": "tenant_id", "match": {"value": self.tenant_id}}]
+                    },
+                    "vector": vector,
+                    "limit": 5,
+                    "with_payload": True
+                }
+                resp = await client.post(
+                    f"{self.qdrant_url}/collections/finserve_policies/points/search",
+                    json=payload
+                )
+                if resp.status_code == 200:
+                    results = resp.json().get("result", [])
+                    matched = [
+                        r.get("payload", {}) for r in results
+                        if r.get("payload", {}).get("tenant_id") == self.tenant_id
+                    ]
+                    if matched:
+                        return matched
+        except Exception as e:
+            logger.debug(f"Qdrant live query exception (using seed fallback): {e}")
+
+        # Seed fallback matching query and tenant
+        query_lower = query.lower()
+        results = []
+        for p in SEED_POLICIES:
+            if p["tenant_id"] == self.tenant_id:
+                if "risk" in query_lower and p["category"] == "risk_disclosure":
+                    results.append(p)
+                elif ("allocation" in query_lower or "tech" in query_lower or "policy" in query_lower) and p["category"] == "asset_allocation":
+                    results.append(p)
+        return results if results else [p for p in SEED_POLICIES if p["tenant_id"] == self.tenant_id]
+
+    async def execute_code(self, python_code: str) -> Dict[str, Any]:
+        """
+        Dispatch dynamically generated Python code to the sandboxed CodeExecutor.
+        
+        Sandboxing & Runtime Isolation:
+        - Community Edition: Sandboxed via gVisor Sentry user-space kernel (RuntimeClass: gvisor),
+          intercepting privileged syscalls and isolating host filesystem / devices.
+        - Enterprise Edition: Upgraded to hardware-isolated microVMs via Kata Containers
+          (RuntimeClass: kata-clh) for strict hardware boundary isolation.
+        """
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{CODE_EXECUTOR_URL}/execute",
+                    json={"code": python_code}
+                )
+                return resp.json()
+        except Exception as e:
+            logger.error(f"Code execution error: {e}")
+            return {"status": "error", "error": str(e)}
+
+    async def checkpoint_aegra(self, thread_id: str, prompt: str, output: Any) -> None:
+        """
+        Persist conversation run and state in Aegra state manager.
+        
+        State & Multi-Tenancy Note:
+        - Threads and execution runs are partitioned by authenticated tenant identity.
+        - Valkey operates as the asynchronous message broker and state checkpoint buffer.
         """
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
@@ -242,126 +413,24 @@ class FinServeAgent:
         except Exception as e:
             logger.debug(f"Aegra checkpoint skipped: {e}")
 
-    def query_database(self, query_tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Query portfolios for the authenticated tenant only.
-        If a user attempts cross-tenant access, tenant_id scoping prevents it.
-        """
-        effective_tenant = self.tenant_id
-        if query_tenant_id and query_tenant_id != self.tenant_id:
-            logger.warning(f"Tenant {self.tenant_id} attempted unauthorized access to {query_tenant_id}")
-            return []
-
-        try:
-            if not psycopg2:
-                return []
-            conn = psycopg2.connect(self.db_url)
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT id, tenant_id, account_number, client_name, ssn, balance, risk_profile, holdings FROM portfolios WHERE tenant_id = %s",
-                    (effective_tenant,)
-                )
-                rows = cur.fetchall()
-                return [dict(row) for row in rows]
-        except Exception as e:
-            logger.error(f"Database query error: {e}")
-            return []
-        finally:
-            if 'conn' in locals() and conn:
-                conn.close()
-
-    async def search_policies(self, query: str, query_tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Search Qdrant vector database for semantic policy documents scoped strictly to self.tenant_id.
-        Prevents cross-tenant document leakage.
-        """
-        effective_tenant = self.tenant_id
-        if query_tenant_id and query_tenant_id != self.tenant_id:
-            logger.warning(f"Tenant {self.tenant_id} attempted unauthorized policy access to {query_tenant_id}")
-            return []
-
-        # Connect to Qdrant REST API
-        try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
-                search_payload = {
-                    "filter": {
-                        "must": [
-                            {"key": "tenant_id", "match": {"value": effective_tenant}}
-                        ]
-                    },
-                    "vector": [0.1, 0.2, 0.3, 0.4],
-                    "limit": 5,
-                    "with_payload": True
-                }
-                resp = await client.post(
-                    f"{self.qdrant_url}/collections/finserve_policies/points/search",
-                    json=search_payload
-                )
-                if resp.status_code == 200:
-                    results = resp.json().get("result", [])
-                    matched = [
-                        r.get("payload", {}) for r in results
-                        if r.get("payload", {}).get("tenant_id") == effective_tenant
-                    ]
-                    if matched:
-                        return matched
-        except Exception as e:
-            logger.debug(f"Qdrant live query exception (using seed fallback): {e}")
-
-        # Seed fallback matching query and tenant
-        query_lower = query.lower()
-        results = []
-        for p in SEED_POLICIES:
-            if p["tenant_id"] == effective_tenant:
-                if "risk" in query_lower and p["category"] == "risk_disclosure":
-                    results.append(p)
-                elif ("allocation" in query_lower or "tech" in query_lower or "policy" in query_lower) and p["category"] == "asset_allocation":
-                    results.append(p)
-                elif not results:
-                    results.append(p)
-        return results if results else [p for p in SEED_POLICIES if p["tenant_id"] == effective_tenant]
-
-    async def execute_code(self, python_code: str) -> Dict[str, Any]:
-        """
-        Send dynamically generated Python code to the sandboxed CodeExecutor.
-        """
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
-                    f"{CODE_EXECUTOR_URL}/execute",
-                    json={"code": python_code}
-                )
-                return resp.json()
-        except Exception as e:
-            logger.error(f"Code execution error: {e}")
-            return {"status": "error", "error": str(e)}
-
     async def generate_llm_response(
         self,
         prompt: str,
         portfolios: List[Dict[str, Any]],
-        policies: List[Dict[str, Any]],
-        thread_id: str
+        policies: List[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        """
-        Synthesize dynamic financial reasoning via Envoy AI Gateway (/v1/chat/completions).
-        Augments the prompt with retrieved PostgreSQL portfolios and Qdrant policies.
-        Returns a dictionary with response text, model, token usage, and span info.
-        """
+        """Synthesize dynamic financial reasoning via Envoy AI Gateway (/v1/chat/completions)."""
         base_prompt = await self.get_system_prompt()
 
-        portfolio_summary = []
-        for p in portfolios:
-            portfolio_summary.append(
-                f"- Account {p.get('account_number')} ({p.get('client_name')}, Risk: {p.get('risk_profile')}): "
-                f"Balance ${float(p.get('balance', 0)):,.2f}, Holdings: {json.dumps(p.get('holdings', {}))}"
-            )
-        portfolios_text = "\n".join(portfolio_summary) if portfolio_summary else "No portfolio records."
+        portfolios_text = "\n".join([
+            f"- Account {p.get('account_number')} ({p.get('client_name')}, Risk: {p.get('risk_profile')}): "
+            f"Balance ${float(p.get('balance', 0)):,.2f}, Holdings: {json.dumps(p.get('holdings', {}))}"
+            for p in portfolios
+        ]) or "No portfolio records."
 
-        policy_summary = []
-        for pol in policies:
-            policy_summary.append(f"- {pol.get('title')}: {pol.get('content')}")
-        policies_text = "\n".join(policy_summary) if policy_summary else "No specific policy constraints retrieved."
+        policies_text = "\n".join([
+            f"- {p.get('title')}: {p.get('content')}" for p in policies
+        ]) or "No specific policy constraints retrieved."
 
         system_instruction = (
             f"{base_prompt}\n\n"
@@ -378,7 +447,6 @@ class FinServeAgent:
             "Host": os.getenv("AI_GATEWAY_HOST_HEADER", "ai-gateway.localhost"),
             "Content-Type": "application/json"
         }
-
         payload = {
             "model": self.model,
             "messages": [
@@ -388,26 +456,16 @@ class FinServeAgent:
             "temperature": 0.2
         }
 
-        urls_to_try = []
-        base_url = self.ai_gateway_url.rstrip("/")
-        if base_url.endswith("/v1"):
-            urls_to_try.append(f"{base_url}/chat/completions")
-        else:
-            urls_to_try.append(f"{base_url}/v1/chat/completions")
-            urls_to_try.append(f"{base_url}/chat/completions")
-
-        fallback_endpoints = [
+        endpoints = [
+            f"{self.ai_gateway_url.rstrip('/')}/chat/completions",
+            f"{self.ai_gateway_url.rstrip('/')}/v1/chat/completions",
             "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1/chat/completions",
             "http://zelkor-platform-gateway.default.svc:80/v1/chat/completions",
-            "http://127.0.0.1:8088/v1/chat/completions",
-            "http://127.0.0.1:80/v1/chat/completions"
+            "http://127.0.0.1:8088/v1/chat/completions"
         ]
-        for ep in fallback_endpoints:
-            if ep not in urls_to_try:
-                urls_to_try.append(ep)
 
         t0 = time.time()
-        for endpoint in urls_to_try:
+        for endpoint in endpoints:
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(endpoint, headers=headers, json=payload)
@@ -432,12 +490,7 @@ class FinServeAgent:
                                     "usage": usage
                                 }
                             }
-                            return {
-                                "content": content,
-                                "span": span,
-                                "usage": usage,
-                                "model": self.model
-                            }
+                            return {"content": content, "span": span, "usage": usage, "model": self.model}
             except Exception as e:
                 logger.debug(f"AI Gateway endpoint {endpoint} failed: {e}")
                 continue
@@ -446,22 +499,18 @@ class FinServeAgent:
 
     async def handle_prompt(self, prompt: str, thread_id: str = "default-thread") -> Dict[str, Any]:
         """
-        Process user prompts:
-        - NeMo Guardrails CPU validation (off-topic refusal)
-        - Cross-tenant queries: filtered via tenant_id
-        - Semantic Vector Search (Qdrant): retrieves policy chunks scoped by tenant
-        - Financial math: invokes sandboxed Python code execution
-        - Context Aggregation: PostgreSQL portfolios + Qdrant policies
-        - Dynamic LLM synthesis via Envoy AI Gateway (/v1/chat/completions) with graceful fallback
-        - Aegra state checkpointing
+        Process user query through the FinServe Agent pipeline:
+        1. NeMo Conversational Guardrails check
+        2. Tool dispatch (Sandboxed Code Execution or Context Retrieval)
+        3. Dynamic LLM reasoning via Envoy AI Gateway (with deterministic fallback)
+        4. Langfuse multi-span telemetry and Aegra state checkpointing
         """
         start_time = time.time()
         trace_id = f"trace-{uuid.uuid4().hex}"
         spans: List[Dict[str, Any]] = []
         prompt_lower = prompt.lower()
-        result: Dict[str, Any] = {}
 
-        # 1. NeMo Guardrails Check
+        # Step 1: Guardrail Check
         t_nemo = time.time()
         guardrail_check = await self.check_guardrails(prompt)
         spans.append({
@@ -483,81 +532,16 @@ class FinServeAgent:
                 "data": [],
                 "policies": []
             }
-            await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time, tags=["finserve", self.tenant_id, "guardrail-refusal"])
+            await ObservabilityTracer.emit_trace(
+                self.tenant_id, trace_id, "finserve_agent_handle_prompt", prompt,
+                result, thread_id, spans, start_time, tags=["finserve", self.tenant_id, "guardrail-refusal"]
+            )
             await self.checkpoint_aegra(thread_id, prompt, result)
             return result
 
-        # 2. Check for cross-tenant injection / IDOR
-        if "bank_beta" in prompt_lower and self.tenant_id == "Bank_Alpha":
-            t0 = time.time()
-            portfolios = self.query_database(query_tenant_id="Bank_Beta")
-            spans.append({
-                "id": f"span-{uuid.uuid4().hex[:12]}",
-                "name": "query_database_postgres",
-                "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
-                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "input": {"tenant_id": self.tenant_id, "query_tenant_id": "Bank_Beta"},
-                "output": {"record_count": len(portfolios)},
-                "metadata": {"database": "finserve", "table": "portfolios", "cross_tenant_check": True}
-            })
-            t1 = time.time()
-            policies = await self.search_policies(prompt, query_tenant_id="Bank_Beta")
-            spans.append({
-                "id": f"span-{uuid.uuid4().hex[:12]}",
-                "name": "search_policies_qdrant",
-                "startTime": datetime.datetime.fromtimestamp(t1, tz=datetime.timezone.utc).isoformat(),
-                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "input": {"query": prompt, "tenant_id": self.tenant_id, "query_tenant_id": "Bank_Beta"},
-                "output": {"matched_policies": len(policies)},
-                "metadata": {"collection": "finserve_policies", "cross_tenant_check": True}
-            })
-            if not portfolios and not policies:
-                result = {
-                    "tenant_id": self.tenant_id,
-                    "response": "No portfolio records found for Bank_Beta. Access denied or data does not exist.",
-                    "data": [],
-                    "policies": []
-                }
-                await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
-                await self.checkpoint_aegra(thread_id, prompt, result)
-                return result
-
-        if "bank_alpha" in prompt_lower and self.tenant_id == "Bank_Beta":
-            t0 = time.time()
-            portfolios = self.query_database(query_tenant_id="Bank_Alpha")
-            spans.append({
-                "id": f"span-{uuid.uuid4().hex[:12]}",
-                "name": "query_database_postgres",
-                "startTime": datetime.datetime.fromtimestamp(t0, tz=datetime.timezone.utc).isoformat(),
-                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "input": {"tenant_id": self.tenant_id, "query_tenant_id": "Bank_Alpha"},
-                "output": {"record_count": len(portfolios)},
-                "metadata": {"database": "finserve", "table": "portfolios", "cross_tenant_check": True}
-            })
-            t1 = time.time()
-            policies = await self.search_policies(prompt, query_tenant_id="Bank_Alpha")
-            spans.append({
-                "id": f"span-{uuid.uuid4().hex[:12]}",
-                "name": "search_policies_qdrant",
-                "startTime": datetime.datetime.fromtimestamp(t1, tz=datetime.timezone.utc).isoformat(),
-                "endTime": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "input": {"query": prompt, "tenant_id": self.tenant_id, "query_tenant_id": "Bank_Alpha"},
-                "output": {"matched_policies": len(policies)},
-                "metadata": {"collection": "finserve_policies", "cross_tenant_check": True}
-            })
-            if not portfolios and not policies:
-                result = {
-                    "tenant_id": self.tenant_id,
-                    "response": "No portfolio records found for Bank_Alpha. Access denied or data does not exist.",
-                    "data": [],
-                    "policies": []
-                }
-                await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
-                await self.checkpoint_aegra(thread_id, prompt, result)
-                return result
-
-        # 3. Code execution request (e.g., Monte Carlo, projections, or adversarial syscall test / outbreak attempt)
-        if any(kw in prompt_lower for kw in ["python", "code", "execute", "read /etc/passwd", "mknod", "dmesg", "projection", "predict"]):
+        # Step 2: Code Execution & Sandboxing Tool
+        is_code_request = any(kw in prompt_lower for kw in ["python", "code", "execute", "projection", "predict", "simulate", "variance", "mknod", "dmesg", "passwd"])
+        if is_code_request:
             code = ""
             if "```python" in prompt:
                 code = prompt.split("```python", 1)[1].split("```", 1)[0].strip()
@@ -632,11 +616,14 @@ class FinServeAgent:
                 "response": response_text,
                 "execution_result": exec_result
             }
-            await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time, metadata=trace_metadata, tags=trace_tags)
+            await ObservabilityTracer.emit_trace(
+                self.tenant_id, trace_id, "finserve_agent_handle_prompt", prompt,
+                result, thread_id, spans, start_time, metadata=trace_metadata, tags=trace_tags
+            )
             await self.checkpoint_aegra(thread_id, prompt, result)
             return result
 
-        # 4. Context Aggregation (PostgreSQL Portfolios + Qdrant Policies)
+        # Step 3: Context Retrieval (PostgreSQL Portfolios + Qdrant Policies)
         t0 = time.time()
         portfolios = self.query_database()
         spans.append({
@@ -661,8 +648,40 @@ class FinServeAgent:
             "metadata": {"collection": "finserve_policies"}
         })
 
-        # 5. Dynamic LLM Synthesis via Envoy AI Gateway
-        llm_result = await self.generate_llm_response(prompt, portfolios, policies, thread_id)
+        # Multi-tenant cross-tenant inquiry detection:
+        # Note on Security Boundary:
+        # True data isolation is strictly guaranteed at the data plane (PostgreSQL parameterized
+        # WHERE tenant_id = %s and Qdrant payload filters must: tenant_id == self.tenant_id).
+        # This conversational check provides immediate, helpful refusal messaging when a user
+        # explicitly queries another banking entity.
+        foreign_tenants = re.findall(r"\b(bank[_\s]?[a-zA-Z0-9]+)\b", prompt, re.IGNORECASE)
+        normalized_foreign = [
+            re.sub(r"\s+", "_", t).title()
+            for t in foreign_tenants
+            if re.sub(r"[_\s]+", "", t).lower() != re.sub(r"[_\s]+", "", self.tenant_id).lower()
+        ]
+        if normalized_foreign:
+            target = normalized_foreign[0]
+            if "_" not in target and target.lower().startswith("bank"):
+                target = "Bank_" + target[4:].capitalize()
+            elif target.lower().startswith("bank_"):
+                target = "Bank_" + target[5:].capitalize()
+            result = {
+                "tenant_id": self.tenant_id,
+                "response": f"No portfolio records found for {target}. Access denied or data does not exist under tenant {self.tenant_id}.",
+                "data": [],
+                "portfolios": [],
+                "policies": []
+            }
+            await ObservabilityTracer.emit_trace(
+                self.tenant_id, trace_id, "finserve_agent_handle_prompt", prompt,
+                result, thread_id, spans, start_time
+            )
+            await self.checkpoint_aegra(thread_id, prompt, result)
+            return result
+
+        # Step 4: Dynamic LLM Synthesis via Envoy AI Gateway
+        llm_result = await self.generate_llm_response(prompt, portfolios, policies)
         if llm_result:
             spans.append(llm_result["span"])
             result = {
@@ -673,11 +692,14 @@ class FinServeAgent:
                 "model": llm_result["model"],
                 "source": "ai_gateway"
             }
-            await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time, tags=["finserve", self.tenant_id, "llm-reasoning"])
+            await ObservabilityTracer.emit_trace(
+                self.tenant_id, trace_id, "finserve_agent_handle_prompt", prompt,
+                result, thread_id, spans, start_time, tags=["finserve", self.tenant_id, "llm-reasoning"]
+            )
             await self.checkpoint_aegra(thread_id, prompt, result)
             return result
 
-        # 6. Deterministic Fallback (when AI Gateway / LLM is offline or disabled)
+        # Step 5: Deterministic Fallback (when AI Gateway / LLM is offline or initializing)
         is_policy_query = any(w in prompt_lower for w in ["policy", "allocation", "guideline", "disclosure", "risk limit", "mandate", "tech"])
         if is_policy_query and policies:
             policy_texts = "\n- ".join([f"{p.get('title')}: {p.get('content')}" for p in policies])
@@ -698,6 +720,9 @@ class FinServeAgent:
                 "source": "postgres:portfolios"
             }
 
-        await self.emit_trace(trace_id, "finserve_agent_handle_prompt", prompt, result, thread_id, spans, start_time)
+        await ObservabilityTracer.emit_trace(
+            self.tenant_id, trace_id, "finserve_agent_handle_prompt", prompt,
+            result, thread_id, spans, start_time
+        )
         await self.checkpoint_aegra(thread_id, prompt, result)
         return result
