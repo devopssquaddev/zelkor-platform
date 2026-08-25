@@ -51,22 +51,19 @@ def test_base05_nemo_guardrails_off_topic_refusal():
     time.sleep(1.0)
     langfuse_url = f"{GATEWAY_BASE_URL}/api/public/traces"
     langfuse_headers = {"Host": LANGFUSE_HOST_HEADER}
-    try:
-        traces_resp = httpx.get(
-            langfuse_url,
-            headers=langfuse_headers,
-            auth=(DEV_PUBLIC_KEY, DEV_SECRET_KEY),
-            timeout=10.0
-        )
-        if traces_resp.status_code == 200:
-            traces_data = traces_resp.json().get("data", [])
-            refusal_traces = [
-                t for t in traces_data
-                if any(tag in ["guardrail-refusal", "nemo-guardrails"] for tag in t.get("tags", []))
-            ]
-            assert len(refusal_traces) > 0, f"Expected guardrail-refusal trace in Langfuse, found tags: {[t.get('tags') for t in traces_data]}"
-    except httpx.ConnectError:
-        pass
+    traces_resp = httpx.get(
+        langfuse_url,
+        headers=langfuse_headers,
+        auth=(DEV_PUBLIC_KEY, DEV_SECRET_KEY),
+        timeout=10.0
+    )
+    assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
+    traces_data = traces_resp.json().get("data", [])
+    refusal_traces = [
+        t for t in traces_data
+        if any(tag in ["guardrail-refusal", "nemo-guardrails"] for tag in t.get("tags", []))
+    ]
+    assert len(refusal_traces) > 0, f"Expected guardrail-refusal trace in Langfuse, found tags: {[t.get('tags') for t in traces_data]}"
 
 def test_base05_nemo_guardrails_on_topic_allowed():
     """

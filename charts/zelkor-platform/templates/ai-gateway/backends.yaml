@@ -183,4 +183,89 @@ spec:
     hostname: api.anthropic.com
 ---
 {{- end }}
+
+# Gemini Backend
+{{- if .Values.aiGateway.providers.gemini.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: generativelanguage.googleapis.com
+        port: 443
+---
+apiVersion: gateway.networking.k8s.io/v1alpha3
+kind: BackendTLSPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-gemini-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+  validation:
+    wellKnownCACertificates: System
+    hostname: generativelanguage.googleapis.com
+---
+{{- end }}
+
+# vLLM Backend
+{{- if .Values.aiGateway.providers.vllm.backendUrl }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).hostname | default "vllm.ai-cluster.svc" }}
+        port: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).port | default 8000 | int }}
+---
+{{- end }}
 {{- end }}

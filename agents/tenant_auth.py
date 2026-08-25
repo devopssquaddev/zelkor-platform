@@ -1,5 +1,8 @@
 import os
-import jwt
+try:
+    import jwt
+except ImportError:
+    jwt = None
 from typing import Dict, Any, Optional
 
 class TenantAuth:
@@ -41,6 +44,13 @@ class TenantAuth:
         # 3. JWT token format: "Bearer <token>"
         if auth_header.startswith("Bearer "):
             token = auth_header.split("Bearer ", 1)[1].strip()
+            if not jwt:
+                return {
+                    "is_authenticated": False,
+                    "identity": None,
+                    "tenant_id": None,
+                    "error": "PyJWT not installed"
+                }
             try:
                 payload = jwt.decode(token, self.secret_key, algorithms=["HS256"], options={"verify_signature": False})
                 # B2C: direct tenant_id claim

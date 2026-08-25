@@ -1,0 +1,92 @@
+---
+description: Enforces structured Git commit and tagging protocol for tracking major changes, milestones, and releases
+alwaysApply: true
+---
+
+# Git Workflow: Commits & Tagging for Major Changes
+
+## 1. When to Create a Git Commit
+Create a discrete, atomic commit immediately upon completing a logical milestone or distinct unit of work:
+- **Feature / Component Implementation:** Completing a module, endpoint, Helm template, CRD, or agent handler.
+- **Architectural Refactoring / Migration:** Substantive design or infrastructure changes (e.g., Gateway API, Envoy AI Gateway cut-overs).
+- **Test Suite Completion / Fix:** Adding or fixing unit, integration, or e2e test suites.
+- **Documentation & Plan Updates:** Updating roadmap phases, requirements, or architecture specs.
+- **Bug Fixes:** Resolving an identified issue or failing validation check.
+
+*Rule: Do not leave uncommitted major changes across multiple tasks. Keep commits atomic and buildable.*
+
+---
+
+## 2. Multi-Root Workspace Boundaries
+Always execute git commands in the appropriate repository root:
+- **`zelkor-platform/` (Public Product Repo):**
+  - Product code, Helm charts, examples, docs, integration tests.
+  - Commit to feature branches (`feat/...`, `fix/...`) or current branch for PR / squash merge.
+- **`internal/` (Private Internal Repo):**
+  - Plans, phase requirements, GTM strategy, credentials tooling, dev orchestration.
+  - Commit to local git only. Never push to external remotes.
+
+---
+
+## 3. Pre-Commit Verification Checklist
+Before committing:
+1. Run `git status` and `git diff` to inspect all staged and unstaged changes.
+2. Verify no temporary files, secrets, `.env` files, or KeePass `.kdbx` databases are tracked or staged.
+3. Verify changes pass linter checks (`ReadLints`) and relevant tests.
+
+---
+
+## 4. Conventional Commit Standard
+Follow the Conventional Commits format matching repository history:
+
+```
+<type>(<scope>): <imperative summary in present tense>
+
+[optional body explaining the "why", architectural decisions, and verification]
+```
+
+- **Types:** `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`
+- **Scopes:**
+  - `zelkor-platform`: `platform`, `helm`, `gateway`, `agents`, `finserve`, `tests`, `install`, `ci`
+  - `internal`: `plan`, `dev`, `secrets`, `requirements`, `compliance`
+- **Format via HEREDOC:**
+  ```bash
+  git commit -m "$(cat <<'EOF'
+  feat(gateway,helm): configure Envoy AI Gateway CRD and Presidio masking route
+
+  Detailed context on changes, architectural decisions, and testing status.
+  EOF
+  )"
+  ```
+
+---
+
+## 5. Tagging Strategy for Important Milestones
+
+### When to Tag
+- **Phase / Roadmap Releases:** Completing roadmap deliverables (e.g., `v0.1.0-alpha`, `v0.2.0-alpha`, `v0.3.0`, `v1.0.0-ce`).
+- **Major Architectural Cut-Overs:** Completing cross-cutting infrastructure migrations (`milestone/<scope>-<desc>`).
+- **Verified Stable Checkpoints:** Following successful full test-server validation runs (`checkpoint/<phase>-<desc>`).
+
+### Tagging Standard: Always Use Annotated Tags
+Always use annotated tags (`git tag -a`) with structured metadata. Never use lightweight tags.
+
+```bash
+git tag -a <tag_name> -m "$(cat <<'EOF'
+<Tag Title / Release Name>
+
+Summary:
+- <Key change or capability 1>
+- <Key change or capability 2>
+
+Scope & Verification:
+- Roadmap Phase: Phase <N> (<Tier>)
+- Verification: Passed local/test-server test suite
+EOF
+)"
+```
+
+### Tag Verification
+- Verify tags after creation: `git tag -n5 -l <tag_name>`
+- Never force-overwrite (`-f`) existing tags without explicit confirmation.
+- Only push tags to remote when explicitly requested.

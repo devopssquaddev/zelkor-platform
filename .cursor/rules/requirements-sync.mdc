@@ -1,0 +1,54 @@
+---
+description: Enforces continuous synchronization of requirements and living docs with revision history whenever code or architectural changes are implemented
+alwaysApply: true
+---
+
+# Rule: Requirements & Living Documentation Synchronization
+
+## 1. Core Mandate
+Never implement a behavioral, architectural, configuration, or API change without updating its governing specification in `internal/plan/` or `internal/requirements/`. Product code and requirements must never drift.
+
+---
+
+## 2. Living Spec + Revision History Model (Hybrid Pattern)
+1. **Living Document as Source of Truth:**
+   - Always update the primary requirement document (e.g. `internal/plan/phase_1_requirements.md`) in-place so it accurately reflects current target architecture and acceptance criteria.
+2. **Track History in `## Revision History`:**
+   - Whenever user requests alter previously established requirements or architectural choices, append an entry to the `## Revision History` table at the end of the document.
+   - Format:
+     ```markdown
+     ## Revision History
+
+     | Date | Author / Requester | Changes Made | Rationale / Decision Reference |
+     | :--- | :--- | :--- | :--- |
+     | YYYY-MM-DD | <Requester> | <Summary of change> | <Reason, ADR link, or context> |
+     ```
+3. **Dedicated Architectural Decision Records (ADRs):**
+   - For major architectural pivots (e.g., component replacements), create/maintain dedicated requirement docs in `internal/plan/` (e.g., `requirements_envoy_ai_gateway_replacement.md`).
+
+---
+
+## 3. Synchronization Triggers
+Update governing requirement and specification documents whenever:
+- Adding, removing, or changing Helm values or deployment profiles (`values.yaml`, `values-local.yaml`, `values-production.yaml`).
+- Introducing, updating, or replacing CRDs, gateways, auth handlers, or data plane components.
+- Modifying demo workflows, test scenarios, or security assertion boundaries.
+- Changing onboarding prerequisites, quickstart paths, or environment requirements.
+
+---
+
+## 4. Mapping Matrix
+- **Platform Features & Helm Profiles:** `internal/plan/phase_1_requirements.md` (or relevant phase doc)
+- **Multi-Tier Roadmap:** `internal/plan/roadmap.md`
+- **FinServe Demo & Workload Scenarios:** `internal/requirements/demo/finserve_ai_demo.md`, `internal/requirements/dev/examples_and_demos.md`
+- **Developer & CI Gates:** `internal/requirements/dev/agent_code_review.md`, `internal/requirements/dev/agent_sdlc_and_tools.md`
+- **Quickstart & User Documentation:** `internal/requirements/quickstart/`, `zelkor-platform/docs/quickstart.md`
+
+---
+
+## 5. Execution Workflow
+1. **Identify & Update Requirements:** Before or alongside implementing code changes, update the governing markdown file in `internal/` and add an entry to its `## Revision History`.
+2. **Implement & Test:** Implement the change in `zelkor-platform/` and ensure all tests align with the updated requirements.
+3. **Dual Atomic Commits:**
+   - Commit requirements changes in `internal/`: `docs(plan): update <subsystem> spec and revision history`
+   - Commit implementation in `zelkor-platform/`: `feat(<scope>): implement <subsystem> according to updated spec`

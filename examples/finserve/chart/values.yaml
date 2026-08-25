@@ -32,7 +32,9 @@ platform:
   qdrantHost: "zelkor-platform-qdrant"
   qdrantPort: 6333
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
-  aiGatewayUrl: "http://zelkor-platform-ai-gateway:8080"
+  aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1"
+  defaultLlmModel: "gpt-oss:20b"
+  aiGatewayHostHeader: "ai-gateway.localhost"
   aegraUrl: "http://zelkor-platform-aegra:8000"
   langfuseHost: "http://zelkor-platform-langfuse:3000"
   langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"

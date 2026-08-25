@@ -13,7 +13,7 @@ zelkor-platform/
 ├── examples/                   # Demo apps — separate Helm charts (not in platform chart)
 │   └── finserve/               # FinServe demo (see internal/requirements/demo/)
 │       ├── chart/              # Standalone Helm release
-│       ├── finserve_agent.py
+│       │   └── files/          # Agent logic (finserve_agent.py) mounted into ConfigMaps
 │       └── tests/
 ├── agents/                     # Platform auth handlers (tenant isolation)
 ├── tests/                      # Platform integration tests (env-agnostic)
@@ -42,11 +42,13 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 
 - All LLM calls route through **Envoy AI Gateway** — never connect agents directly to providers
 - **Gateway API Standard (No Ingress-NGINX):** Never use `ingress-nginx` (retired in 2026). Ingress and external routing must use **Kubernetes Gateway API (`gateway.networking.k8s.io/v1`)** with **Envoy Gateway**
+- **Requirements & Living Spec Synchronization:** Any functional, architectural, configuration, or test change must be synchronized with governing requirements in `internal/plan/` or `internal/requirements/` with an updated `## Revision History`.
 - **Deprecation & Lifecycle Policy:** Always verify all third-party components, base images, and libraries are actively maintained and not deprecated or EOL
 - **Langfuse** tracing must be enabled on all agent executions
 - Untrusted workloads use **gVisor** (`RuntimeClass: gvisor`)
 - Tenant isolation via Aegra `@auth.authenticate` handlers
 - No `kubectl apply` — all deployments are Helm/GitOps declarative
+- **Git Commit & Tagging Standard:** Commit major milestones with Conventional Commits; create annotated tags (`git tag -a`) for release points and major architectural milestones.
 
 ## Branching
 

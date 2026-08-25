@@ -119,26 +119,36 @@ aiGateway:
   providers:
     openai:
       apiKey: ""
+      models:
+        - "*"
     anthropic:
       apiKey: ""
+      models:
+        - "*"
     gemini:
       apiKey: ""
+      models:
+        - "*"
     ollama:
       apiKey: ""
       host: "http://host.docker.internal:11434"
+      models:
+        - "*"
     azure:
       apiKey: ""
       endpoint: ""
+      models:
+        - "*"
     bedrock:
       region: "us-east-1"
       accessKeyId: ""
       secretAccessKey: ""
+      models:
+        - "*"
     vllm:
       backendUrl: ""
-  routes:
-    - name: default-catchall
-      provider: wildcard
-      model: "*"
+      models:
+        - "*"
 
 langfuse:
   enabled: true

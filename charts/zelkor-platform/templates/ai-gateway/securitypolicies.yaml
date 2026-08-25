@@ -62,4 +62,25 @@ spec:
       namespace: {{ .Release.Namespace }}
 ---
 {{- end }}
+{{- if .Values.aiGateway.providers.gemini.apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-gemini-apikey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
 {{- end }}

@@ -19,72 +19,53 @@ spec:
     {{- if .Values.aiGateway.providers.openai.apiKey }}
     - matches:
         - headers:
-            - type: Exact
+            - type: RegularExpression
               name: x-ai-eg-model
-              value: openai/gpt-4o
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: openai/gpt-4o-mini
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4o
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gpt-4o-mini
+              value: "^(openai/.*|gpt-.*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
     {{- end }}
     {{- if .Values.aiGateway.providers.anthropic.apiKey }}
     - matches:
         - headers:
-            - type: Exact
+            - type: RegularExpression
               name: x-ai-eg-model
-              value: anthropic/claude-3-5-sonnet
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: claude-3-5-sonnet
+              value: "^(anthropic/.*|claude-.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
     {{- end }}
     {{- if .Values.aiGateway.providers.gemini.apiKey }}
     - matches:
         - headers:
-            - type: Exact
+            - type: RegularExpression
               name: x-ai-eg-model
-              value: gemini/gemini-1.5-flash
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: gemini-1.5-flash
+              value: "^(gemini/.*|gemini-.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+    {{- end }}
+    {{- if .Values.aiGateway.providers.vllm.backendUrl }}
+    - matches:
+        - headers:
+            - type: RegularExpression
+              name: x-ai-eg-model
+              value: "^(vllm/.*)"
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
     {{- end }}
     {{- if .Values.aiGateway.providers.ollama.apiKey }}
     - matches:
         - headers:
-            - type: Exact
+            - type: RegularExpression
               name: x-ai-eg-model
-              value: ollama/llama3.2
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: llama3.2
+              value: "^(ollama/.*|llama.*|gpt-oss.*|deepseek.*|qwen.*|mistral.*|phi.*|codellama.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
     {{- else }}
     - matches:
         - headers:
-            - type: Exact
+            - type: RegularExpression
               name: x-ai-eg-model
-              value: ollama/llama3.2
-        - headers:
-            - type: Exact
-              name: x-ai-eg-model
-              value: llama3.2
+              value: "^(ollama/.*|llama.*|gpt-oss.*|deepseek.*|qwen.*|mistral.*|phi.*|codellama.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
     {{- end }}
@@ -95,6 +76,10 @@ spec:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
         {{- else if .Values.aiGateway.providers.anthropic.apiKey }}
         - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
+        {{- else if .Values.aiGateway.providers.gemini.apiKey }}
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
+        {{- else if .Values.aiGateway.providers.vllm.backendUrl }}
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
         {{- else }}
         - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
         {{- end }}
