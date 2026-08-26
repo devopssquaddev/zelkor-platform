@@ -32,6 +32,7 @@ gateway:
     langfuse: "langfuse.localhost"
     aiGateway: "ai-gateway.localhost"
     aegra: "aegra.localhost"
+    mcp: "mcp.localhost"
 
 postgresql:
   enabled: true
@@ -76,6 +77,10 @@ aegra:
 guardrails:
   nemo:
     enabled: true
-  # llamaGuard:
-  #   enabled: false
+
+mcp:
+  enabled: true
+  sandboxMCP:
+    warmPool:
+      replicas: 2
 

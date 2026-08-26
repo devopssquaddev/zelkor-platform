@@ -1,0 +1,68 @@
+{{- if and .Values.mcp.enabled .Values.mcp.postgresMCP.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-postgres
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-postgres
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-postgres
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-postgres
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-postgres
+spec:
+  replicas: {{ .Values.mcp.postgresMCP.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-postgres
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-postgres
+    spec:
+      containers:
+        - name: mcp-postgres
+          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              pip install --no-cache-dir psycopg2-binary >/dev/null 2>&1
+              mkdir -p /app/mcp/common /app/mcp/wrappers
+              cp /code/common__tenant.py /app/mcp/common/tenant.py
+              cp /code/common__mcp_server.py /app/mcp/common/mcp_server.py
+              cp /code/wrappers__postgres_server.py /app/mcp/wrappers/postgres_server.py
+              export POSTGRES_MCP_URL="{{ .Values.mcp.postgresMCP.databaseUrl }}"
+              cd /app/mcp/wrappers && python postgres_server.py
+          ports:
+            - containerPort: 8080
+          env:
+            - name: POSTGRES_MCP_URL
+              value: {{ .Values.mcp.postgresMCP.databaseUrl | quote }}
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: code
+          configMap:
+            name: {{ include "zelkor-platform.fullname" . }}-mcp-code
+{{- end }}

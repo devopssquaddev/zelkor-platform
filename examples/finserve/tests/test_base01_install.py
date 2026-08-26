@@ -31,7 +31,8 @@ def test_base01_finserve_pods_healthy(kubecontext):
         pytest.skip(f"FinServe pods not present in current cluster context '{kubecontext}' (likely testing via Gateway tunnel)")
 
     assert any("finserve-agent" in name for name in pod_names), f"finserve-agent pod not found in: {pod_names}"
-    assert any("finserve-code-executor" in name for name in pod_names), f"finserve-code-executor pod not found in: {pod_names}"
+    assert any("mcp-sandbox" in name for name in pod_names), f"platform mcp-sandbox pod not found in: {pod_names}"
+    assert any("mcp-gateway" in name for name in pod_names), f"platform mcp-gateway pod not found in: {pod_names}"
 
 def test_base01_finserve_runs_stream_api():
     """

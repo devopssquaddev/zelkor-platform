@@ -127,3 +127,16 @@ pytest examples/finserve/tests/ -v
 | `test_base03_gvisor_sandbox.py` | gVisor `RuntimeClass`, syscall interception (`mknod`, `dmesg`), and outbreak containment |
 | `test_base04_stateful_memory.py` | Qdrant semantic policy retrieval and multi-turn Aegra thread state |
 | `test_base05_nemo_guardrails.py` | NeMo Guardrails CPU off-topic refusal and on-topic pass-through |
+| `test_base06_mcp_routing.py` | Unified MCP gateway `tools/list` exposes prefixed postgres/qdrant/sandbox tools |
+
+---
+
+## 6. Native MCP Architecture (Implemented)
+
+FinServe is a **LangGraph orchestrator** that consumes Zelkor Native MCP tools via a unified gateway (`MCP_URL`):
+
+- `postgres__query` — tenant-scoped SQL via Python security wrapper
+- `qdrant__search_documents` — tenant payload-filtered vector search
+- `sandbox__execute_python` — gVisor warm pool code execution
+
+The demo agent no longer calls PostgreSQL, Qdrant, or a local code executor directly. Sandbox workers run as platform `mcp-sandbox-worker` pods (`RuntimeClass: gvisor`).

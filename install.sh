@@ -191,6 +191,19 @@ if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1
   kubectl --context "$KCTX" rollout status deployment/zelkor-platform-nemo --timeout=5m
 fi
 
+if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/null 2>&1; then
+  log "  -> Native MCP Servers (gateway, postgres, qdrant, sandbox)..."
+  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-gateway --timeout=5m
+  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-postgres --timeout=5m
+  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-qdrant --timeout=5m
+  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-sandbox --timeout=5m
+  for i in 0 1 2; do
+    if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox-worker-$i >/dev/null 2>&1; then
+      kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-sandbox-worker-$i --timeout=5m
+    fi
+  done
+fi
+
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   log "Applying FinServe demo chart from $FINSERVE_CHART_PATH..."
   helm upgrade --install finserve "$FINSERVE_CHART_PATH" \
@@ -198,11 +211,9 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
     -f "$FINSERVE_VALUES_FILE"
 
   log "Tracking FinServe demo rollout..."
-  log "  -> [1/3] Seeding demo portfolio database..."
+  log "  -> [1/2] Seeding demo portfolio database..."
   kubectl --context "$KCTX" wait --for=condition=complete job -l app.kubernetes.io/instance=finserve --timeout=3m || true
-  log "  -> [2/3] Sandboxed CodeExecutor on gVisor..."
-  kubectl --context "$KCTX" rollout status deployment/finserve-code-executor --timeout=5m
-  log "  -> [3/3] FinServe Wealth Management Agent..."
+  log "  -> [2/2] FinServe Wealth Management Agent..."
   kubectl --context "$KCTX" rollout status deployment/finserve-agent --timeout=5m
 fi
 
@@ -225,6 +236,7 @@ cat <<EOF
   Envoy AI Gateway        ai-gateway-controller       http://ai-gateway.localhost:8088
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
   FinServe Demo Agent     finserve-agent              http://finserve.localhost:8088/docs
+  Native MCP Gateway      zelkor-platform-mcp-gateway http://mcp.localhost:8088/mcp
   NeMo Guardrails (CPU)   zelkor-platform-nemo        http://zelkor-platform-nemo:8000
   Engine Sink             zelkor-platform-engine-sink http://zelkor-platform-engine-sink:8080
 

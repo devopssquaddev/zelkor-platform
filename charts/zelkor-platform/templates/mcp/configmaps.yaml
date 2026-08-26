@@ -1,0 +1,14 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-code
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+data:
+{{- range $path, $_ := .Files.Glob "files/mcp/**/*.py" }}
+  {{ trimPrefix "files/mcp/" $path | replace "/" "__" }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}

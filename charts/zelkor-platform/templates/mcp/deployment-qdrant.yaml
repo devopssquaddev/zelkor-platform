@@ -1,0 +1,70 @@
+{{- if and .Values.mcp.enabled .Values.mcp.qdrantMCP.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-qdrant
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-qdrant
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-qdrant
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-qdrant
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-qdrant
+spec:
+  replicas: {{ .Values.mcp.qdrantMCP.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-qdrant
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-qdrant
+    spec:
+      containers:
+        - name: mcp-qdrant
+          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              mkdir -p /app/mcp/common /app/mcp/wrappers
+              cp /code/common__tenant.py /app/mcp/common/tenant.py
+              cp /code/common__mcp_server.py /app/mcp/common/mcp_server.py
+              cp /code/wrappers__qdrant_server.py /app/mcp/wrappers/qdrant_server.py
+              cd /app/mcp/wrappers && python qdrant_server.py
+          ports:
+            - containerPort: 8080
+          env:
+            - name: QDRANT_MCP_URL
+              value: {{ .Values.mcp.qdrantMCP.url | quote }}
+            - name: QDRANT_COLLECTION
+              value: {{ .Values.mcp.qdrantMCP.collection | quote }}
+            - name: AI_GATEWAY_URL
+              value: {{ .Values.mcp.qdrantMCP.aiGatewayUrl | quote }}
+          volumeMounts:
+            - name: code
+              mountPath: /code
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: code
+          configMap:
+            name: {{ include "zelkor-platform.fullname" . }}-mcp-code
+{{- end }}

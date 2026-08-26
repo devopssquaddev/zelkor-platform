@@ -53,6 +53,7 @@ All services and Web UIs are accessible via Kubernetes Gateway API on port `8088
 | **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
 | **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
 | **FinServe Demo Agent** | [http://finserve.localhost:8088/docs](http://finserve.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
+| **Native MCP Gateway** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | `Authorization: Bearer dev:Bank_Alpha`, `X-Tenant-ID: Bank_Alpha` |
 
 ### Instant Observability & Seeding
 The local development environment pre-seeds a Langfuse user, organization, API keys, system prompts (`finserve-system`), and golden evaluation datasets (`finserve-eval-dataset`). Requests sent through the Envoy AI Gateway or the FinServe demo agent automatically stream live traces into Langfuse.

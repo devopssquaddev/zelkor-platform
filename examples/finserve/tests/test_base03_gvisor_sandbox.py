@@ -15,11 +15,11 @@ DEV_SECRET_KEY = "sk-lf-zelkor-dev-00000000000000000000"
 def test_base03_executor_pod_spec_uses_gvisor(kubecontext):
     """
     BASE-03: Basic Sandboxing (gVisor)
-    Verify that the CodeExecutor pod is configured with RuntimeClass gvisor.
+    Verify that platform sandbox worker pods use RuntimeClass gvisor.
     """
     try:
         res = subprocess.run(
-            ["kubectl", "--context", kubecontext, "get", "pods", "-A", "-l", "app.kubernetes.io/component=code-executor", "-o", "json"],
+            ["kubectl", "--context", kubecontext, "get", "pods", "-A", "-l", "app.kubernetes.io/component=mcp-sandbox-worker", "-o", "json"],
             capture_output=True,
             text=True
         )
@@ -29,6 +29,8 @@ def test_base03_executor_pod_spec_uses_gvisor(kubecontext):
             if items:
                 spec = items[0]["spec"]
                 assert spec.get("runtimeClassName") == "gvisor" or "gvisor" in str(spec)
+            else:
+                pytest.skip("No mcp-sandbox-worker pods found")
     except Exception as e:
         pytest.skip(f"Cluster not accessible: {e}")
 

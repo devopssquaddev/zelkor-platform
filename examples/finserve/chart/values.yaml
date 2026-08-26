@@ -24,6 +24,7 @@ executor:
   runtimeClassName: gvisor  # gVisor runtime class for untrusted code execution
 
 platform:
+  mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
   postgresHost: "zelkor-platform-postgresql"
   postgresPort: 5432
   postgresUser: "zelkor"

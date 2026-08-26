@@ -41,26 +41,24 @@ spec:
             - /bin/bash
             - -c
             - |
-              pip install --no-cache-dir fastapi uvicorn pydantic psycopg2-binary httpx >/dev/null 2>&1
+              pip install --no-cache-dir fastapi uvicorn pydantic httpx langgraph langchain-core >/dev/null 2>&1
               python /app/agent_server.py
           ports:
             - containerPort: 8080
               name: http
           env:
-            - name: FINSERVE_DATABASE_URL
-              value: "postgresql://{{ .Values.platform.postgresUser }}:{{ .Values.platform.postgresPassword }}@{{ .Values.platform.postgresHost }}:{{ .Values.platform.postgresPort }}/{{ .Values.platform.postgresDatabase }}"
+            - name: MCP_URL
+              value: {{ .Values.platform.mcpUrl | default "http://zelkor-platform-mcp-gateway:8080" | quote }}
             - name: AI_GATEWAY_URL
               value: {{ .Values.platform.aiGatewayUrl | quote }}
             - name: DEFAULT_LLM_MODEL
               value: {{ .Values.platform.defaultLlmModel | default "gpt-oss:20b" | quote }}
             - name: AI_GATEWAY_HOST_HEADER
               value: {{ .Values.platform.aiGatewayHostHeader | default "ai-gateway.localhost" | quote }}
-            - name: CODE_EXECUTOR_URL
-              value: "http://{{ include "finserve.fullname" . }}-code-executor:8080"
             - name: AEGRA_URL
               value: {{ .Values.platform.aegraUrl | quote }}
-            - name: QDRANT_URL
-              value: {{ .Values.platform.qdrantUrl | default "http://zelkor-platform-qdrant:6333" | quote }}
+            - name: NEMO_URL
+              value: {{ .Values.platform.nemoUrl | default "http://zelkor-platform-nemo:8000/v1/guardrails/input" | quote }}
             - name: ZELKOR_CONSUMER_KEY
               value: "zelkor-community-key"
             - name: LANGFUSE_HOST

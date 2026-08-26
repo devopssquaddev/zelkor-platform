@@ -26,51 +26,6 @@ data:
     ('Bank_Beta', 'ACC-BETA-002', 'Diana Prince', '444-55-6666', 1200000.00, 'Moderate', '{"SPY": 50, "QQQ": 30, "CASH": 20}'::jsonb)
     ON CONFLICT DO NOTHING;
 
-  executor_server.py: |
-    import subprocess
-    import tempfile
-    import os
-    from fastapi import FastAPI, Request
-    from pydantic import BaseModel
-    import uvicorn
-
-    app = FastAPI(title="FinServe Sandboxed Python Code Executor")
-
-    class CodePayload(BaseModel):
-        code: str
-
-    @app.get("/health")
-    async def health():
-        return {"status": "ok", "service": "code-executor"}
-
-    @app.post("/execute")
-    async def execute(payload: CodePayload):
-        code = payload.code
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(code)
-            temp_path = f.name
-        try:
-            res = subprocess.run(
-                ["python", temp_path],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            return {
-                "status": "success" if res.returncode == 0 else "error",
-                "stdout": res.stdout,
-                "stderr": res.stderr,
-                "exit_code": res.returncode
-            }
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-
-    if __name__ == "__main__":
-        uvicorn.run(app, host="0.0.0.0", port=8080)
-
   agent_server.py: |
     import os
     import sys

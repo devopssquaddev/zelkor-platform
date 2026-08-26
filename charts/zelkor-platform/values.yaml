@@ -40,6 +40,7 @@ gateway:
     langfuse: "langfuse.localhost"
     aiGateway: "ai-gateway.localhost"
     aegra: "aegra.localhost"
+    mcp: "mcp.localhost"
 
 postgresql:
   enabled: true
@@ -203,4 +204,37 @@ guardrails:
   # Enterprise only:
   # llamaGuard:
   #   enabled: false
+
+mcp:
+  enabled: true
+  image:
+    repository: python
+    tag: "3.11-slim"
+  gateway:
+    replicaCount: 1
+  mcproute:
+    enabled: false
+  postgresMCP:
+    enabled: true
+    replicaCount: 1
+    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve"
+  qdrantMCP:
+    enabled: true
+    replicaCount: 1
+    url: "http://zelkor-platform-qdrant:6333"
+    collection: "finserve_policies"
+    aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1"
+  sandboxMCP:
+    enabled: true
+    runtimeClassName: gvisor
+    environments:
+      - python-base
+    warmPool:
+      replicas: 3
+    strictIsolation: false
+    workerImage:
+      repository: python
+      tag: "3.11-slim"
+  egress:
+    externalBackends: []
 
