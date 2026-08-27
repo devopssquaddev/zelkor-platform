@@ -24,6 +24,7 @@ platform:
   qdrantHost: "zelkor-platform-qdrant"
   qdrantPort: 6333
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
+  qdrantCollection: "finserve_policies"
   aiGatewayAutoDiscover: true
   aiGatewayNamespace: "envoy-gateway-system"
   defaultLlmModel: "gpt-oss:20b"

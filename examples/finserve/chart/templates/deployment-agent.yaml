@@ -70,4 +70,6 @@ spec:
               value: {{ .Values.platform.langfusePublicKey | default "pk-lf-zelkor-dev-00000000000000000000" | quote }}
             - name: LANGFUSE_SECRET_KEY
               value: {{ .Values.platform.langfuseSecretKey | default "sk-lf-zelkor-dev-00000000000000000000" | quote }}
+            - name: QDRANT_COLLECTION
+              value: {{ .Values.platform.qdrantCollection | default "finserve_policies" | quote }}
           {{- include "finserve.containerProbes" (dict "root" . "values" .Values.agent) | nindent 10 }}

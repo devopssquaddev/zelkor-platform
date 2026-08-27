@@ -65,6 +65,7 @@ platform:
   qdrantHost: "zelkor-platform-qdrant"
   qdrantPort: 6333
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
+  qdrantCollection: "finserve_policies"
   aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.envoy-gateway-system.svc.cluster.local:80/v1"
   aiGatewayAutoDiscover: true
   aiGatewayNamespace: "envoy-gateway-system"

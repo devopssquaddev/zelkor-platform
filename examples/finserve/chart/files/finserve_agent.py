@@ -42,6 +42,7 @@ AI_GATEWAY_API_KEY = os.getenv(
     os.getenv("OLLAMA_API_KEY", os.getenv("ZELKOR_CONSUMER_KEY", "dev-key")),
 )
 LANGFUSE_HOST_HEADER = os.getenv("LANGFUSE_HOST_HEADER", "langfuse.localhost")
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "finserve_policies")
 MAX_REACT_TURNS = int(os.getenv("FINSERVE_MAX_REACT_TURNS", "5"))
 
 
@@ -68,6 +69,9 @@ class MCPClient:
     async def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Any:
         args = dict(arguments or {})
         args.setdefault("tenant_id", self.tenant_id)
+        if name.startswith("qdrant__"):
+            # LLM often hallucinates collection names (e.g. "policies"); always use demo seed collection.
+            args["collection"] = QDRANT_COLLECTION
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
@@ -89,12 +93,21 @@ class MCPClient:
 def mcp_tools_to_openai(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     openai_tools = []
     for tool in tools:
+        schema = dict(tool.get("inputSchema") or {"type": "object", "properties": {}})
+        properties = dict(schema.get("properties") or {})
+        if tool["name"].startswith("qdrant__"):
+            properties["collection"] = {
+                "type": "string",
+                "default": QDRANT_COLLECTION,
+                "description": f"Qdrant collection. Must be '{QDRANT_COLLECTION}'.",
+            }
+            schema["properties"] = properties
         openai_tools.append({
             "type": "function",
             "function": {
                 "name": tool["name"],
                 "description": tool.get("description", ""),
-                "parameters": tool.get("inputSchema") or {"type": "object", "properties": {}},
+                "parameters": schema,
             },
         })
     return openai_tools
@@ -266,7 +279,9 @@ class FinServeAgent:
     async def _fetch_langfuse_system_prompt(self) -> str:
         fallback = (
             f"You are FinServe Wealth Management AI for tenant {self.tenant_id}. "
-            "Use the available MCP tools to query portfolios, search policies, or execute sandboxed Python. "
+            "Use MCP tools: postgres__query for portfolio rows (portfolios table), "
+            f"qdrant__search_documents for policy documents (collection '{QDRANT_COLLECTION}'), "
+            "sandbox__execute_python for calculations. Do not invent table or collection names. "
             "Always respect tenant isolation. Summarize tool results clearly for the user."
         )
         auth = (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY)

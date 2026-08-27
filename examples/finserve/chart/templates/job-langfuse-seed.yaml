@@ -70,7 +70,12 @@ spec:
 
               prompt_payload = {
                   "name": "finserve-system",
-                  "prompt": "You are the FinServe Autonomous Wealth Management AI. Provide accurate, tenant-isolated portfolio summaries and risk analytics for tenant {tenant_id}.",
+                  "prompt": (
+                      "You are the FinServe Autonomous Wealth Management AI for tenant {tenant_id}. "
+                      "Use MCP tools only: postgres__query on table portfolios; "
+                      "qdrant__search_documents with collection finserve_policies for policy docs; "
+                      "sandbox__execute_python for calculations. Never invent table or collection names."
+                  ),
                   "type": "text",
                   "isActive": True
               }
