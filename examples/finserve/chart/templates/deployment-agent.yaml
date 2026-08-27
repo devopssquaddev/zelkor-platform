@@ -47,7 +47,7 @@ spec:
             - name: MCP_URL
               value: {{ .Values.platform.mcpUrl | default "http://zelkor-platform-mcp-gateway:8080" | quote }}
             - name: AI_GATEWAY_URL
-              value: {{ .Values.platform.aiGatewayUrl | quote }}
+              value: {{ include "finserve.aiGatewayUrl" . | quote }}
             - name: DEFAULT_LLM_MODEL
               value: {{ .Values.platform.defaultLlmModel | default "gpt-oss:20b" | quote }}
             - name: AI_GATEWAY_HOST_HEADER

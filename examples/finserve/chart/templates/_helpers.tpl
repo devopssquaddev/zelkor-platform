@@ -42,6 +42,30 @@ imagePullSecrets:
 {{- end }}
 
 {{/*
+Resolve in-cluster Envoy AI Gateway /v1 base URL.
+Envoy Gateway publishes a hashed Service in envoy-gateway-system; discover at helm upgrade time.
+*/}}
+{{- define "finserve.aiGatewayUrl" -}}
+{{- $fallback := .Values.platform.aiGatewayUrl -}}
+{{- if .Values.platform.aiGatewayAutoDiscover | default true -}}
+{{- $ns := .Values.platform.aiGatewayNamespace | default "envoy-gateway-system" -}}
+{{- $found := "" -}}
+{{- range (lookup "v1" "Service" $ns "").items -}}
+{{- if and (not $found) (hasPrefix "envoy-default-" .metadata.name) (contains "gateway-" .metadata.name) -}}
+{{- $found = printf "http://%s.%s.svc.cluster.local:80/v1" .metadata.name $ns -}}
+{{- end -}}
+{{- end -}}
+{{- if $found -}}
+{{- $found -}}
+{{- else -}}
+{{- $fallback -}}
+{{- end -}}
+{{- else -}}
+{{- $fallback -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Render startup/liveness/readiness probes and resources.
 Usage: {{ include "finserve.containerProbes" (dict "root" . "values" .Values.agent) | nindent 10 }}
 */}}

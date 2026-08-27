@@ -26,7 +26,10 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger("finserve")
 
 MCP_URL = os.getenv("MCP_URL", "http://zelkor-platform-mcp-gateway:8080")
-AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1")
+AI_GATEWAY_URL = os.getenv(
+    "AI_GATEWAY_URL",
+    "http://envoy-default-zelkor-platform-gateway.envoy-gateway-system.svc.cluster.local:80/v1",
+)
 DEFAULT_LLM_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
 NEMO_URL = os.getenv("NEMO_URL", "http://zelkor-platform-nemo:8000/v1/guardrails/input")
 LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://zelkor-platform-langfuse:3000")
@@ -296,7 +299,8 @@ class FinServeAgent:
             name = tr.get("tool", "")
             result = tr.get("result") or {}
             if name.startswith("postgres__"):
-                portfolios.extend(result.get("rows") or [])
+                rows = result.get("rows") or []
+                portfolios.extend(r for r in rows if isinstance(r, dict) and r.get("tenant_id"))
             elif name.startswith("qdrant__"):
                 policies.extend(result.get("documents") or [])
             elif name.startswith("sandbox__"):

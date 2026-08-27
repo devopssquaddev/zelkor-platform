@@ -65,7 +65,9 @@ platform:
   qdrantHost: "zelkor-platform-qdrant"
   qdrantPort: 6333
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
-  aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1"
+  aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.envoy-gateway-system.svc.cluster.local:80/v1"
+  aiGatewayAutoDiscover: true
+  aiGatewayNamespace: "envoy-gateway-system"
   defaultLlmModel: "gpt-oss:20b"
   aiGatewayHostHeader: "ai-gateway.localhost"
   aiGatewayApiKey: ""
