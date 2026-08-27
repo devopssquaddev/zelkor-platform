@@ -1,0 +1,39 @@
+---
+description: Keep the platform chart domain-agnostic; demos overlay values and never patch platform defaults
+alwaysApply: true
+---
+
+# Platform vs Demo Boundary
+
+Demos live under `zelkor-platform/examples/<name>/` as **separate Helm charts**. They are not part of `charts/zelkor-platform`.
+
+## Placement test
+
+Before editing a file, ask: if every demo under `examples/` were deleted, would this still belong in the platform for a customer who never deploys examples?
+
+- **Yes** → platform (`charts/zelkor-platform/`, `agents/`, `tests/`)
+- **No** → that demo's chart, values, seed jobs, or `examples/<name>/tests/`
+
+## Invariant (no keyword lists)
+
+`INSTALL_EXAMPLES=false ./install.sh` then `pytest tests/` must be a valid, useful install. Platform tests must not assume any example chart, schema, collection, or seed data exists.
+
+`charts/zelkor-platform/` must not reference `examples/`. Examples may depend on the platform.
+
+## Split work
+
+If the task names both layers, do **platform first** and stop. Do not edit `examples/` until platform tests would pass without examples. Then implement the demo as an overlay only.
+
+If a demo needs a capability the platform lacks: add a **generic** Helm value with a **generic** default, then set the demo-specific value in `examples/<name>/`. Do not change platform defaults to make one demo boot.
+
+## Defaults vs overlays
+
+The platform chart may expose knobs (`databaseUrl`, `collection`, refusal text, tenant mappings). It must not ship demo-shaped defaults or local secrets in `values.yaml`. Kind/dev hosts, passwords, and unsigned auth live in `profiles/values-local.yaml`. Each demo chart (or `install.sh` example overlay) supplies its own values.
+
+Platform tests create their own fixtures and use opaque tenant ids (`tenant-a`). Demo E2E lives only under `examples/<name>/tests/`.
+
+## Stop and ask
+
+Do not edit `charts/zelkor-platform/` from a demo-only task except to add a generic knob. If unsure, ask.
+
+Spec: `internal/requirements/dev/examples_and_demos.md`

@@ -34,15 +34,12 @@ spec:
         {{- include "finserve.labels" . | nindent 8 }}
         app.kubernetes.io/component: agent
     spec:
+      {{- include "finserve.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: agent
-          image: "{{ .Values.agent.image.repository | default "python" }}:{{ .Values.agent.image.tag | default "3.11-slim" }}"
-          command:
-            - /bin/bash
-            - -c
-            - |
-              pip install --no-cache-dir fastapi uvicorn pydantic httpx langgraph langchain-core >/dev/null 2>&1
-              python /app/agent_server.py
+          image: {{ include "finserve.image" .Values.agent.image | quote }}
+          imagePullPolicy: {{ .Values.agent.image.pullPolicy | default .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          workingDir: /app
           ports:
             - containerPort: 8080
               name: http
@@ -55,6 +52,12 @@ spec:
               value: {{ .Values.platform.defaultLlmModel | default "gpt-oss:20b" | quote }}
             - name: AI_GATEWAY_HOST_HEADER
               value: {{ .Values.platform.aiGatewayHostHeader | default "ai-gateway.localhost" | quote }}
+            {{- if .Values.platform.aiGatewayApiKey }}
+            - name: AI_GATEWAY_API_KEY
+              value: {{ .Values.platform.aiGatewayApiKey | quote }}
+            - name: OLLAMA_API_KEY
+              value: {{ .Values.platform.aiGatewayApiKey | quote }}
+            {{- end }}
             - name: AEGRA_URL
               value: {{ .Values.platform.aegraUrl | quote }}
             - name: NEMO_URL
@@ -67,39 +70,4 @@ spec:
               value: {{ .Values.platform.langfusePublicKey | default "pk-lf-zelkor-dev-00000000000000000000" | quote }}
             - name: LANGFUSE_SECRET_KEY
               value: {{ .Values.platform.langfuseSecretKey | default "sk-lf-zelkor-dev-00000000000000000000" | quote }}
-          volumeMounts:
-            - name: code
-              mountPath: /app/agent_server.py
-              subPath: agent_server.py
-            - name: agent-lib
-              mountPath: /app/finserve_agent.py
-              subPath: finserve_agent.py
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 25
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 5
-      volumes:
-        - name: code
-          configMap:
-            name: {{ include "finserve.fullname" . }}-code
-        - name: agent-lib
-          configMap:
-            name: {{ include "finserve.fullname" . }}-agent-lib
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "finserve.fullname" . }}-agent-lib
-  labels:
-    {{- include "finserve.labels" . | nindent 4 }}
-data:
-  finserve_agent.py: |
-{{ .Files.Get "files/finserve_agent.py" | indent 4 }}
+          {{- include "finserve.containerProbes" (dict "root" . "values" .Values.agent) | nindent 10 }}

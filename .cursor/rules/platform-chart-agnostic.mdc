@@ -1,0 +1,18 @@
+---
+description: Platform Helm chart stays generic; no example schemas, seeds, or demo-shaped defaults
+globs: charts/zelkor-platform/**
+alwaysApply: false
+---
+
+# Platform Chart
+
+This tree is Community Edition platform only.
+
+- Do not add example toggles (`*.enabled` for a demo name) to `values.yaml`. Local kind overlays live in `profiles/values-local.yaml`, not in this chart.
+- Do not seed demo databases, collections, prompts, or eval datasets here. Platform init may create platform-owned DBs only (e.g. `aegra`, `langfuse`).
+- Do not point MCP, NeMo, Langfuse, or Aegra defaults at a specific example's database, collection, project id, or product copy.
+- Do not import or template from `examples/`.
+- New knobs get generic defaults. Example-specific values belong in `examples/<name>/chart/`.
+- Do not inline Python in templates. Prefer images; otherwise `files/` + `.Files.Get` (see `helm-python-packaging.mdc`).
+
+Customer production installs this chart with no `examples/` release.

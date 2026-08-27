@@ -39,6 +39,7 @@ Update governing requirement and specification documents whenever:
 
 ## 4. Mapping Matrix
 - **Platform Features & Helm Profiles:** `internal/plan/phase_1_requirements.md` (or relevant phase doc)
+- **Component pins & compatibility matrix:** `internal/plan/component_compatibility_matrix.md`
 - **Multi-Tier Roadmap:** `internal/plan/roadmap.md`
 - **FinServe Demo & Workload Scenarios:** `internal/requirements/demo/finserve_ai_demo.md`, `internal/requirements/dev/examples_and_demos.md`
 - **Developer & CI Gates:** `internal/requirements/dev/agent_code_review.md`, `internal/requirements/dev/agent_sdlc_and_tools.md`

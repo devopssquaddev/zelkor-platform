@@ -1,16 +1,19 @@
-# Zelkor Community Edition — production defaults for values.yaml
-# Local dev (kind): use values-local.yaml (in-chart DBs, HA off, FinServe demo).
+# Zelkor Community Edition — production chart defaults.
+# Local kind: ./install.sh applies profiles/values-local.yaml (outside this chart).
+# Demo overlays: examples/<name>/chart/values-platform-overlay.yaml when INSTALL_EXAMPLES=true.
 #
-# Production defaults:
-#   databases.mode: operators           # Gate B: CNPG HA Postgres, Barman, ClickHouse/Valkey operators
-#   databases.postgresql.instances: 3   # CNPG HA
-#   highAvailability.enabled: true      # stateless apps + HPA
-#   ingress.tls.enabled: true           # cert-manager
-#   backups.enabled: true               # CNPG Barman Cloud Plugin → object store
+# This file ships no passwords, API keys, localhost hosts, or Docker Desktop endpoints.
+# Set secrets and hostnames in a customer overlay or existing Secret.
+#
+# First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
+# GHCR as ghcr.io/devopssquaddev/zelkor-*:dev until CI tags semver. Override
+# repository, tag, or digest per environment. Pin digest in production.
 
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  initContainerImage: busybox:1.37
 
 databases:
   mode: in-cluster-basic  # in-cluster-basic (Gate A) | operators (Gate B)
@@ -28,6 +31,12 @@ security:
 auth:
   sso:
     enabled: false  # Pro overlay: OAuth2 Proxy
+  jwtSecret: ""
+  # Unsigned identity. Must stay false in production. Enable only from a local overlay.
+  devTokens:
+    enabled: false
+    prefix: ""
+  trustTenantHeader: false
 
 gateway:
   enabled: true
@@ -35,22 +44,30 @@ gateway:
   envoyProxy:
     enabled: false
     hostNetwork: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
   annotations: {}
   hosts:
-    langfuse: "langfuse.localhost"
-    aiGateway: "ai-gateway.localhost"
-    aegra: "aegra.localhost"
-    mcp: "mcp.localhost"
+    langfuse: ""
+    aiGateway: ""
+    aegra: ""
+    mcp: ""
+    nemo: ""
 
 postgresql:
   enabled: true
   image:
     repository: postgres
-    tag: "16-alpine"
+    tag: "16.15-alpine"
   auth:
     username: zelkor
-    password: zelkor-dev-password
-    postgresPassword: zelkor-postgres-pass
+    password: ""
+    postgresPassword: ""
     database: zelkor
   resources:
     requests:
@@ -59,12 +76,34 @@ postgresql:
     limits:
       cpu: 500m
       memory: 512Mi
+  livenessProbe:
+    exec:
+      command:
+        - pg_isready
+        - -U
+        - "{{ .Values.postgresql.auth.username }}"
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    exec:
+      command:
+        - pg_isready
+        - -U
+        - "{{ .Values.postgresql.auth.username }}"
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
 
 valkey:
   enabled: true
   image:
     repository: valkey/valkey
-    tag: "7.2.5-alpine"
+    tag: "7.2.14-alpine"
+  auth:
+    password: ""
   resources:
     requests:
       cpu: 50m
@@ -72,12 +111,29 @@ valkey:
     limits:
       cpu: 250m
       memory: 256Mi
+  livenessProbe:
+    tcpSocket:
+      port: 6379
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  readinessProbe:
+    tcpSocket:
+      port: 6379
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 6
 
 clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: "24.3-alpine"
+    tag: "25.12-alpine"
+  auth:
+    username: clickhouse
+    password: ""
   resources:
     requests:
       cpu: 100m
@@ -85,12 +141,28 @@ clickhouse:
     limits:
       cpu: 500m
       memory: 1Gi
+  livenessProbe:
+    httpGet:
+      path: /ping
+      port: 8123
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    httpGet:
+      path: /ping
+      port: 8123
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
 
 qdrant:
   enabled: true
   image:
     repository: qdrant/qdrant
-    tag: "v1.9.2"
+    tag: "v1.19.0"
   resources:
     requests:
       cpu: 100m
@@ -98,25 +170,27 @@ qdrant:
     limits:
       cpu: 500m
       memory: 512Mi
+  livenessProbe:
+    httpGet:
+      path: /readyz
+      port: 6333
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 6333
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6
 
 aiGateway:
   enabled: true
-  replicaCount: 1
-  image:
-    repository: python
-    tag: "3.11-slim"
-  langfuse:
-    enabled: true
-    publicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    secretKey: "sk-lf-zelkor-dev-00000000000000000000"
-    host: ""
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 500m
-      memory: 256Mi
+  # Consumer key for in-cluster callers (MCP, agents). Upstream provider keys stay in gateway secrets.
+  consumerKey: ""
   providers:
     openai:
       apiKey: ""
@@ -130,9 +204,12 @@ aiGateway:
       apiKey: ""
       models:
         - "*"
-    ollama:
+    ollamaLocal:
+      host: ""
+      models:
+        - "*"
+    ollamaCloud:
       apiKey: ""
-      host: "http://host.docker.internal:11434"
       models:
         - "*"
     azure:
@@ -156,51 +233,143 @@ langfuse:
   replicaCount: 1
   image:
     repository: langfuse/langfuse
-    tag: "2"
+    tag: "4.21.0"
+  worker:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: langfuse/langfuse-worker
+      tag: "4.21.0"
+  s3:
+    bucket: langfuse
+    region: auto
+  migration:
+    v4WriteMode: legacy
+    enableHistoricBackfill: false
+    nativeOtelBehaviour: dual_write
   nextauthUrl: ""
-  nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
-  salt: "zelkor-langfuse-salt-123456789"
-  encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  nextauthSecret: ""
+  salt: ""
+  encryptionKey: ""
   init:
     enabled: false
-    orgId: "zelkor-dev"
-    orgName: "Zelkor Dev"
-    projectId: "finserve"
-    projectName: "FinServe AI"
-    projectPublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
-    userEmail: "admin@zelkor.local"
-    userName: "Zelkor Admin"
-    userPassword: "zelkor-dev-password"
+    orgId: ""
+    orgName: ""
+    projectId: ""
+    projectName: ""
+    projectPublicKey: ""
+    projectSecretKey: ""
+    userEmail: ""
+    userName: ""
+    userPassword: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  startupProbe:
+    httpGet:
+      path: /api/public/health
+      port: 3000
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 45
+  livenessProbe:
+    httpGet:
+      path: /api/public/health
+      port: 3000
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /api/public/health
+      port: 3000
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+aegra:
+  enabled: true
+  replicaCount: 1
+  tenantOrgMappings: {}
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-aegra
+    tag: "dev"
+    digest: ""
   resources:
     requests:
       cpu: 100m
       memory: 256Mi
     limits:
-      cpu: 500m
+      cpu: 1000m
       memory: 1Gi
-
-aegra:
-  enabled: true
-  replicaCount: 1
-  image:
-    repository: python
-    tag: "3.11-slim"
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
+  startupProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 18
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8000
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /ready
+      port: 8000
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
 
 guardrails:
   nemo:
     enabled: true
     replicaCount: 1
     image:
-      repository: python
-      tag: "3.11-slim"
+      repository: ghcr.io/devopssquaddev/zelkor-guardrails
+      tag: "dev"
+      digest: ""
+    offTopicRefusal: "This assistant cannot help with that request. Please stay on topic for your configured domain."
+    complianceRefusal: "Request violated compliance, tenant privacy, and security policies."
+    offTopicPatterns: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8000
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   # Enterprise only:
   # llamaGuard:
   #   enabled: false
@@ -208,22 +377,110 @@ guardrails:
 mcp:
   enabled: true
   image:
-    repository: python
-    tag: "3.11-slim"
+    repository: ghcr.io/devopssquaddev/zelkor-mcp
+    tag: "dev"
+    digest: ""
   gateway:
     replicaCount: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   mcproute:
     enabled: false
   postgresMCP:
     enabled: true
     replicaCount: 1
-    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve"
+    databaseUrl: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   qdrantMCP:
     enabled: true
     replicaCount: 1
-    url: "http://zelkor-platform-qdrant:6333"
-    collection: "finserve_policies"
-    aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1"
+    url: ""
+    collection: "documents"
+    aiGatewayUrl: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   sandboxMCP:
     enabled: true
     runtimeClassName: gvisor
@@ -233,8 +490,97 @@ mcp:
       replicas: 3
     strictIsolation: false
     workerImage:
-      repository: python
-      tag: "3.11-slim"
+      repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
+      tag: "dev"
+      digest: ""
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+    worker:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      startupProbe:
+        httpGet:
+          path: /health
+          port: 8081
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 12
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8081
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 8081
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
   egress:
     externalBackends: []
 
+seaweedfs:
+  enabled: true
+  image:
+    repository: chrislusf/seaweedfs
+    tag: "3.85"
+  auth:
+    accessKey: ""
+    secretKey: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    tcpSocket:
+      port: 8333
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 6
+  readinessProbe:
+    tcpSocket:
+      port: 8333
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 6

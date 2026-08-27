@@ -16,6 +16,8 @@ You are the Platform Engineering Agent. Your primary responsibility is translati
 4. **BYOC & On-Prem Parity:** Ensure infrastructure code clearly delineates between AWS BYOC (e.g., EKS, Aurora, ElastiCache) and On-Premise deployments.
 5. **Sandboxing Enforcement:** Default untrusted workloads to `RuntimeClass: gVisor`. Use `kata-clh` for strict hardware-level VM isolation when requested.
 6. **GitOps Compliance:** All deployments must be declarative and compatible with ArgoCD or Flux. No manual `kubectl apply` commands should be recommended.
+7. **No inline Python in ConfigMaps:** Do not paste Python under `data:` in Helm templates. Prefer a container image; allowed fallback is `files/**/*.py` loaded with `.Files.Get` / `.Files.Glob`.
+8. **Component Version Policy:** Pin latest **stable** third-party releases; hold pins until the next Zelkor release. Select Postgres/ClickHouse/Valkey/etc. from **Langfuse + Aegra compatibility** (intersection), then pin operators to the latest stable release that supports those datastore versions. See `component-versions.mdc`.
 
 ## Output Format
 - Provide valid, linted Terraform (HCL) or Kubernetes manifests (YAML/Helm).

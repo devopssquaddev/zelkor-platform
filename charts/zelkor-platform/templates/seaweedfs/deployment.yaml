@@ -1,0 +1,67 @@
+{{- if and .Values.seaweedfs.enabled .Values.langfuse.enabled (eq .Values.databases.mode "in-cluster-basic") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-seaweedfs
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8333
+      targetPort: 8333
+      name: s3
+  selector:
+    {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-seaweedfs
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: seaweedfs
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: "{{ .Values.seaweedfs.image.repository }}:{{ .Values.seaweedfs.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p /data
+              exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json
+          ports:
+            - containerPort: 8333
+              name: s3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs
+              readOnly: true
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.seaweedfs) | nindent 10 }}
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: s3-config
+          secret:
+            secretName: {{ include "zelkor-platform.fullname" . }}-seaweedfs
+            items:
+              - key: s3-config.json
+                path: s3-config.json
+{{- end }}

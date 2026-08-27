@@ -15,37 +15,43 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: db-init
-          image: postgres:16-alpine
+          image: alpine:3.22
+          {{- with .Values.dbInit.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache postgresql-client curl netcat-openbsd >/dev/null
               export PGPASSWORD="{{ .Values.platform.postgresPassword }}"
               until pg_isready -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}"; do
                 echo "Waiting for postgresql..."
                 sleep 2
               done
+              psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.platform.postgresDatabase }}'" | grep -q 1 || \
+                psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d postgres -c "CREATE DATABASE {{ .Values.platform.postgresDatabase }}"
               psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d "{{ .Values.platform.postgresDatabase }}" -f /scripts/init.sql
               echo "Database seeded successfully."
 
               echo "Seeding Qdrant vector collection 'finserve_policies'..."
               QDRANT_HOST="{{ .Values.platform.qdrantHost | default "zelkor-platform-qdrant" }}"
               QDRANT_PORT="{{ .Values.platform.qdrantPort | default 6333 }}"
+              QDRANT_BASE="http://${QDRANT_HOST}:${QDRANT_PORT}"
 
               until nc -z -w 2 "$QDRANT_HOST" "$QDRANT_PORT"; do
                 echo "Waiting for qdrant ($QDRANT_HOST:$QDRANT_PORT)..."
                 sleep 2
               done
 
-              # Create Qdrant collection
-              wget -qO- --post-data='{"vectors": {"size": 4, "distance": "Cosine"}}' \
-                --header='Content-Type: application/json' \
-                "http://$QDRANT_HOST:$QDRANT_PORT/collections/finserve_policies" || true
+              curl -sf -X PUT "${QDRANT_BASE}/collections/finserve_policies" \
+                -H 'Content-Type: application/json' \
+                -d '{"vectors": {"size": 4, "distance": "Cosine"}}'
 
-              # Upsert policy points with tenant_id payload metadata
-              wget -qO- --post-data='{"points": [{"id": 1, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"tenant_id": "Bank_Alpha", "title": "High-Growth Tech Allocation Policy", "category": "asset_allocation", "content": "Bank_Alpha Policy: Maximum 40% allocation to high-growth tech equities (e.g. NVDA, AAPL, MSFT). Mandatory 15% cash hedge."}}, {"id": 2, "vector": [0.2, 0.1, 0.4, 0.3], "payload": {"tenant_id": "Bank_Alpha", "title": "Risk Disclosure & Volatility Limits", "category": "risk_disclosure", "content": "Bank_Alpha Risk Disclosure: Portfolio maximum drawdown limit is 12%. Rebalancing triggered when variance exceeds 5%."}}, {"id": 3, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"tenant_id": "Bank_Beta", "title": "Conservative Asset Allocation Policy", "category": "asset_allocation", "content": "Bank_Beta Policy: Maximum 15% allocation to tech sector. Strict conservative allocation requiring 60% fixed income (BND) and 10% commodities (GLD)."}}, {"id": 4, "vector": [0.3, 0.3, 0.1, 0.2], "payload": {"tenant_id": "Bank_Beta", "title": "Risk Disclosure & ESG Mandate", "category": "risk_disclosure", "content": "Bank_Beta Risk Disclosure: Conservative ESG mandate. Zero exposure to non-ESG compliant derivatives."}}]}' \
-                --header='Content-Type: application/json' \
-                "http://$QDRANT_HOST:$QDRANT_PORT/collections/finserve_policies/points?wait=true" || true
+              curl -sf -X PUT "${QDRANT_BASE}/collections/finserve_policies/points?wait=true" \
+                -H 'Content-Type: application/json' \
+                -d '{"points": [{"id": 1, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"tenant_id": "Bank_Alpha", "title": "High-Growth Tech Allocation Policy", "category": "asset_allocation", "content": "Bank_Alpha Policy: Maximum 40% allocation to high-growth tech equities (e.g. NVDA, AAPL, MSFT). Mandatory 15% cash hedge."}}, {"id": 2, "vector": [0.2, 0.1, 0.4, 0.3], "payload": {"tenant_id": "Bank_Alpha", "title": "Risk Disclosure & Volatility Limits", "category": "risk_disclosure", "content": "Bank_Alpha Risk Disclosure: Portfolio maximum drawdown limit is 12%. Rebalancing triggered when variance exceeds 5%."}}, {"id": 3, "vector": [0.1, 0.2, 0.3, 0.4], "payload": {"tenant_id": "Bank_Beta", "title": "Conservative Asset Allocation Policy", "category": "asset_allocation", "content": "Bank_Beta Policy: Maximum 15% allocation to tech sector. Strict conservative allocation requiring 60% fixed income (BND) and 10% commodities (GLD)."}}, {"id": 4, "vector": [0.3, 0.3, 0.1, 0.2], "payload": {"tenant_id": "Bank_Beta", "title": "Risk Disclosure & ESG Mandate", "category": "risk_disclosure", "content": "Bank_Beta Risk Disclosure: Conservative ESG mandate. Zero exposure to non-ESG compliant derivatives."}}]}'
 
               echo "Qdrant vector collection seeded successfully."
           volumeMounts:

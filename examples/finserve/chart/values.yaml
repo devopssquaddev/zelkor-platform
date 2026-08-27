@@ -1,6 +1,8 @@
 # FinServe Demo Helm Values
 global:
   tier: oss
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
 
 gateway:
   enabled: true
@@ -11,15 +13,45 @@ gateway:
 agent:
   replicaCount: 1
   image:
-    repository: python
-    tag: "3.11-slim"
+    repository: ghcr.io/devopssquaddev/zelkor-example-finserve
+    tag: "dev"
+    digest: ""
   port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  startupProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 12
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
 
 executor:
   replicaCount: 1
   image:
     repository: python
-    tag: "3.11-slim"
+    tag: "3.12-slim"
   port: 8080
   runtimeClassName: gvisor  # gVisor runtime class for untrusted code execution
 
@@ -36,7 +68,27 @@ platform:
   aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1"
   defaultLlmModel: "gpt-oss:20b"
   aiGatewayHostHeader: "ai-gateway.localhost"
+  aiGatewayApiKey: ""
   aegraUrl: "http://zelkor-platform-aegra:8000"
   langfuseHost: "http://zelkor-platform-langfuse:3000"
   langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
   langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+
+langfuseSeed:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+dbInit:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

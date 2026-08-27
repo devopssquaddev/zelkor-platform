@@ -21,7 +21,7 @@ def test_platform_pods_running(kubecontext):
     if len(items) == 0:
         pytest.skip("No pods found in cluster")
 
-    expected_components = ["postgresql", "valkey", "clickhouse", "qdrant", "ai-gateway", "langfuse", "aegra"]
+    expected_components = ["postgresql", "valkey", "clickhouse", "qdrant", "seaweedfs", "ai-gateway", "langfuse", "aegra"]
     pod_names = [p["metadata"]["name"] for p in items]
 
     if not any("zelkor" in name or "postgresql" in name for name in pod_names):

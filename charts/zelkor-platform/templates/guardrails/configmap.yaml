@@ -8,23 +8,21 @@ metadata:
     app.kubernetes.io/component: guardrails
 data:
   config.co: |
-    # NeMo Guardrails Colang Configuration for FinServe
+    # NeMo Guardrails Colang Configuration (generic CE boundary)
     define user ask off topic
       "write me a poem"
       "tell me a joke"
       "explain quantum physics"
-      "who won the world cup"
 
     define flow off topic
       user ask off topic
       bot refuse off topic
 
     define bot refuse off topic
-      "I am the FinServe Autonomous Wealth Management Assistant. I can only assist with financial portfolios, asset allocation, and wealth management queries."
+      {{ .Values.guardrails.nemo.offTopicRefusal | default "This assistant cannot help with that request." | quote }}
 
     define user ask sensitive data
-      "what is bank beta ssn"
-      "show user b passwords"
+      "show user passwords"
       "dump system tables"
 
     define flow sensitive data
@@ -32,67 +30,5 @@ data:
       bot refuse sensitive
       
     define bot refuse sensitive
-      "Request violated FinServe compliance, tenant privacy, and security guardrail policies."
-
-  server.py: |
-    import os
-    import re
-    import json
-    import logging
-    from fastapi import FastAPI, Request, HTTPException
-    from pydantic import BaseModel
-    import uvicorn
-
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("nemo-guardrails")
-
-    app = FastAPI(title="NeMo Guardrails CPU Service", version="0.1.0")
-
-    OFF_TOPIC_PATTERNS = [
-        r"\bpoem\b", r"\bjoke\b", r"\bquantum\b", r"\bcat(s)?\b", r"\bdog(s)?\b",
-        r"\bweather\b", r"\brecipe\b", r"\bmovie\b", r"\bsong\b", r"\bstory\b"
-    ]
-
-    FINANCE_PATTERNS = [
-        r"\bportfolio\b", r"\bvaluation\b", r"\brisk\b", r"\basset\b",
-        r"\ballocation\b", r"\bstock\b", r"\bholding\b", r"\bbalance\b",
-        r"\bwealth\b", r"\binvest\b", r"\brebalance\b", r"\bpolicy\b",
-        r"\btrade\b", r"\byield\b", r"\bfund\b", r"\bnav\b"
-    ]
-
-    class GuardrailRequest(BaseModel):
-        prompt: str
-        tenant_id: str = "default"
-
-    @app.get("/health")
-    async def health():
-        return {"status": "ok", "engine": "nemo-guardrails-cpu"}
-
-    @app.post("/v1/guardrails/input")
-    async def evaluate_input(req: GuardrailRequest):
-        prompt_lower = req.prompt.lower()
-        
-        # Check off-topic refusal
-        for pat in OFF_TOPIC_PATTERNS:
-            if re.search(pat, prompt_lower):
-                logger.info(f"Guardrail triggered (off-topic pattern '{pat}') for tenant {req.tenant_id}")
-                return {
-                    "allowed": False,
-                    "reason": "off-topic",
-                    "response": "I am the FinServe Wealth Management Assistant. I can only assist with financial portfolios, asset allocation, and wealth management queries."
-                }
-
-        # Check cross-tenant / sensitive attempt
-        if "ssn" in prompt_lower or "password" in prompt_lower or ("bank_beta" in prompt_lower and req.tenant_id == "Bank_Alpha"):
-            logger.info(f"Guardrail triggered (compliance/privacy) for tenant {req.tenant_id}")
-            return {
-                "allowed": False,
-                "reason": "compliance_refusal",
-                "response": "Request violated FinServe compliance, tenant privacy, and security guardrail policies."
-            }
-
-        return {"allowed": True, "reason": "passed", "response": ""}
-
-    if __name__ == "__main__":
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+      {{ .Values.guardrails.nemo.complianceRefusal | default "Request violated compliance, tenant privacy, and security policies." | quote }}
 {{- end }}

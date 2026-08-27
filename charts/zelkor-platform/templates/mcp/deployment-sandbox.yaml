@@ -61,38 +61,20 @@ spec:
         {{- include "zelkor-platform.labels" . | nindent 8 }}
         app.kubernetes.io/component: mcp-sandbox
     spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: mcp-sandbox
-          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              pip install --no-cache-dir numpy pandas >/dev/null 2>&1 || true
-              mkdir -p /app/mcp/common /app/mcp/sandbox
-              cp /code/common__tenant.py /app/mcp/common/tenant.py
-              cp /code/common__mcp_server.py /app/mcp/common/mcp_server.py
-              cp /code/sandbox__pool_manager.py /app/mcp/sandbox/pool_manager.py
-              cp /code/sandbox__server.py /app/mcp/sandbox/server.py
-              export SANDBOX_WORKER_URLS="{{ $workerUrlsStr }}"
-              cd /app/mcp/sandbox && python server.py
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          workingDir: /app
+          command: ["python", "mcp/sandbox/server.py"]
           ports:
             - containerPort: 8080
           env:
+            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: SANDBOX_WORKER_URLS
               value: {{ $workerUrlsStr | quote }}
-          volumeMounts:
-            - name: code
-              mountPath: /code
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 5
-      volumes:
-        - name: code
-          configMap:
-            name: {{ $fullname }}-mcp-code
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.sandboxMCP) | nindent 10 }}
 ---
 {{- range $i := until (int $replicas) }}
 apiVersion: apps/v1
@@ -116,37 +98,21 @@ spec:
         app.kubernetes.io/component: mcp-sandbox-worker
         sandbox-worker-id: "{{ $i }}"
     spec:
+      {{- include "zelkor-platform.imagePullSecrets" $ | nindent 6 }}
       {{- if $.Values.mcp.sandboxMCP.runtimeClassName }}
       runtimeClassName: {{ $.Values.mcp.sandboxMCP.runtimeClassName }}
       {{- end }}
       containers:
         - name: worker
-          image: "{{ $.Values.mcp.sandboxMCP.workerImage.repository }}:{{ $.Values.mcp.sandboxMCP.workerImage.tag }}"
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              pip install --no-cache-dir numpy pandas >/dev/null 2>&1 || true
-              mkdir -p /app/mcp/sandbox
-              cp /code/sandbox__worker.py /app/mcp/sandbox/worker.py
-              cd /app/mcp/sandbox && python worker.py
+          image: {{ include "zelkor-platform.image" $.Values.mcp.sandboxMCP.workerImage | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" $ "image" $.Values.mcp.sandboxMCP.workerImage) }}
+          workingDir: /app
           ports:
             - containerPort: 8081
           env:
             - name: PORT
               value: "8081"
-          volumeMounts:
-            - name: code
-              mountPath: /code
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8081
-            initialDelaySeconds: 20
-            periodSeconds: 5
-      volumes:
-        - name: code
-          configMap:
-            name: {{ $fullname }}-mcp-code
+          {{- include "zelkor-platform.containerProbes" (dict "root" $ "values" $.Values.mcp.sandboxMCP.worker) | nindent 10 }}
 ---
 {{- end }}
 {{- end }}

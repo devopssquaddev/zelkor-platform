@@ -1,48 +1,66 @@
-"""
-Zelkor qdrant MCP security wrapper (CE).
-Injects mandatory tenant_id payload filter on vector search.
+"""Zelkor qdrant MCP security wrapper (CE).
+
+Vector search against a configured collection. Always injects a payload
+filter on tenant_id from the authenticated caller. Collection and
+embedding settings come from env / tool args, not a demo schema.
 """
 import json
+import logging
 import os
 import sys
+import urllib.error
 import urllib.request
+from typing import Dict, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common.mcp_server import MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
 
-QDRANT_URL = os.getenv("QDRANT_MCP_URL", "http://zelkor-platform-qdrant:6333")
-COLLECTION = os.getenv("QDRANT_COLLECTION", "finserve_policies")
-AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1")
+logger = logging.getLogger("zelkor-qdrant-mcp")
+
+QDRANT_URL = os.getenv("QDRANT_MCP_URL", "").rstrip("/")
+DEFAULT_COLLECTION = os.getenv("QDRANT_COLLECTION", "documents")
+AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", "").rstrip("/")
 DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "text-embedding-3-small")
-
-SEED_POLICIES = [
-    {"id": 1, "tenant_id": "Bank_Alpha", "title": "High-Growth Tech Allocation Policy", "category": "asset_allocation",
-     "content": "Bank_Alpha Policy: Maximum 40% allocation to high-growth tech equities (e.g. NVDA, AAPL, MSFT). Mandatory 15% cash hedge."},
-    {"id": 2, "tenant_id": "Bank_Alpha", "title": "Risk Disclosure & Volatility Limits", "category": "risk_disclosure",
-     "content": "Bank_Alpha Risk Disclosure: Portfolio maximum drawdown limit is 12%. Rebalancing triggered when variance exceeds 5%."},
-    {"id": 3, "tenant_id": "Bank_Beta", "title": "Conservative Asset Allocation Policy", "category": "asset_allocation",
-     "content": "Bank_Beta Policy: Maximum 15% allocation to tech sector. Strict conservative allocation requiring 60% fixed income (BND) and 10% commodities (GLD)."},
-    {"id": 4, "tenant_id": "Bank_Beta", "title": "Risk Disclosure & ESG Mandate", "category": "risk_disclosure",
-     "content": "Bank_Beta Risk Disclosure: Conservative ESG mandate. Zero exposure to non-ESG compliant derivatives."},
-]
+AI_GATEWAY_API_KEY = os.getenv("AI_GATEWAY_API_KEY", "")
 
 
-def _get_embedding(text: str) -> list:
+def _json_request(url: str, body: dict, headers: Optional[Dict[str, str]] = None, timeout: int = 5) -> dict:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type": "application/json", **(headers or {})},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _get_embedding(text: str) -> Optional[list]:
     try:
-        payload = json.dumps({"model": DEFAULT_EMBEDDING_MODEL, "input": text}).encode("utf-8")
-        req = urllib.request.Request(
+        data = _json_request(
             f"{AI_GATEWAY_URL}/embeddings",
-            data=payload,
-            headers={"Content-Type": "application/json", "Authorization": "Bearer dev-key"},
-            method="POST",
+            {"model": DEFAULT_EMBEDDING_MODEL, "input": text},
+            headers={"Authorization": f"Bearer {AI_GATEWAY_API_KEY}"},
         )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data["data"][0]["embedding"]
-    except Exception:
-        return [0.1, 0.2, 0.3, 0.4]
+        return data["data"][0]["embedding"]
+    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, TypeError) as exc:
+        logger.info("Embedding unavailable (%s); falling back to tenant-filtered scroll", exc)
+        return None
+
+
+def _tenant_filter(tenant_id: str) -> dict:
+    return {"must": [{"key": "tenant_id", "match": {"value": tenant_id}}]}
+
+
+def _payloads(points: list, tenant_id: str) -> list:
+    docs = []
+    for point in points:
+        payload = point.get("payload") or {}
+        if payload.get("tenant_id") == tenant_id:
+            docs.append(payload)
+    return docs
 
 
 class QdrantMCPServer(MCPToolHandler):
@@ -50,12 +68,17 @@ class QdrantMCPServer(MCPToolHandler):
         return [
             {
                 "name": "search_documents",
-                "description": "Tenant-scoped semantic search over policy documents",
+                "description": (
+                    "Tenant-scoped vector search over a Qdrant collection. "
+                    "Always filters payload tenant_id to the authenticated caller. "
+                    "collection defaults to QDRANT_COLLECTION."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": {"type": "string"},
                         "tenant_id": {"type": "string"},
+                        "collection": {"type": "string"},
                         "limit": {"type": "integer"},
                     },
                     "required": ["query", "tenant_id"],
@@ -73,44 +96,40 @@ class QdrantMCPServer(MCPToolHandler):
             raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
 
         limit = int(arguments.get("limit") or 3)
+        collection = arguments.get("collection") or DEFAULT_COLLECTION
+        filt = _tenant_filter(tenant_id)
+
         vector = _get_embedding(query)
-
-        search_body = {
-            "vector": vector[:4] if len(vector) >= 4 else vector,
-            "limit": limit,
-            "filter": {"must": [{"key": "tenant_id", "match": {"value": tenant_id}}]},
-            "with_payload": True,
-        }
-        try:
-            req = urllib.request.Request(
-                f"{QDRANT_URL}/collections/{COLLECTION}/points/search",
-                data=json.dumps(search_body).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                hits = json.loads(resp.read().decode("utf-8")).get("result") or []
-                docs = []
-                for hit in hits:
-                    payload = hit.get("payload") or {}
-                    if payload.get("tenant_id") == tenant_id:
-                        docs.append(payload)
+        if vector:
+            try:
+                data = _json_request(
+                    f"{QDRANT_URL}/collections/{collection}/points/search",
+                    {
+                        "vector": vector,
+                        "limit": limit,
+                        "filter": filt,
+                        "with_payload": True,
+                    },
+                )
+                docs = _payloads(data.get("result") or [], tenant_id)
                 if docs:
-                    return {"documents": docs, "count": len(docs)}
-        except Exception:
-            pass
+                    return {"documents": docs, "count": len(docs), "collection": collection}
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+                logger.info("Vector search failed (%s); falling back to scroll", exc)
 
-        query_lower = query.lower()
-        fallback = []
-        for p in SEED_POLICIES:
-            if p["tenant_id"] != tenant_id:
-                continue
-            if any(w in query_lower for w in ["policy", "allocation", "risk", "tech", "guideline"]) or not query_lower.strip():
-                fallback.append(p)
-        return {"documents": fallback[:limit], "count": len(fallback), "source": "seed_fallback"}
+        try:
+            data = _json_request(
+                f"{QDRANT_URL}/collections/{collection}/points/scroll",
+                {"filter": filt, "limit": limit, "with_payload": True},
+            )
+            points = (data.get("result") or {}).get("points") or []
+            docs = _payloads(points, tenant_id)[:limit]
+            return {"documents": docs, "count": len(docs), "collection": collection}
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            logger.warning("Qdrant scroll failed: %s", exc)
+            return {"documents": [], "count": 0, "collection": collection, "error": str(exc)}
 
 
 if __name__ == "__main__":
-    import logging
     logging.basicConfig(level=logging.INFO)
     run_mcp_server(QdrantMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))

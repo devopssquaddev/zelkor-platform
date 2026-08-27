@@ -1,0 +1,5 @@
+{
+  "graphs": {
+    "finserve": "./finserve_agent.py:graph"
+  }
+}

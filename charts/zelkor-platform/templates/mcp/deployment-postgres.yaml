@@ -34,35 +34,18 @@ spec:
         {{- include "zelkor-platform.labels" . | nindent 8 }}
         app.kubernetes.io/component: mcp-postgres
     spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: mcp-postgres
-          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              pip install --no-cache-dir psycopg2-binary >/dev/null 2>&1
-              mkdir -p /app/mcp/common /app/mcp/wrappers
-              cp /code/common__tenant.py /app/mcp/common/tenant.py
-              cp /code/common__mcp_server.py /app/mcp/common/mcp_server.py
-              cp /code/wrappers__postgres_server.py /app/mcp/wrappers/postgres_server.py
-              export POSTGRES_MCP_URL="{{ .Values.mcp.postgresMCP.databaseUrl }}"
-              cd /app/mcp/wrappers && python postgres_server.py
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          workingDir: /app
+          command: ["python", "mcp/wrappers/postgres_server.py"]
           ports:
             - containerPort: 8080
           env:
+            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: POSTGRES_MCP_URL
-              value: {{ .Values.mcp.postgresMCP.databaseUrl | quote }}
-          volumeMounts:
-            - name: code
-              mountPath: /code
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 5
-      volumes:
-        - name: code
-          configMap:
-            name: {{ include "zelkor-platform.fullname" . }}-mcp-code
+              value: {{ .Values.mcp.postgresMCP.databaseUrl | default (include "zelkor-platform.postgresUrl" (list . "postgres")) | quote }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.postgresMCP) | nindent 10 }}
 {{- end }}

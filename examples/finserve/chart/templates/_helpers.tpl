@@ -24,3 +24,45 @@ app.kubernetes.io/name: {{ include "finserve.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
+
+{{- define "finserve.image" -}}
+{{- $img := . -}}
+{{- if and $img.digest (ne $img.digest "") -}}
+{{- printf "%s@%s" $img.repository $img.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $img.repository ($img.tag | default "dev") -}}
+{{- end -}}
+{{- end }}
+
+{{- define "finserve.imagePullSecrets" -}}
+{{- with .Values.global.imagePullSecrets }}
+imagePullSecrets:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+Render startup/liveness/readiness probes and resources.
+Usage: {{ include "finserve.containerProbes" (dict "root" . "values" .Values.agent) | nindent 10 }}
+*/}}
+{{- define "finserve.containerProbes" -}}
+{{- $root := .root -}}
+{{- $v := .values -}}
+{{- with $v.startupProbe }}
+startupProbe:
+  {{- tpl (toYaml .) $root | nindent 2 }}
+{{- end }}
+{{- with $v.livenessProbe }}
+livenessProbe:
+  {{- tpl (toYaml .) $root | nindent 2 }}
+{{- end }}
+{{- with $v.readinessProbe }}
+readinessProbe:
+  {{- tpl (toYaml .) $root | nindent 2 }}
+{{- end }}
+{{- with $v.resources }}
+resources:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+

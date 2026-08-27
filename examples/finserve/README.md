@@ -13,7 +13,7 @@ FinServe AI is the reference application for the **Zelkor Platform**. It demonst
 | **Untrusted Code Execution** | Executes arbitrary quantitative calculations & projections in user-space isolation | **gVisor** (`RuntimeClass: gvisor`) |
 | **Policy-Governed LLM Routing** | Standardized OpenAI-compatible inference with consumer key and rate-limit policies | **Envoy AI Gateway** (`/v1/chat/completions`) |
 | **Full-Stack Observability** | Ingests multi-span execution waterfalls, token usage, and security tags | **Langfuse v2** (`/api/public/ingestion`) |
-| **Stateful Orchestration** | Checkpoints multi-turn conversation state across turns | **Aegra** (`/threads/{thread_id}/runs`) |
+| **Stateful Orchestration** | FinServe LangGraph (`files/finserve_agent.py`, graph id `finserve`) | **Aegra** (`aegra-api`; platform ships no graphs) |
 
 ---
 
@@ -26,10 +26,10 @@ flowchart TD
     
     subgraph platform ["Zelkor Platform"]
         Gateway["Envoy Gateway (HTTPRoute: finserve.localhost)"]
-        Agent["FinServe Agent (FastAPI / Modular Tools)"]
+        Agent["FinServe graph (example chart; in-process until Aegra registration)"]
         NeMo["NeMo Guardrails CPU (Topic Boundary)"]
         AIGateway["Envoy AI Gateway (LLM Router)"]
-        Aegra["Aegra (State Checkpointer)"]
+        Aegra["Aegra (Agent Protocol, empty graphs)"]
         Postgres[("PostgreSQL (Portfolios)")]
         Qdrant[("Qdrant (Semantic Policies)")]
         Langfuse["Langfuse v2 (Telemetry & Prompts)"]
@@ -44,11 +44,11 @@ flowchart TD
     Gateway --> Agent
     
     Agent -->|"1. Guardrails Check"| NeMo
-    Agent -->|"2. State Checkpoint"| Aegra
-    Agent -->|"3. Portfolio Query"| Postgres
-    Agent -->|"4. Vector Search"| Qdrant
-    Agent -->|"5. Sandboxed Python"| CodeExec
-    Agent -->|"6. Chat Completions"| AIGateway
+    Agent -->|"2. MCP postgres"| Postgres
+    Agent -->|"3. MCP qdrant"| Qdrant
+    Agent -->|"4. Sandboxed Python"| CodeExec
+    Agent -->|"5. Chat Completions"| AIGateway
+    Agent -.->|"graph not registered yet"| Aegra
     Agent -.->|"OTel Spans & Tags"| Langfuse
 ```
 
@@ -114,29 +114,29 @@ Open the Langfuse UI at [http://langfuse.localhost:8088](http://langfuse.localho
 
 ## 5. Automated Validation Matrix
 
-Run the test suite to validate platform compliance:
+Gate A validation is split across two layers:
 
 ```bash
+# Platform conformance (MCP, NeMo, gVisor)
+pytest tests/test_mcp_postgres.py tests/test_mcp_qdrant.py tests/test_mcp_sandbox.py tests/test_nemo_guardrails.py tests/test_mcp_gateway.py -v
+
+# FinServe E2E smokes
 pytest examples/finserve/tests/ -v
 ```
 
-| Test Suite | Coverage |
-| :--- | :--- |
-| `test_base01_install.py` | Installation health, `/runs/stream` endpoints, and Langfuse trace ingestion |
-| `test_base02_tenant_isolation.py` | Multi-tenant IDOR prevention between `Bank_Alpha` and `Bank_Beta` |
-| `test_base03_gvisor_sandbox.py` | gVisor `RuntimeClass`, syscall interception (`mknod`, `dmesg`), and outbreak containment |
-| `test_base04_stateful_memory.py` | Qdrant semantic policy retrieval and multi-turn Aegra thread state |
-| `test_base05_nemo_guardrails.py` | NeMo Guardrails CPU off-topic refusal and on-topic pass-through |
-| `test_base06_mcp_routing.py` | Unified MCP gateway `tools/list` exposes prefixed postgres/qdrant/sandbox tools |
+| Layer | Location | Coverage |
+| :--- | :--- | :--- |
+| Platform Gate | `tests/test_mcp_*.py`, `tests/test_nemo_guardrails.py` | Direct MCP tenant SQL, Qdrant isolation, gVisor sandbox, NeMo guardrails |
+| FinServe E2E | `examples/finserve/tests/test_base*.py` | Agent `/runs/stream` smokes (200, tenant_id, guardrails, traces) |
 
 ---
 
 ## 6. Native MCP Architecture (Implemented)
 
-FinServe is a **LangGraph orchestrator** that consumes Zelkor Native MCP tools via a unified gateway (`MCP_URL`):
+FinServe is a **LangGraph ReAct agent** that discovers tools from the unified MCP gateway and lets the LLM choose calls via OpenAI-style tool calling (`MCP_URL`):
 
-- `postgres__query` — tenant-scoped SQL via Python security wrapper
-- `qdrant__search_documents` — tenant payload-filtered vector search
+- `postgres__query` — read-only SQL; FinServe passes `WHERE tenant_id = %s`
+- `qdrant__search_documents` — tenant payload-filtered vector search (`finserve_policies` via overlay)
 - `sandbox__execute_python` — gVisor warm pool code execution
 
-The demo agent no longer calls PostgreSQL, Qdrant, or a local code executor directly. Sandbox workers run as platform `mcp-sandbox-worker` pods (`RuntimeClass: gvisor`).
+Input guardrails delegate to platform NeMo only (no agent-side topic regex). Sandbox workers run as platform `mcp-sandbox-worker` pods (`RuntimeClass: gvisor`).

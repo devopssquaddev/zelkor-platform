@@ -1,0 +1,6 @@
+{
+  "graphs": {},
+  "auth": {
+    "path": "./tenant_auth.py:auth"
+  }
+}

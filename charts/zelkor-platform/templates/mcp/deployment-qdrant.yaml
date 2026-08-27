@@ -34,37 +34,24 @@ spec:
         {{- include "zelkor-platform.labels" . | nindent 8 }}
         app.kubernetes.io/component: mcp-qdrant
     spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: mcp-qdrant
-          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
-          command: ["/bin/bash", "-c"]
-          args:
-            - |
-              mkdir -p /app/mcp/common /app/mcp/wrappers
-              cp /code/common__tenant.py /app/mcp/common/tenant.py
-              cp /code/common__mcp_server.py /app/mcp/common/mcp_server.py
-              cp /code/wrappers__qdrant_server.py /app/mcp/wrappers/qdrant_server.py
-              cd /app/mcp/wrappers && python qdrant_server.py
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          workingDir: /app
+          command: ["python", "mcp/wrappers/qdrant_server.py"]
           ports:
             - containerPort: 8080
           env:
+            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: QDRANT_MCP_URL
-              value: {{ .Values.mcp.qdrantMCP.url | quote }}
+              value: {{ include "zelkor-platform.qdrantUrl" . | quote }}
             - name: QDRANT_COLLECTION
               value: {{ .Values.mcp.qdrantMCP.collection | quote }}
             - name: AI_GATEWAY_URL
-              value: {{ .Values.mcp.qdrantMCP.aiGatewayUrl | quote }}
-          volumeMounts:
-            - name: code
-              mountPath: /code
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 5
-      volumes:
-        - name: code
-          configMap:
-            name: {{ include "zelkor-platform.fullname" . }}-mcp-code
+              value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+            - name: AI_GATEWAY_API_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.qdrantMCP) | nindent 10 }}
 {{- end }}

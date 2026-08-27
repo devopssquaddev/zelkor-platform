@@ -5,12 +5,13 @@ import uuid
 import datetime
 import time
 
+from tests.helpers.llm import llm_model_or_skip
+
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
 AI_GATEWAY_HOST_HEADER = os.environ.get("AI_GATEWAY_HOST_HEADER", "ai-gateway.localhost")
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 
-AI_GATEWAY_API_KEY = os.environ.get("OLLAMA_API_KEY", os.environ.get("AI_GATEWAY_API_KEY", "dev-key"))
-DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("LLM_MODEL", "gpt-oss:20b"))
+AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", "dev-key"))
 
 DEV_PUBLIC_KEY = "pk-lf-zelkor-dev-00000000000000000000"
 DEV_SECRET_KEY = "sk-lf-zelkor-dev-00000000000000000000"
@@ -48,7 +49,7 @@ def test_langfuse_preseeded_api_keys_ingestion():
                 "body": {
                     "id": trace_id,
                     "name": "integration-test-trace",
-                    "userId": "Bank_Alpha",
+                    "userId": "tenant_a",
                     "tags": ["test", "integration"],
                     "input": "Health check trace",
                     "output": "Trace received successfully",
@@ -76,15 +77,16 @@ def test_ai_gateway_generates_traces():
     """
     Verify Envoy AI Gateway completes chat requests and emits GenAI traces to Langfuse.
     """
+    model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
         "Host": AI_GATEWAY_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
-        "X-Tenant-ID": "Bank_Alpha"
+        "X-Tenant-ID": "tenant_a"
     }
     payload = {
-        "model": DEFAULT_LLM_MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": "Ping AI Gateway with trace"}],
         "max_tokens": 10
     }
@@ -107,13 +109,13 @@ def test_ai_gateway_generates_traces():
             "body": {
                 "id": trace_id,
                 "name": "envoy-ai-gateway-ollama-chat",
-                "userId": "Bank_Alpha",
+                "userId": "tenant_a",
                 "sessionId": "test-session-ollama",
                 "input": payload,
                 "output": resp_data,
-                "tags": ["ai-gateway", "ollama", "Bank_Alpha", "genai-trace"],
+                "tags": ["ai-gateway", "ollama", "tenant_a", "genai-trace"],
                 "metadata": {
-                    "model": DEFAULT_LLM_MODEL,
+                    "model": model,
                     "status_code": resp.status_code,
                     "gateway": "envoy-ai-gateway"
                 }
@@ -132,7 +134,7 @@ def test_ai_gateway_generates_traces():
                 "input": payload,
                 "output": resp_data,
                 "metadata": {
-                    "model": DEFAULT_LLM_MODEL,
+                    "model": model,
                     "provider": "ollama"
                 }
             }

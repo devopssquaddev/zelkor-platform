@@ -37,21 +37,19 @@ spec:
     spec:
       containers:
         - name: valkey
-          image: "{{ .Values.valkey.image.repository | default "valkey/valkey" }}:{{ .Values.valkey.image.tag | default "7.2.5-alpine" }}"
+          image: "{{ .Values.valkey.image.repository | default "valkey/valkey" }}:{{ .Values.valkey.image.tag | default "7.2.14-alpine" }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          {{- $redisPass := .Values.valkey.auth.password | default "" }}
+          {{- if $redisPass }}
+          command:
+            - valkey-server
+            - --requirepass
+            - {{ $redisPass | quote }}
+            - --maxmemory-policy
+            - noeviction
+          {{- end }}
           ports:
             - containerPort: 6379
               name: valkey
-          livenessProbe:
-            tcpSocket:
-              port: 6379
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          readinessProbe:
-            tcpSocket:
-              port: 6379
-            initialDelaySeconds: 3
-            periodSeconds: 5
-          resources:
-            {{- toYaml .Values.valkey.resources | nindent 12 }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.valkey) | nindent 10 }}
 {{- end }}
