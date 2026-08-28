@@ -18,7 +18,9 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor
+RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
+    && mkdir -p /etc/nemoguardrails/configs/content_safety /etc/nemoguardrails/configs/topic_control \
+    && chown -R zelkor:zelkor /etc/nemoguardrails
 USER 1000
 
 EXPOSE 8000
