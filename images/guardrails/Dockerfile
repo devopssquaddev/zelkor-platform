@@ -24,4 +24,4 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
 USER 1000
 
 EXPOSE 8000
-CMD ["nemoguardrails", "server", "--config", "/etc/nemoguardrails/configs", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["nemoguardrails", "server", "--config", "/etc/nemoguardrails/configs", "--port", "8000"]
