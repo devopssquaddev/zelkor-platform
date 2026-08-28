@@ -7,12 +7,12 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: guardrails
 data:
-  content_safety/config.yml: |
+  content_safety-config.yml: |
 {{ tpl (.Files.Get "files/nemo-configs/content_safety/config.yml.tpl") . | indent 4 }}
-  content_safety/prompts.yml: |
+  content_safety-prompts.yml: |
 {{ .Files.Get "files/nemo-configs/content_safety/prompts.yml" | indent 4 }}
-  topic_control/config.yml: |
+  topic_control-config.yml: |
 {{ tpl (.Files.Get "files/nemo-configs/topic_control/config.yml.tpl") . | indent 4 }}
-  topic_control/flows.co: |
+  topic_control-flows.co: |
 {{ tpl (.Files.Get "files/nemo-configs/topic_control/flows.co.tpl") . | indent 4 }}
 {{- end }}
