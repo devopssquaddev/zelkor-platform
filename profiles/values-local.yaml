@@ -104,17 +104,11 @@ aegra:
 guardrails:
   nemo:
     enabled: true
-    offTopicPatterns:
-      - "\\bpoem\\b"
-      - "\\bjoke\\b"
-      - "\\bquantum\\b"
-      - "\\bcat(s)?\\b"
-      - "\\bdog(s)?\\b"
-      - "\\bweather\\b"
-      - "\\brecipe\\b"
-      - "\\bmovie\\b"
-      - "\\bsong\\b"
-      - "\\bstory\\b"
+    aiGatewayRoute:
+      enabled: true
+    observability:
+      otel:
+        enabled: true
 
 mcp:
   enabled: true

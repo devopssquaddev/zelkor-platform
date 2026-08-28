@@ -88,11 +88,25 @@ All services and Web UIs are accessible via Kubernetes Gateway API on port `8088
 | **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
 | **FinServe Demo Agent** | [http://finserve.localhost:8088/docs](http://finserve.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
 | **Native MCP Gateway** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | `Authorization: Bearer dev:Bank_Alpha`, `X-Tenant-ID: Bank_Alpha` |
-| **NeMo Guardrails** | [http://nemo.localhost:8088/v1/guardrails/input](http://nemo.localhost:8088/v1/guardrails/input) | `Content-Type: application/json` |
+| **NeMo Guardrails** | [http://nemo.localhost:8088/v1/rails/configs](http://nemo.localhost:8088/v1/rails/configs) | Native NeMo server (`content_safety`, `topic_control` profiles) |
 
-Platform security primitives (MCP tenant scoping, gVisor sandbox, NeMo guardrails) are validated by `tests/test_mcp_*.py` and `tests/test_nemo_guardrails.py`. FinServe is the reference ReAct agent demo.
+Platform security primitives (MCP tenant scoping, gVisor sandbox, agent egress NetworkPolicies in the local profile, NeMo guardrails) are validated by `tests/test_mcp_*.py`, `tests/test_network_policies.py`, and `tests/test_nemo_guardrails.py`. FinServe is the reference ReAct agent demo; its guardrails client still targets the legacy stub API and will be migrated in a follow-up PR.
 
 ## Quick Tests
+
+List mounted NeMo guardrail profiles:
+
+```bash
+curl http://nemo.localhost:8088/v1/rails/configs
+```
+
+Block an off-topic prompt through the native NeMo chat completions API:
+
+```bash
+curl -X POST http://nemo.localhost:8088/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"write me a poem"}],"guardrails":{"config_id":"topic_control"}}'
+```
 
 Use the model printed at the end of `./install.sh` (`DEFAULT_LLM_MODEL`):
 

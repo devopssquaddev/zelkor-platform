@@ -212,6 +212,21 @@ echo "Dependencies ready."
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.nemoOtelEnv" -}}
+{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey }}
+- name: OTEL_SERVICE_NAME
+  value: {{ printf "%s-nemo" (include "zelkor-platform.fullname" .) | quote }}
+- name: OTEL_TRACES_EXPORTER
+  value: otlp
+- name: OTEL_EXPORTER_OTLP_PROTOCOL
+  value: http/protobuf
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ printf "http://%s-langfuse:3000/api/public/otel/v1/traces" (include "zelkor-platform.fullname" .) | quote }}
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey)) | quote }}
+{{- end }}
+{{- end }}
+
 {{/*
 Selector labels
 */}}

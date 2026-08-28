@@ -16,6 +16,15 @@ spec:
   hostnames:
     - {{ .Values.gateway.hosts.aiGateway | quote }}
   rules:
+    {{- if and .Values.guardrails.nemo.enabled .Values.guardrails.nemo.aiGatewayRoute.enabled }}
+    - matches:
+        - headers:
+            - type: RegularExpression
+              name: x-ai-eg-model
+              value: "^(nemo/.*)"
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+    {{- end }}
     {{- if .Values.aiGateway.providers.openai.apiKey }}
     - matches:
         - headers:

@@ -27,16 +27,14 @@ spec:
             - containerPort: 8000
               name: http
           env:
-            - name: NEMO_OFF_TOPIC_REFUSAL
-              value: {{ .Values.guardrails.nemo.offTopicRefusal | quote }}
-            - name: NEMO_COMPLIANCE_REFUSAL
-              value: {{ .Values.guardrails.nemo.complianceRefusal | quote }}
-            - name: NEMO_OFF_TOPIC_PATTERNS
-              value: {{ .Values.guardrails.nemo.offTopicPatterns | default list | toJson | quote }}
+            - name: OPENAI_API_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            - name: OPENAI_API_BASE
+              value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+            {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: nemo-config
-              mountPath: /app/config.co
-              subPath: config.co
+              mountPath: {{ .Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs" | quote }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.guardrails.nemo) | nindent 10 }}
       volumes:
         - name: nemo-config

@@ -338,37 +338,44 @@ guardrails:
       repository: ghcr.io/devopssquaddev/zelkor-guardrails
       tag: "dev"
       digest: ""
+    configsDir: /etc/nemoguardrails/configs
+    defaultConfigId: topic_control
+    model: ""
+    aiGatewayRoute:
+      enabled: false
+    observability:
+      otel:
+        enabled: false
     offTopicRefusal: "This assistant cannot help with that request. Please stay on topic for your configured domain."
     complianceRefusal: "Request violated compliance, tenant privacy, and security policies."
-    offTopicPatterns: []
     resources:
       requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 250m
+        cpu: 100m
         memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
     startupProbe:
       httpGet:
-        path: /health
+        path: /v1/rails/configs
         port: 8000
-      initialDelaySeconds: 5
+      initialDelaySeconds: 10
       periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 12
+      timeoutSeconds: 5
+      failureThreshold: 24
     livenessProbe:
       httpGet:
-        path: /health
+        path: /v1/rails/configs
         port: 8000
-      periodSeconds: 10
-      timeoutSeconds: 3
+      periodSeconds: 15
+      timeoutSeconds: 5
       failureThreshold: 3
     readinessProbe:
       httpGet:
-        path: /health
+        path: /v1/rails/configs
         port: 8000
       periodSeconds: 5
-      timeoutSeconds: 3
+      timeoutSeconds: 5
       failureThreshold: 3
   # Enterprise only:
   # llamaGuard:

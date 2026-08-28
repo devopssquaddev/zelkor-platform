@@ -272,4 +272,38 @@ spec:
         port: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).port | default 8000 | int }}
 ---
 {{- end }}
+
+# NeMo Guardrails Backend (guardrailed inference via model prefix nemo/*)
+{{- if and .Values.guardrails.nemo.enabled .Values.guardrails.nemo.aiGatewayRoute.enabled }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ printf "%s-nemo.%s.svc.cluster.local" (include "zelkor-platform.fullname" .) .Release.Namespace }}
+        port: 8000
+---
+{{- end }}
 {{- end }}

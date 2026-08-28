@@ -404,7 +404,7 @@ EOF
 fi
 cat <<EOF
   Native MCP Gateway      zelkor-platform-mcp-gateway http://mcp.localhost:8088/mcp
-  NeMo Guardrails (CPU)   zelkor-platform-nemo        http://zelkor-platform-nemo:8000
+  NeMo Guardrails (CPU)   zelkor-platform-nemo        http://nemo.localhost:8088/v1/rails/configs
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
 
