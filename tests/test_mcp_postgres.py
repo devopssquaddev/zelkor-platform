@@ -1,6 +1,19 @@
+import sys
+from pathlib import Path
+
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
+
 from tests.helpers.mcp_client import MCPGatewayClient
+from wrappers.postgres_server import _split_relation  # noqa: E402
+
+
+def test_split_relation_rejects_catalog_schemas():
+    with pytest.raises(PermissionError, match="(?i)unknown or unauthorized"):
+        _split_relation("pg_catalog.pg_shadow")
+    with pytest.raises(PermissionError, match="(?i)unknown or unauthorized"):
+        _split_relation("information_schema.columns")
 
 
 def test_mcp_postgres_rejects_non_select():

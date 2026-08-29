@@ -25,6 +25,7 @@ except ImportError:
 DATABASE_URL = os.getenv("POSTGRES_MCP_URL", "")
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_CATALOG_SCHEMAS = frozenset({"pg_catalog", "information_schema", "pg_toast"})
 
 LIST_TABLES_SQL = """
 SELECT n.nspname AS schema, c.relname AS name
@@ -46,6 +47,7 @@ JOIN pg_attribute a ON a.attrelid = c.oid
 WHERE c.relkind IN ('r', 'v', 'm', 'p')
   AND a.attnum > 0
   AND NOT a.attisdropped
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
   AND n.nspname = %s
   AND c.relname = %s
   AND has_table_privilege(c.oid, 'SELECT')
@@ -99,6 +101,11 @@ def _assert_tenant(arguments: dict, tenant_id: str) -> None:
         raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
 
 
+def _is_catalog_schema(schema: str) -> bool:
+    lowered = schema.lower()
+    return lowered in _CATALOG_SCHEMAS or lowered.startswith("pg_")
+
+
 def _split_relation(name: str) -> tuple:
     raw = (name or "").strip()
     if not raw:
@@ -109,6 +116,8 @@ def _split_relation(name: str) -> tuple:
         schema, table = "public", raw
     if not _IDENT.match(schema) or not _IDENT.match(table):
         raise PermissionError("relation name must be a simple identifier")
+    if _is_catalog_schema(schema):
+        raise PermissionError(f"unknown or unauthorized relation: {schema}.{table}")
     return schema, table
 
 
