@@ -91,7 +91,7 @@ def test_ai_gateway_generates_traces():
         "max_tokens": 10
     }
     t0 = time.time()
-    resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+    resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
     assert resp.status_code == 200, f"AI Gateway chat completion failed with status {resp.status_code}: {resp.text}"
     resp_data = resp.json()
     
@@ -150,15 +150,26 @@ def test_ai_gateway_generates_traces():
     )
     assert ingest_resp.status_code in [200, 201, 207], f"Trace ingestion failed: {ingest_resp.text}"
 
-    # Verify trace retrieval from Langfuse API
-    time.sleep(0.5)
-    traces_resp = httpx.get(
-        f"{GATEWAY_BASE_URL}/api/public/traces",
-        headers={"Host": LANGFUSE_HOST_HEADER},
-        auth=(DEV_PUBLIC_KEY, DEV_SECRET_KEY),
-        timeout=10.0
+    # Verify trace retrieval from Langfuse API (eventual consistency after ingestion)
+    auth = (DEV_PUBLIC_KEY, DEV_SECRET_KEY)
+    headers = {"Host": LANGFUSE_HOST_HEADER}
+    deadline = time.time() + 30
+    last_traces = []
+    while time.time() < deadline:
+        traces_resp = httpx.get(
+            f"{GATEWAY_BASE_URL}/api/public/traces",
+            headers=headers,
+            auth=auth,
+            timeout=10.0,
+        )
+        assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
+        last_traces = traces_resp.json().get("data", [])
+        matching = [t for t in last_traces if t.get("id") == trace_id]
+        if matching:
+            return
+        time.sleep(2)
+
+    assert False, (
+        f"Trace {trace_id} not found in Langfuse within 30s. "
+        f"Retrieved {len(last_traces)} traces."
     )
-    assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
-    traces = traces_resp.json().get("data", [])
-    matching = [t for t in traces if t.get("id") == trace_id]
-    assert len(matching) > 0, f"Trace {trace_id} not found in Langfuse. Retrieved {len(traces)} traces."

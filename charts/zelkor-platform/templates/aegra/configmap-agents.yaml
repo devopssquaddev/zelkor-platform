@@ -9,7 +9,7 @@ metadata:
 data:
   aegra.json: |
     {
-      "graphs": {},
+      "graphs": {{ .Values.aegra.graphs | default dict | toJson }},
       "auth": {
         "path": "./tenant_auth.py:auth"
       }

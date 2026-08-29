@@ -17,6 +17,8 @@ security:
   sandbox:
     enabled: true
     runtimeClass: gvisor
+  networkPolicies:
+    enabled: true
 
 auth:
   sso:
@@ -104,8 +106,6 @@ aegra:
 guardrails:
   nemo:
     enabled: true
-    aiGatewayRoute:
-      enabled: true
     observability:
       otel:
         enabled: true

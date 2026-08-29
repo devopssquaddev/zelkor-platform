@@ -203,12 +203,88 @@ echo "Dependencies ready."
 {{- end -}}
 {{- end }}
 
+{{/*
+True when NeMo I/O intercept is active on default /v1 traffic.
+Defaults to true when guardrails.nemo.enabled unless explicitly disabled.
+*/}}
+{{- define "zelkor-platform.nemoInterceptEnabled" -}}
+{{- if not .Values.guardrails.nemo.enabled -}}
+false
+{{- else if hasKey (.Values.guardrails.nemo.intercept | default dict) "enabled" -}}
+{{- .Values.guardrails.nemo.intercept.enabled | toString -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+NeMo AIServiceBackend is required for intercept or legacy nemo/* prefix routing.
+*/}}
+{{- define "zelkor-platform.nemoAiGatewayBackendEnabled" -}}
+{{- if not .Values.guardrails.nemo.enabled -}}
+false
+{{- else if eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
+true
+{{- else -}}
+{{- (.Values.guardrails.nemo.aiGatewayRoute.enabled | default false) | toString -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Hostnames accepted by AIGatewayRoute (external dev + in-cluster service DNS).
+*/}}
+{{- define "zelkor-platform.aiGatewayHostnames" -}}
+{{- $hosts := list -}}
+{{- if .Values.gateway.hosts.aiGateway -}}
+{{- $hosts = append $hosts .Values.gateway.hosts.aiGateway -}}
+{{- end -}}
+{{- if .Values.aiGateway.inClusterService.enabled -}}
+{{- $short := printf "%s-ai-gateway" (include "zelkor-platform.fullname" .) -}}
+{{- $fqdn := printf "%s.%s.svc.cluster.local" $short .Release.Namespace -}}
+{{- $hosts = append $hosts $short -}}
+{{- $hosts = append $hosts $fqdn -}}
+{{- end -}}
+{{- $hosts | uniq | toJson -}}
+{{- end }}
+
+{{/*
+OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
+*/}}
+{{- define "zelkor-platform.openAiBaseUrl" -}}
+{{- if .Values.aiGateway.internalUrl -}}
+{{- .Values.aiGateway.internalUrl -}}
+{{- else if .Values.aiGateway.inClusterService.enabled -}}
+{{- $port := .Values.aiGateway.inClusterService.port | default 80 -}}
+{{- printf "http://%s-ai-gateway:%v/v1" (include "zelkor-platform.fullname" .) $port -}}
+{{- else -}}
+{{- printf "http://%s-ai-gateway:8080/v1" (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.mcpGatewayUrl" -}}
+{{- printf "http://%s-mcp-gateway:8080" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
 {{- define "zelkor-platform.aiGatewayInternalUrl" -}}
-{{- $override := .Values.mcp.qdrantMCP.aiGatewayUrl | default "" -}}
+{{- $override := .Values.aiGateway.internalUrl | default "" -}}
+{{- if not $override -}}
+{{- $override = .Values.mcp.qdrantMCP.aiGatewayUrl | default "" -}}
+{{- end -}}
 {{- if $override -}}
 {{- $override -}}
 {{- else -}}
-{{- printf "http://envoy-%s-%s-gateway.%s.svc:80/v1" .Release.Namespace (include "zelkor-platform.fullname" .) .Release.Namespace -}}
+{{- $ns := "envoy-gateway-system" -}}
+{{- $found := "" -}}
+{{- range (lookup "v1" "Service" $ns "").items -}}
+{{- if and (not $found) (hasPrefix "envoy-default-" .metadata.name) (contains "gateway-" .metadata.name) -}}
+{{- $found = printf "http://%s.%s.svc.cluster.local:80/v1" .metadata.name $ns -}}
+{{- end -}}
+{{- end -}}
+{{- if $found -}}
+{{- $found -}}
+{{- else -}}
+{{- printf "http://envoy-default-%s-gateway.%s.svc.cluster.local:80/v1" (include "zelkor-platform.fullname" .) $ns -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 

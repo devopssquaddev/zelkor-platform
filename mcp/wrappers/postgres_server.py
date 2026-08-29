@@ -1,11 +1,11 @@
 """Zelkor postgres MCP security wrapper (CE).
 
-Read-only SQL against the configured database. Tenant identity comes from
-the request auth header. The agent supplies any row filters (CE does not
-rewrite SQL). SET LOCAL app.current_tenant is applied so optional RLS
-policies can use it.
+Thin first-party tools: query, list_tables, get_schema. Tenant identity
+comes from the request auth header. SET LOCAL app.current_tenant is
+applied on the same transaction Zelkor opens.
 """
 import os
+import re
 import sys
 from datetime import date, datetime
 from decimal import Decimal
@@ -23,6 +23,34 @@ except ImportError:
     RealDictCursor = None
 
 DATABASE_URL = os.getenv("POSTGRES_MCP_URL", "")
+
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+LIST_TABLES_SQL = """
+SELECT n.nspname AS schema, c.relname AS name
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'v', 'm', 'p')
+  AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+  AND has_table_privilege(c.oid, 'SELECT')
+ORDER BY 1, 2
+"""
+
+GET_SCHEMA_SQL = """
+SELECT a.attname AS column_name,
+       pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+       NOT a.attnotnull AS is_nullable
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_attribute a ON a.attrelid = c.oid
+WHERE c.relkind IN ('r', 'v', 'm', 'p')
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+  AND n.nspname = %s
+  AND c.relname = %s
+  AND has_table_privilege(c.oid, 'SELECT')
+ORDER BY a.attnum
+"""
 
 
 def _serialize_value(value):
@@ -65,6 +93,46 @@ def _bind_params(sql: str, arguments: dict, tenant_id: str):
     return tuple(params)
 
 
+def _assert_tenant(arguments: dict, tenant_id: str) -> None:
+    arg_tenant = arguments.get("tenant_id")
+    if not arg_tenant or arg_tenant != tenant_id:
+        raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
+
+
+def _split_relation(name: str) -> tuple:
+    raw = (name or "").strip()
+    if not raw:
+        raise PermissionError("relation name is required")
+    if "." in raw:
+        schema, table = raw.split(".", 1)
+    else:
+        schema, table = "public", raw
+    if not _IDENT.match(schema) or not _IDENT.match(table):
+        raise PermissionError("relation name must be a simple identifier")
+    return schema, table
+
+
+def _with_tenant_txn(tenant_id: str, fn):
+    if psycopg2 is None:
+        return {"error": "psycopg2 not available"}
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        conn.autocommit = False
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            try:
+                cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
+            except Exception:
+                conn.rollback()
+            result = fn(cur)
+            conn.commit()
+            return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 class PostgresMCPServer(MCPToolHandler):
     def list_tools(self):
         return [
@@ -87,37 +155,85 @@ class PostgresMCPServer(MCPToolHandler):
                     },
                     "required": ["sql", "tenant_id"],
                 },
-            }
+            },
+            {
+                "name": "list_tables",
+                "description": (
+                    "List relation names the connected role can SELECT. "
+                    "Filtered by grants and search_path; no catalog dump. "
+                    "tenant_id must match the authenticated caller."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"tenant_id": {"type": "string"}},
+                    "required": ["tenant_id"],
+                },
+            },
+            {
+                "name": "get_schema",
+                "description": (
+                    "Columns and types for one relation the role can SELECT. "
+                    "Rejects unknown or unauthorized names. "
+                    "tenant_id must match the authenticated caller."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "tenant_id": {"type": "string"},
+                    },
+                    "required": ["name", "tenant_id"],
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict, tenant_id: str):
-        if name != "query":
-            raise ValueError(f"Unknown tool: {name}")
+        _assert_tenant(arguments, tenant_id)
+        if name == "query":
+            return self._query(arguments, tenant_id)
+        if name == "list_tables":
+            return self._list_tables(tenant_id)
+        if name == "get_schema":
+            return self._get_schema(arguments, tenant_id)
+        raise ValueError(f"Unknown tool: {name}")
 
+    def _query(self, arguments: dict, tenant_id: str):
         sql = _assert_read_only(arguments.get("sql") or "")
-        arg_tenant = arguments.get("tenant_id")
-        if not arg_tenant or arg_tenant != tenant_id:
-            raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
-
-        if psycopg2 is None:
-            return {"rows": [], "error": "psycopg2 not available"}
-
         bind = _bind_params(sql, arguments, tenant_id)
-        conn = psycopg2.connect(DATABASE_URL)
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                try:
-                    cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
-                except Exception:
-                    pass
-                if bind is None:
-                    cur.execute(sql)
-                else:
-                    cur.execute(sql, bind)
-                rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
-                return {"rows": rows, "count": len(rows)}
-        finally:
-            conn.close()
+
+        def _run(cur):
+            if bind is None:
+                cur.execute(sql)
+            else:
+                cur.execute(sql, bind)
+            rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            return {"rows": rows, "count": len(rows)}
+
+        return _with_tenant_txn(tenant_id, _run)
+
+    def _list_tables(self, tenant_id: str):
+        def _run(cur):
+            cur.execute(LIST_TABLES_SQL)
+            tables = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            return {"tables": tables, "count": len(tables)}
+
+        return _with_tenant_txn(tenant_id, _run)
+
+    def _get_schema(self, arguments: dict, tenant_id: str):
+        schema, table = _split_relation(arguments.get("name") or "")
+
+        def _run(cur):
+            cur.execute(GET_SCHEMA_SQL, (schema, table))
+            columns = [_serialize_row(dict(r)) for r in cur.fetchall()]
+            if not columns:
+                raise PermissionError(f"unknown or unauthorized relation: {schema}.{table}")
+            return {
+                "name": f"{schema}.{table}",
+                "columns": columns,
+                "count": len(columns),
+            }
+
+        return _with_tenant_txn(tenant_id, _run)
 
 
 if __name__ == "__main__":

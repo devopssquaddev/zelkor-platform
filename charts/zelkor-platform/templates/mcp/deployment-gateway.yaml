@@ -51,5 +51,7 @@ spec:
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-qdrant:8080"
             - name: SANDBOX_MCP_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-sandbox:8080"
+            - name: MCP_EXTRA_BACKENDS
+              value: {{ .Values.mcp.extraBackends | default list | toJson | quote }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.gateway) | nindent 10 }}
 {{- end }}

@@ -19,9 +19,9 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
-    && mkdir -p /etc/nemoguardrails/configs/content_safety /etc/nemoguardrails/configs/topic_control \
+    && mkdir -p /etc/nemoguardrails/configs/content_safety \
     && chown -R zelkor:zelkor /etc/nemoguardrails
 USER 1000
 
 EXPOSE 8000
-CMD ["nemoguardrails", "server", "--config", "/etc/nemoguardrails/configs", "--port", "8000"]
+CMD ["nemoguardrails", "server", "--config", "/etc/nemoguardrails/configs", "--port", "8000", "--default-config-id", "content_safety"]

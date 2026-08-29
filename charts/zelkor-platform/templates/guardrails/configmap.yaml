@@ -11,8 +11,6 @@ data:
 {{ tpl (.Files.Get "files/nemo-configs/content_safety/config.yml.tpl") . | indent 4 }}
   content_safety-prompts.yml: |
 {{ .Files.Get "files/nemo-configs/content_safety/prompts.yml" | indent 4 }}
-  topic_control-config.yml: |
-{{ tpl (.Files.Get "files/nemo-configs/topic_control/config.yml.tpl") . | indent 4 }}
-  topic_control-flows.co: |
-{{ tpl (.Files.Get "files/nemo-configs/topic_control/flows.co.tpl") . | indent 4 }}
+  content_safety-flows.co: |
+{{ tpl (.Files.Get "files/nemo-configs/content_safety/flows.co.tpl") . | indent 4 }}
 {{- end }}

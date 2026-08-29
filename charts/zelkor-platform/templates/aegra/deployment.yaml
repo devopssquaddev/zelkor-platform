@@ -57,6 +57,7 @@ spec:
           image: {{ include "zelkor-platform.image" .Values.aegra.image | quote }}
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.image) }}
           workingDir: /app
+          command: ["uvicorn", "graph_router:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000
               name: http
@@ -72,17 +73,46 @@ spec:
               value: "/app/aegra.json"
             - name: TENANT_ORG_MAPPINGS
               value: {{ .Values.aegra.tenantOrgMappings | default dict | toJson | quote }}
+            - name: OPENAI_BASE_URL
+              value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
+            - name: OPENAI_API_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
             - name: AI_GATEWAY_URL
-              value: "http://{{ include "zelkor-platform.fullname" . }}-ai-gateway:8080/v1"
+              value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
+            - name: MCP_URL
+              value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+            - name: MCP_INJECT_ENABLED
+              value: {{ ((.Values.aegra.mcpInject).enabled | default false) | quote }}
+            - name: AEGRA_WORKERS
+              value: {{ .Values.aegra.workers | default list | toJson | quote }}
+            - name: ZELKOR_TENANT_HEADER
+              value: "X-Tenant-ID"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
+            {{- if and .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey }}
+            - name: LANGFUSE_HOST
+              value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
+            - name: LANGFUSE_PUBLIC_KEY
+              value: {{ .Values.langfuse.init.projectPublicKey | quote }}
+            - name: LANGFUSE_SECRET_KEY
+              value: {{ .Values.langfuse.init.projectSecretKey | quote }}
+            {{- end }}
           volumeMounts:
             - name: agents-auth
               mountPath: /app/aegra.json
               subPath: aegra.json
+            {{- if and .Values.aegra.graphModules.enabled .Values.aegra.graphModules.configMapName }}
+            - name: graph-modules
+              mountPath: {{ .Values.aegra.graphModules.mountPath | default "/app/graphs" | quote }}
+            {{- end }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.aegra) | nindent 10 }}
       volumes:
         - name: agents-auth
           configMap:
             name: {{ include "zelkor-platform.fullname" . }}-agents-auth
+        {{- if and .Values.aegra.graphModules.enabled .Values.aegra.graphModules.configMapName }}
+        - name: graph-modules
+          configMap:
+            name: {{ .Values.aegra.graphModules.configMapName | quote }}
+        {{- end }}
 {{- end }}

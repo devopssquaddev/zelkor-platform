@@ -1,0 +1,65 @@
+# Helper chart: one ClusterIP Aegra worker. Not the platform front door.
+# After install, add the graphId to the platform release:
+#   aegra.workers: [{ graphId: my-agent, url: http://<release>-zelkor-agent:8000 }]
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+graphId: ""
+# Optional override of the in-cluster Service URL registered on the platform.
+workerUrl: ""
+
+image:
+  repository: ghcr.io/devopssquaddev/zelkor-aegra
+  tag: "dev"
+  digest: ""
+  pullPolicy: ""
+
+replicaCount: 1
+
+platform:
+  openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+  consumerKey: ""
+  mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+  databaseUrl: ""
+  valkeyUrl: ""
+  mcpInject: true
+
+auth:
+  jwtSecret: ""
+  devTokens:
+    enabled: false
+    prefix: ""
+  trustTenantHeader: false
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+startupProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 18
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8000
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

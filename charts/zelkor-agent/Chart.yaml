@@ -1,0 +1,6 @@
+apiVersion: v2
+name: zelkor-agent
+description: ClusterIP worker for one independently released graph (FROM zelkor-aegra). Register graphId on the platform front door (aegra.workers).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

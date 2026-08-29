@@ -21,7 +21,6 @@ class TenantAuth:
     """
     def __init__(self, secret_key: str = ""):
         self.secret_key = secret_key or os.getenv("AUTH_JWT_SECRET", "")
-        self.secret_key = secret_key
         raw_mappings = os.getenv("TENANT_ORG_MAPPINGS", "{}")
         try:
             self.org_mappings = json.loads(raw_mappings)
@@ -128,7 +127,12 @@ else:
 
     @auth.on.threads.create
     async def on_thread_create(ctx, value):
-        metadata = value.setdefault("metadata", {})
+        if value is None:
+            value = {}
+        metadata = value.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+            value["metadata"] = metadata
         metadata["tenant_id"] = ctx.user.identity
         return value
 

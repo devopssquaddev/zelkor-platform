@@ -40,11 +40,8 @@ spec:
               mountPath: {{ printf "%s/content_safety/prompts.yml" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
               subPath: content_safety-prompts.yml
             - name: nemo-config
-              mountPath: {{ printf "%s/topic_control/config.yml" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
-              subPath: topic_control-config.yml
-            - name: nemo-config
-              mountPath: {{ printf "%s/topic_control/flows.co" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
-              subPath: topic_control-flows.co
+              mountPath: {{ printf "%s/content_safety/flows.co" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
+              subPath: content_safety-flows.co
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.guardrails.nemo) | nindent 10 }}
       volumes:
         - name: nemo-config

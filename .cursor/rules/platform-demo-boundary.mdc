@@ -26,11 +26,13 @@ If the task names both layers, do **platform first** and stop. Do not edit `exam
 
 If a demo needs a capability the platform lacks: add a **generic** Helm value with a **generic** default, then set the demo-specific value in `examples/<name>/`. Do not change platform defaults to make one demo boot.
 
+Do **not** register demo graphs onto the platform Aegra Deployment (`aegra.graphs`, ConfigMap `graphModules`). Each demo/customer agent is its own image and **ClusterIP** Deployment. Platform Aegra stays the **default public** front door with empty `graphs` (route by `graph_id`). Do not publish a public HTTPRoute per agent by default.
+
 ## Defaults vs overlays
 
-The platform chart may expose knobs (`databaseUrl`, `collection`, refusal text, tenant mappings). It must not ship demo-shaped defaults or local secrets in `values.yaml`. Kind/dev hosts, passwords, and unsigned auth live in `profiles/values-local.yaml`. Each demo chart (or `install.sh` example overlay) supplies its own values.
+The platform chart may expose knobs (`databaseUrl`, `collection`, refusal text, tenant mappings, `mcp.extraBackends: []`). It must not ship demo-shaped defaults, vendor MCP names (ServiceNow, …), or local secrets in `values.yaml`. Kind/dev hosts, passwords, and unsigned auth live in `profiles/values-local.yaml`. Each demo chart (or `install.sh` example overlay) supplies its own values. Customer SaaS MCP Deployments are the customer’s GitOps (or a demo chart), not `charts/zelkor-platform`.
 
-Platform tests create their own fixtures and use opaque tenant ids (`tenant-a`). Demo E2E lives only under `examples/<name>/tests/`.
+Platform tests create their own fixtures and use opaque tenant ids (`tenant-a`). Demo E2E lives only under `examples/<name>/tests/`. Tests must not bake kind hosts or pytest-only resources into the platform chart (see `tests-do-not-shape-platform.mdc`).
 
 ## Stop and ask
 

@@ -14,3 +14,17 @@ def test_mcp_qdrant_rejects_tenant_id_mismatch():
             )
     except ConnectionError as exc:
         pytest.skip(str(exc))
+
+
+def test_mcp_qdrant_search_does_not_leak_other_tenant():
+    """Search without a caller-supplied filter still cannot return another tenant's points."""
+    client = MCPGatewayClient("tenant_a")
+    try:
+        result = client.call_tool(
+            "qdrant__search_documents",
+            {"query": "anything", "limit": 10},
+        )
+    except ConnectionError as exc:
+        pytest.skip(str(exc))
+    for doc in result.get("documents") or []:
+        assert doc.get("tenant_id") == "tenant_a"

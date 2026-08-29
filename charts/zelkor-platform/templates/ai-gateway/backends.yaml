@@ -273,8 +273,8 @@ spec:
 ---
 {{- end }}
 
-# NeMo Guardrails Backend (guardrailed inference via model prefix nemo/*)
-{{- if and .Values.guardrails.nemo.enabled .Values.guardrails.nemo.aiGatewayRoute.enabled }}
+# NeMo Guardrails Backend (default /v1 intercept or legacy nemo/* prefix)
+{{- if eq (include "zelkor-platform.nemoAiGatewayBackendEnabled" .) "true" }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:

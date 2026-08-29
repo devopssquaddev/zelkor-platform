@@ -13,7 +13,7 @@ FinServe AI is the reference application for the **Zelkor Platform**. It demonst
 | **Untrusted Code Execution** | Executes arbitrary quantitative calculations & projections in user-space isolation | **gVisor** (`RuntimeClass: gvisor`) |
 | **Policy-Governed LLM Routing** | Standardized OpenAI-compatible inference with consumer key and rate-limit policies | **Envoy AI Gateway** (`/v1/chat/completions`) |
 | **Full-Stack Observability** | Ingests multi-span execution waterfalls, token usage, and security tags | **Langfuse v2** (`/api/public/ingestion`) |
-| **Stateful Orchestration** | FinServe LangGraph (`files/finserve_agent.py`, graph id `finserve`) | **Aegra** (`aegra-api`; platform ships no graphs) |
+| **Stateful Orchestration** | FinServe LangGraph (`files/finserve_agent.py`, graph id `finserve`) as its **own ClusterIP** Deployment | **Aegra** front door (`aegra-api`; platform ships no graphs; default public Agent Protocol host) |
 
 ---
 
@@ -25,11 +25,11 @@ flowchart TD
     UserBeta["User (Bank_Beta)"]
     
     subgraph platform ["Zelkor Platform"]
-        Gateway["Envoy Gateway (HTTPRoute: finserve.localhost)"]
-        Agent["FinServe graph (example chart; in-process until Aegra registration)"]
+        Gateway["Envoy Gateway (demo HTTPRoute: finserve.localhost — TTFV only)"]
+        Agent["FinServe ClusterIP Deployment (own image; in-process shim today)"]
         NeMo["NeMo Guardrails CPU (Topic Boundary)"]
         AIGateway["Envoy AI Gateway (LLM Router)"]
-        Aegra["Aegra (Agent Protocol, empty graphs)"]
+        Aegra["Aegra front door (empty graphs; default public Agent Protocol)"]
         Postgres[("PostgreSQL (Portfolios)")]
         Qdrant[("Qdrant (Semantic Policies)")]
         Langfuse["Langfuse v2 (Telemetry & Prompts)"]
@@ -48,7 +48,7 @@ flowchart TD
     Agent -->|"3. MCP qdrant"| Qdrant
     Agent -->|"4. Sandboxed Python"| CodeExec
     Agent -->|"5. Chat Completions"| AIGateway
-    Agent -.->|"graph not registered yet"| Aegra
+    Agent -.->|"target: reached via front door graph_id; demo HTTPRoute is temporary"| Aegra
     Agent -.->|"OTel Spans & Tags"| Langfuse
 ```
 
@@ -138,5 +138,7 @@ FinServe is a **LangGraph ReAct agent** that discovers tools from the unified MC
 - `postgres__query` — read-only SQL; FinServe passes `WHERE tenant_id = %s`
 - `qdrant__search_documents` — tenant payload-filtered vector search (`finserve_policies` via overlay)
 - `sandbox__execute_python` — gVisor warm pool code execution
+
+Customer SaaS MCP (ServiceNow and others) is not part of this demo. Register extra servers on the platform overlay (`mcp.extraBackends`); keep vendor credentials off the agent.
 
 Input guardrails delegate to platform NeMo only (no agent-side topic regex). Sandbox workers run as platform `mcp-sandbox-worker` pods (`RuntimeClass: gvisor`).

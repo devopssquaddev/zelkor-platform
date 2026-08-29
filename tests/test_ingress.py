@@ -5,6 +5,7 @@ import json
 import httpx
 import time
 
+from tests.helpers.gateway import has_assistant_reply
 from tests.helpers.llm import llm_model_or_skip
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
@@ -147,8 +148,7 @@ def test_gateway_multi_provider_routing_via_gateway():
         "messages": [{"role": "user", "content": f"Test prompt for {model}"}],
         "max_tokens": 10
     }
-    resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+    resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
     assert resp.status_code == 200, f"AI Gateway call failed with status {resp.status_code}: {resp.text}"
     data = resp.json()
-    assert "choices" in data, f"No choices in response: {data}"
-    assert len(data["choices"]) > 0
+    assert has_assistant_reply(data), f"No assistant reply in response: {data}"

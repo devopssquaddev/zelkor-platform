@@ -12,7 +12,8 @@ This tree is Community Edition platform only.
 - Do not seed demo databases, collections, prompts, or eval datasets here. Platform init may create platform-owned DBs only (e.g. `aegra`, `langfuse`).
 - Do not point MCP, NeMo, Langfuse, or Aegra defaults at a specific example's database, collection, project id, or product copy.
 - Do not import or template from `examples/`.
-- New knobs get generic defaults. Example-specific values belong in `examples/<name>/chart/`.
+- New knobs get generic defaults. Example-specific values belong in `examples/<name>/chart/`. Customer SaaS MCP registers via `mcp.extraBackends: []` (empty default) — do not add `servicenow` (or any vendor) as a chart default or Deployment.
+- Do not add `| default "*.localhost"`, `dev-key`, fixture tenants, or pytest-only Services/Routes so `tests/` pass. Tests adapt via env; kind hosts live in `profiles/values-local.yaml` (see `tests-do-not-shape-platform.mdc`).
 - Do not inline Python in templates. Prefer images; otherwise `files/` + `.Files.Get` (see `helm-python-packaging.mdc`).
 
 Customer production installs this chart with no `examples/` release.

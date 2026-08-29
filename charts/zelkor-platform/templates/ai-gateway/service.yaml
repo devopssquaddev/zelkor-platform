@@ -1,0 +1,27 @@
+{{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled }}
+{{- $targetHost := .Values.aiGateway.inClusterService.targetHost | default "" -}}
+{{- if not $targetHost }}
+{{- range (lookup "v1" "Service" "envoy-gateway-system" "").items }}
+{{- if and (not $targetHost) (hasPrefix "envoy-default-" .metadata.name) (contains "gateway-" .metadata.name) }}
+{{- $targetHost = printf "%s.envoy-gateway-system.svc.cluster.local" .metadata.name }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $targetHost }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-ai-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  type: ExternalName
+  externalName: {{ $targetHost }}
+  ports:
+    - name: http
+      port: {{ .Values.aiGateway.inClusterService.port | default 80 }}
+      protocol: TCP
+{{- end }}
+{{- end }}

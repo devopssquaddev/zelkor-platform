@@ -5,7 +5,10 @@ models:
     parameters:
       openai_api_base: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
       default_headers:
-        Host: {{ .Values.gateway.hosts.aiGateway | default "ai-gateway.localhost" | quote }}
+        X-Zelkor-Guardrails-Bypass: "1"
+        {{- if .Values.gateway.hosts.aiGateway }}
+        Host: {{ .Values.gateway.hosts.aiGateway | quote }}
+        {{- end }}
 
 rails:
   input:

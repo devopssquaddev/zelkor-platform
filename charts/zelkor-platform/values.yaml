@@ -27,6 +27,9 @@ security:
   sandbox:
     enabled: true
     runtimeClass: gvisor
+  # Path A local overlay sets true. Production CE stays false until Path B.
+  networkPolicies:
+    enabled: false
 
 auth:
   sso:
@@ -191,6 +194,13 @@ aiGateway:
   enabled: true
   # Consumer key for in-cluster callers (MCP, agents). Upstream provider keys stay in gateway secrets.
   consumerKey: ""
+  # In-cluster OpenAI-compatible base URL (…/v1). Set by install.sh after Envoy data-plane Service exists.
+  internalUrl: ""
+  # ClusterIP/ExternalName service for in-cluster /v1 without Host: *.localhost
+  inClusterService:
+    enabled: true
+    port: 80
+    targetHost: ""
   providers:
     openai:
       apiKey: ""
@@ -296,6 +306,20 @@ aegra:
   enabled: true
   replicaCount: 1
   tenantOrgMappings: {}
+  # Local/eval only: merge graph ids into front-door aegra.json.
+  # Production: one ClusterIP Deployment per agent; clients use the Aegra
+  # front door (route by graph_id). Per-agent public HTTPRoute is opt-in.
+  # See internal/plan/requirements_drop_in_agent_contract.md §4.4. Default: none.
+  graphs: {}
+  graphModules:
+    enabled: false
+    configMapName: ""
+    mountPath: /app/graphs
+  # ClusterIP worker catalog for the front-door graph_id router.
+  # Production default empty. Overlay: [{ graphId, url }]
+  workers: []
+  mcpInject:
+    enabled: true
   image:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
     tag: "dev"
@@ -339,15 +363,16 @@ guardrails:
       tag: "dev"
       digest: ""
     configsDir: /etc/nemoguardrails/configs
-    defaultConfigId: topic_control
+    defaultConfigId: content_safety
     model: ""
+    intercept:
+      enabled: true
     aiGatewayRoute:
       enabled: false
     observability:
       otel:
         enabled: false
-    offTopicRefusal: "This assistant cannot help with that request. Please stay on topic for your configured domain."
-    complianceRefusal: "Request violated compliance, tenant privacy, and security policies."
+    safetyRefusal: "I can't help with that request."
     resources:
       requests:
         cpu: 100m
@@ -383,6 +408,7 @@ guardrails:
 
 mcp:
   enabled: true
+  extraBackends: []    # [{ name, url }] — customer ClusterIP MCP; empty in the platform chart
   image:
     repository: ghcr.io/devopssquaddev/zelkor-mcp
     tag: "dev"

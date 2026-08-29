@@ -1,10 +1,11 @@
 """
-Unified MCP gateway — multiplexes postgres, qdrant, and sandbox MCP backends.
+Unified MCP gateway — multiplexes native servers and mcp.extraBackends.
 Tool names are prefixed: postgres__query, qdrant__search_documents, sandbox__execute_python
 """
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import urllib.request
@@ -21,11 +22,63 @@ POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "http://zelkor-platform-mcp-pos
 QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "http://zelkor-platform-mcp-qdrant:8080")
 SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "http://zelkor-platform-mcp-sandbox:8080")
 
-BACKENDS = {
-    "postgres": POSTGRES_MCP_URL,
-    "qdrant": QDRANT_MCP_URL,
-    "sandbox": SANDBOX_MCP_URL,
-}
+RESERVED_PREFIXES = frozenset({"postgres", "qdrant", "sandbox", "egress", "nemo", "aegra"})
+_DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+
+def native_backends() -> Dict[str, str]:
+    return {
+        "postgres": POSTGRES_MCP_URL,
+        "qdrant": QDRANT_MCP_URL,
+        "sandbox": SANDBOX_MCP_URL,
+    }
+
+
+def parse_extra_backends(raw: str) -> List[Dict[str, str]]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    data = json.loads(text)
+    if data is None:
+        return []
+    if not isinstance(data, list):
+        raise ValueError("MCP_EXTRA_BACKENDS must be a JSON list of {name, url}")
+    return data
+
+
+def validate_extra_name(name: str) -> str:
+    if not name or not isinstance(name, str):
+        raise ValueError("extra backend name is required")
+    if "__" in name:
+        raise ValueError("extra backend name must not contain __")
+    if name in RESERVED_PREFIXES:
+        raise ValueError(f"extra backend name collides with reserved prefix: {name}")
+    if not _DNS_LABEL.match(name):
+        raise ValueError(f"extra backend name must be a DNS label: {name}")
+    return name
+
+
+def merge_backends(native: Dict[str, str], extra: List[Dict[str, str]]) -> Dict[str, str]:
+    merged = dict(native)
+    for item in extra:
+        if not isinstance(item, dict):
+            raise ValueError("extra backend entries must be objects with name and url")
+        name = validate_extra_name((item.get("name") or "").strip())
+        url = (item.get("url") or "").strip()
+        if not url:
+            raise ValueError(f"extra backend {name} is missing url")
+        if name in merged:
+            raise ValueError(f"extra backend name already in use: {name}")
+        merged[name] = url
+    return merged
+
+
+def load_backends() -> Dict[str, str]:
+    extra = parse_extra_backends(os.getenv("MCP_EXTRA_BACKENDS", "[]"))
+    return merge_backends(native_backends(), extra)
+
+
+BACKENDS = load_backends()
 
 _request_headers = threading.local()
 

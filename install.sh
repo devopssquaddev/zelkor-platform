@@ -289,6 +289,9 @@ fi
 if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
 fi
+if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")
+fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
   HELM_EXTRA_ARGS+=(-f "$FINSERVE_PLATFORM_OVERLAY")
@@ -317,6 +320,36 @@ kubectl --context "$KCTX" rollout status deployment/zelkor-platform-seaweedfs --
 log "  -> [2/5] LLM Gateway (Envoy AI Gateway)..."
 kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
 
+discover_internal_gateway_url() {
+  local svc=""
+  for _ in $(seq 1 30); do
+    svc=$(kubectl --context "$KCTX" get svc -n envoy-gateway-system -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep '^envoy-default-.*gateway-' | head -1 || true)
+    if [[ -n "$svc" ]]; then
+      echo "http://${svc}.envoy-gateway-system.svc.cluster.local:80/v1"
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+if GATEWAY_INTERNAL_URL=$(discover_internal_gateway_url); then
+  GATEWAY_TARGET_HOST="${GATEWAY_INTERNAL_URL#http://}"
+  GATEWAY_TARGET_HOST="${GATEWAY_TARGET_HOST%%/*}"
+  GATEWAY_TARGET_HOST="${GATEWAY_TARGET_HOST%%:*}"
+  log "Patching in-cluster AI Gateway URL for platform workloads: ${GATEWAY_INTERNAL_URL}"
+  helm upgrade zelkor-platform "$CHART_PATH" \
+    --kube-context "$KCTX" \
+    -f "$VALUES_FILE" \
+    --reuse-values \
+    --set "aiGateway.internalUrl=${GATEWAY_INTERNAL_URL}" \
+    --set "aiGateway.inClusterService.targetHost=${GATEWAY_TARGET_HOST}" \
+    --set "mcp.qdrantMCP.aiGatewayUrl=${GATEWAY_INTERNAL_URL}" \
+    "${HELM_EXTRA_ARGS[@]}"
+else
+  log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until aiGateway.internalUrl is set."
+fi
+
 log "  -> [3/5] Observability (Langfuse web + worker)..."
 kubectl --context "$KCTX" rollout status deployment/zelkor-platform-langfuse --timeout=5m
 kubectl --context "$KCTX" rollout status deployment/zelkor-platform-langfuse-worker --timeout=5m
@@ -341,19 +374,6 @@ if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/nu
     fi
   done
 fi
-
-discover_internal_gateway_url() {
-  local svc=""
-  for _ in $(seq 1 30); do
-    svc=$(kubectl --context "$KCTX" get svc -n envoy-gateway-system -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep '^envoy-default-.*gateway-' | head -1 || true)
-    if [[ -n "$svc" ]]; then
-      echo "http://${svc}.envoy-gateway-system.svc.cluster.local:80/v1"
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   log "Applying FinServe demo chart from $FINSERVE_CHART_PATH..."

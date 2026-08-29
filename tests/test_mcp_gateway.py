@@ -38,5 +38,13 @@ def test_platform_mcp_gateway_tools_list():
         assert any("postgres__" in n for n in names), f"Expected postgres tools, got {names}"
         assert any("qdrant__" in n for n in names), f"Expected qdrant tools, got {names}"
         assert any("sandbox__" in n for n in names), f"Expected sandbox tools, got {names}"
+        if any(n.startswith("postgres__") for n in names):
+            assert "postgres__query" in names
+            assert "postgres__list_tables" in names
+            assert "postgres__get_schema" in names
+            assert not any("qdrant-find" in (n or "") for n in names)
+        extra_prefix = os.environ.get("MCP_EXTRA_BACKEND_PREFIX")
+        if extra_prefix:
+            assert any(n.startswith(f"{extra_prefix}__") for n in names), names
     except httpx.ConnectError:
         pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
