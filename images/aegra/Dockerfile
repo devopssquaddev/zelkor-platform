@@ -19,7 +19,6 @@ COPY agents/tenant_auth.py /app/tenant_auth.py
 COPY images/aegra/aegra.json /app/aegra.json
 COPY images/aegra/auth_inject.py /app/auth_inject.py
 COPY images/aegra/mcp_inject.py /app/mcp_inject.py
-COPY images/aegra/openai_compat.py /app/openai_compat.py
 COPY images/aegra/migrate.py /app/migrate.py
 COPY images/aegra/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
 

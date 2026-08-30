@@ -26,7 +26,7 @@ KIND_LOAD_IMAGES="${KIND_LOAD_IMAGES:-false}"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
 IMAGE_TAG="${IMAGE_TAG:-dev}"
 # Pinned gVisor point release for kind sandbox bootstrap (see internal/plan/component_compatibility_matrix.md)
-GVISOR_RELEASE="${GVISOR_RELEASE:-20260601}"
+GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
 
 log() { echo "[install] $*"; }
 die() { echo "[install] ERROR: $*" >&2; exit 1; }
@@ -185,7 +185,7 @@ KCTX="kind-${CLUSTER_NAME}"
 
 # Ensure Envoy Gateway & Gateway API CRDs are deployed
 log "Deploying Envoy Gateway & Gateway API CRDs..."
-kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.0/install.yaml
+kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.1/install.yaml
 
 # Enable Backend extension API in Envoy Gateway config
 log "Enabling Backend extension API in Envoy Gateway config..."
@@ -242,7 +242,7 @@ data:
                     - imagePullPolicy: IfNotPresent
                       name: envoy-ratelimit
         shutdownManager:
-          image: envoyproxy/gateway:v1.9.0
+          image: envoyproxy/gateway:v1.9.1
       type: Kubernetes
 EOF
 kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system

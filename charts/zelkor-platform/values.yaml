@@ -133,7 +133,7 @@ clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: "25.12-alpine"
+    tag: "26.7.5-alpine"
   auth:
     username: clickhouse
     password: ""
@@ -243,13 +243,13 @@ langfuse:
   replicaCount: 1
   image:
     repository: langfuse/langfuse
-    tag: "4.21.0"
+    tag: "4.24.0"
   worker:
     enabled: true
     replicaCount: 1
     image:
       repository: langfuse/langfuse-worker
-      tag: "4.21.0"
+      tag: "4.24.0"
   s3:
     bucket: langfuse
     region: auto
@@ -608,7 +608,7 @@ seaweedfs:
   enabled: true
   image:
     repository: chrislusf/seaweedfs
-    tag: "3.85"
+    tag: "4.44"
   auth:
     accessKey: ""
     secretKey: ""

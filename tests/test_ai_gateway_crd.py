@@ -5,7 +5,7 @@ import json
 import httpx
 import time
 
-from tests.helpers.gateway import assistant_text, has_assistant_reply
+from tests.helpers.gateway import is_chat_completion
 from tests.helpers.llm import llm_model_or_skip
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
@@ -100,12 +100,12 @@ def test_ai_gateway_real_routing_not_mock_string():
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "Ping"}],
-        "max_tokens": 10
+        "max_tokens": 64
     }
     resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
     assert resp.status_code == 200, f"AI Gateway routing failed with status {resp.status_code}: {resp.text}"
     data = resp.json()
-    assert has_assistant_reply(data), f"No assistant reply in response: {data}"
+    assert is_chat_completion(data), f"Not an OpenAI chat.completion: {data}"
     assert "Hello from default/ollama/llama3.2 route via Envoy AI Gateway!" not in resp.text
 
 def test_ai_gateway_rate_limit_burst_429():

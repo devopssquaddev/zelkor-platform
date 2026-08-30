@@ -29,7 +29,7 @@ spec:
           env:
             - name: OPENAI_API_KEY
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
-            - name: OPENAI_API_BASE
+            - name: MAIN_MODEL_BASE_URL
               value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
             {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
           volumeMounts:

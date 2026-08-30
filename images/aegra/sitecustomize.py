@@ -1,4 +1,4 @@
-"""Auto-loaded wrap: auth.path inject, OpenAI-compat normalize, Mode B MCP inject."""
+"""Auto-loaded wrap: auth.path inject, Mode B MCP inject."""
 import logging
 import os
 import sys
@@ -15,13 +15,6 @@ try:
     ensure_auth_config()
 except Exception:
     _log.exception("auth.path inject failed")
-
-try:
-    from openai_compat import patch_httpx
-
-    patch_httpx()
-except Exception:
-    _log.exception("openai_compat patch failed")
 
 if os.getenv("MCP_INJECT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
     from mcp_inject import patch_langgraph, write_inject_status

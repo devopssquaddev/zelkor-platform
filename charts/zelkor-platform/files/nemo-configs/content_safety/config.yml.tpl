@@ -3,7 +3,7 @@ models:
     engine: openai
     model: {{ .Values.guardrails.nemo.model | default "openai/gpt-4o-mini" | quote }}
     parameters:
-      openai_api_base: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+      base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         {{- if .Values.gateway.hosts.aiGateway }}
