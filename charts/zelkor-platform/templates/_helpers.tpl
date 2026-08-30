@@ -54,6 +54,27 @@ Identity env for Aegra and MCP. Dev token shortcuts are off unless a local overl
   value: {{ (.Values.auth.jwtSecret | default "") | quote }}
 {{- end }}
 
+{{/*
+Aegra OTel → Langfuse. Uses in-cluster Langfuse Service DNS, not *.localhost.
+Only emitted when otelTargets or init keys are set.
+*/}}
+{{- define "zelkor-platform.aegraOtelEnv" -}}
+{{- $targets := (.Values.aegra.otelTargets | default "") | toString | trim -}}
+{{- $hasKeys := and .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey -}}
+{{- if or $targets $hasKeys }}
+- name: OTEL_TARGETS
+  value: {{ if $targets }}{{ $targets | quote }}{{ else }}{{ "LANGFUSE" | quote }}{{ end }}
+- name: LANGFUSE_BASE_URL
+  value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
+{{- if $hasKeys }}
+- name: LANGFUSE_PUBLIC_KEY
+  value: {{ .Values.langfuse.init.projectPublicKey | quote }}
+- name: LANGFUSE_SECRET_KEY
+  value: {{ .Values.langfuse.init.projectSecretKey | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "zelkor-platform.postgresPassword" -}}
 {{- required "postgresql.auth.password must be set in a values overlay. The chart ships no default password." .Values.postgresql.auth.password -}}
 {{- end }}

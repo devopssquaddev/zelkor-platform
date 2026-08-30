@@ -1,6 +1,1 @@
-fastapi>=0.115.0
-uvicorn>=0.32.0
-pydantic>=2.9.0
-httpx>=0.27.0
-langgraph>=0.2.0
-langchain-core>=0.3.0
+# LangChain / OpenAI client come from the zelkor-aegra base image.

@@ -377,13 +377,10 @@ fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   log "Applying FinServe demo chart from $FINSERVE_CHART_PATH..."
+  helm dependency update "$FINSERVE_CHART_PATH" >/dev/null
   FINSERVE_HELM_ARGS=()
-  if [[ -n "${OLLAMA_API_KEY:-}" ]]; then
-    FINSERVE_HELM_ARGS+=(--set "platform.aiGatewayApiKey=${OLLAMA_API_KEY}")
-  fi
-  if GATEWAY_INTERNAL_URL=$(discover_internal_gateway_url); then
-    FINSERVE_HELM_ARGS+=(--set "platform.aiGatewayUrl=${GATEWAY_INTERNAL_URL}")
-    log "FinServe in-cluster AI Gateway URL: ${GATEWAY_INTERNAL_URL}"
+  if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
+    FINSERVE_HELM_ARGS+=(--set-string "zelkor-agent.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
   fi
   helm upgrade --install finserve "$FINSERVE_CHART_PATH" \
     --kube-context "$KCTX" \
@@ -393,7 +390,7 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   log "Tracking FinServe demo rollout..."
   log "  -> [1/2] Seeding demo portfolio database..."
   kubectl --context "$KCTX" wait --for=condition=complete job -l app.kubernetes.io/instance=finserve --timeout=3m || true
-  log "  -> [2/2] FinServe Wealth Management Agent..."
+  log "  -> [2/2] FinServe ClusterIP worker (graph_id=finserve)..."
   kubectl --context "$KCTX" rollout status deployment/finserve-agent --timeout=5m
 fi
 
@@ -419,7 +416,7 @@ cat <<EOF
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
-  FinServe Demo Agent     finserve-agent              http://finserve.localhost:8088/docs
+  FinServe Demo (front door) zelkor-platform-aegra    http://aegra.localhost:8088  graph_id=finserve
 EOF
 fi
 cat <<EOF
@@ -451,7 +448,7 @@ if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
   [FinServe Demo Agent]
-    URL:              http://finserve.localhost:8088/runs/stream
+    URL:              http://aegra.localhost:8088  (platform Aegra, graph_id=finserve)
     Bearer Tokens:    Authorization: Bearer dev:Bank_Alpha
                       Authorization: Bearer dev:Bank_Beta
 EOF
@@ -482,11 +479,16 @@ EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
-  2. Test FinServe Agent Stream:
-     curl -X POST http://finserve.localhost:8088/runs/stream \\
+  2. Test FinServe via platform Aegra (graph_id=finserve):
+     curl -X POST http://aegra.localhost:8088/threads \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer dev:Bank_Alpha" \\
-       -d '{"assistant_id":"finserve_agent","input":{"messages":[{"role":"user","content":"What is my portfolio valuation?"}]}}'
+       -d '{"if_exists":"do_nothing"}'
+     curl -X POST http://aegra.localhost:8088/runs/wait \\
+       -H "Content-Type: application/json" \\
+       -H "Authorization: Bearer dev:Bank_Alpha" \\
+       -H "X-Graph-ID: finserve" \\
+       -d '{"graph_id":"finserve","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
 EOF
 fi
 cat <<EOF

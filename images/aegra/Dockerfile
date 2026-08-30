@@ -6,6 +6,7 @@ LABEL org.opencontainers.image.description="Zelkor Aegra production runtime (aeg
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
     AEGRA_CONFIG=/app/aegra.json \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -16,8 +17,10 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY agents/tenant_auth.py /app/tenant_auth.py
 COPY images/aegra/aegra.json /app/aegra.json
-COPY images/aegra/graph_router.py /app/graph_router.py
+COPY images/aegra/auth_inject.py /app/auth_inject.py
 COPY images/aegra/mcp_inject.py /app/mcp_inject.py
+COPY images/aegra/openai_compat.py /app/openai_compat.py
+COPY images/aegra/migrate.py /app/migrate.py
 COPY images/aegra/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
@@ -25,4 +28,4 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
 USER 1000
 
 EXPOSE 8000
-CMD ["uvicorn", "graph_router:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "aegra_api.main:app", "--host", "0.0.0.0", "--port", "8000"]

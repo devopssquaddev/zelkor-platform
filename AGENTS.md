@@ -24,6 +24,10 @@ zelkor-platform/
 └── .cursor/rules/              # AI engineering role rules
 ```
 
+## Upstream reference (local workspace only)
+
+A sibling `vendor/` folder (not in this repo) may hold pinned OSS checkouts such as Aegra. Those trees are read-only reference. Never edit them or copy their source into this repository. See `.cursor/rules/upstream-oss-reference.mdc`.
+
 ## Examples (demo applications)
 
 Demo workloads validate the platform but are **not** bundled into the production chart.
@@ -34,7 +38,7 @@ Demo workloads validate the platform but are **not** bundled into the production
 - Do not reference `examples/` from `charts/zelkor-platform/`.
 - Production deploys: platform chart only. Local/test: `install.sh` runs platform + example charts (two Helm releases).
 - Combined platform+demo tasks: implement platform first and stop; then overlay the demo. See `.cursor/rules/platform-demo-boundary.mdc`.
-- Customer/demo agents are **separate ClusterIP Deployments** (`FROM zelkor-aegra`, one independently released graph). Do not register them on platform Aegra via `aegra.graphs`. Clients use the platform Aegra front door by default; per-agent public HTTPRoutes are opt-in only.
+- Customer/demo agents are **separate ClusterIP Deployments** (`FROM zelkor-aegra`, one independently released graph). Do not register them on platform Aegra via `aegra.graphs`. Envoy routes by `X-Graph-ID` / `?graph_id=` on the shared Aegra host; vanity HTTPRoutes are opt-in only.
 - **BYO MCP:** Do not add vendor MCP images (ServiceNow, Jira, …) to the platform chart. Extra servers register via generic `mcp.extraBackends: []` (customer overlay). Native MCP lives under `mcp/`. Postgres is a **thin first-party** server (`query` + discovery); do not wrap DBA Postgres MCPs. Qdrant **imports** official `mcp-server-qdrant` as a library (do not paste sources into `mcp/wrappers/`). See `internal/plan/architecture_native_mcp_oss_wrap.md` and `internal/plan/requirements_native_mcp_servers.md` §2.1 / §2.3 (multi-root).
 - Full layout: documented in `internal/requirements/dev/examples_and_demos.md` (read from multi-root workspace).
 
@@ -58,6 +62,7 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 - Tenant isolation via Aegra `@auth.authenticate` handlers
 - No `kubectl apply` — all deployments are Helm/GitOps declarative
 - **No inline Python in ConfigMaps:** App modules live in container images (`images/`, `ghcr.io/devopssquaddev/zelkor-*`). Helm `files/` is for config (SQL, Colang, `aegra.json`), not application source. See `.cursor/rules/helm-python-packaging.mdc`.
+- **Necessary length:** Chat and new docs stay as short as the task needs. See `.cursor/rules/necessary-length.mdc`.
 - **Tests must not shape the platform:** Do not bake kind hosts, fixture tenants, or pytest-only Services/Routes into `charts/zelkor-platform/`. Tests env-override; kind values stay in `profiles/values-local.yaml`. After each substantial change, run the checklist in `.cursor/rules/tests-do-not-shape-platform.mdc`.
 - **Git Commit & Tagging Standard:** Commit major milestones with Conventional Commits; create annotated tags (`git tag -a`) for release points and major architectural milestones.
 

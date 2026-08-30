@@ -9,7 +9,7 @@ The Community Edition local development environment deploys all seven core platf
 1. **Monitor (Observability):** Langfuse v2 seeded with golden datasets, prompts, and tracing.
 2. **Govern (LLM Gateway):** Official Envoy AI Gateway controller with Gateway API CRDs (`AIGatewayRoute`, `AIServiceBackend`, `BackendSecurityPolicy`), rate limiting, and multi-provider routing.
 3. **Guardrails:** NeMo Guardrails (CPU) on the **default** AI Gateway `/v1/chat/completions` path (intercept plane). Direct NeMo API remains available at `nemo.localhost` for debugging.
-4. **Deploy (Agent Orchestration):** Aegra (`aegra-api` via uvicorn) is the **default public** Agent Protocol front door (Postgres checkpointer, tenant auth, wrap env `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `MCP_URL`). The platform chart ships no graphs. Each customer/demo agent is its **own ClusterIP** image and Deployment (`FROM` Zelkor Aegra), reached via the front door (`graph_id`). Helm `aegra.graphs` / `graphModules` and per-agent public HTTPRoutes are local/eval or explicit opt-in only.
+4. **Deploy (Agent Orchestration):** Aegra (`aegra-api` via uvicorn) is the **default public** Agent Protocol front door (Postgres checkpointer, tenant auth, wrap env `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `MCP_URL`). Envoy Gateway routes by `X-Graph-ID` / `?graph_id=` when more than one Service is attached; a single backend needs no routing key. The empty-graph front door does **not** join Aegra's Redis job queue (`REDIS_BROKER_ENABLED=false`); ClusterIP workers do, with a per-release Redis prefix. Alembic runs out-of-band (Helm Job + front-door init). The platform chart ships no graphs. Each customer/demo agent is its **own ClusterIP** image and Deployment (`FROM` Zelkor Aegra). Helm `aegra.graphs` / `graphModules` and per-agent vanity HTTPRoutes are local/eval or explicit opt-in only.
 5. **Test (Evaluation):** Langfuse pre-seeded evaluation datasets and test suites (BASE-01 to BASE-05).
 6. **Semantic Memory & Tool Protocol:** Qdrant vector database with Model Context Protocol tools and gVisor sandboxed code execution. Native tools are `postgres__*`, `qdrant__*`, `sandbox__*` on the unified MCP gateway. Customer SaaS MCP (ServiceNow and others) is **your** ClusterIP server registered via `mcp.extraBackends` — Zelkor does not ship vendor MCP images.
 
@@ -86,11 +86,11 @@ All services and Web UIs are accessible via Kubernetes Gateway API on port `8088
 | **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Project: `Zelkor Platform`) |
 | **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
 | **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
-| **FinServe Demo Agent** | [http://finserve.localhost:8088/docs](http://finserve.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
+| **FinServe Demo** | [http://aegra.localhost:8088](http://aegra.localhost:8088) (`graph_id=finserve`) | `Authorization: Bearer dev:Bank_Alpha` |
 | **Native MCP Gateway** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | `Authorization: Bearer dev:Bank_Alpha`, `X-Tenant-ID: Bank_Alpha` |
 | **NeMo Guardrails** | [http://nemo.localhost:8088/v1/rails/configs](http://nemo.localhost:8088/v1/rails/configs) | Native NeMo server (`content_safety` profile: LLM self-check I/O rails) |
 
-Platform security primitives (MCP tenant scoping, gVisor sandbox, NeMo intercept on `/v1`) are validated by `tests/test_mcp_*.py`, `tests/test_nemo_guardrails.py`, and `tests/test_drop_in_intercept.py`. FinServe is the reference demo overlay; thinning it to the drop-in contract is a follow-up PR.
+Platform security primitives (MCP tenant scoping, gVisor sandbox, NeMo intercept on `/v1`) are validated by `tests/test_mcp_*.py`, `tests/test_nemo_guardrails.py`, and `tests/test_drop_in_intercept.py`. FinServe is a Mode B ClusterIP worker behind the platform Aegra front door (`graph_id=finserve`).
 
 ## Quick Tests
 
@@ -141,14 +141,17 @@ helm upgrade --install my-agent charts/zelkor-agent \
   --set platform.consumerKey="$CONSUMER_KEY"
 ```
 
-Register the worker on the platform overlay (not by merging graphs into the front-door pod):
+Register the worker on the shared Aegra host (not by merging graphs into the front-door pod). Preferred: set `sharedRoute` on `charts/zelkor-agent`. Overlay alternative:
 
 ```yaml
 aegra:
   workers:
     - graphId: my-agent
-      url: http://my-agent-zelkor-agent:8000
+      service: my-agent-zelkor-agent
+      port: 8000
 ```
+
+Clients set `X-Graph-ID: my-agent` (or `?graph_id=my-agent`) on every call to a non-default backend, including stream/join/cancel.
 
 ```dockerfile
 # Agent image — one independently released graph
@@ -156,6 +159,8 @@ FROM ghcr.io/devopssquaddev/zelkor-aegra:dev
 COPY my_agent.py /app/my_agent.py
 COPY aegra.json /app/aegra.json
 ```
+
+`aegra.json` should keep `"auth": {"path": "./tenant_auth.py:auth"}` (the wrap injects it if omitted). Prefer `langchain.agents.create_agent` over deprecated `langgraph.prebuilt.create_react_agent`. If the image has Deep Agents, Mode B also injects into `create_deep_agent`. FinServe stays on `create_agent`.
 
 Local/eval only: `aegra.graphs` + ConfigMap `graphModules` on the platform Aegra pod, or a demo-only public HTTPRoute. Do not use those paths for fleets of independently released agents.
 

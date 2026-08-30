@@ -40,6 +40,7 @@ Update governing requirement and specification documents whenever:
 ## 4. Mapping Matrix
 - **Platform Features & Helm Profiles:** `internal/plan/phase_1_requirements.md` (or relevant phase doc)
 - **Drop-in agent contract (intercept / wrap / MCP):** `internal/plan/requirements_drop_in_agent_contract.md`
+- **Deep Agents + `zelkor` CLI (Phase 2):** `internal/plan/requirements_deepagents_zelkor.md`
 - **Native MCP / BYO extra backends:** `internal/plan/requirements_native_mcp_servers.md` (§2.3 extra backends)
 - **Native Postgres / Qdrant MCP implementation:** `internal/plan/architecture_native_mcp_oss_wrap.md` (thin Postgres; Qdrant pip-wrap)
 - **Component pins & compatibility matrix:** `internal/plan/component_compatibility_matrix.md`

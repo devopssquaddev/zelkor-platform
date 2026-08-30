@@ -3,17 +3,27 @@ global:
   tier: oss
 
 gateway:
-  enabled: true
-  gatewayName: "zelkor-platform-gateway"
-  namespace: "default"
-  host: "finserve.localhost"
+  enabled: false
 
-agent:
-  replicaCount: 1
-
-executor:
-  replicaCount: 1
-  runtimeClassName: gvisor
+zelkor-agent:
+  auth:
+    jwtSecret: "zelkor-local-jwt-secret"
+    devTokens:
+      enabled: true
+      prefix: "dev:"
+    trustTenantHeader: true
+  platform:
+    consumerKey: "dev-key"
+    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
+    valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
+    defaultLlmModel: "gpt-oss:20b"
+    langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
+    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    otelTargets: "LANGFUSE"
+  extraEnv:
+    - name: QDRANT_COLLECTION
+      value: "finserve_policies"
 
 platform:
   postgresHost: "zelkor-platform-postgresql"
@@ -25,11 +35,6 @@ platform:
   qdrantPort: 6333
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
   qdrantCollection: "finserve_policies"
-  aiGatewayAutoDiscover: true
-  aiGatewayNamespace: "envoy-gateway-system"
-  defaultLlmModel: "gpt-oss:20b"
-  aiGatewayHostHeader: "ai-gateway.localhost"
-  aegraUrl: "http://zelkor-platform-aegra:8000"
   langfuseHost: "http://zelkor-platform-langfuse:3000"
   langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
   langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"

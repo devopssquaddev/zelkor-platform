@@ -1,0 +1,30 @@
+---
+description: Write only as much as the task needs; chat replies and new docs stay short by default
+alwaysApply: true
+---
+
+# Necessary length
+
+Write the shortest text that still does the job. Length tracks task complexity — not a default essay.
+
+Grounded in: [Anthropic verbosity](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5) (“Skip non-essential context, keep examples minimal”); [llmbestpractices](https://llmbestpractices.com/prompt-engineering/best-practices) (cut what does not change the answer; “be concise” is weak — bound length); Claude Code / Copilot CLI (direct answer, no preamble/postamble).
+
+## Chat
+
+- Lead with the answer. Stop when the user can act.
+- Prefer 1–3 short sentences or a small list. Expand only if they ask or the task is multi-step.
+- No preamble (“Great question”, “Here’s a comprehensive…”), no closing recap of what you just said.
+- One example beats a paragraph describing the format. Skip a second example unless it shows a different case.
+- State a rule once. Do not rephrase it.
+
+## Documents (`plan/`, `requirements/`, `docs/`, new `.md`)
+
+- Open with the decision or contract. Then acceptance criteria. Then a revision-history row if the living-spec rule applies.
+- Do not add Overview/Background/Rationale sections that restate the title or the decision.
+- Prefer a table or a short numbered list over narrative. Cut any paragraph the spec still works without.
+- New spec: aim at one screen (~40–80 lines) unless the user asked for a full ADR. Split later; do not pad now.
+- Do not invent extra sections “for completeness.”
+
+## Test
+
+Would a colleague with the title and this file still know what to do if you deleted the last third? If yes, delete it.

@@ -85,3 +85,30 @@ def test_unauthenticated_request():
     result = asyncio.run(auth.authenticate(headers))
     assert result["is_authenticated"] is False
     assert result["identity"] == "anonymous"
+
+
+def test_jwt_rejects_wrong_signature(monkeypatch):
+    if not jwt:
+        pytest.skip("PyJWT not installed")
+    monkeypatch.delenv("AUTH_DEV_TOKENS_ENABLED", raising=False)
+    monkeypatch.delenv("AUTH_DEV_TOKEN_PREFIX", raising=False)
+    auth = TenantAuth(secret_key=SECRET_KEY_32)
+    token = jwt.encode(
+        {"tenant_id": "tenant_a"},
+        "other-secret-key-32bytes-min!!!",
+        algorithm="HS256",
+    )
+    result = asyncio.run(auth.authenticate({"authorization": f"Bearer {token}"}))
+    assert result["is_authenticated"] is False
+
+
+def test_jwt_requires_secret(monkeypatch):
+    if not jwt:
+        pytest.skip("PyJWT not installed")
+    monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
+    monkeypatch.delenv("AUTH_DEV_TOKENS_ENABLED", raising=False)
+    auth = TenantAuth(secret_key="")
+    token = jwt.encode({"tenant_id": "tenant_a"}, SECRET_KEY_32, algorithm="HS256")
+    result = asyncio.run(auth.authenticate({"authorization": f"Bearer {token}"}))
+    assert result["is_authenticated"] is False
+    assert "AUTH_JWT_SECRET" in (result.get("error") or "")

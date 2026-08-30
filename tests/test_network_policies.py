@@ -35,3 +35,11 @@ def test_network_policies_present_when_enabled(kubecontext):
     assert any("mcp-gateway-egress" in n for n in names), names
     assert any("sandbox-worker-ingress" in n for n in names), names
     assert any("aegra-egress" in n for n in names), names
+    aegra = next(i for i in items if "aegra-egress" in i["metadata"]["name"])
+    peers = []
+    for rule in (aegra.get("spec") or {}).get("egress") or []:
+        for peer in rule.get("to") or []:
+            labels = (peer.get("podSelector") or {}).get("matchLabels") or {}
+            peers.append(labels)
+    assert not any(p.get("zelkor.io/workload-type") == "agent" for p in peers), peers
+    assert any(p.get("app.kubernetes.io/component") == "postgresql" for p in peers), peers

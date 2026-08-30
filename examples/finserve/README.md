@@ -1,6 +1,6 @@
 # FinServe AI: Multi-Tenant Wealth Management Reference Agent
 
-FinServe AI is the reference application for the **Zelkor Platform**. It demonstrates how to build and operate multi-tenant, compliance-ready AI agents with native guardrails, vector memory, untrusted code sandboxing, policy-governed LLM routing, and full OpenTelemetry tracing.
+FinServe AI is the reference **drop-in** demo for the Zelkor Platform: a Mode B `langchain.agents.create_agent` graph (`FROM zelkor-aegra`) with no Zelkor SDKs. Clients use the **platform Aegra** Agent Protocol host (`graph_id=finserve`). Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
 
 ---
 
@@ -8,12 +8,12 @@ FinServe AI is the reference application for the **Zelkor Platform**. It demonst
 
 | Pillar | Implementation in FinServe AI | Platform Subsystem |
 | :--- | :--- | :--- |
-| **Conversational Guardrails** | Rejects off-topic, chit-chat, and out-of-domain queries | **NeMo Guardrails CPU** (FastAPI / Colang) |
-| **Multi-Tenant Isolation** | Scopes relational records (`portfolios`) and vector policies (`finserve_policies`) by `tenant_id` | **PostgreSQL** + **Qdrant** |
-| **Untrusted Code Execution** | Executes arbitrary quantitative calculations & projections in user-space isolation | **gVisor** (`RuntimeClass: gvisor`) |
-| **Policy-Governed LLM Routing** | Standardized OpenAI-compatible inference with consumer key and rate-limit policies | **Envoy AI Gateway** (`/v1/chat/completions`) |
-| **Full-Stack Observability** | Ingests multi-span execution waterfalls, token usage, and security tags | **Langfuse v2** (`/api/public/ingestion`) |
-| **Stateful Orchestration** | FinServe LangGraph (`files/finserve_agent.py`, graph id `finserve`) as its **own ClusterIP** Deployment | **Aegra** front door (`aegra-api`; platform ships no graphs; default public Agent Protocol host) |
+| **Conversational Guardrails** | Off-topic and jailbreak text refused on default `/v1` | **NeMo intercept** (not a graph node) |
+| **Multi-Tenant Isolation** | MCP wrappers scope SQL and Qdrant by caller identity | **PostgreSQL** + **Qdrant** via MCP gateway |
+| **Untrusted Code Execution** | Model calls `sandbox__execute_python` | **gVisor** warm pool |
+| **Policy-Governed LLM Routing** | `ChatOpenAI` via wrap `OPENAI_BASE_URL` | **Envoy AI Gateway** |
+| **Full-Stack Observability** | Gateway OTel GenAI spans | **Langfuse** |
+| **Stateful Orchestration** | ClusterIP worker, graph id `finserve` | **Envoy** `X-Graph-ID` → worker; platform Aegra is the default |
 
 ---
 
@@ -23,33 +23,29 @@ FinServe AI is the reference application for the **Zelkor Platform**. It demonst
 flowchart TD
     UserAlpha["User (Bank_Alpha)"]
     UserBeta["User (Bank_Beta)"]
-    
+
     subgraph platform ["Zelkor Platform"]
-        Gateway["Envoy Gateway (demo HTTPRoute: finserve.localhost — TTFV only)"]
-        Agent["FinServe ClusterIP Deployment (own image; in-process shim today)"]
-        NeMo["NeMo Guardrails CPU (Topic Boundary)"]
-        AIGateway["Envoy AI Gateway (LLM Router)"]
-        Aegra["Aegra front door (empty graphs; default public Agent Protocol)"]
+        Front["Envoy (X-Graph-ID / ?graph_id=)"]
+        Agent["FinServe ClusterIP FROM zelkor-aegra"]
+        NeMo["NeMo intercept on /v1"]
+        AIGateway["Envoy AI Gateway"]
+        MCP["MCP gateway"]
         Postgres[("PostgreSQL (Portfolios)")]
         Qdrant[("Qdrant (Semantic Policies)")]
-        Langfuse["Langfuse v2 (Telemetry & Prompts)"]
-        
-        subgraph sandbox ["Untrusted Execution"]
-            CodeExec["Code Executor (gVisor Sentry)"]
-        end
+        Langfuse["Langfuse (OTel)"]
+        CodeExec["Sandbox workers (gVisor)"]
     end
 
-    UserAlpha --> Gateway
-    UserBeta --> Gateway
-    Gateway --> Agent
-    
-    Agent -->|"1. Guardrails Check"| NeMo
-    Agent -->|"2. MCP postgres"| Postgres
-    Agent -->|"3. MCP qdrant"| Qdrant
-    Agent -->|"4. Sandboxed Python"| CodeExec
-    Agent -->|"5. Chat Completions"| AIGateway
-    Agent -.->|"target: reached via front door graph_id; demo HTTPRoute is temporary"| Aegra
-    Agent -.->|"OTel Spans & Tags"| Langfuse
+    UserAlpha --> Front
+    UserBeta --> Front
+    Front -->|"X-Graph-ID: finserve"| Agent
+    Agent -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
+    AIGateway --> NeMo
+    Agent -->|"Mode B inject MCP_URL"| MCP
+    MCP --> Postgres
+    MCP --> Qdrant
+    MCP --> CodeExec
+    AIGateway -.->|"OTel"| Langfuse
 ```
 
 ---
@@ -58,87 +54,73 @@ flowchart TD
 
 ### A. Deploy via Helm
 
-FinServe is packaged as a standalone Helm release in `examples/finserve/chart`:
+`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlay (`aegra.workers` Service refs) and this chart. Manual:
 
 ```bash
+helm dependency update examples/finserve/chart
 helm upgrade --install finserve examples/finserve/chart \
   -f examples/finserve/chart/values-local.yaml \
   --wait --timeout 10m
 ```
 
-### B. Querying the Agent via Gateway API
+Register on the platform release (already in `values-platform-overlay.yaml`):
 
-Execute queries using either `Authorization: Bearer dev:<tenant_id>` or `X-Tenant-ID`:
+```yaml
+aegra:
+  workers:
+    - graphId: finserve
+      service: finserve-agent
+      port: 8000
+```
+
+### B. Query via platform Aegra
 
 ```bash
-# Query Bank_Alpha portfolio holdings
-curl -X POST http://127.0.0.1:8088/runs/stream \
-  -H "Host: finserve.localhost" \
+curl -X POST http://127.0.0.1:8088/runs/wait \
+  -H "Host: aegra.localhost" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer dev:Bank_Alpha" \
+  -H "X-Graph-ID: finserve" \
   -d '{
-    "assistant_id": "finserve_agent",
+    "graph_id": "finserve",
     "input": {
-      "messages": [{"role": "user", "content": "What is our asset allocation policy for high-growth tech?"}]
+      "messages": [{"role": "human", "content": "What is our asset allocation policy for high-growth tech?"}]
     }
   }'
 ```
 
-```bash
-# Execute sandboxed financial projection on gVisor
-curl -X POST http://127.0.0.1:8088/runs/stream \
-  -H "Host: finserve.localhost" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev:Bank_Alpha" \
-  -d '{
-    "assistant_id": "finserve_agent",
-    "input": {
-      "messages": [{"role": "user", "content": "Predict my portfolio growth over 5 years assuming 7% variance."}]
-    }
-  }'
-```
+There is no `finserve.localhost` HTTPRoute by default.
 
 ---
 
 ## 4. Observability & Tracing
 
-Open the Langfuse UI at [http://langfuse.localhost:8088](http://langfuse.localhost:8088) (`admin@zelkor.local` / `zelkor-dev-password`) to inspect live traces under the **FinServe AI** project:
-
-- `nemo_guardrails_input_check`: Topic moderation latency and refusal status.
-- `query_database_postgres`: Parameterized SQL query execution and record count.
-- `search_policies_qdrant`: Semantic vector similarity scores and matched policy payloads.
-- `execute_code_gvisor`: Sandboxed subprocess stdout, stderr, and container escape containment status.
-- `ai_gateway_llm_chat`: Upstream model latency, token counts, and completion responses.
+Open Langfuse at [http://langfuse.localhost:8088](http://langfuse.localhost:8088). LLM spans come from Envoy AI Gateway OTel, not an agent-side Langfuse SDK.
 
 ---
 
 ## 5. Automated Validation Matrix
 
-Gate A validation is split across two layers:
-
 ```bash
-# Platform conformance (MCP, NeMo, gVisor)
-pytest tests/test_mcp_postgres.py tests/test_mcp_qdrant.py tests/test_mcp_sandbox.py tests/test_nemo_guardrails.py tests/test_mcp_gateway.py -v
+# Platform conformance (no examples required)
+INSTALL_EXAMPLES=false ./install.sh
+pytest tests/ -v
 
-# FinServe E2E smokes
+# FinServe E2E smokes (platform Aegra, graph_id=finserve)
 pytest examples/finserve/tests/ -v
 ```
 
 | Layer | Location | Coverage |
 | :--- | :--- | :--- |
-| Platform Gate | `tests/test_mcp_*.py`, `tests/test_nemo_guardrails.py` | Direct MCP tenant SQL, Qdrant isolation, gVisor sandbox, NeMo guardrails |
-| FinServe E2E | `examples/finserve/tests/test_base*.py` | Agent `/runs/stream` smokes (200, tenant_id, guardrails, traces) |
+| Platform Gate | `tests/` | MCP, NeMo intercept, gVisor, extraBackends unit tests |
+| FinServe E2E | `examples/finserve/tests/` | Agent Protocol smokes on the front door |
 
 ---
 
-## 6. Native MCP Architecture (Implemented)
+## 6. Mode B MCP
 
-FinServe is a **LangGraph ReAct agent** that discovers tools from the unified MCP gateway and lets the LLM choose calls via OpenAI-style tool calling (`MCP_URL`):
+The graph source does not embed an MCP client. At worker process start, Zelkor lists tools from `MCP_URL` and binds them onto `langchain.agents.create_agent`. Each `tools/call` uses the run's tenant (`Authorization` + `X-Tenant-ID`).
 
-- `postgres__query` — read-only SQL; FinServe passes `WHERE tenant_id = %s`
-- `qdrant__search_documents` — tenant payload-filtered vector search (`finserve_policies` via overlay)
-- `sandbox__execute_python` — gVisor warm pool code execution
+Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`.
 
-Customer SaaS MCP (ServiceNow and others) is not part of this demo. Register extra servers on the platform overlay (`mcp.extraBackends`); keep vendor credentials off the agent.
-
-Input guardrails delegate to platform NeMo only (no agent-side topic regex). Sandbox workers run as platform `mcp-sandbox-worker` pods (`RuntimeClass: gvisor`).
+Customer SaaS MCP is not part of this demo. Register extra servers on the platform overlay (`mcp.extraBackends`).

@@ -306,20 +306,36 @@ aegra:
   enabled: true
   replicaCount: 1
   tenantOrgMappings: {}
+  # Empty-graph default stays off so this pod does not BLPOP the job list.
+  # Executing / HA installs set redisBroker.enabled and get a prefix pair.
+  redisBroker:
+    enabled: false
+  redis:
+    channelPrefix: ""
+    queueKey: ""
+  runMigrationsOnStartup: false
+  workerCount: 3
+  nJobsPerWorker: 10
+  workerDrainTimeout: 30
+  terminationGracePeriodSeconds: 35
+  # Comma-separated Aegra OTEL_TARGETS (LANGFUSE, PHOENIX, GENERIC). Empty = off.
+  otelTargets: ""
   # Local/eval only: merge graph ids into front-door aegra.json.
-  # Production: one ClusterIP Deployment per agent; clients use the Aegra
-  # front door (route by graph_id). Per-agent public HTTPRoute is opt-in.
+  # Production: one ClusterIP Deployment per agent; Envoy routes by
+  # X-Graph-ID / ?graph_id=. Per-agent vanity HTTPRoute is opt-in.
   # See internal/plan/requirements_drop_in_agent_contract.md §4.4. Default: none.
   graphs: {}
   graphModules:
     enabled: false
     configMapName: ""
     mountPath: /app/graphs
-  # ClusterIP worker catalog for the front-door graph_id router.
-  # Production default empty. Overlay: [{ graphId, url }]
+  # Extra Agent Protocol backends on gateway.hosts.aegra (overlay).
+  # Each entry: { graphId, service, port } — in-cluster Service, not an http:// URL.
+  # Empty = topology 1 (catch-all / → this Service). No fixture graphId.
   workers: []
+  # Mode B inject belongs on worker pods (charts/zelkor-agent), not the empty-graph front door.
   mcpInject:
-    enabled: true
+    enabled: false
   image:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
     tag: "dev"
@@ -341,7 +357,7 @@ aegra:
     failureThreshold: 18
   livenessProbe:
     httpGet:
-      path: /health
+      path: /live
       port: 8000
     periodSeconds: 10
     timeoutSeconds: 5

@@ -4,3 +4,7 @@ description: Standalone Helm chart for the FinServe AI Wealth Management Demo
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+dependencies:
+  - name: zelkor-agent
+    version: "0.1.0"
+    repository: "file://../../../charts/zelkor-agent"

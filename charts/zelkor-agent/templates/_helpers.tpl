@@ -30,6 +30,33 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: aegra
 {{- end }}
 
+{{- define "zelkor-agent.redisPrefix" -}}
+{{- $explicit := ((.Values.redis).prefix | default "") | toString | trimSuffix ":" -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else -}}
+{{- printf "aegra:%s" .Release.Name -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.redisChannelPrefix" -}}
+{{- $v := ((.Values.redis).channelPrefix | default "") | toString -}}
+{{- if $v -}}
+{{- $v -}}
+{{- else -}}
+{{- printf "%s:run:" (include "zelkor-agent.redisPrefix" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.workerQueueKey" -}}
+{{- $v := ((.Values.redis).queueKey | default "") | toString -}}
+{{- if $v -}}
+{{- $v -}}
+{{- else -}}
+{{- printf "%s:jobs" (include "zelkor-agent.redisPrefix" .) -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-agent.image" -}}
 {{- $img := . -}}
 {{- if and $img.digest (ne $img.digest "") -}}

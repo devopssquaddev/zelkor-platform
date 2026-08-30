@@ -28,18 +28,19 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "zelkor-agent.labels" . | nindent 8 }}
+        {{- include "zelkor-agent.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 35 }}
       containers:
         - name: agent
           image: {{ include "zelkor-agent.image" .Values.image | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy | default .Values.global.imagePullPolicy | default "IfNotPresent" }}
           workingDir: /app
-          command: ["uvicorn", "graph_router:app", "--host", "0.0.0.0", "--port", "8000"]
+          command: ["uvicorn", "aegra_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000
               name: http
@@ -58,6 +59,18 @@ spec:
               value: {{ .Values.platform.valkeyUrl | quote }}
             - name: REDIS_BROKER_ENABLED
               value: "true"
+            - name: REDIS_CHANNEL_PREFIX
+              value: {{ include "zelkor-agent.redisChannelPrefix" . | quote }}
+            - name: WORKER_QUEUE_KEY
+              value: {{ include "zelkor-agent.workerQueueKey" . | quote }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
+            - name: WORKER_COUNT
+              value: {{ (.Values.workerCount | default 3) | quote }}
+            - name: N_JOBS_PER_WORKER
+              value: {{ (.Values.nJobsPerWorker | default 10) | quote }}
+            - name: WORKER_DRAIN_TIMEOUT
+              value: {{ (.Values.workerDrainTimeout | default 30) | quote }}
             - name: AEGRA_CONFIG
               value: "/app/aegra.json"
             - name: OPENAI_BASE_URL
@@ -70,10 +83,28 @@ spec:
               value: {{ .Values.platform.mcpUrl | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ .Values.platform.mcpInject | quote }}
-            - name: AEGRA_WORKERS
-              value: "[]"
+            {{- if .Values.platform.defaultLlmModel }}
+            - name: DEFAULT_LLM_MODEL
+              value: {{ .Values.platform.defaultLlmModel | quote }}
+            {{- end }}
+            {{- if .Values.platform.langfuseBaseUrl }}
+            - name: OTEL_TARGETS
+              value: {{ .Values.platform.otelTargets | default "LANGFUSE" | quote }}
+            - name: LANGFUSE_BASE_URL
+              value: {{ .Values.platform.langfuseBaseUrl | quote }}
+            {{- if .Values.platform.langfusePublicKey }}
+            - name: LANGFUSE_PUBLIC_KEY
+              value: {{ .Values.platform.langfusePublicKey | quote }}
+            - name: LANGFUSE_SECRET_KEY
+              value: {{ .Values.platform.langfuseSecretKey | quote }}
+            {{- end }}
+            {{- end }}
             - name: ZELKOR_GRAPH_ID
               value: {{ $graphId | quote }}
+            {{- range .Values.extraEnv }}
+            - name: {{ .name | quote }}
+              value: {{ .value | quote }}
+            {{- end }}
           {{- with .Values.startupProbe }}
           startupProbe:
             {{- toYaml . | nindent 12 }}

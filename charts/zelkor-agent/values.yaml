@@ -1,14 +1,25 @@
 # Helper chart: one ClusterIP Aegra worker. Not the platform front door.
-# After install, add the graphId to the platform release:
-#   aegra.workers: [{ graphId: my-agent, url: http://<release>-zelkor-agent:8000 }]
+# GitOps: set sharedRoute.host to gateway.hosts.aegra (same Gateway parentRef).
+# Overlay alternative on the platform chart: aegra.workers: [{ graphId, service, port }]
 
 global:
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
 
 graphId: ""
-# Optional override of the in-cluster Service URL registered on the platform.
-workerUrl: ""
+
+# Shared-host registration (recommended). Empty host = no HTTPRoute from this chart.
+sharedRoute:
+  enabled: false
+  gatewayName: ""
+  gatewayNamespace: ""
+  host: ""
+
+# REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY. Empty prefix → aegra:<release>.
+redis:
+  prefix: ""
+  channelPrefix: ""
+  queueKey: ""
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
@@ -18,6 +29,11 @@ image:
 
 replicaCount: 1
 
+workerCount: 3
+nJobsPerWorker: 10
+workerDrainTimeout: 30
+terminationGracePeriodSeconds: 35
+
 platform:
   openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
   consumerKey: ""
@@ -25,6 +41,11 @@ platform:
   databaseUrl: ""
   valkeyUrl: ""
   mcpInject: true
+  defaultLlmModel: ""
+  langfuseBaseUrl: ""
+  langfusePublicKey: ""
+  langfuseSecretKey: ""
+  otelTargets: ""
 
 auth:
   jwtSecret: ""
@@ -32,6 +53,9 @@ auth:
     enabled: false
     prefix: ""
   trustTenantHeader: false
+
+# Extra container env (e.g. DEFAULT_LLM_MODEL, QDRANT_COLLECTION for a graph prompt).
+extraEnv: []
 
 resources:
   requests:
@@ -51,7 +75,7 @@ startupProbe:
   failureThreshold: 18
 livenessProbe:
   httpGet:
-    path: /health
+    path: /live
     port: 8000
   periodSeconds: 10
   timeoutSeconds: 5

@@ -1,5 +1,8 @@
 {
   "graphs": {
     "finserve": "./finserve_agent.py:graph"
+  },
+  "auth": {
+    "path": "./tenant_auth.py:auth"
   }
 }

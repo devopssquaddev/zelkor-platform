@@ -1,0 +1,52 @@
+---
+description: Never bake kind/dev hosts, unsigned auth, local secrets, or Docker Desktop endpoints into the production platform
+alwaysApply: true
+---
+
+# No Dev Defaults in the Platform
+
+`charts/zelkor-platform/`, `images/`, and `agents/` ship to customers. Kind/dev convenience lives only in `profiles/values-local.yaml` (and example `values-local.yaml`).
+
+## What must not appear as a shipped default
+
+| Kind of value | Examples | Allowed only in |
+|---|---|---|
+| Local hosts | `*.localhost`, `127.0.0.1`, `host.docker.internal` | local profile, tests env, quickstart (kind path) |
+| Unsigned / local auth | `dev-key`, `dev:` prefix, `devTokens.enabled: true`, `trustTenantHeader: true` | local profile |
+| Local secrets | `zelkor-dev-password`, `admin@zelkor.local`, baked Langfuse `pk-lf-zelkor-dev-*` | local profile |
+| Kind-only topology | `hostNetwork: true` as chart default, `kind-zelkor` | local profile / install.sh overlay |
+| Demo / lab tenants | `Bank_Alpha`, `Squad_Alpha`, fixture org ids | overlay or tests |
+
+Knobs are fine (`auth.devTokens.enabled: false`, `gateway.hosts.*: ""`). **Literals that make local kind work without an overlay are not.**
+
+## While implementing
+
+1. New Helm values default to empty, `false`, or a generic production-safe string — never a laptop/kind value.
+2. Templates: no `| default "ai-gateway.localhost"` (or any row above). Use `required` or omit the field when empty.
+3. Image / agent Python: `os.getenv("X", "")` — not `os.getenv("X", "http://mcp.localhost")` or `"dev-key"`.
+4. `install.sh` applies `profiles/values-local.yaml`; it does not write those values into the chart.
+5. Enabling unsigned tokens, trusting `X-Tenant-ID`, or pointing at Docker Desktop is an **overlay**, not a chart or image default.
+
+```yaml
+# BAD — kind host in the production chart
+hosts:
+  aiGateway: "ai-gateway.localhost"
+# BAD
+Host: {{ .Values.gateway.hosts.aiGateway | default "ai-gateway.localhost" }}
+
+# GOOD
+hosts:
+  aiGateway: ""
+```
+
+## After each substantial implementation
+
+Diff `values.yaml`, `templates/`, `files/`, `images/`, `agents/` and ask: **would this default still be correct on a customer cluster with no kind overlay?**
+
+- [ ] No new `*.localhost` / `host.docker.internal` / `127.0.0.1` as chart or image default
+- [ ] `devTokens` / `trustTenantHeader` still default off; no `dev-key` / `dev:` in chart or images
+- [ ] No new passwords, Langfuse lab keys, or `admin@zelkor.local` in `values.yaml`
+- [ ] New knobs are empty/off; local values landed in `profiles/values-local.yaml` only
+
+Sibling rule (pytest-only resources): `tests-do-not-shape-platform.mdc`.
+Spec: `internal/requirements/dev/examples_and_demos.md`

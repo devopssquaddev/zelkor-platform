@@ -12,6 +12,10 @@ langfuse:
     projectName: "FinServe AI"
 
 aegra:
+  workers:
+    - graphId: finserve
+      service: finserve-agent
+      port: 8000
   tenantOrgMappings:
     org_alpha: Bank_Alpha
     org_beta: Bank_Beta

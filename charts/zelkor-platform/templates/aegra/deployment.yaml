@@ -36,6 +36,7 @@ spec:
         app.kubernetes.io/component: aegra
     spec:
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.aegra.terminationGracePeriodSeconds | default 35 }}
       initContainers:
         - name: wait-for-deps
           image: {{ .Values.global.initContainerImage | default "busybox:1.37" }}
@@ -52,12 +53,22 @@ spec:
                 sleep 1
               done
               echo "Dependencies ready."
+        - name: migrate
+          image: {{ include "zelkor-platform.image" .Values.aegra.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.image) }}
+          workingDir: /app
+          command: ["python", "/app/migrate.py"]
+          env:
+            - name: DATABASE_URL
+              value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
       containers:
         - name: aegra
           image: {{ include "zelkor-platform.image" .Values.aegra.image | quote }}
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.image) }}
           workingDir: /app
-          command: ["uvicorn", "graph_router:app", "--host", "0.0.0.0", "--port", "8000"]
+          command: ["uvicorn", "aegra_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000
               name: http
@@ -68,7 +79,21 @@ spec:
             - name: REDIS_URL
               value: {{ include "zelkor-platform.valkeyUrl" . | quote }}
             - name: REDIS_BROKER_ENABLED
-              value: "true"
+              value: {{ ((.Values.aegra.redisBroker).enabled | default false) | quote }}
+            {{- if ((.Values.aegra.redisBroker).enabled | default false) }}
+            - name: REDIS_CHANNEL_PREFIX
+              value: {{ ((.Values.aegra.redis).channelPrefix | default (printf "aegra:%s:run:" .Release.Name)) | quote }}
+            - name: WORKER_QUEUE_KEY
+              value: {{ ((.Values.aegra.redis).queueKey | default (printf "aegra:%s:jobs" .Release.Name)) | quote }}
+            {{- end }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: {{ (.Values.aegra.runMigrationsOnStartup | default false) | quote }}
+            - name: WORKER_COUNT
+              value: {{ (.Values.aegra.workerCount | default 3) | quote }}
+            - name: N_JOBS_PER_WORKER
+              value: {{ (.Values.aegra.nJobsPerWorker | default 10) | quote }}
+            - name: WORKER_DRAIN_TIMEOUT
+              value: {{ (.Values.aegra.workerDrainTimeout | default 30) | quote }}
             - name: AEGRA_CONFIG
               value: "/app/aegra.json"
             - name: TENANT_ORG_MAPPINGS
@@ -83,20 +108,11 @@ spec:
               value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ ((.Values.aegra.mcpInject).enabled | default false) | quote }}
-            - name: AEGRA_WORKERS
-              value: {{ .Values.aegra.workers | default list | toJson | quote }}
             - name: ZELKOR_TENANT_HEADER
               value: "X-Tenant-ID"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
-            {{- if and .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey }}
-            - name: LANGFUSE_HOST
-              value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
-            - name: LANGFUSE_PUBLIC_KEY
-              value: {{ .Values.langfuse.init.projectPublicKey | quote }}
-            - name: LANGFUSE_SECRET_KEY
-              value: {{ .Values.langfuse.init.projectSecretKey | quote }}
-            {{- end }}
+            {{- include "zelkor-platform.aegraOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: agents-auth
               mountPath: /app/aegra.json

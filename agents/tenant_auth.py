@@ -4,7 +4,7 @@ try:
     import jwt
 except ImportError:
     jwt = None
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 def _flag(name: str) -> bool:
@@ -18,6 +18,7 @@ class TenantAuth:
 
     Unsigned local shortcuts (token prefix, tenant header) are off unless
     AUTH_DEV_TOKENS_ENABLED / AUTH_TRUST_TENANT_HEADER are set.
+    JWT HS256 is verified when AUTH_JWT_SECRET is set. Unsigned JWT is rejected.
     """
     def __init__(self, secret_key: str = ""):
         self.secret_key = secret_key or os.getenv("AUTH_JWT_SECRET", "")
@@ -63,8 +64,15 @@ class TenantAuth:
                     "tenant_id": None,
                     "error": "PyJWT not installed"
                 }
+            if not self.secret_key:
+                return {
+                    "is_authenticated": False,
+                    "identity": "anonymous",
+                    "tenant_id": None,
+                    "error": "AUTH_JWT_SECRET is required to verify Bearer JWT",
+                }
             try:
-                payload = jwt.decode(token, self.secret_key, algorithms=["HS256"], options={"verify_signature": False})
+                payload = jwt.decode(token, self.secret_key, algorithms=["HS256"])
                 if "tenant_id" in payload:
                     tenant_id = payload["tenant_id"]
                 elif "org_id" in payload:
@@ -139,4 +147,3 @@ else:
     @auth.on.threads
     async def on_threads(ctx, value):
         return {"metadata": {"tenant_id": ctx.user.identity}}
-
