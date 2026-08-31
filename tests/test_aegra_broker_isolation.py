@@ -4,6 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _has_aegra_db_upgrade(text: str) -> bool:
+    return "aegra db upgrade" in text or '"aegra", "db", "upgrade"' in text
+
+
 def test_front_door_redis_broker_defaults_off():
     values = (ROOT / "charts/zelkor-platform/values.yaml").read_text()
     aegra = values.split("\naegra:", 1)[1]
@@ -45,8 +49,8 @@ def test_app_pods_disable_lifespan_migrations():
     assert "RUN_MIGRATIONS_ON_STARTUP" in front
     assert "RUN_MIGRATIONS_ON_STARTUP" in worker
     assert '"false"' in worker.split("RUN_MIGRATIONS_ON_STARTUP", 1)[1][:120]
-    assert "aegra db upgrade" in front
-    assert "aegra db upgrade" in job
+    assert _has_aegra_db_upgrade(front)
+    assert _has_aegra_db_upgrade(job)
     assert "migrate.py" not in front
     assert "migrate.py" not in job
     assert "aegra.cli.image" in front

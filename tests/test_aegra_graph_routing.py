@@ -36,17 +36,19 @@ def test_workers_default_empty_and_not_urls():
 
 def test_sitecustomize_has_ready_gate_not_proxy():
     text = (ROOT / "images/aegra/sitecustomize.py").read_text()
+    wrap = (ROOT / "images/aegra/trace_wrap.py").read_text()
     assert "inject_ready" in text
     assert "proxy_to_worker" not in text
     assert "disable_streaming" in text
-    assert "OpenTelemetryProvider" in text
-    assert "_inject_traceparent" in text
-    assert "ChatOpenAI.request" in text
-    assert "_agenerate" in text
-    assert "httpx2" in text
-    assert "BaseChatOpenAI" in text
-    assert "Pregel" in text
-    assert "astream_events" in text
+    assert "trace_wrap" in text
+    assert "patch_otel_setup" in text
+    assert "ChatOpenAI.request" in wrap
+    assert "_agenerate" in wrap
+    assert "httpx2" in wrap
+    assert "BaseChatOpenAI" in wrap
+    assert "Pregel" in wrap
+    assert "astream_events" in wrap
+    assert "HTTPXClientInstrumentor(" not in wrap
 
 
 def test_nemo_content_safety_passthrough_for_tools():
