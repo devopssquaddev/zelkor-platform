@@ -1,6 +1,12 @@
-# FinServe AI: Multi-Tenant Wealth Management Reference Agent
+# FinServe AI: Multi-Tenant Wealth Management Reference Agents
 
-FinServe AI is the reference **drop-in** demo for the Zelkor Platform: a Mode B `langchain.agents.create_agent` graph (`FROM zelkor-aegra`) with no Zelkor SDKs. Clients use the **platform Aegra** Agent Protocol host (`graph_id=finserve`). Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
+FinServe AI is the reference **drop-in** demo for the Zelkor Platform: three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) with no Zelkor SDKs. Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
+
+| Graph id | Deployment | Role |
+| :--- | :--- | :--- |
+| `finserve-advisor` | `finserve-desk` | Portfolio SQL + synthesis |
+| `finserve-research` | `finserve-desk` (same process) | Policy RAG |
+| `finserve-quant` | `finserve-quant` | Sandbox projections |
 
 ---
 
@@ -10,10 +16,10 @@ FinServe AI is the reference **drop-in** demo for the Zelkor Platform: a Mode B 
 | :--- | :--- | :--- |
 | **Conversational Guardrails** | Off-topic and jailbreak text refused on default `/v1` | **NeMo intercept** (not a graph node) |
 | **Multi-Tenant Isolation** | MCP wrappers scope SQL and Qdrant by caller identity | **PostgreSQL** + **Qdrant** via MCP gateway |
-| **Untrusted Code Execution** | Model calls `sandbox__execute_python` | **gVisor** warm pool |
+| **Untrusted Code Execution** | Quant graph calls `sandbox__execute_python` | **gVisor** warm pool |
 | **Policy-Governed LLM Routing** | `ChatOpenAI` via wrap `OPENAI_BASE_URL` | **Envoy AI Gateway** |
 | **Full-Stack Observability** | Gateway OTel GenAI spans | **Langfuse** |
-| **Stateful Orchestration** | ClusterIP worker, graph id `finserve` | **Envoy** `X-Graph-ID` → worker; platform Aegra is the default |
+| **Stateful Orchestration** | Two ClusterIP workers; three graph ids | **Envoy** `X-Graph-ID` → worker; platform Aegra is the default |
 
 ---
 
@@ -26,7 +32,8 @@ flowchart TD
 
     subgraph platform ["Zelkor Platform"]
         Front["Envoy (X-Graph-ID / ?graph_id=)"]
-        Agent["FinServe ClusterIP FROM zelkor-aegra"]
+        Desk["finserve-desk advisor plus research"]
+        Quant["finserve-quant"]
         NeMo["NeMo intercept on /v1"]
         AIGateway["Envoy AI Gateway"]
         MCP["MCP gateway"]
@@ -38,10 +45,13 @@ flowchart TD
 
     UserAlpha --> Front
     UserBeta --> Front
-    Front -->|"X-Graph-ID: finserve"| Agent
-    Agent -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
+    Front -->|"advisor or research"| Desk
+    Front -->|quant| Quant
+    Desk -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
+    Quant -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
     AIGateway --> NeMo
-    Agent -->|"Mode B inject MCP_URL"| MCP
+    Desk -->|"Mode B inject MCP_URL"| MCP
+    Quant -->|"Mode B inject MCP_URL"| MCP
     MCP --> Postgres
     MCP --> Qdrant
     MCP --> CodeExec
@@ -68,8 +78,14 @@ Register on the platform release (already in `values-platform-overlay.yaml`):
 ```yaml
 aegra:
   workers:
-    - graphId: finserve
-      service: finserve-agent
+    - graphId: finserve-advisor
+      service: finserve-desk
+      port: 8000
+    - graphId: finserve-research
+      service: finserve-desk
+      port: 8000
+    - graphId: finserve-quant
+      service: finserve-quant
       port: 8000
 ```
 
@@ -80,11 +96,11 @@ curl -X POST http://127.0.0.1:8088/runs/wait \
   -H "Host: aegra.localhost" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer dev:Bank_Alpha" \
-  -H "X-Graph-ID: finserve" \
+  -H "X-Graph-ID: finserve-advisor" \
   -d '{
-    "graph_id": "finserve",
+    "graph_id": "finserve-advisor",
     "input": {
-      "messages": [{"role": "human", "content": "What is our asset allocation policy for high-growth tech?"}]
+      "messages": [{"role": "human", "content": "What is my portfolio valuation?"}]
     }
   }'
 ```
@@ -106,7 +122,7 @@ Open Langfuse at [http://langfuse.localhost:8088](http://langfuse.localhost:8088
 INSTALL_EXAMPLES=false ./install.sh
 pytest tests/ -v
 
-# FinServe E2E smokes (platform Aegra, graph_id=finserve)
+# FinServe E2E smokes (platform Aegra, three graph ids)
 pytest examples/finserve/tests/ -v
 ```
 
@@ -121,6 +137,6 @@ pytest examples/finserve/tests/ -v
 
 The graph source does not embed an MCP client. At worker process start, Zelkor lists tools from `MCP_URL` and binds them onto `langchain.agents.create_agent`. Each `tools/call` uses the run's tenant (`Authorization` + `X-Tenant-ID`).
 
-Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`.
+Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`. Specialization is prompt-only.
 
 Customer SaaS MCP is not part of this demo. Register extra servers on the platform overlay (`mcp.extraBackends`).

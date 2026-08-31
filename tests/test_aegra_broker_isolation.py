@@ -45,8 +45,15 @@ def test_app_pods_disable_lifespan_migrations():
     assert "RUN_MIGRATIONS_ON_STARTUP" in front
     assert "RUN_MIGRATIONS_ON_STARTUP" in worker
     assert '"false"' in worker.split("RUN_MIGRATIONS_ON_STARTUP", 1)[1][:120]
-    assert "/app/migrate.py" in front
-    assert "python /app/migrate.py" in job
+    assert "aegra db upgrade" in front
+    assert "aegra db upgrade" in job
+    assert "migrate.py" not in front
+    assert "migrate.py" not in job
+    assert "aegra.cli.image" in front
+    assert "aegra.cli.image" in job
+    runtime_df = (ROOT / "images/aegra/Dockerfile").read_text()
+    assert "migrate.py" not in runtime_df
+    assert (ROOT / "images/aegra-cli/Dockerfile").is_file()
 
 
 def test_aegra_live_probe_drain_and_otel_knobs():

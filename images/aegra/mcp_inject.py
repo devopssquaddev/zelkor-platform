@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import httpx
-from langchain_mcp_adapters.client import MultiServerMCPClient
 
 logger = logging.getLogger("zelkor-mcp-inject")
 
@@ -47,13 +46,25 @@ def _mcp_url() -> str:
     return os.getenv("MCP_URL", "").rstrip("/")
 
 
+def _config_has_identity(cfg: dict) -> bool:
+    configurable = cfg.get("configurable") if isinstance(cfg.get("configurable"), dict) else {}
+    return bool(
+        configurable.get("langgraph_auth_user")
+        or configurable.get("user")
+        or configurable.get("user_id")
+        or configurable.get("tenant_id")
+        or configurable.get("identity")
+    )
+
+
 def _current_run_config() -> dict:
+    candidates: list[dict] = []
     try:
         from langgraph.config import get_config
 
         cfg = get_config()
         if isinstance(cfg, dict):
-            return cfg
+            candidates.append(cfg)
     except Exception:
         pass
     try:
@@ -61,23 +72,48 @@ def _current_run_config() -> dict:
 
         cfg = ensure_config()
         if isinstance(cfg, dict):
-            return cfg
+            candidates.append(cfg)
     except Exception:
         pass
-    return {}
+    for cfg in candidates:
+        if _config_has_identity(cfg):
+            return cfg
+    return candidates[0] if candidates else {}
+
+
+def _identity_from_user(user) -> str:
+    if user is None:
+        return ""
+    if isinstance(user, dict):
+        for key in ("tenant_id", "identity"):
+            value = user.get(key)
+            if value:
+                return str(value)
+        return ""
+    for key in ("tenant_id", "identity"):
+        value = getattr(user, key, None)
+        if value:
+            return str(value)
+    try:
+        for key in ("tenant_id", "identity"):
+            value = user[key]  # type: ignore[index]
+            if value:
+                return str(value)
+    except Exception:
+        pass
+    return ""
 
 
 def tenant_from_run_config(config: Optional[dict] = None) -> str:
     """Tenant identity for this tools/call. Never reads ZELKOR_TENANT_ID env."""
     cfg = config if isinstance(config, dict) else _current_run_config()
     configurable = cfg.get("configurable") if isinstance(cfg.get("configurable"), dict) else {}
-    user = configurable.get("langgraph_auth_user") or configurable.get("user") or {}
-    if isinstance(user, dict):
-        for key in ("tenant_id", "identity"):
-            value = user.get(key)
-            if value:
-                return str(value)
-    for key in ("tenant_id", "identity"):
+    from_user = _identity_from_user(
+        configurable.get("langgraph_auth_user") or configurable.get("user")
+    )
+    if from_user:
+        return from_user
+    for key in ("tenant_id", "identity", "user_id"):
         value = configurable.get(key)
         if value and not isinstance(value, dict):
             return str(value)
@@ -110,10 +146,44 @@ class TenantRunAuth(httpx.Auth):
         yield request
 
 
+def _stamp_tenant_kwargs(kwargs: dict) -> dict:
+    """Overwrite tenant_id from wrap identity so the model cannot invent one."""
+    tenant = tenant_from_run_config()
+    if not tenant:
+        return kwargs
+    stamped = dict(kwargs)
+    stamped["tenant_id"] = tenant
+    return stamped
+
+
+def _stamp_tenant_on_tool(tool):
+    orig_coro = getattr(tool, "coroutine", None)
+    orig_func = getattr(tool, "func", None)
+    if orig_coro is not None:
+
+        async def coro(*args, **kwargs):
+            if args and isinstance(args[0], dict):
+                args = (_stamp_tenant_kwargs(args[0]),) + args[1:]
+            return await orig_coro(*args, **_stamp_tenant_kwargs(kwargs))
+
+        return tool.model_copy(update={"coroutine": coro})
+    if orig_func is not None:
+
+        def func(*args, **kwargs):
+            if args and isinstance(args[0], dict):
+                args = (_stamp_tenant_kwargs(args[0]),) + args[1:]
+            return orig_func(*args, **_stamp_tenant_kwargs(kwargs))
+
+        return tool.model_copy(update={"func": func})
+    return tool
+
+
 def _load_adapter_tools():
     url = _mcp_url()
     if not url:
         return []
+
+    from langchain_mcp_adapters.client import MultiServerMCPClient
 
     async def _get():
         client = MultiServerMCPClient(
@@ -125,7 +195,7 @@ def _load_adapter_tools():
                 }
             }
         )
-        return await client.get_tools()
+        return [_stamp_tenant_on_tool(tool) for tool in await client.get_tools()]
 
     try:
         return list(asyncio.run(_get()))

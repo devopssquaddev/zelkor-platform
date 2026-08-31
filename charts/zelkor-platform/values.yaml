@@ -133,7 +133,7 @@ clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: "25.12-alpine"
+    tag: "26.7.5-alpine"
   auth:
     username: clickhouse
     password: ""
@@ -243,13 +243,13 @@ langfuse:
   replicaCount: 1
   image:
     repository: langfuse/langfuse
-    tag: "4.21.0"
+    tag: "4.24.0"
   worker:
     enabled: true
     replicaCount: 1
     image:
       repository: langfuse/langfuse-worker
-      tag: "4.21.0"
+      tag: "4.24.0"
   s3:
     bucket: langfuse
     region: auto
@@ -340,6 +340,11 @@ aegra:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
     tag: "dev"
     digest: ""
+  cli:
+    image:
+      repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
+      tag: "dev"
+      digest: ""
   resources:
     requests:
       cpu: 100m
@@ -387,8 +392,12 @@ guardrails:
       enabled: false
     observability:
       otel:
-        enabled: false
+        enabled: false  # when true: config.yml tracing adapter + opentelemetry-instrument (no sitecustomize)
+        captureContent: false  # PII; LLMRails tracing.enable_content_capture (Langfuse observation I/O)
     safetyRefusal: "I can't help with that request."
+    extraInputFlows: []
+    extraColang: ""
+    extraRailsConfig: {}
     resources:
       requests:
         cpu: 100m
@@ -398,7 +407,7 @@ guardrails:
         memory: 1Gi
     startupProbe:
       httpGet:
-        path: /v1/rails/configs
+        path: /v1/health
         port: 8000
       initialDelaySeconds: 10
       periodSeconds: 5
@@ -406,14 +415,14 @@ guardrails:
       failureThreshold: 24
     livenessProbe:
       httpGet:
-        path: /v1/rails/configs
+        path: /v1/health
         port: 8000
       periodSeconds: 15
       timeoutSeconds: 5
       failureThreshold: 3
     readinessProbe:
       httpGet:
-        path: /v1/rails/configs
+        path: /v1/health
         port: 8000
       periodSeconds: 5
       timeoutSeconds: 5
@@ -608,7 +617,7 @@ seaweedfs:
   enabled: true
   image:
     repository: chrislusf/seaweedfs
-    tag: "3.85"
+    tag: "4.44"
   auth:
     accessKey: ""
     secretKey: ""

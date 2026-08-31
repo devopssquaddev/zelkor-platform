@@ -25,9 +25,20 @@ zelkor.io/workload-type: agent
 {{- end }}
 
 {{- define "zelkor-agent.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "zelkor-agent.name" . }}
+app.kubernetes.io/name: {{ include "zelkor-agent.fullname" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/component: aegra
+{{- end }}
+
+{{- define "zelkor-agent.primaryGraphId" -}}
+{{- $ids := .Values.graphIds | default list -}}
+{{- if $ids -}}
+{{- first $ids -}}
+{{- else if .Values.graphId -}}
+{{- .Values.graphId -}}
+{{- else -}}
+{{- fail "graphId or graphIds must be set (the independently released graph id(s))" -}}
+{{- end -}}
 {{- end }}
 
 {{- define "zelkor-agent.redisPrefix" -}}

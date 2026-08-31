@@ -14,6 +14,8 @@ spec:
       app.kubernetes.io/component: guardrails
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/guardrails/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: guardrails
@@ -23,14 +25,29 @@ spec:
         - name: nemo-guardrails
           image: {{ include "zelkor-platform.image" .Values.guardrails.nemo.image | quote }}
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.guardrails.nemo.image) }}
+          {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+          command: ["opentelemetry-instrument"]
+          {{- end }}
+          args:
+            - nemoguardrails
+            - server
+            - --config
+            - {{ .Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs" | quote }}
+            - --port
+            - "8000"
+            - --default-config-id
+            - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
+            - --disable-chat-ui
           ports:
             - containerPort: 8000
               name: http
           env:
             - name: OPENAI_API_KEY
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
-            - name: OPENAI_API_BASE
+            - name: MAIN_MODEL_BASE_URL
               value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+            - name: NEMO_GUARDRAILS_NO_USAGE_STATS
+              value: "1"
             {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: nemo-config

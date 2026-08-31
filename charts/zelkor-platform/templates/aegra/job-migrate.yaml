@@ -23,9 +23,8 @@ spec:
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: migrate
-          image: {{ include "zelkor-platform.image" .Values.aegra.image | quote }}
-          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.image) }}
-          workingDir: /app
+          image: {{ include "zelkor-platform.image" .Values.aegra.cli.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.cli.image) }}
           command:
             - sh
             - -c
@@ -34,7 +33,7 @@ spec:
                 echo "Waiting for postgresql..."
                 sleep 2
               done
-              python /app/migrate.py
+              aegra db upgrade
           env:
             - name: DATABASE_URL
               value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}

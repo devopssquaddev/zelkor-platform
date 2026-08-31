@@ -17,6 +17,6 @@ spec:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: finserve-agent
+        - name: finserve-desk
           port: 8000
 {{- end }}

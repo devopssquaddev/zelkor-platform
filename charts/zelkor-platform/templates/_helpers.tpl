@@ -309,18 +309,32 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.nemoOtelEnabled" -}}
+{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.nemoOtelEnv" -}}
-{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey }}
+{{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
 - name: OTEL_SERVICE_NAME
   value: {{ printf "%s-nemo" (include "zelkor-platform.fullname" .) | quote }}
 - name: OTEL_TRACES_EXPORTER
   value: otlp
+- name: OTEL_METRICS_EXPORTER
+  value: none
+- name: OTEL_LOGS_EXPORTER
+  value: none
 - name: OTEL_EXPORTER_OTLP_PROTOCOL
   value: http/protobuf
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
-  value: {{ printf "http://%s-langfuse:3000/api/public/otel/v1/traces" (include "zelkor-platform.fullname" .) | quote }}
+  value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
 - name: OTEL_EXPORTER_OTLP_HEADERS
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey)) | quote }}
+- name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
+  value: "/v1/health"
 {{- end }}
 {{- end }}
 

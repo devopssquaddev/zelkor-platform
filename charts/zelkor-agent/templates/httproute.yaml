@@ -1,6 +1,12 @@
 {{- $sr := .Values.sharedRoute | default dict }}
 {{- if and ($sr.enabled | default false) $sr.host $sr.gatewayName }}
-{{- $graphId := required "graphId must be set (the independently released graph id)" .Values.graphId }}
+{{- $graphIds := .Values.graphIds | default list }}
+{{- if and (not $graphIds) .Values.graphId }}
+{{- $graphIds = list .Values.graphId }}
+{{- end }}
+{{- if not $graphIds }}
+{{- fail "graphId or graphIds must be set (the independently released graph id(s))" }}
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -15,14 +21,16 @@ spec:
     - {{ $sr.host | quote }}
   rules:
     - matches:
+        {{- range $graphIds }}
         - headers:
             - name: X-Graph-ID
               type: Exact
-              value: {{ $graphId | quote }}
+              value: {{ . | quote }}
         - queryParams:
             - name: graph_id
               type: Exact
-              value: {{ $graphId | quote }}
+              value: {{ . | quote }}
+        {{- end }}
       backendRefs:
         - name: {{ include "zelkor-agent.fullname" . }}
           port: 8000

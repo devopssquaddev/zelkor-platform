@@ -36,4 +36,6 @@ def test_ensure_auth_config_keeps_existing_path(tmp_path):
 def test_sitecustomize_injects_auth_before_aegra_import():
     text = (Path(__file__).resolve().parents[1] / "images/aegra/sitecustomize.py").read_text()
     assert "ensure_auth_config" in text
-    assert text.find("ensure_auth_config") < text.find("patch_httpx")
+    assert "openai_compat" not in text
+    assert "patch_httpx" not in text
+    assert text.find("ensure_auth_config") < text.find("FastAPI")

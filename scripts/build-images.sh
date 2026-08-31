@@ -43,6 +43,7 @@ done
 
 ALL_IMAGES=(
   zelkor-aegra
+  zelkor-aegra-cli
   zelkor-mcp
   zelkor-sandbox-worker
   zelkor-guardrails
@@ -52,6 +53,7 @@ ALL_IMAGES=(
 dockerfile_for() {
   case "$1" in
     zelkor-aegra) echo images/aegra/Dockerfile ;;
+    zelkor-aegra-cli) echo images/aegra-cli/Dockerfile ;;
     zelkor-mcp) echo images/mcp/Dockerfile ;;
     zelkor-sandbox-worker) echo images/sandbox-worker/Dockerfile ;;
     zelkor-guardrails) echo images/guardrails/Dockerfile ;;

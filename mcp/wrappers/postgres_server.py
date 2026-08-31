@@ -81,6 +81,14 @@ def _assert_read_only(sql: str) -> str:
     return stripped
 
 
+_DOLLAR_PLACEHOLDER = re.compile(r"\$(\d+)")
+
+
+def _normalize_placeholders(sql: str) -> str:
+    """Accept Postgres $1-style binds from models; psycopg2 uses %s."""
+    return _DOLLAR_PLACEHOLDER.sub("%s", sql)
+
+
 def _bind_params(sql: str, arguments: dict, tenant_id: str):
     params = arguments.get("params")
     placeholders = sql.count("%s")
@@ -150,7 +158,7 @@ class PostgresMCPServer(MCPToolHandler):
                 "description": (
                     "Execute a read-only SQL query against PostgreSQL. "
                     "tenant_id must match the authenticated caller. "
-                    "Optional params are bound to %s placeholders."
+                    "Optional params are bound to %s or $1-style placeholders."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -207,7 +215,7 @@ class PostgresMCPServer(MCPToolHandler):
         raise ValueError(f"Unknown tool: {name}")
 
     def _query(self, arguments: dict, tenant_id: str):
-        sql = _assert_read_only(arguments.get("sql") or "")
+        sql = _normalize_placeholders(_assert_read_only(arguments.get("sql") or ""))
         bind = _bind_params(sql, arguments, tenant_id)
 
         def _run(cur):
