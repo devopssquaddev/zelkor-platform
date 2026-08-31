@@ -27,6 +27,7 @@ spec:
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.guardrails.nemo.image) }}
           {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
           command: ["opentelemetry-instrument"]
+          {{- end }}
           args:
             - nemoguardrails
             - server
@@ -36,7 +37,7 @@ spec:
             - "8000"
             - --default-config-id
             - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
-          {{- end }}
+            - --disable-chat-ui
           ports:
             - containerPort: 8000
               name: http
@@ -45,6 +46,8 @@ spec:
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
             - name: MAIN_MODEL_BASE_URL
               value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+            - name: NEMO_GUARDRAILS_NO_USAGE_STATS
+              value: "1"
             {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: nemo-config

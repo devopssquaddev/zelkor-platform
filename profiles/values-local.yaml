@@ -109,6 +109,7 @@ guardrails:
     observability:
       otel:
         enabled: true
+        captureContent: true
 
 mcp:
   enabled: true

@@ -2,3 +2,6 @@ nemoguardrails[server,tracing]==0.24.0
 opentelemetry-sdk==1.44.0
 opentelemetry-exporter-otlp-proto-http==1.44.0
 opentelemetry-distro==0.65b0
+opentelemetry-instrumentation-fastapi==0.65b0
+opentelemetry-instrumentation-asgi==0.65b0
+opentelemetry-instrumentation-httpx==0.65b0

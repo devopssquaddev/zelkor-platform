@@ -333,6 +333,8 @@ false
   value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
 - name: OTEL_EXPORTER_OTLP_HEADERS
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey)) | quote }}
+- name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
+  value: "/v1/health"
 {{- end }}
 {{- end }}
 

@@ -16,6 +16,7 @@ passthrough: true
 {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
 tracing:
   enabled: true
+  enable_content_capture: {{ .Values.guardrails.nemo.observability.otel.captureContent | default false }}
   adapters:
     - name: OpenTelemetry
 {{- end }}

@@ -38,8 +38,15 @@ def test_sitecustomize_has_ready_gate_not_proxy():
     text = (ROOT / "images/aegra/sitecustomize.py").read_text()
     assert "inject_ready" in text
     assert "proxy_to_worker" not in text
-    assert "httpx.AsyncClient" not in text
     assert "disable_streaming" in text
+    assert "OpenTelemetryProvider" in text
+    assert "_inject_traceparent" in text
+    assert "ChatOpenAI.request" in text
+    assert "_agenerate" in text
+    assert "httpx2" in text
+    assert "BaseChatOpenAI" in text
+    assert "Pregel" in text
+    assert "astream_events" in text
 
 
 def test_nemo_content_safety_passthrough_for_tools():
@@ -54,6 +61,7 @@ def test_nemo_content_safety_passthrough_for_tools():
     )
     assert "passthrough: true" in rendered
     assert "name: OpenTelemetry" in rendered
+    assert "enable_content_capture: true" in rendered
     assert "check finserve topic" not in rendered
     assert "regex_detection" not in rendered
     assert "embeddings_only: true" not in rendered
@@ -81,6 +89,12 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "checksum/config" in deploy
     assert "opentelemetry-instrument" in deploy
     assert "OTEL_METRICS_EXPORTER" in deploy
+    assert "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS" in deploy
+    assert "/v1/health" in deploy
+    assert "path: /v1/health" in deploy
+    assert "/v1/rails/configs" not in deploy
+    assert "--disable-chat-ui" in deploy
+    assert "NEMO_GUARDRAILS_NO_USAGE_STATS" in deploy
     off = _helm(
         "template",
         "zelkor",
@@ -93,6 +107,19 @@ def test_nemo_content_safety_passthrough_for_tools():
         "templates/guardrails/configmap.yaml",
     )
     assert "name: OpenTelemetry" not in off
+    assert "enable_content_capture" not in off
+    capture_off = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "guardrails.nemo.observability.otel.captureContent=false",
+        "-s",
+        "templates/guardrails/configmap.yaml",
+    )
+    assert "enable_content_capture: false" in capture_off
     off_deploy = _helm(
         "template",
         "zelkor",
@@ -105,6 +132,9 @@ def test_nemo_content_safety_passthrough_for_tools():
         "templates/guardrails/deployment.yaml",
     )
     assert "opentelemetry-instrument" not in off_deploy
+    assert "--disable-chat-ui" in off_deploy
+    assert "path: /v1/health" in off_deploy
+    assert "NEMO_GUARDRAILS_NO_USAGE_STATS" in off_deploy
 
 
 def test_nemo_otel_uses_instrument_not_sitecustomize():
@@ -113,7 +143,13 @@ def test_nemo_otel_uses_instrument_not_sitecustomize():
     assert "sitecustomize" not in dockerfile
     assert not (ROOT / "images/guardrails/sitecustomize.py").exists()
     assert "opentelemetry-distro==0.65b0" in reqs
+    assert "opentelemetry-instrumentation-fastapi==0.65b0" in reqs
+    assert "opentelemetry-instrumentation-asgi==0.65b0" in reqs
+    assert "opentelemetry-instrumentation-httpx==0.65b0" in reqs
     assert '"nemoguardrails", "server"' in dockerfile
+    assert "--disable-chat-ui" in dockerfile
+    aegra_reqs = (ROOT / "images/aegra/requirements.txt").read_text()
+    assert "opentelemetry-instrumentation-httpx==0.65b0" in aegra_reqs
 
 
 def _helm(*args: str) -> str:

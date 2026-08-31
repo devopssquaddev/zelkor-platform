@@ -78,23 +78,95 @@ def test_base01_langfuse_observability_endpoint():
 
 def test_base01_finserve_agent_generates_traces():
     """E2E smoke: a FinServe run leaves LLM traces via gateway OTel."""
-    run_finserve("Summarize my portfolio holdings.")
-    time.sleep(2.0)
-    try:
-        traces_resp = httpx.get(
-            f"{GATEWAY_BASE_URL}/api/public/traces",
-            headers={"Host": LANGFUSE_HOST_HEADER},
-            auth=(
-                os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000"),
-                os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000"),
-            ),
-            timeout=10.0,
-        )
-    except httpx.ConnectError:
-        pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
-    assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
-    traces = traces_resp.json().get("data", [])
+    started = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
+    marker = f"zelkor-join-{int(time.time())}"
+    run_finserve(f"Summarize my portfolio holdings. [{marker}]")
+    auth = (
+        os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000"),
+        os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000"),
+    )
+    headers = {"Host": LANGFUSE_HOST_HEADER}
+    deadline = time.time() + 45
+    traces = []
+    matching = []
+    while time.time() < deadline:
+        try:
+            traces_resp = httpx.get(
+                f"{GATEWAY_BASE_URL}/api/public/traces",
+                headers=headers,
+                auth=auth,
+                params={"limit": 50},
+                timeout=10.0,
+            )
+        except httpx.ConnectError:
+            pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
+        assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
+        traces = traces_resp.json().get("data", [])
+        matching = [t for t in traces if marker in str(t)]
+        if not matching:
+            matching = [
+                t
+                for t in traces
+                if str(t.get("name") or "").startswith("finserve-")
+                and str(t.get("timestamp") or "") >= started
+            ]
+        if matching:
+            break
+        time.sleep(2)
     if not traces:
         pytest.skip("Langfuse OTel export may be async or empty")
-    matching = [t for t in traces if t.get("userId") == "Bank_Alpha" or "Bank_Alpha" in (t.get("tags") or [])]
     assert matching or traces
+
+    candidates = matching or traces
+    if os.environ.get("NEMO_OTEL_JOIN", "1").strip().lower() in ("0", "false", "off"):
+        pytest.skip("NEMO_OTEL_JOIN disabled")
+    obs_deadline = time.time() + 30
+    seen: list = []
+    joined: list = []
+    split: list = []
+    while time.time() < obs_deadline:
+        seen = []
+        joined = []
+        split = []
+        for tr in candidates:
+            trace_id = tr.get("id")
+            if not trace_id:
+                continue
+            detail_resp = httpx.get(
+                f"{GATEWAY_BASE_URL}/api/public/traces/{trace_id}",
+                headers=headers,
+                auth=auth,
+                timeout=10.0,
+            )
+            if detail_resp.status_code != 200:
+                continue
+            detail = detail_resp.json()
+            observations = detail.get("observations") or []
+            if not observations:
+                obs_resp = httpx.get(
+                    f"{GATEWAY_BASE_URL}/api/public/observations",
+                    headers=headers,
+                    auth=auth,
+                    params={"traceId": trace_id, "limit": 100},
+                    timeout=10.0,
+                )
+                if obs_resp.status_code == 200:
+                    observations = obs_resp.json().get("data", [])
+            blob = str(observations).lower() + str(detail).lower()
+            seen.append(trace_id)
+            has_nemo = any(token in blob for token in ("nemo", "guardrails", "content_safety"))
+            has_graph = any(
+                token in blob
+                for token in ("langgraph", "openinference", "create_agent", "chatopenai")
+            )
+            if has_nemo:
+                joined.append(trace_id)
+            elif has_graph:
+                split.append(trace_id)
+        if joined and not split:
+            return
+        time.sleep(2)
+    pytest.fail(
+        f"Langfuse split traces: graph-without-NeMo {split}; joined {joined}; seen {seen} "
+        "(W3C join missing or OTel overlay off; set NEMO_OTEL_JOIN=0 to skip)"
+    )

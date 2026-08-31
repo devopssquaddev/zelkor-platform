@@ -393,6 +393,7 @@ guardrails:
     observability:
       otel:
         enabled: false  # when true: config.yml tracing adapter + opentelemetry-instrument (no sitecustomize)
+        captureContent: false  # PII; LLMRails tracing.enable_content_capture (Langfuse observation I/O)
     safetyRefusal: "I can't help with that request."
     extraInputFlows: []
     extraColang: ""
@@ -406,7 +407,7 @@ guardrails:
         memory: 1Gi
     startupProbe:
       httpGet:
-        path: /v1/rails/configs
+        path: /v1/health
         port: 8000
       initialDelaySeconds: 10
       periodSeconds: 5
@@ -414,14 +415,14 @@ guardrails:
       failureThreshold: 24
     livenessProbe:
       httpGet:
-        path: /v1/rails/configs
+        path: /v1/health
         port: 8000
       periodSeconds: 15
       timeoutSeconds: 5
       failureThreshold: 3
     readinessProbe:
       httpGet:
-        path: /v1/rails/configs
+        path: /v1/health
         port: 8000
       periodSeconds: 5
       timeoutSeconds: 5
