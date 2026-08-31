@@ -1,5 +1,6 @@
 {{/*
-FinServe chart helpers
+FinServe chart helpers (jobs and optional HTTPRoute).
+The agent Deployment comes from the zelkor-agent subchart.
 */}}
 {{- define "finserve.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}

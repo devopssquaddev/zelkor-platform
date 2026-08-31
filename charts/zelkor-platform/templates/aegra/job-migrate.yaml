@@ -1,0 +1,42 @@
+{{- if .Values.aegra.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aegra-migrate
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aegra
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: aegra
+    spec:
+      restartPolicy: OnFailure
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: migrate
+          image: {{ include "zelkor-platform.image" .Values.aegra.cli.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.cli.image) }}
+          command:
+            - sh
+            - -c
+            - |
+              until python -c "import socket; s=socket.create_connection(('{{ include "zelkor-platform.fullname" . }}-postgresql', 5432), 2); s.close()"; do
+                echo "Waiting for postgresql..."
+                sleep 2
+              done
+              aegra db upgrade
+          env:
+            - name: DATABASE_URL
+              value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
+{{- end }}

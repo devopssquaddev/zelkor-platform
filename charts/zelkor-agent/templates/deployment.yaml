@@ -1,0 +1,123 @@
+{{- $graphId := include "zelkor-agent.primaryGraphId" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-agent.fullname" . }}
+  labels:
+    {{- include "zelkor-agent.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    {{- include "zelkor-agent.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-agent.fullname" . }}
+  labels:
+    {{- include "zelkor-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "zelkor-agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-agent.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 35 }}
+      containers:
+        - name: agent
+          image: {{ include "zelkor-agent.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          workingDir: /app
+          command: ["uvicorn", "aegra_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: {{ ((.Values.auth.devTokens).enabled | default false) | quote }}
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: {{ ((.Values.auth.devTokens).prefix | default "") | quote }}
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: {{ (.Values.auth.trustTenantHeader | default false) | quote }}
+            - name: AUTH_JWT_SECRET
+              value: {{ (.Values.auth.jwtSecret | default "") | quote }}
+            - name: DATABASE_URL
+              value: {{ required "platform.databaseUrl must be set (shared Aegra checkpointer DSN)" .Values.platform.databaseUrl | quote }}
+            - name: REDIS_URL
+              value: {{ .Values.platform.valkeyUrl | quote }}
+            - name: REDIS_BROKER_ENABLED
+              value: "true"
+            - name: REDIS_CHANNEL_PREFIX
+              value: {{ include "zelkor-agent.redisChannelPrefix" . | quote }}
+            - name: WORKER_QUEUE_KEY
+              value: {{ include "zelkor-agent.workerQueueKey" . | quote }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
+            - name: WORKER_COUNT
+              value: {{ (.Values.workerCount | default 3) | quote }}
+            - name: N_JOBS_PER_WORKER
+              value: {{ (.Values.nJobsPerWorker | default 10) | quote }}
+            - name: WORKER_DRAIN_TIMEOUT
+              value: {{ (.Values.workerDrainTimeout | default 30) | quote }}
+            - name: AEGRA_CONFIG
+              value: {{ .Values.aegraConfig | default "/app/aegra.json" | quote }}
+            - name: OPENAI_BASE_URL
+              value: {{ .Values.platform.openaiBaseUrl | quote }}
+            - name: OPENAI_API_KEY
+              value: {{ .Values.platform.consumerKey | quote }}
+            - name: AI_GATEWAY_URL
+              value: {{ .Values.platform.openaiBaseUrl | quote }}
+            - name: MCP_URL
+              value: {{ .Values.platform.mcpUrl | quote }}
+            - name: MCP_INJECT_ENABLED
+              value: {{ .Values.platform.mcpInject | quote }}
+            {{- if .Values.platform.defaultLlmModel }}
+            - name: DEFAULT_LLM_MODEL
+              value: {{ .Values.platform.defaultLlmModel | quote }}
+            {{- end }}
+            {{- if .Values.platform.langfuseBaseUrl }}
+            - name: OTEL_TARGETS
+              value: {{ .Values.platform.otelTargets | default "LANGFUSE" | quote }}
+            - name: LANGFUSE_BASE_URL
+              value: {{ .Values.platform.langfuseBaseUrl | quote }}
+            {{- if .Values.platform.langfusePublicKey }}
+            - name: LANGFUSE_PUBLIC_KEY
+              value: {{ .Values.platform.langfusePublicKey | quote }}
+            - name: LANGFUSE_SECRET_KEY
+              value: {{ .Values.platform.langfuseSecretKey | quote }}
+            {{- end }}
+            {{- end }}
+            - name: ZELKOR_GRAPH_ID
+              value: {{ $graphId | quote }}
+            {{- range .Values.extraEnv }}
+            - name: {{ .name | quote }}
+              value: {{ .value | quote }}
+            {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

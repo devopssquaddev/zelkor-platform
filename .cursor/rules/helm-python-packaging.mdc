@@ -1,0 +1,36 @@
+---
+description: Do not inline Python in ConfigMaps; ship images, or Helm files/ via .Files.Get
+alwaysApply: true
+---
+
+# Python Packaging (Helm / Kubernetes)
+
+Do **not** paste Python source into ConfigMap (or Secret) templates. Inline `server.py: |` / `import os` in YAML is forbidden in platform and example charts.
+
+## Preference
+
+1. **Required for app modules:** Put the module in a container image under `images/`. The Deployment runs `ghcr.io/devopssquaddev/zelkor-*` (pin `digest` when possible).
+2. **Allowed for config:** Keep SQL, Colang, or JSON under `chart/files/` and load it with `.Files.Get` or `.Files.Glob`. ConfigMaps may **mount** that file; they must not **contain** application Python in the template.
+3. **Forbidden:** Python (including `__init__.py` stubs) written under `data:` in `templates/*.yaml`.
+
+```yaml
+# BAD — source lives in the template
+data:
+  server.py: |
+    import os
+    from fastapi import FastAPI
+```
+
+```yaml
+# GOOD — config lives in files/; template only references it
+data:
+  init.sql: |
+{{ .Files.Get "files/init.sql" | indent 4 }}
+```
+
+```yaml
+# REQUIRED for app modules — image already has the Python
+# spec.containers[].image: ghcr.io/devopssquaddev/zelkor-mcp:dev
+```
+
+Edit and lint Python in `.py` files (or image build context), never inside Helm YAML.

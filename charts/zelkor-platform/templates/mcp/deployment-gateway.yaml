@@ -1,0 +1,57 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-gateway
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  replicas: {{ .Values.mcp.gateway.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-gateway
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-gateway
+    spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: mcp-gateway
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          workingDir: /app
+          command: ["python", "mcp/gateway/gateway_server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            - name: POSTGRES_MCP_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-postgres:8080"
+            - name: QDRANT_MCP_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-qdrant:8080"
+            - name: SANDBOX_MCP_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-sandbox:8080"
+            - name: MCP_EXTRA_BACKENDS
+              value: {{ .Values.mcp.extraBackends | default list | toJson | quote }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.gateway) | nindent 10 }}
+{{- end }}

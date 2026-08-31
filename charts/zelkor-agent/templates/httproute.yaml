@@ -1,0 +1,57 @@
+{{- $sr := .Values.sharedRoute | default dict }}
+{{- if and ($sr.enabled | default false) $sr.host $sr.gatewayName }}
+{{- $graphIds := .Values.graphIds | default list }}
+{{- if and (not $graphIds) .Values.graphId }}
+{{- $graphIds = list .Values.graphId }}
+{{- end }}
+{{- if not $graphIds }}
+{{- fail "graphId or graphIds must be set (the independently released graph id(s))" }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-agent.fullname" . }}-route
+  labels:
+    {{- include "zelkor-agent.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $sr.gatewayName | quote }}
+      namespace: {{ $sr.gatewayNamespace | default .Release.Namespace | quote }}
+  hostnames:
+    - {{ $sr.host | quote }}
+  rules:
+    - matches:
+        {{- range $graphIds }}
+        - headers:
+            - name: X-Graph-ID
+              type: Exact
+              value: {{ . | quote }}
+        - queryParams:
+            - name: graph_id
+              type: Exact
+              value: {{ . | quote }}
+        {{- end }}
+      backendRefs:
+        - name: {{ include "zelkor-agent.fullname" . }}
+          port: 8000
+      timeouts:
+        request: 0s
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "zelkor-agent.fullname" . }}-sse
+  labels:
+    {{- include "zelkor-agent.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "zelkor-agent.fullname" . }}-route
+  mergeType: StrategicMerge
+  timeout:
+    http:
+      requestTimeout: 0s
+      maxStreamDuration: 0s
+      streamIdleTimeout: 1h
+{{- end }}

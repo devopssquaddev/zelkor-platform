@@ -8,12 +8,12 @@ metadata:
     app.kubernetes.io/component: langfuse
 type: Opaque
 stringData:
-  nextauth-secret: {{ .Values.langfuse.nextauthSecret | default "zelkor-langfuse-nextauth-secret-12345" | quote }}
-  salt: {{ .Values.langfuse.salt | default "zelkor-langfuse-salt-123456789" | quote }}
-  encryption-key: {{ .Values.langfuse.encryptionKey | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" | quote }}
+  nextauth-secret: {{ required "langfuse.nextauthSecret is required when langfuse.enabled" .Values.langfuse.nextauthSecret | quote }}
+  salt: {{ required "langfuse.salt is required when langfuse.enabled" .Values.langfuse.salt | quote }}
+  encryption-key: {{ required "langfuse.encryptionKey is required when langfuse.enabled" .Values.langfuse.encryptionKey | quote }}
   {{- if and .Values.langfuse.init .Values.langfuse.init.enabled }}
-  init-user-password: {{ .Values.langfuse.init.userPassword | default "zelkor-dev-password" | quote }}
-  init-secret-key: {{ .Values.langfuse.init.projectSecretKey | default "sk-lf-zelkor-dev-00000000000000000000" | quote }}
+  init-user-password: {{ required "langfuse.init.userPassword is required when langfuse.init.enabled" .Values.langfuse.init.userPassword | quote }}
+  init-secret-key: {{ required "langfuse.init.projectSecretKey is required when langfuse.init.enabled" .Values.langfuse.init.projectSecretKey | quote }}
   {{- end }}
 ---
 apiVersion: v1
@@ -32,6 +32,7 @@ spec:
   selector:
     {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: langfuse
+    app.kubernetes.io/langfuse-role: web
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,118 +41,137 @@ metadata:
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: langfuse
+    app.kubernetes.io/langfuse-role: web
 spec:
   replicas: {{ .Values.langfuse.replicaCount | default 1 }}
   selector:
     matchLabels:
       {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: langfuse
+      app.kubernetes.io/langfuse-role: web
   template:
     metadata:
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: langfuse
+        app.kubernetes.io/langfuse-role: web
     spec:
       initContainers:
-        - name: wait-for-dbs
-          image: busybox:1.36
+        - name: wait-for-deps
+          image: {{ .Values.global.initContainerImage | default "busybox:1.37" }}
           command:
             - sh
             - -c
             - |
-              until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-postgresql 5432; do
-                echo "Waiting for postgresql..."
-                sleep 1
-              done
-              until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-clickhouse 8123; do
-                echo "Waiting for clickhouse..."
-                sleep 1
-              done
-              echo "Databases ready."
+              {{ include "zelkor-platform.langfuseWaitScript" . | nindent 14 }}
       containers:
         - name: langfuse
-          image: "{{ .Values.langfuse.image.repository | default "langfuse/langfuse" }}:{{ .Values.langfuse.image.tag | default "2" }}"
+          image: "{{ .Values.langfuse.image.repository }}:{{ .Values.langfuse.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 3000
               name: http
           env:
-            - name: DATABASE_URL
-              value: "postgresql://{{ .Values.postgresql.auth.username | default "zelkor" }}:{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}@{{ include "zelkor-platform.fullname" . }}-postgresql:5432/langfuse"
-            - name: CLICKHOUSE_URL
-              value: "http://{{ include "zelkor-platform.fullname" . }}-clickhouse:8123"
-            - name: CLICKHOUSE_MIGRATION_URL
-              value: "clickhouse://{{ include "zelkor-platform.fullname" . }}-clickhouse:9000/default"
-            - name: CLICKHOUSE_USER
-              value: "default"
-            - name: CLICKHOUSE_PASSWORD
-              value: ""
-            - name: CLICKHOUSE_DB
-              value: "default"
+            {{ include "zelkor-platform.langfuseCoreEnv" . | nindent 12 }}
             - name: NEXTAUTH_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "zelkor-platform.fullname" . }}-langfuse
                   key: nextauth-secret
-            - name: SALT
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
-                  key: salt
-            - name: ENCRYPTION_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
-                  key: encryption-key
             - name: NEXTAUTH_URL
-              value: {{ .Values.langfuse.nextauthUrl | default (printf "http://%s" (.Values.gateway.hosts.langfuse | default "langfuse.localhost")) | quote }}
+              value: {{ required "langfuse.nextauthUrl is required when langfuse.enabled" .Values.langfuse.nextauthUrl | quote }}
             - name: AUTH_TRUST_HOST
               value: "true"
-            - name: TELEMETRY_ENABLED
-              value: "false"
             {{- if and .Values.langfuse.init .Values.langfuse.init.enabled }}
             - name: LANGFUSE_INIT_ORG_ID
-              value: {{ .Values.langfuse.init.orgId | default "zelkor-dev" | quote }}
+              value: {{ required "langfuse.init.orgId is required when langfuse.init.enabled" .Values.langfuse.init.orgId | quote }}
             - name: LANGFUSE_INIT_ORG_NAME
-              value: {{ .Values.langfuse.init.orgName | default "Zelkor Dev" | quote }}
+              value: {{ required "langfuse.init.orgName is required when langfuse.init.enabled" .Values.langfuse.init.orgName | quote }}
             - name: LANGFUSE_INIT_PROJECT_ID
-              value: {{ .Values.langfuse.init.projectId | default "finserve" | quote }}
+              value: {{ required "langfuse.init.projectId is required when langfuse.init.enabled" .Values.langfuse.init.projectId | quote }}
             - name: LANGFUSE_INIT_PROJECT_NAME
-              value: {{ .Values.langfuse.init.projectName | default "FinServe AI" | quote }}
+              value: {{ required "langfuse.init.projectName is required when langfuse.init.enabled" .Values.langfuse.init.projectName | quote }}
             - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
-              value: {{ .Values.langfuse.init.projectPublicKey | default "pk-lf-zelkor-dev-00000000000000000000" | quote }}
+              value: {{ required "langfuse.init.projectPublicKey is required when langfuse.init.enabled" .Values.langfuse.init.projectPublicKey | quote }}
             - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "zelkor-platform.fullname" . }}-langfuse
                   key: init-secret-key
             - name: LANGFUSE_INIT_USER_EMAIL
-              value: {{ .Values.langfuse.init.userEmail | default "admin@zelkor.local" | quote }}
+              value: {{ required "langfuse.init.userEmail is required when langfuse.init.enabled" .Values.langfuse.init.userEmail | quote }}
             - name: LANGFUSE_INIT_USER_NAME
-              value: {{ .Values.langfuse.init.userName | default "Zelkor Admin" | quote }}
+              value: {{ required "langfuse.init.userName is required when langfuse.init.enabled" .Values.langfuse.init.userName | quote }}
             - name: LANGFUSE_INIT_USER_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "zelkor-platform.fullname" . }}-langfuse
                   key: init-user-password
             {{- end }}
-          startupProbe:
-            httpGet:
-              path: /api/public/health
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            failureThreshold: 30
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.langfuse) | nindent 10 }}
+{{- if .Values.langfuse.worker.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-worker
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse
+    app.kubernetes.io/langfuse-role: worker
+spec:
+  replicas: {{ .Values.langfuse.worker.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: langfuse
+      app.kubernetes.io/langfuse-role: worker
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: langfuse
+        app.kubernetes.io/langfuse-role: worker
+    spec:
+      initContainers:
+        - name: wait-for-deps
+          image: {{ .Values.global.initContainerImage | default "busybox:1.37" }}
+          command:
+            - sh
+            - -c
+            - |
+              {{ include "zelkor-platform.langfuseWaitScript" . | nindent 14 }}
+      containers:
+        - name: langfuse-worker
+          image: "{{ .Values.langfuse.worker.image.repository }}:{{ .Values.langfuse.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 3030
+              name: http
+          env:
+            {{ include "zelkor-platform.langfuseCoreEnv" . | nindent 12 }}
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: nextauth-secret
+            - name: NEXTAUTH_URL
+              value: {{ required "langfuse.nextauthUrl is required when langfuse.enabled" .Values.langfuse.nextauthUrl | quote }}
           livenessProbe:
-            httpGet:
-              path: /api/public/health
-              port: 3000
+            tcpSocket:
+              port: 3030
             periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /api/public/health
-              port: 3000
+            tcpSocket:
+              port: 3030
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- with .Values.langfuse.resources }}
           resources:
-            {{- toYaml .Values.langfuse.resources | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
 {{- end }}

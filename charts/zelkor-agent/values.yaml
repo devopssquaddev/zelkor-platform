@@ -1,0 +1,94 @@
+# Helper chart: one ClusterIP Aegra worker. Not the platform front door.
+# GitOps: set sharedRoute.host to gateway.hosts.aegra (same Gateway parentRef).
+# Overlay alternative on the platform chart: aegra.workers: [{ graphId, service, port }]
+
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+graphId: ""
+# Several ids on one Deployment (fat multi-graph image). Used when graphId is empty.
+graphIds: []
+
+# Path to aegra.json inside the image. Override for multi-config images.
+aegraConfig: "/app/aegra.json"
+
+# Shared-host registration (recommended). Empty host = no HTTPRoute from this chart.
+sharedRoute:
+  enabled: false
+  gatewayName: ""
+  gatewayNamespace: ""
+  host: ""
+
+# REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY. Empty prefix → aegra:<release>.
+redis:
+  prefix: ""
+  channelPrefix: ""
+  queueKey: ""
+
+image:
+  repository: ghcr.io/devopssquaddev/zelkor-aegra
+  tag: "dev"
+  digest: ""
+  pullPolicy: ""
+
+replicaCount: 1
+
+workerCount: 3
+nJobsPerWorker: 10
+workerDrainTimeout: 30
+terminationGracePeriodSeconds: 35
+
+platform:
+  openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+  consumerKey: ""
+  mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+  databaseUrl: ""
+  valkeyUrl: ""
+  mcpInject: true
+  defaultLlmModel: ""
+  langfuseBaseUrl: ""
+  langfusePublicKey: ""
+  langfuseSecretKey: ""
+  otelTargets: ""
+
+auth:
+  jwtSecret: ""
+  devTokens:
+    enabled: false
+    prefix: ""
+  trustTenantHeader: false
+
+# Extra container env (e.g. DEFAULT_LLM_MODEL, QDRANT_COLLECTION for a graph prompt).
+extraEnv: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+startupProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 18
+livenessProbe:
+  httpGet:
+    path: /live
+    port: 8000
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8000
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3

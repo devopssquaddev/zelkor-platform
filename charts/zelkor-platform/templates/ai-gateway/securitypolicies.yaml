@@ -16,7 +16,7 @@ spec:
   type: APIKey
   apiKey:
     secretRef:
-      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      name: {{ include "zelkor-platform.fullname" . }}-openai-api-key
       namespace: {{ .Release.Namespace }}
 ---
 {{- end }}
@@ -37,15 +37,15 @@ spec:
   type: APIKey
   apiKey:
     secretRef:
-      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      name: {{ include "zelkor-platform.fullname" . }}-anthropic-api-key
       namespace: {{ .Release.Namespace }}
 ---
 {{- end }}
-{{- if .Values.aiGateway.providers.ollama.apiKey }}
+{{- if .Values.aiGateway.providers.ollamaCloud.apiKey }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: BackendSecurityPolicy
 metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-ollama-apikey
+  name: {{ include "zelkor-platform.fullname" . }}-ollama-cloud-apikey
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
@@ -54,11 +54,11 @@ spec:
   targetRefs:
     - group: aigateway.envoyproxy.io
       kind: AIServiceBackend
-      name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+      name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
   type: APIKey
   apiKey:
     secretRef:
-      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      name: {{ include "zelkor-platform.fullname" . }}-ollama-cloud-api-key
       namespace: {{ .Release.Namespace }}
 ---
 {{- end }}
@@ -79,7 +79,7 @@ spec:
   type: APIKey
   apiKey:
     secretRef:
-      name: {{ include "zelkor-platform.fullname" . }}-ai-gateway-keys
+      name: {{ include "zelkor-platform.fullname" . }}-gemini-api-key
       namespace: {{ .Release.Namespace }}
 ---
 {{- end }}

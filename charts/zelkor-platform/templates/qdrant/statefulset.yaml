@@ -48,18 +48,5 @@ spec:
               name: http
             - containerPort: 6334
               name: grpc
-          livenessProbe:
-            httpGet:
-              path: /readyz
-              port: 6333
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /readyz
-              port: 6333
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          resources:
-            {{- toYaml .Values.qdrant.resources | nindent 12 }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.qdrant) | nindent 10 }}
 {{- end }}

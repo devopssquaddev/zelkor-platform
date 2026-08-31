@@ -5,12 +5,13 @@ import uuid
 import datetime
 import time
 
+from tests.helpers.llm import llm_model_or_skip
+
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
 AI_GATEWAY_HOST_HEADER = os.environ.get("AI_GATEWAY_HOST_HEADER", "ai-gateway.localhost")
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 
-AI_GATEWAY_API_KEY = os.environ.get("OLLAMA_API_KEY", os.environ.get("AI_GATEWAY_API_KEY", "dev-key"))
-DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("LLM_MODEL", "gpt-oss:20b"))
+AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", "dev-key"))
 
 DEV_PUBLIC_KEY = "pk-lf-zelkor-dev-00000000000000000000"
 DEV_SECRET_KEY = "sk-lf-zelkor-dev-00000000000000000000"
@@ -48,7 +49,7 @@ def test_langfuse_preseeded_api_keys_ingestion():
                 "body": {
                     "id": trace_id,
                     "name": "integration-test-trace",
-                    "userId": "Bank_Alpha",
+                    "userId": "tenant_a",
                     "tags": ["test", "integration"],
                     "input": "Health check trace",
                     "output": "Trace received successfully",
@@ -76,20 +77,21 @@ def test_ai_gateway_generates_traces():
     """
     Verify Envoy AI Gateway completes chat requests and emits GenAI traces to Langfuse.
     """
+    model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
         "Host": AI_GATEWAY_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
-        "X-Tenant-ID": "Bank_Alpha"
+        "X-Tenant-ID": "tenant_a"
     }
     payload = {
-        "model": DEFAULT_LLM_MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": "Ping AI Gateway with trace"}],
         "max_tokens": 10
     }
     t0 = time.time()
-    resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+    resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
     assert resp.status_code == 200, f"AI Gateway chat completion failed with status {resp.status_code}: {resp.text}"
     resp_data = resp.json()
     
@@ -107,13 +109,13 @@ def test_ai_gateway_generates_traces():
             "body": {
                 "id": trace_id,
                 "name": "envoy-ai-gateway-ollama-chat",
-                "userId": "Bank_Alpha",
+                "userId": "tenant_a",
                 "sessionId": "test-session-ollama",
                 "input": payload,
                 "output": resp_data,
-                "tags": ["ai-gateway", "ollama", "Bank_Alpha", "genai-trace"],
+                "tags": ["ai-gateway", "ollama", "tenant_a", "genai-trace"],
                 "metadata": {
-                    "model": DEFAULT_LLM_MODEL,
+                    "model": model,
                     "status_code": resp.status_code,
                     "gateway": "envoy-ai-gateway"
                 }
@@ -132,7 +134,7 @@ def test_ai_gateway_generates_traces():
                 "input": payload,
                 "output": resp_data,
                 "metadata": {
-                    "model": DEFAULT_LLM_MODEL,
+                    "model": model,
                     "provider": "ollama"
                 }
             }
@@ -148,15 +150,26 @@ def test_ai_gateway_generates_traces():
     )
     assert ingest_resp.status_code in [200, 201, 207], f"Trace ingestion failed: {ingest_resp.text}"
 
-    # Verify trace retrieval from Langfuse API
-    time.sleep(0.5)
-    traces_resp = httpx.get(
-        f"{GATEWAY_BASE_URL}/api/public/traces",
-        headers={"Host": LANGFUSE_HOST_HEADER},
-        auth=(DEV_PUBLIC_KEY, DEV_SECRET_KEY),
-        timeout=10.0
+    # Verify trace retrieval from Langfuse API (eventual consistency after ingestion)
+    auth = (DEV_PUBLIC_KEY, DEV_SECRET_KEY)
+    headers = {"Host": LANGFUSE_HOST_HEADER}
+    deadline = time.time() + 30
+    last_traces = []
+    while time.time() < deadline:
+        traces_resp = httpx.get(
+            f"{GATEWAY_BASE_URL}/api/public/traces",
+            headers=headers,
+            auth=auth,
+            timeout=10.0,
+        )
+        assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
+        last_traces = traces_resp.json().get("data", [])
+        matching = [t for t in last_traces if t.get("id") == trace_id]
+        if matching:
+            return
+        time.sleep(2)
+
+    assert False, (
+        f"Trace {trace_id} not found in Langfuse within 30s. "
+        f"Retrieved {len(last_traces)} traces."
     )
-    assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
-    traces = traces_resp.json().get("data", [])
-    matching = [t for t in traces if t.get("id") == trace_id]
-    assert len(matching) > 0, f"Trace {trace_id} not found in Langfuse. Retrieved {len(traces)} traces."

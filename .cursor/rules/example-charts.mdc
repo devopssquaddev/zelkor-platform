@@ -1,0 +1,18 @@
+---
+description: Example charts consume the platform via overlays; do not patch the platform chart to boot a demo
+globs: examples/**
+alwaysApply: false
+---
+
+# Example / Demo Charts
+
+Each demo is a standalone Helm release under `examples/<name>/chart/`.
+
+- Put agent logic, seed jobs, HTTPRoutes, domain schema, and E2E tests here. Agent Python belongs in a container image, or in `chart/files/` loaded with `.Files.Get` — never inlined in ConfigMap YAML.
+- Configure the platform through this chart's values and in-cluster DNS. Do not edit `charts/zelkor-platform/` to hard-wire this demo.
+- If the platform is missing a knob, stop. Add a generic value on the platform chart first, then set it here. SaaS MCP (ServiceNow, …) is `mcp.extraBackends: []` on the platform overlay plus **this** chart’s ClusterIP MCP Deployment — do not add a vendor MCP to `charts/zelkor-platform`.
+- Do not add this demo as a toggle inside the platform chart.
+- `install.sh` may deploy this release when `INSTALL_EXAMPLES=true`; that is orchestration, not a reason to change platform defaults.
+- Serve the demo graph from **this** release’s **ClusterIP** Deployment (`FROM zelkor-aegra`). Do not mount `aegra.json` onto platform Aegra or set `aegra.graphs` on the platform chart. Prefer clients hitting platform Aegra (`graph_id`); a demo HTTPRoute is TTFV-only, not the production exposure pattern.
+
+Tenant isolation handlers stay in platform `agents/`, not in the demo.

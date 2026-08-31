@@ -39,9 +39,17 @@ Update governing requirement and specification documents whenever:
 
 ## 4. Mapping Matrix
 - **Platform Features & Helm Profiles:** `internal/plan/phase_1_requirements.md` (or relevant phase doc)
+- **Drop-in agent contract (intercept / wrap / MCP):** `internal/plan/requirements_drop_in_agent_contract.md`
+- **Agent Langfuse trace (one run = one waterfall):** `internal/plan/requirements_agent_trace.md`
+- **Deep Agents + `zelkor` CLI (Phase 2):** `internal/plan/requirements_deepagents_zelkor.md`
+- **Native MCP / BYO extra backends:** `internal/plan/requirements_native_mcp_servers.md` (§2.3 extra backends)
+- **Native Postgres / Qdrant MCP implementation:** `internal/plan/architecture_native_mcp_oss_wrap.md` (thin Postgres; Qdrant pip-wrap)
+- **Component pins & compatibility matrix:** `internal/plan/component_compatibility_matrix.md`
 - **Multi-Tier Roadmap:** `internal/plan/roadmap.md`
 - **FinServe Demo & Workload Scenarios:** `internal/requirements/demo/finserve_ai_demo.md`, `internal/requirements/dev/examples_and_demos.md`
 - **Developer & CI Gates:** `internal/requirements/dev/agent_code_review.md`, `internal/requirements/dev/agent_sdlc_and_tools.md`
+- **Test-server fail-stop (fix one test at a time):** `internal/.cursor/rules/test-server-fail-stop.mdc`
+- **Platform vs demo + tests-must-not-shape-chart:** `internal/requirements/dev/examples_and_demos.md`
 - **Quickstart & User Documentation:** `internal/requirements/quickstart/`, `zelkor-platform/docs/quickstart.md`
 
 ---

@@ -1,0 +1,15 @@
+---
+description: Upstream OSS checkouts are pinned reference, not Zelkor product code
+alwaysApply: true
+---
+
+# Upstream OSS is reference only
+
+Workspace folders named `vendor/` or `ref/…` are **pinned upstream checkouts**. They are not Zelkor. Pins live in `internal/plan/component_compatibility_matrix.md`.
+
+- Read them to learn APIs, CRDs, env vars, and behavior at the pinned version.
+- Never edit, format, refactor, or “fix” files there.
+- Never `git add` / commit them into `internal/` or `zelkor-platform/`.
+- Never copy their source into images, Helm `files/`, or ConfigMaps. Wrap or configure; do not vendor-paste.
+- If Zelkor behavior must change, change `zelkor-platform/` (and the living spec). If upstream must change, that is an upstream issue/PR, not our tree.
+- Prefer the checkout over web guesswork when versions disagree.

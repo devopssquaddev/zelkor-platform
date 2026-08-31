@@ -1,0 +1,9 @@
+{
+  "graphs": {
+    "finserve-advisor": "./advisor_agent.py:graph",
+    "finserve-research": "./research_agent.py:graph"
+  },
+  "auth": {
+    "path": "./tenant_auth.py:auth"
+  }
+}

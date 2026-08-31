@@ -1,5 +1,8 @@
 {{- if .Values.aiGateway.enabled }}
-# Local Ollama Backend (defaults to host.docker.internal)
+
+# Ollama Local — host Ollama / vLLM-compatible server (no upstream API key)
+{{- if .Values.aiGateway.providers.ollamaLocal.host }}
+{{- $parsed := urlParse .Values.aiGateway.providers.ollamaLocal.host }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
@@ -27,16 +30,17 @@ metadata:
 spec:
   endpoints:
     - fqdn:
-        hostname: host.docker.internal
-        port: 11434
+        hostname: {{ $parsed.hostname | required "aiGateway.providers.ollamaLocal.host must include a hostname" }}
+        port: {{ $parsed.port | default 11434 | int }}
 ---
+{{- end }}
 
-# Ollama Cloud Backend
-{{- if or .Values.aiGateway.providers.ollama.apiKey (hasPrefix "https://ollama.com" (.Values.aiGateway.providers.ollama.host | default "")) }}
+# Ollama Cloud — ollama.com hosted models (requires apiKey)
+{{- if .Values.aiGateway.providers.ollamaCloud.apiKey }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
@@ -45,14 +49,14 @@ spec:
   schema:
     name: OpenAI
   backendRef:
-    name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+    name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
     kind: Backend
     group: gateway.envoyproxy.io
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: Backend
 metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
@@ -63,10 +67,10 @@ spec:
         hostname: ollama.com
         port: 443
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-tls
+  name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud-tls
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
@@ -75,7 +79,7 @@ spec:
   targetRefs:
     - group: gateway.envoyproxy.io
       kind: Backend
-      name: {{ include "zelkor-platform.fullname" . }}-backend-ollama
+      name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
   validation:
     wellKnownCACertificates: System
     hostname: ollama.com
@@ -114,7 +118,7 @@ spec:
         hostname: api.openai.com
         port: 443
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-openai-tls
@@ -165,7 +169,7 @@ spec:
         hostname: api.anthropic.com
         port: 443
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic-tls
@@ -216,7 +220,7 @@ spec:
         hostname: generativelanguage.googleapis.com
         port: 443
 ---
-apiVersion: gateway.networking.k8s.io/v1alpha3
+apiVersion: gateway.networking.k8s.io/v1
 kind: BackendTLSPolicy
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-gemini-tls
@@ -266,6 +270,40 @@ spec:
     - fqdn:
         hostname: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).hostname | default "vllm.ai-cluster.svc" }}
         port: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).port | default 8000 | int }}
+---
+{{- end }}
+
+# NeMo Guardrails Backend (default /v1 intercept or legacy nemo/* prefix)
+{{- if eq (include "zelkor-platform.nemoAiGatewayBackendEnabled" .) "true" }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ printf "%s-nemo.%s.svc.cluster.local" (include "zelkor-platform.fullname" .) .Release.Namespace }}
+        port: 8000
 ---
 {{- end }}
 {{- end }}

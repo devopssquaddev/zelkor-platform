@@ -10,9 +10,7 @@ data:
     01-init-databases.sql: |
       CREATE DATABASE aegra;
       CREATE DATABASE langfuse;
-      CREATE DATABASE finserve;
-      ALTER USER {{ .Values.postgresql.auth.username | default "zelkor" }} WITH PASSWORD '{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}';
-      GRANT ALL PRIVILEGES ON DATABASE aegra TO {{ .Values.postgresql.auth.username | default "zelkor" }};
-      GRANT ALL PRIVILEGES ON DATABASE langfuse TO {{ .Values.postgresql.auth.username | default "zelkor" }};
-      GRANT ALL PRIVILEGES ON DATABASE finserve TO {{ .Values.postgresql.auth.username | default "zelkor" }};
+      ALTER USER {{ .Values.postgresql.auth.username }} WITH PASSWORD '{{ include "zelkor-platform.postgresPassword" . }}';
+      GRANT ALL PRIVILEGES ON DATABASE aegra TO {{ .Values.postgresql.auth.username }};
+      GRANT ALL PRIVILEGES ON DATABASE langfuse TO {{ .Values.postgresql.auth.username }};
 {{- end }}

@@ -1,0 +1,47 @@
+---
+description: Tests adapt to the platform; never bake fixtures, local hosts, or pytest-only resources into chart defaults
+alwaysApply: true
+---
+
+# Tests Must Not Shape the Platform
+
+`charts/zelkor-platform/` is what a customer deploys who never runs `pytest`. Tests adapt to that chart plus overlays. The chart does not adapt to tests.
+
+## While writing tests
+
+1. **Tests read; they do not provision.** Hosts, keys, tenant ids, refusal text, model ids, and namespace come from env (`GATEWAY_BASE_URL`, `*_HOST_HEADER`, `NEMO_SAFETY_REFUSAL`, …) with test-local defaults. Do not add a Helm value, Service, HTTPRoute, Host, seed, or graph so an assertion passes.
+2. **No `| default` of a test fixture in production templates.** Forbidden fallbacks: `ai-gateway.localhost`, `dev-key`, `tenant-a`, demo copy, kind-only DNS. Empty or generic defaults only. Kind values live in `profiles/values-local.yaml`.
+3. **Missing capability:** add a **generic** knob with a **generic empty/off** default, then set it in the local profile or the test env. Do not put the test's literal in `values.yaml`. Extra MCP: `mcp.extraBackends: []` is the knob; do not add a fixture SaaS MCP Deployment or a `servicenow` default so `tools/list` assertions pass. Skip extra-prefix asserts unless `MCP_EXTRA_BACKEND_PREFIX` (or equivalent env) is set.
+4. **Forbidden motive:** "the test failed until I hardcoded X in the chart." Revert the chart change; fix the test, the overlay, or skip when the overlay is absent.
+
+```yaml
+# BAD — template default exists so pytest Host header matches
+Host: {{ .Values.gateway.hosts.aiGateway | default "ai-gateway.localhost" }}
+
+# GOOD — no local host in the chart; overlay or env supplies it
+Host: {{ required "gateway.hosts.aiGateway must be set" .Values.gateway.hosts.aiGateway | quote }}
+```
+
+```python
+# BAD — platform test requires kind hostnames in the live cluster
+assert "langfuse.localhost" in all_hosts
+
+# GOOD — discover or env-override; skip if the overlay did not set hosts
+host = os.environ.get("LANGFUSE_HOST_HEADER")
+if not host:
+    pytest.skip("LANGFUSE_HOST_HEADER not set")
+```
+
+## After each substantial implementation
+
+Do not mark the work done until you diff `charts/zelkor-platform/` (`values.yaml`, `files/`, `templates/`) and answer: **would a customer who never runs pytest still want this, with no test literals?**
+
+- [ ] No new `*.localhost` / `dev-key` / fixture tenant / refusal-as-default in chart or `| default`
+- [ ] No Service, Route, model, ConfigMap, or seed whose only consumer is `tests/`
+- [ ] Tests env-override; they do not require production hosts to be `*.localhost`
+- [ ] Secrets and kind hosts still only in `profiles/values-local.yaml`
+- [ ] `INSTALL_EXAMPLES=false` then `pytest tests/` needs no example chart
+
+If a chart hunk exists only to green a test, move it to the test, the local profile, or delete it.
+
+Spec: `internal/requirements/dev/examples_and_demos.md` (platform tests must not shape the chart)

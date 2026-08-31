@@ -10,13 +10,13 @@ spec:
     - name: {{ .Values.gateway.gatewayName | default "zelkor-platform-gateway" }}
       namespace: {{ .Values.gateway.namespace | default "default" }}
   hostnames:
-    - {{ .Values.gateway.host | default "finserve.localhost" | quote }}
+    - {{ required "gateway.host must be set when gateway.enabled is true" .Values.gateway.host | quote }}
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: {{ include "finserve.fullname" . }}-agent
-          port: 8080
+        - name: finserve-desk
+          port: 8000
 {{- end }}

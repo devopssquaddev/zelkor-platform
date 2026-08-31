@@ -41,7 +41,7 @@ spec:
     spec:
       containers:
         - name: clickhouse
-          image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "24.3-alpine" }}"
+          image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "26.7.5-alpine" }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 8123
@@ -52,21 +52,13 @@ spec:
             - name: CLICKHOUSE_DB
               value: default
             - name: CLICKHOUSE_USER
-              value: default
+              value: {{ .Values.clickhouse.auth.username | default "clickhouse" | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-clickhouse
+                  key: password
             - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
               value: "1"
-          livenessProbe:
-            httpGet:
-              path: /ping
-              port: 8123
-            initialDelaySeconds: 15
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /ping
-              port: 8123
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          resources:
-            {{- toYaml .Values.clickhouse.resources | nindent 12 }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.clickhouse) | nindent 10 }}
 {{- end }}

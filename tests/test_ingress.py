@@ -5,9 +5,11 @@ import json
 import httpx
 import time
 
+from tests.helpers.gateway import is_chat_completion
+from tests.helpers.llm import llm_model_or_skip
+
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
-AI_GATEWAY_API_KEY = os.environ.get("OLLAMA_API_KEY", os.environ.get("AI_GATEWAY_API_KEY", "dev-key"))
-DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("LLM_MODEL", "gpt-oss:20b"))
+AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", "dev-key"))
 
 def test_gateway_controller_running(kubecontext):
     """
@@ -132,6 +134,7 @@ def test_gateway_multi_provider_routing_via_gateway():
     """
     Verify OpenAI SDK-compatible routing via Envoy AI Gateway.
     """
+    model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
         "Host": "ai-gateway.localhost",
@@ -141,12 +144,11 @@ def test_gateway_multi_provider_routing_via_gateway():
     }
 
     payload = {
-        "model": DEFAULT_LLM_MODEL,
-        "messages": [{"role": "user", "content": f"Test prompt for {DEFAULT_LLM_MODEL}"}],
-        "max_tokens": 10
+        "model": model,
+        "messages": [{"role": "user", "content": f"Test prompt for {model}"}],
+        "max_tokens": 64
     }
-    resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+    resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
     assert resp.status_code == 200, f"AI Gateway call failed with status {resp.status_code}: {resp.text}"
     data = resp.json()
-    assert "choices" in data, f"No choices in response: {data}"
-    assert len(data["choices"]) > 0
+    assert is_chat_completion(data), f"Not an OpenAI chat.completion: {data}"

@@ -1,0 +1,57 @@
+---
+description: Pin latest stable third-party versions; anchor on Langfuse/Aegra compatibility; match operators to datastore pins.
+globs: **/install.sh, **/values*.yaml, **/Chart.yaml, **/Dockerfile, **/requirements.txt, charts/**, profiles/**, images/**
+alwaysApply: true
+---
+
+# Component Version Policy
+
+## Default
+
+1. **Latest stable at release time:** Pick the current **stable** release of each third-party component (no beta, RC, or `-latest` tags). Verify it is actively maintained and not EOL.
+2. **Pin exactly:** Record semver in `charts/zelkor-platform/values.yaml`, `install.sh`, Dockerfiles, and operator chart versions. Use image tags with **major.minor.patch** (or digest in production overlays).
+3. **Hold until next Zelkor release:** Keep pins fixed between Zelkor semver releases unless a **security patch** or explicit dependency-bump PR updates them. Re-baseline the full stack together when bumping.
+
+## Product-anchored selection
+
+Do **not** pick datastore versions from Docker Hub alone. **Langfuse**, **Aegra**, and other runtime products define what they support.
+
+1. Read each product's official compatibility docs (Postgres, ClickHouse, Valkey/Redis, etc.).
+2. Choose the **highest stable version supported by every consumer** (compatibility intersection).
+3. If products disagree, use the **lowest common supported major** or upgrade the constraining product first — never deploy a DB version one product does not certify.
+
+**Example:** Langfuse v4 requires Postgres ≥16; Aegra supports Postgres ≥14 → pin **latest Postgres 16.x patch** both can use.
+
+## Operators (Gate B / production)
+
+When `databases.mode: operator-cr` or external operators are used:
+
+- **CloudNativePG**, **ClickHouse Operator**, **Valkey Operator**, **Qdrant Helm** (and future operators) must be the **latest stable operator release that officially supports the pinned datastore version**.
+- Gate A (`in-cluster-basic`) uses the **same datastore version pins**; only the deployment mechanism differs (StatefulSet vs CR).
+
+## Bootstrap / gateway stack
+
+- **Envoy Gateway** and **Envoy AI Gateway:** latest stable Helm/OCI release; document `--version` in `install.sh` (or env override). Apply upstream compatibility notes (EG version ↔ AI Gateway version).
+- Use upstream `envoy-gateway-values.yaml` / `extensionManager` requirements from the AI Gateway docs — do not hand-roll partial EG config.
+
+## Forbidden pins
+
+- Floating tags: `:latest`, major-only (`langfuse:2`, `postgres:16-alpine` without patch).
+- Unpinned Helm installs without `--version`.
+- Download URLs with `release/latest` (e.g. gVisor) — pin to a specific release artifact.
+
+## Where pins live
+
+| Layer | Location |
+|-------|----------|
+| Kind bootstrap (EG, AI Gateway, gVisor) | `install.sh` |
+| Platform workloads & datastores | `charts/zelkor-platform/values.yaml` |
+| Local-only overlay | `profiles/values-local.yaml` (secrets/hosts; same version pins unless documented exception) |
+| First-party images | `images/*/Dockerfile`, `values.yaml` `*.image.tag` / `digest` |
+| Living compatibility matrix | `internal/plan/component_compatibility_matrix.md` (multi-root workspace) |
+
+## When changing versions
+
+1. Update the compatibility matrix and revision history in `internal/plan/phase_1_requirements.md`.
+2. Bump all related pins (datastore + operator + bootstrap if needed) in one logical change.
+3. Validate on the test server via `internal/dev/` before merge.

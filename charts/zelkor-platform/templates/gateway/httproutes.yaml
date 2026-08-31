@@ -39,11 +39,56 @@ spec:
   hostnames:
     - {{ .Values.gateway.hosts.aegra | quote }}
   rules:
+    {{- range .Values.aegra.workers | default list }}
+    {{- $graphId := required "aegra.workers[].graphId is required" .graphId }}
+    {{- $service := required "aegra.workers[].service must be an in-cluster Service name (not an http:// URL)" .service }}
+    - matches:
+        - headers:
+            - name: X-Graph-ID
+              type: Exact
+              value: {{ $graphId | quote }}
+        - queryParams:
+            - name: graph_id
+              type: Exact
+              value: {{ $graphId | quote }}
+      backendRefs:
+        - name: {{ $service | quote }}
+          port: {{ .port | default 8000 }}
+      timeouts:
+        request: 0s
+    {{- end }}
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-aegra
+          port: 8000
+      timeouts:
+        request: 0s
+---
+{{- end }}
+{{- if and .Values.gateway.enabled .Values.guardrails.nemo.enabled .Values.gateway.hosts.nemo }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-nemo-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: guardrails
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+  hostnames:
+    - {{ .Values.gateway.hosts.nemo | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-nemo
           port: 8000
 {{- end }}

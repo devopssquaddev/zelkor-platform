@@ -5,9 +5,11 @@ import json
 import httpx
 import time
 
+from tests.helpers.gateway import is_chat_completion
+from tests.helpers.llm import llm_model_or_skip
+
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
-AI_GATEWAY_API_KEY = os.environ.get("OLLAMA_API_KEY", os.environ.get("AI_GATEWAY_API_KEY", "dev-key"))
-DEFAULT_LLM_MODEL = os.environ.get("DEFAULT_LLM_MODEL", os.environ.get("LLM_MODEL", "gpt-oss:20b"))
+AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", "dev-key"))
 
 def test_ai_gateway_crds_installed(kubecontext):
     """
@@ -87,22 +89,23 @@ def test_ai_gateway_real_routing_not_mock_string():
     """
     Verify /v1/chat/completions is routed by Envoy AI Gateway and returns a valid response.
     """
+    model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
         "Host": "ai-gateway.localhost",
         "Content-Type": "application/json",
         "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
-        "X-Tenant-ID": "Bank_Alpha"
+        "X-Tenant-ID": "tenant_a"
     }
     payload = {
-        "model": DEFAULT_LLM_MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": "Ping"}],
-        "max_tokens": 10
+        "max_tokens": 64
     }
-    resp = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+    resp = httpx.post(url, headers=headers, json=payload, timeout=120.0)
     assert resp.status_code == 200, f"AI Gateway routing failed with status {resp.status_code}: {resp.text}"
     data = resp.json()
-    assert "choices" in data and len(data["choices"]) > 0
+    assert is_chat_completion(data), f"Not an OpenAI chat.completion: {data}"
     assert "Hello from default/ollama/llama3.2 route via Envoy AI Gateway!" not in resp.text
 
 def test_ai_gateway_rate_limit_burst_429():
@@ -110,6 +113,7 @@ def test_ai_gateway_rate_limit_burst_429():
     Verify that bursting multiple rapid requests through Envoy AI Gateway routes properly
     and triggers either successful responses (200) or rate limits (429).
     """
+    model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
         "Host": "ai-gateway.localhost",
@@ -118,7 +122,7 @@ def test_ai_gateway_rate_limit_burst_429():
         "X-Tenant-ID": "Rate_Test_Tenant"
     }
     payload = {
-        "model": DEFAULT_LLM_MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": "1"}],
         "max_tokens": 1
     }

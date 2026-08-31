@@ -35,9 +35,11 @@ spec:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: aegra
     spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.aegra.terminationGracePeriodSeconds | default 35 }}
       initContainers:
         - name: wait-for-deps
-          image: busybox:1.36
+          image: {{ .Values.global.initContainerImage | default "busybox:1.37" }}
           command:
             - sh
             - -c
@@ -51,61 +53,81 @@ spec:
                 sleep 1
               done
               echo "Dependencies ready."
+        - name: migrate
+          image: {{ include "zelkor-platform.image" .Values.aegra.cli.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.cli.image) }}
+          command: ["aegra", "db", "upgrade"]
+          env:
+            - name: DATABASE_URL
+              value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
       containers:
         - name: aegra
-          image: "{{ .Values.aegra.image.repository | default "python" }}:{{ .Values.aegra.image.tag | default "3.11-slim" }}"
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
-          command:
-            - /bin/bash
-            - -c
-            - |
-              pip install --no-cache-dir fastapi uvicorn pyjwt httpx pydantic psycopg2-binary redis >/dev/null 2>&1
-              python /app/server.py
+          image: {{ include "zelkor-platform.image" .Values.aegra.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.image) }}
+          workingDir: /app
+          command: ["uvicorn", "aegra_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
           ports:
             - containerPort: 8000
               name: http
           env:
+            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: DATABASE_URL
-              value: "postgresql://{{ .Values.postgresql.auth.username | default "zelkor" }}:{{ .Values.postgresql.auth.password | default "zelkor-dev-password" }}@{{ include "zelkor-platform.fullname" . }}-postgresql:5432/aegra"
-            - name: VALKEY_URL
-              value: "redis://{{ include "zelkor-platform.fullname" . }}-valkey:6379/0"
+              value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
+            - name: REDIS_URL
+              value: {{ include "zelkor-platform.valkeyUrl" . | quote }}
+            - name: REDIS_BROKER_ENABLED
+              value: {{ ((.Values.aegra.redisBroker).enabled | default false) | quote }}
+            {{- if ((.Values.aegra.redisBroker).enabled | default false) }}
+            - name: REDIS_CHANNEL_PREFIX
+              value: {{ ((.Values.aegra.redis).channelPrefix | default (printf "aegra:%s:run:" .Release.Name)) | quote }}
+            - name: WORKER_QUEUE_KEY
+              value: {{ ((.Values.aegra.redis).queueKey | default (printf "aegra:%s:jobs" .Release.Name)) | quote }}
+            {{- end }}
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: {{ (.Values.aegra.runMigrationsOnStartup | default false) | quote }}
+            - name: WORKER_COUNT
+              value: {{ (.Values.aegra.workerCount | default 3) | quote }}
+            - name: N_JOBS_PER_WORKER
+              value: {{ (.Values.aegra.nJobsPerWorker | default 10) | quote }}
+            - name: WORKER_DRAIN_TIMEOUT
+              value: {{ (.Values.aegra.workerDrainTimeout | default 30) | quote }}
             - name: AEGRA_CONFIG
-              value: "/app/agents/aegra.json"
+              value: "/app/aegra.json"
+            - name: TENANT_ORG_MAPPINGS
+              value: {{ .Values.aegra.tenantOrgMappings | default dict | toJson | quote }}
+            - name: OPENAI_BASE_URL
+              value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
+            - name: OPENAI_API_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
             - name: AI_GATEWAY_URL
-              value: "http://{{ include "zelkor-platform.fullname" . }}-ai-gateway:8080/v1"
+              value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
+            - name: MCP_URL
+              value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+            - name: MCP_INJECT_ENABLED
+              value: {{ ((.Values.aegra.mcpInject).enabled | default false) | quote }}
+            - name: ZELKOR_TENANT_HEADER
+              value: "X-Tenant-ID"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
+            {{- include "zelkor-platform.aegraOtelEnv" . | nindent 12 }}
           volumeMounts:
-            - name: app-code
-              mountPath: /app/server.py
-              subPath: server.py
             - name: agents-auth
-              mountPath: /app/agents
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 20
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 5
-          resources:
-            {{- toYaml .Values.aegra.resources | nindent 12 }}
+              mountPath: /app/aegra.json
+              subPath: aegra.json
+            {{- if and .Values.aegra.graphModules.enabled .Values.aegra.graphModules.configMapName }}
+            - name: graph-modules
+              mountPath: {{ .Values.aegra.graphModules.mountPath | default "/app/graphs" | quote }}
+            {{- end }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.aegra) | nindent 10 }}
       volumes:
-        - name: app-code
-          configMap:
-            name: {{ include "zelkor-platform.fullname" . }}-aegra-app
         - name: agents-auth
           configMap:
             name: {{ include "zelkor-platform.fullname" . }}-agents-auth
-            defaultMode: 0755
+        {{- if and .Values.aegra.graphModules.enabled .Values.aegra.graphModules.configMapName }}
+        - name: graph-modules
+          configMap:
+            name: {{ .Values.aegra.graphModules.configMapName | quote }}
+        {{- end }}
 {{- end }}

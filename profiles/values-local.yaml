@@ -1,0 +1,118 @@
+# Local kind overlay — not part of the production chart.
+# Used by ./install.sh. Demo-shaped values live in examples/<name>/chart/.
+
+global:
+  tier: oss
+  imagePullPolicy: IfNotPresent
+
+databases:
+  mode: in-cluster-basic
+
+highAvailability:
+  enabled: false
+
+security:
+  mTLS:
+    enabled: false
+  sandbox:
+    enabled: true
+    runtimeClass: gvisor
+  networkPolicies:
+    enabled: true
+
+auth:
+  sso:
+    enabled: false
+  jwtSecret: "zelkor-local-jwt-secret"
+  devTokens:
+    enabled: true
+    prefix: "dev:"
+  trustTenantHeader: true
+
+gateway:
+  enabled: true
+  gatewayClassName: "eg"
+  envoyProxy:
+    enabled: true
+    hostNetwork: true
+  hosts:
+    langfuse: "langfuse.localhost"
+    aiGateway: "ai-gateway.localhost"
+    aegra: "aegra.localhost"
+    mcp: "mcp.localhost"
+    nemo: "nemo.localhost"
+
+postgresql:
+  enabled: true
+  auth:
+    username: zelkor
+    password: zelkor-dev-password
+    postgresPassword: zelkor-postgres-pass
+    database: zelkor
+
+valkey:
+  enabled: true
+  auth:
+    password: zelkor-valkey-dev-password
+
+clickhouse:
+  enabled: true
+  auth:
+    username: clickhouse
+    password: zelkor-clickhouse-dev-password
+
+seaweedfs:
+  enabled: true
+  auth:
+    accessKey: zelkor-s3-dev
+    secretKey: zelkor-s3-dev-secret
+
+qdrant:
+  enabled: true
+
+aiGateway:
+  enabled: true
+  consumerKey: "dev-key"
+  providers:
+    # LLM backends are enabled at install via ./install.sh env vars (not defaulted here).
+    ollamaLocal:
+      host: ""
+    ollamaCloud:
+      apiKey: ""
+
+langfuse:
+  enabled: true
+  replicaCount: 1
+  nextauthUrl: "http://langfuse.localhost:8088"
+  nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
+  salt: "zelkor-langfuse-salt-123456789"
+  encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  init:
+    enabled: true
+    orgId: "zelkor-dev"
+    orgName: "Zelkor Dev"
+    projectId: "zelkor-platform"
+    projectName: "Zelkor Platform"
+    projectPublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    userEmail: "admin@zelkor.local"
+    userName: "Zelkor Admin"
+    userPassword: "zelkor-dev-password"
+
+aegra:
+  enabled: true
+  replicaCount: 1
+
+guardrails:
+  nemo:
+    enabled: true
+    observability:
+      otel:
+        enabled: true
+        captureContent: true
+
+mcp:
+  enabled: true
+  sandboxMCP:
+    warmPool:
+      replicas: 2

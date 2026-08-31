@@ -1,0 +1,46 @@
+{{- if and .Values.mcp.enabled .Values.gateway.enabled .Values.gateway.hosts.mcp }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+  hostnames:
+    - {{ .Values.gateway.hosts.mcp | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway
+          port: 8080
+---
+{{- if .Values.mcp.mcproute.enabled }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcproute
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  parentRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-gateway
+      namespace: {{ .Release.Namespace }}
+      kind: Gateway
+      group: gateway.networking.k8s.io
+  path: "/mcp"
+  backendRefs:
+    - name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway
+      kind: Service
+      port: 8080
+{{- end }}
+{{- end }}

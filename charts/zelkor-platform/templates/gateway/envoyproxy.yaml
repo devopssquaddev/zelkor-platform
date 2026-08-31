@@ -28,4 +28,9 @@ spec:
                   {{- if .Values.gateway.envoyProxy.hostNetwork }}
                   dnsPolicy: ClusterFirstWithHostNet
                   {{- end }}
+        {{- with .Values.gateway.envoyProxy.resources }}
+        container:
+          resources:
+            {{- toYaml . | nindent 12 }}
+        {{- end }}
 {{- end }}

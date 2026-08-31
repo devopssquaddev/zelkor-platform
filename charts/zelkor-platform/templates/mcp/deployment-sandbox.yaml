@@ -1,0 +1,118 @@
+{{- if and .Values.mcp.enabled .Values.mcp.sandboxMCP.enabled }}
+{{- $fullname := include "zelkor-platform.fullname" . }}
+{{- $replicas := .Values.mcp.sandboxMCP.warmPool.replicas | default 3 }}
+{{- $workerUrls := list }}
+{{- range $i := until (int $replicas) }}
+{{- $workerUrls = append $workerUrls (printf "http://%s-mcp-sandbox-worker-%d:8081" $fullname $i) }}
+{{- end }}
+{{- $workerUrlsStr := join "," $workerUrls }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-mcp-sandbox
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-sandbox
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-sandbox
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+{{- range $i := until (int $replicas) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-mcp-sandbox-worker-{{ $i }}
+  labels:
+    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-sandbox-worker
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    sandbox-worker-id: "{{ $i }}"
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-mcp-sandbox
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp-sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp-sandbox
+    spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: mcp-sandbox
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          workingDir: /app
+          command: ["python", "mcp/sandbox/server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            - name: SANDBOX_WORKER_URLS
+              value: {{ $workerUrlsStr | quote }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.sandboxMCP) | nindent 10 }}
+---
+{{- range $i := until (int $replicas) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-mcp-sandbox-worker-{{ $i }}
+  labels:
+    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox-worker
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      sandbox-worker-id: "{{ $i }}"
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: mcp-sandbox-worker
+        sandbox-worker-id: "{{ $i }}"
+    spec:
+      {{- include "zelkor-platform.imagePullSecrets" $ | nindent 6 }}
+      {{- if $.Values.mcp.sandboxMCP.runtimeClassName }}
+      runtimeClassName: {{ $.Values.mcp.sandboxMCP.runtimeClassName }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "zelkor-platform.image" $.Values.mcp.sandboxMCP.workerImage | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" $ "image" $.Values.mcp.sandboxMCP.workerImage) }}
+          workingDir: /app
+          ports:
+            - containerPort: 8081
+          env:
+            - name: PORT
+              value: "8081"
+          {{- include "zelkor-platform.containerProbes" (dict "root" $ "values" $.Values.mcp.sandboxMCP.worker) | nindent 10 }}
+---
+{{- end }}
+{{- end }}

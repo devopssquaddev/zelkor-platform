@@ -64,24 +64,7 @@ spec:
               mountPath: /docker-entrypoint-initdb.d
             - name: data
               mountPath: /var/lib/postgresql/data
-          livenessProbe:
-            exec:
-              command:
-                - pg_isready
-                - -U
-                - {{ .Values.postgresql.auth.username | default "zelkor" }}
-            initialDelaySeconds: 15
-            periodSeconds: 10
-          readinessProbe:
-            exec:
-              command:
-                - pg_isready
-                - -U
-                - {{ .Values.postgresql.auth.username | default "zelkor" }}
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          resources:
-            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.postgresql) | nindent 10 }}
       volumes:
         - name: init-scripts
           configMap:

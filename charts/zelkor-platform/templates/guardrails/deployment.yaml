@@ -14,54 +14,52 @@ spec:
       app.kubernetes.io/component: guardrails
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/guardrails/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: guardrails
     spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: nemo-guardrails
-          image: "{{ .Values.guardrails.nemo.image.repository | default "python" }}:{{ .Values.guardrails.nemo.image.tag | default "3.11-slim" }}"
-          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
-          command:
-            - /bin/bash
-            - -c
-            - |
-              pip install --no-cache-dir fastapi uvicorn pydantic >/dev/null 2>&1
-              python /app/server.py
+          image: {{ include "zelkor-platform.image" .Values.guardrails.nemo.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.guardrails.nemo.image) }}
+          {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+          command: ["opentelemetry-instrument"]
+          {{- end }}
+          args:
+            - nemoguardrails
+            - server
+            - --config
+            - {{ .Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs" | quote }}
+            - --port
+            - "8000"
+            - --default-config-id
+            - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
+            - --disable-chat-ui
           ports:
             - containerPort: 8000
               name: http
+          env:
+            - name: OPENAI_API_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            - name: MAIN_MODEL_BASE_URL
+              value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+            - name: NEMO_GUARDRAILS_NO_USAGE_STATS
+              value: "1"
+            {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: nemo-config
-              mountPath: /app/server.py
-              subPath: server.py
+              mountPath: {{ printf "%s/content_safety/config.yml" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
+              subPath: content_safety-config.yml
             - name: nemo-config
-              mountPath: /app/config.co
-              subPath: config.co
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 5
-            failureThreshold: 20
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 5
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 250m
-              memory: 256Mi
+              mountPath: {{ printf "%s/content_safety/prompts.yml" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
+              subPath: content_safety-prompts.yml
+            - name: nemo-config
+              mountPath: {{ printf "%s/content_safety/flows.co" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}
+              subPath: content_safety-flows.co
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.guardrails.nemo) | nindent 10 }}
       volumes:
         - name: nemo-config
           configMap:

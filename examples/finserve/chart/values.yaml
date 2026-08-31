@@ -1,41 +1,94 @@
 # FinServe Demo Helm Values
+# Two ClusterIP workers (desk = advisor+research; quant = projections).
 global:
   tier: oss
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
 
 gateway:
-  enabled: true
+  enabled: false
   gatewayName: "zelkor-platform-gateway"
   namespace: "default"
-  host: "finserve.localhost"
+  host: ""
 
-agent:
+desk:
+  fullnameOverride: finserve-desk
+  graphIds:
+    - finserve-advisor
+    - finserve-research
+  aegraConfig: /app/aegra-desk.json
   replicaCount: 1
+  redis:
+    prefix: aegra:finserve-desk
   image:
-    repository: python
-    tag: "3.11-slim"
-  port: 8080
+    repository: ghcr.io/devopssquaddev/zelkor-example-finserve
+    tag: "dev"
+    digest: ""
+  platform:
+    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+    consumerKey: ""
+    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+    databaseUrl: ""
+    valkeyUrl: ""
+    mcpInject: true
+    defaultLlmModel: "gpt-oss:20b"
+  extraEnv:
+    - name: QDRANT_COLLECTION
+      value: "finserve_policies"
 
-executor:
+quant:
+  fullnameOverride: finserve-quant
+  graphIds:
+    - finserve-quant
+  aegraConfig: /app/aegra-quant.json
   replicaCount: 1
+  redis:
+    prefix: aegra:finserve-quant
   image:
-    repository: python
-    tag: "3.11-slim"
-  port: 8080
-  runtimeClassName: gvisor  # gVisor runtime class for untrusted code execution
+    repository: ghcr.io/devopssquaddev/zelkor-example-finserve
+    tag: "dev"
+    digest: ""
+  platform:
+    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+    consumerKey: ""
+    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+    databaseUrl: ""
+    valkeyUrl: ""
+    mcpInject: true
+    defaultLlmModel: "gpt-oss:20b"
+  extraEnv:
+    - name: QDRANT_COLLECTION
+      value: "finserve_policies"
 
 platform:
   postgresHost: "zelkor-platform-postgresql"
   postgresPort: 5432
   postgresUser: "zelkor"
-  postgresPassword: "zelkor-dev-password"
+  postgresPassword: ""
   postgresDatabase: "finserve"
   qdrantHost: "zelkor-platform-qdrant"
   qdrantPort: 6333
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
-  aiGatewayUrl: "http://envoy-default-zelkor-platform-gateway.default.svc:80/v1"
-  defaultLlmModel: "gpt-oss:20b"
-  aiGatewayHostHeader: "ai-gateway.localhost"
-  aegraUrl: "http://zelkor-platform-aegra:8000"
+  qdrantCollection: "finserve_policies"
   langfuseHost: "http://zelkor-platform-langfuse:3000"
-  langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-  langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+  langfusePublicKey: ""
+  langfuseSecretKey: ""
+
+langfuseSeed:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+dbInit:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
