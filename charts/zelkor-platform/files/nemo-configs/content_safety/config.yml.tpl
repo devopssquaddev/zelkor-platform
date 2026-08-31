@@ -13,6 +13,13 @@ models:
 # Required for OpenAI-style tools on NeMo's /v1 (still runs input/output rails).
 passthrough: true
 
+{{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+tracing:
+  enabled: true
+  adapters:
+    - name: OpenTelemetry
+{{- end }}
+
 rails:
 {{- if .Values.guardrails.nemo.extraRailsConfig }}
   config:

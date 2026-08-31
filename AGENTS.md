@@ -8,7 +8,7 @@ This is the **public open-source repository**. Product code lives here.
 zelkor-platform/
 ├── install.sh                  # Local bootstrap (kind + Helm)
 ├── scripts/build-images.sh     # Build/push/kind-load first-party images
-├── images/                     # Dockerfiles for Aegra, MCP, guardrails, sandbox, FinServe
+├── images/                     # Dockerfiles for Aegra runtime, Aegra CLI, MCP, guardrails, sandbox, FinServe
 ├── profiles/
 │   └── values-local.yaml       # Kind overlay — secrets/hosts; not in the production chart
 ├── charts/zelkor-platform/     # Unified Helm chart (platform only)

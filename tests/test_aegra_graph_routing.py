@@ -53,6 +53,7 @@ def test_nemo_content_safety_passthrough_for_tools():
         "templates/guardrails/configmap.yaml",
     )
     assert "passthrough: true" in rendered
+    assert "name: OpenTelemetry" in rendered
     assert "check finserve topic" not in rendered
     assert "regex_detection" not in rendered
     assert "embeddings_only: true" not in rendered
@@ -78,6 +79,41 @@ def test_nemo_content_safety_passthrough_for_tools():
         "templates/guardrails/deployment.yaml",
     )
     assert "checksum/config" in deploy
+    assert "opentelemetry-instrument" in deploy
+    assert "OTEL_METRICS_EXPORTER" in deploy
+    off = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "guardrails.nemo.observability.otel.enabled=false",
+        "-s",
+        "templates/guardrails/configmap.yaml",
+    )
+    assert "name: OpenTelemetry" not in off
+    off_deploy = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "guardrails.nemo.observability.otel.enabled=false",
+        "-s",
+        "templates/guardrails/deployment.yaml",
+    )
+    assert "opentelemetry-instrument" not in off_deploy
+
+
+def test_nemo_otel_uses_instrument_not_sitecustomize():
+    dockerfile = (ROOT / "images/guardrails/Dockerfile").read_text()
+    reqs = (ROOT / "images/guardrails/requirements.txt").read_text()
+    assert "sitecustomize" not in dockerfile
+    assert not (ROOT / "images/guardrails/sitecustomize.py").exists()
+    assert "opentelemetry-distro==0.65b0" in reqs
+    assert '"nemoguardrails", "server"' in dockerfile
 
 
 def _helm(*args: str) -> str:

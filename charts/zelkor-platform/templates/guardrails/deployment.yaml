@@ -25,6 +25,18 @@ spec:
         - name: nemo-guardrails
           image: {{ include "zelkor-platform.image" .Values.guardrails.nemo.image | quote }}
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.guardrails.nemo.image) }}
+          {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+          command: ["opentelemetry-instrument"]
+          args:
+            - nemoguardrails
+            - server
+            - --config
+            - {{ .Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs" | quote }}
+            - --port
+            - "8000"
+            - --default-config-id
+            - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
+          {{- end }}
           ports:
             - containerPort: 8000
               name: http
