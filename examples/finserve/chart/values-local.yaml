@@ -5,7 +5,27 @@ global:
 gateway:
   enabled: false
 
-zelkor-agent:
+desk:
+  auth:
+    jwtSecret: "zelkor-local-jwt-secret"
+    devTokens:
+      enabled: true
+      prefix: "dev:"
+    trustTenantHeader: true
+  platform:
+    consumerKey: "dev-key"
+    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
+    valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
+    defaultLlmModel: "gpt-oss:20b"
+    langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
+    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    otelTargets: "LANGFUSE"
+  extraEnv:
+    - name: QDRANT_COLLECTION
+      value: "finserve_policies"
+
+quant:
   auth:
     jwtSecret: "zelkor-local-jwt-secret"
     devTokens:

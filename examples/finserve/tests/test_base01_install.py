@@ -6,7 +6,14 @@ import time
 import httpx
 import pytest
 
-from finserve_e2e import GATEWAY_BASE_URL, run_finserve
+from finserve_e2e import (
+    GATEWAY_BASE_URL,
+    GRAPH_ADVISOR,
+    GRAPH_IDS,
+    GRAPH_QUANT,
+    GRAPH_RESEARCH,
+    run_finserve,
+)
 
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
 
@@ -27,15 +34,35 @@ def test_base01_finserve_pods_healthy(kubecontext):
     if not any("finserve" in name for name in pod_names):
         pytest.skip(f"FinServe pods not present in context '{kubecontext}'")
 
-    assert any("finserve-agent" in name for name in pod_names)
+    assert any("finserve-desk" in name for name in pod_names)
+    assert any("finserve-quant" in name for name in pod_names)
     assert any("mcp-sandbox" in name for name in pod_names)
     assert any("mcp-gateway" in name for name in pod_names)
 
 
-def test_base01_finserve_runs_via_front_door():
-    """E2E smoke: platform Aegra run with graph_id=finserve returns 200."""
-    result = run_finserve("What is my total portfolio valuation?")
+@pytest.mark.parametrize("graph_id", GRAPH_IDS)
+def test_base01_finserve_runs_via_front_door(graph_id):
+    """E2E smoke: platform Aegra run with each FinServe graph_id returns 200."""
+    result = run_finserve("What is my total portfolio valuation?", graph_id=graph_id)
     assert result["text"]
+
+
+def test_base01_desk_and_quant_routing():
+    """Advisor and research share the desk Service; quant is a second Deployment."""
+    advisor = run_finserve("Show my current portfolio holdings.", graph_id=GRAPH_ADVISOR)
+    research = run_finserve(
+        "What is our asset allocation policy for high-growth tech?",
+        graph_id=GRAPH_RESEARCH,
+    )
+    quant = run_finserve(
+        "Use the sandbox tool to execute this Python and return the output:\n"
+        "```python\nprint('sandbox-ok')\n```",
+        graph_id=GRAPH_QUANT,
+        timeout=120.0,
+    )
+    assert advisor["text"]
+    assert research["text"]
+    assert quant["text"]
 
 
 def test_base01_langfuse_observability_endpoint():

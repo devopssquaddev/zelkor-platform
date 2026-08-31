@@ -16,6 +16,23 @@ try:
 except Exception:
     _log.exception("auth.path inject failed")
 
+# NeMo /v1 rejects tools + stream even with passthrough. Graph SSE still works;
+# only the LLM HTTP call is non-streaming.
+try:
+    from langchain_openai import ChatOpenAI
+
+    if not getattr(ChatOpenAI, "_zelkor_nonstream_patched", False):
+        _orig_chat_openai_init = ChatOpenAI.__init__
+
+        def _chat_openai_init(self, *args, **kwargs):
+            kwargs.setdefault("disable_streaming", True)
+            return _orig_chat_openai_init(self, *args, **kwargs)
+
+        ChatOpenAI.__init__ = _chat_openai_init  # type: ignore[method-assign]
+        ChatOpenAI._zelkor_nonstream_patched = True  # type: ignore[attr-defined]
+except Exception:
+    _log.exception("ChatOpenAI non-stream patch failed")
+
 if os.getenv("MCP_INJECT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
     from mcp_inject import patch_langgraph, write_inject_status
 

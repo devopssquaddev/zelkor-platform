@@ -12,3 +12,7 @@ define flow self check output
   if not $allowed
     bot refuse to respond
     stop
+{{- if .Values.guardrails.nemo.extraColang }}
+
+{{ .Values.guardrails.nemo.extraColang }}
+{{- end }}

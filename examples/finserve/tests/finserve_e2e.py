@@ -10,16 +10,19 @@ import pytest
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 AEGRA_HOST_HEADER = os.environ.get("AEGRA_HOST_HEADER", "aegra.localhost")
-GRAPH_ID = os.environ.get("FINSERVE_GRAPH_ID", "finserve")
+GRAPH_ADVISOR = os.environ.get("FINSERVE_GRAPH_ADVISOR", "finserve-advisor")
+GRAPH_RESEARCH = os.environ.get("FINSERVE_GRAPH_RESEARCH", "finserve-research")
+GRAPH_QUANT = os.environ.get("FINSERVE_GRAPH_QUANT", "finserve-quant")
+GRAPH_IDS = (GRAPH_ADVISOR, GRAPH_RESEARCH, GRAPH_QUANT)
 
 
-def _headers(tenant_id: str) -> Dict[str, str]:
+def _headers(tenant_id: str, graph_id: str) -> Dict[str, str]:
     return {
         "Host": AEGRA_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": f"Bearer dev:{tenant_id}",
         "X-Tenant-ID": tenant_id,
-        "X-Graph-ID": GRAPH_ID,
+        "X-Graph-ID": graph_id,
     }
 
 
@@ -64,9 +67,14 @@ def extract_response_text(payload: Any) -> str:
     return dumped
 
 
-def run_finserve(prompt: str, tenant_id: str = "Bank_Alpha", timeout: float = 120.0) -> Dict[str, Any]:
+def run_finserve(
+    prompt: str,
+    tenant_id: str = "Bank_Alpha",
+    timeout: float = 120.0,
+    graph_id: str = GRAPH_ADVISOR,
+) -> Dict[str, Any]:
     """Create a thread and wait for a FinServe run on the platform Aegra host."""
-    headers = _headers(tenant_id)
+    headers = _headers(tenant_id, graph_id)
     try:
         created = httpx.post(
             f"{GATEWAY_BASE_URL}/threads",
@@ -83,8 +91,8 @@ def run_finserve(prompt: str, tenant_id: str = "Bank_Alpha", timeout: float = 12
     created.raise_for_status()
     thread_id = (created.json() or {}).get("thread_id")
     body = {
-        "graph_id": GRAPH_ID,
-        "assistant_id": GRAPH_ID,
+        "graph_id": graph_id,
+        "assistant_id": graph_id,
         "input": {"messages": [{"role": "human", "content": prompt}]},
         "if_not_exists": "create",
     }
@@ -100,8 +108,13 @@ def run_finserve(prompt: str, tenant_id: str = "Bank_Alpha", timeout: float = 12
     except httpx.ConnectError as exc:
         pytest.skip(f"Aegra not reachable at {GATEWAY_BASE_URL}: {exc}")
     if resp.status_code == 404:
-        pytest.skip("graph_id=finserve is not routed (FinServe overlay absent)")
+        pytest.skip(f"graph_id={graph_id} is not routed (FinServe overlay absent)")
     assert resp.status_code < 500, f"FinServe run failed: {resp.status_code} {resp.text}"
     assert resp.status_code == 200, f"FinServe run status {resp.status_code}: {resp.text}"
     data = resp.json() if resp.content else {}
+    status = data.get("status") if isinstance(data, dict) else None
+    if status == "error" or data == {}:
+        raise AssertionError(
+            f"FinServe run error graph_id={graph_id}: {json.dumps(data)[:2000]}"
+        )
     return {"thread_id": thread_id, "raw": data, "text": extract_response_text(data)}

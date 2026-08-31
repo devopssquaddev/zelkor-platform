@@ -7,6 +7,11 @@ global:
   imagePullSecrets: []
 
 graphId: ""
+# Several ids on one Deployment (fat multi-graph image). Used when graphId is empty.
+graphIds: []
+
+# Path to aegra.json inside the image. Override for multi-config images.
+aegraConfig: "/app/aegra.json"
 
 # Shared-host registration (recommended). Empty host = no HTTPRoute from this chart.
 sharedRoute:

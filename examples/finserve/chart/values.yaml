@@ -1,5 +1,5 @@
 # FinServe Demo Helm Values
-# Worker is the zelkor-agent subchart (ClusterIP, no public HTTPRoute).
+# Two ClusterIP workers (desk = advisor+research; quant = projections).
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
@@ -11,10 +11,39 @@ gateway:
   namespace: "default"
   host: ""
 
-zelkor-agent:
-  fullnameOverride: finserve-agent
-  graphId: finserve
+desk:
+  fullnameOverride: finserve-desk
+  graphIds:
+    - finserve-advisor
+    - finserve-research
+  aegraConfig: /app/aegra-desk.json
   replicaCount: 1
+  redis:
+    prefix: aegra:finserve-desk
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-example-finserve
+    tag: "dev"
+    digest: ""
+  platform:
+    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+    consumerKey: ""
+    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+    databaseUrl: ""
+    valkeyUrl: ""
+    mcpInject: true
+    defaultLlmModel: "gpt-oss:20b"
+  extraEnv:
+    - name: QDRANT_COLLECTION
+      value: "finserve_policies"
+
+quant:
+  fullnameOverride: finserve-quant
+  graphIds:
+    - finserve-quant
+  aegraConfig: /app/aegra-quant.json
+  replicaCount: 1
+  redis:
+    prefix: aegra:finserve-quant
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
     tag: "dev"

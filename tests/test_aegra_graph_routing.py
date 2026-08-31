@@ -39,6 +39,45 @@ def test_sitecustomize_has_ready_gate_not_proxy():
     assert "inject_ready" in text
     assert "proxy_to_worker" not in text
     assert "httpx.AsyncClient" not in text
+    assert "disable_streaming" in text
+
+
+def test_nemo_content_safety_passthrough_for_tools():
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "-s",
+        "templates/guardrails/configmap.yaml",
+    )
+    assert "passthrough: true" in rendered
+    assert "check finserve topic" not in rendered
+    assert "regex_detection" not in rendered
+    assert "embeddings_only: true" not in rendered
+    extra = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "guardrails.nemo.extraInputFlows[0]=check-topic",
+        "-s",
+        "templates/guardrails/configmap.yaml",
+    )
+    assert "- check-topic" in extra
+    deploy = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "-s",
+        "templates/guardrails/deployment.yaml",
+    )
+    assert "checksum/config" in deploy
 
 
 def _helm(*args: str) -> str:
@@ -161,3 +200,38 @@ def test_agent_chart_redis_prefix_and_shared_route():
     assert "graph_id" in dumped
     assert route["spec"]["hostnames"] == ["aegra.example"]
     assert route["spec"]["rules"][0]["backendRefs"][0]["name"] == "fraud-zelkor-agent"
+
+
+def test_agent_chart_graph_ids_share_one_service():
+    rendered = _helm(
+        "template",
+        "desk",
+        str(AGENT_CHART),
+        "--set",
+        "graphIds[0]=advisor",
+        "--set",
+        "graphIds[1]=research",
+        "--set",
+        "aegraConfig=/app/aegra-desk.json",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "sharedRoute.enabled=true",
+        "--set",
+        "sharedRoute.host=aegra.example",
+        "--set",
+        "sharedRoute.gatewayName=zelkor-platform-gateway",
+    )
+    docs = _docs(rendered)
+    kinds = {d["kind"]: d for d in docs}
+    deploy = kinds["Deployment"]
+    env = {e["name"]: e.get("value") for e in deploy["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert env["ZELKOR_GRAPH_ID"] == "advisor"
+    assert env["AEGRA_CONFIG"] == "/app/aegra-desk.json"
+    route = kinds["HTTPRoute"]
+    dumped = yaml.dump(route)
+    assert dumped.count("X-Graph-ID") == 2
+    assert "advisor" in dumped
+    assert "research" in dumped
+    assert len(route["spec"]["rules"]) == 1
+    assert route["spec"]["rules"][0]["backendRefs"][0]["name"] == "desk-zelkor-agent"

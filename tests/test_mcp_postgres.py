@@ -6,7 +6,17 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
 from tests.helpers.mcp_client import MCPGatewayClient
-from wrappers.postgres_server import _split_relation  # noqa: E402
+from wrappers.postgres_server import (  # noqa: E402
+    _bind_params,
+    _normalize_placeholders,
+    _split_relation,
+)
+
+
+def test_normalize_dollar_placeholders_for_psycopg():
+    sql = _normalize_placeholders("SELECT 1 WHERE tenant_id = $1")
+    assert sql == "SELECT 1 WHERE tenant_id = %s"
+    assert _bind_params(sql, {}, "tenant_a") == ("tenant_a",)
 
 
 def test_split_relation_rejects_catalog_schemas():

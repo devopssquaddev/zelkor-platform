@@ -14,6 +14,8 @@ spec:
       app.kubernetes.io/component: guardrails
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/guardrails/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: guardrails

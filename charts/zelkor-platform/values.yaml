@@ -389,6 +389,9 @@ guardrails:
       otel:
         enabled: false
     safetyRefusal: "I can't help with that request."
+    extraInputFlows: []
+    extraColang: ""
+    extraRailsConfig: {}
     resources:
       requests:
         cpu: 100m

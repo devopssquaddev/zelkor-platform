@@ -33,6 +33,20 @@ spec:
               psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.platform.postgresDatabase }}'" | grep -q 1 || \
                 psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d postgres -c "CREATE DATABASE {{ .Values.platform.postgresDatabase }}"
               psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d "{{ .Values.platform.postgresDatabase }}" -f /scripts/init.sql
+              psql -h "{{ .Values.platform.postgresHost }}" -p {{ .Values.platform.postgresPort }} -U "{{ .Values.platform.postgresUser }}" -d "{{ .Values.platform.postgresDatabase }}" -v ON_ERROR_STOP=1 -c "
+              DO \$\$
+              BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finserve_mcp') THEN
+                  CREATE ROLE finserve_mcp LOGIN PASSWORD '{{ .Values.platform.postgresPassword }}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+                ELSE
+                  ALTER ROLE finserve_mcp LOGIN PASSWORD '{{ .Values.platform.postgresPassword }}';
+                END IF;
+              END
+              \$\$;
+              GRANT CONNECT ON DATABASE {{ .Values.platform.postgresDatabase }} TO finserve_mcp;
+              GRANT USAGE ON SCHEMA public TO finserve_mcp;
+              GRANT SELECT ON ALL TABLES IN SCHEMA public TO finserve_mcp;
+              "
               echo "Database seeded successfully."
 
               echo "Seeding Qdrant vector collection 'finserve_policies'..."

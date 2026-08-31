@@ -380,7 +380,8 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   helm dependency update "$FINSERVE_CHART_PATH" >/dev/null
   FINSERVE_HELM_ARGS=()
   if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
-    FINSERVE_HELM_ARGS+=(--set-string "zelkor-agent.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
+    FINSERVE_HELM_ARGS+=(--set-string "desk.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
+    FINSERVE_HELM_ARGS+=(--set-string "quant.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
   fi
   helm upgrade --install finserve "$FINSERVE_CHART_PATH" \
     --kube-context "$KCTX" \
@@ -388,10 +389,12 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
     "${FINSERVE_HELM_ARGS[@]}"
 
   log "Tracking FinServe demo rollout..."
-  log "  -> [1/2] Seeding demo portfolio database..."
+  log "  -> [1/3] Seeding demo portfolio database..."
   kubectl --context "$KCTX" wait --for=condition=complete job -l app.kubernetes.io/instance=finserve --timeout=3m || true
-  log "  -> [2/2] FinServe ClusterIP worker (graph_id=finserve)..."
-  kubectl --context "$KCTX" rollout status deployment/finserve-agent --timeout=5m
+  log "  -> [2/3] FinServe desk (finserve-advisor, finserve-research)..."
+  kubectl --context "$KCTX" rollout status deployment/finserve-desk --timeout=5m
+  log "  -> [3/3] FinServe quant (finserve-quant)..."
+  kubectl --context "$KCTX" rollout status deployment/finserve-quant --timeout=5m
 fi
 
 END_TIME=$(date +%s)
@@ -416,7 +419,7 @@ cat <<EOF
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
-  FinServe Demo (front door) zelkor-platform-aegra    http://aegra.localhost:8088  graph_id=finserve
+  FinServe Demo (front door) zelkor-platform-aegra    http://aegra.localhost:8088  graph_id=finserve-advisor|research|quant
 EOF
 fi
 cat <<EOF
@@ -448,7 +451,7 @@ if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
   [FinServe Demo Agent]
-    URL:              http://aegra.localhost:8088  (platform Aegra, graph_id=finserve)
+    URL:              http://aegra.localhost:8088  (platform Aegra; X-Graph-ID: finserve-advisor|research|quant)
     Bearer Tokens:    Authorization: Bearer dev:Bank_Alpha
                       Authorization: Bearer dev:Bank_Beta
 EOF
@@ -479,7 +482,7 @@ EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
-  2. Test FinServe via platform Aegra (graph_id=finserve):
+  2. Test FinServe via platform Aegra (X-Graph-ID: finserve-advisor|research|quant):
      curl -X POST http://aegra.localhost:8088/threads \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer dev:Bank_Alpha" \\
@@ -487,8 +490,8 @@ cat <<EOF
      curl -X POST http://aegra.localhost:8088/runs/wait \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer dev:Bank_Alpha" \\
-       -H "X-Graph-ID: finserve" \\
-       -d '{"graph_id":"finserve","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
+       -H "X-Graph-ID: finserve-advisor" \\
+       -d '{"graph_id":"finserve-advisor","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
 EOF
 fi
 cat <<EOF

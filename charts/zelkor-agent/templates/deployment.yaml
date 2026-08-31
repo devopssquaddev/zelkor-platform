@@ -1,4 +1,4 @@
-{{- $graphId := required "graphId must be set (the independently released graph id)" .Values.graphId }}
+{{- $graphId := include "zelkor-agent.primaryGraphId" . }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -72,7 +72,7 @@ spec:
             - name: WORKER_DRAIN_TIMEOUT
               value: {{ (.Values.workerDrainTimeout | default 30) | quote }}
             - name: AEGRA_CONFIG
-              value: "/app/aegra.json"
+              value: {{ .Values.aegraConfig | default "/app/aegra.json" | quote }}
             - name: OPENAI_BASE_URL
               value: {{ .Values.platform.openaiBaseUrl | quote }}
             - name: OPENAI_API_KEY
