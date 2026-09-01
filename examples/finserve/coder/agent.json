@@ -1,0 +1,5 @@
+{
+  "name": "finserve-coder",
+  "description": "Write and run custom Python against the authenticated tenant's portfolio data.",
+  "backend": "sandbox"
+}

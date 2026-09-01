@@ -43,21 +43,25 @@ done
 
 ALL_IMAGES=(
   zelkor-aegra
+  zelkor-aegra-deep
   zelkor-aegra-cli
   zelkor-mcp
   zelkor-sandbox-worker
   zelkor-guardrails
   zelkor-example-finserve
+  zelkor-example-finserve-coder
 )
 
 dockerfile_for() {
   case "$1" in
     zelkor-aegra) echo images/aegra/Dockerfile ;;
+    zelkor-aegra-deep) echo images/aegra-deep/Dockerfile ;;
     zelkor-aegra-cli) echo images/aegra-cli/Dockerfile ;;
     zelkor-mcp) echo images/mcp/Dockerfile ;;
     zelkor-sandbox-worker) echo images/sandbox-worker/Dockerfile ;;
     zelkor-guardrails) echo images/guardrails/Dockerfile ;;
     zelkor-example-finserve) echo images/example-finserve/Dockerfile ;;
+    zelkor-example-finserve-coder) echo images/example-finserve-coder/Dockerfile ;;
     *) return 1 ;;
   esac
 }

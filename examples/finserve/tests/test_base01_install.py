@@ -36,6 +36,7 @@ def test_base01_finserve_pods_healthy(kubecontext):
 
     assert any("finserve-desk" in name for name in pod_names)
     assert any("finserve-quant" in name for name in pod_names)
+    assert any("finserve-coder" in name for name in pod_names)
     assert any("mcp-sandbox" in name for name in pod_names)
     assert any("mcp-gateway" in name for name in pod_names)
 

@@ -116,3 +116,4 @@ mcp:
   sandboxMCP:
     warmPool:
       replicas: 2
+    workerToken: "zelkor-local-sandbox-worker-token"

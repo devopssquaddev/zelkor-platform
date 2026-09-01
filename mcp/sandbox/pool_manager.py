@@ -22,10 +22,14 @@ def execute_on_worker(code: str, tenant_id: str, timeout: int = 5) -> Dict[str, 
         worker_url = next(_cycle) if _cycle else WORKER_URLS[0]
         try:
             payload = json.dumps({"code": code, "tenant_id": tenant_id, "timeout": timeout}).encode("utf-8")
+            headers = {"Content-Type": "application/json", "X-Tenant-ID": tenant_id}
+            token = os.getenv("SANDBOX_WORKER_TOKEN", "").strip()
+            if token:
+                headers["X-Sandbox-Worker-Token"] = token
             req = urllib.request.Request(
                 f"{worker_url.rstrip('/')}/run",
                 data=payload,
-                headers={"Content-Type": "application/json", "X-Tenant-ID": tenant_id},
+                headers=headers,
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=timeout + 2) as resp:

@@ -272,11 +272,13 @@ Hostnames accepted by AIGatewayRoute (external dev + in-cluster service DNS).
 OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 */}}
 {{- define "zelkor-platform.openAiBaseUrl" -}}
-{{- if .Values.aiGateway.internalUrl -}}
-{{- .Values.aiGateway.internalUrl -}}
-{{- else if .Values.aiGateway.inClusterService.enabled -}}
+{{- /* Prefer *-ai-gateway Service DNS (Host matches AIGatewayRoute). internalUrl is the Envoy
+     data-plane FQDN for NeMo, which sets Host: gateway.hosts.aiGateway separately. */ -}}
+{{- if .Values.aiGateway.inClusterService.enabled -}}
 {{- $port := .Values.aiGateway.inClusterService.port | default 80 -}}
 {{- printf "http://%s-ai-gateway:%v/v1" (include "zelkor-platform.fullname" .) $port -}}
+{{- else if .Values.aiGateway.internalUrl -}}
+{{- .Values.aiGateway.internalUrl -}}
 {{- else -}}
 {{- printf "http://%s-ai-gateway:8080/v1" (include "zelkor-platform.fullname" .) -}}
 {{- end -}}

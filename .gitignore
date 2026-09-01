@@ -5,6 +5,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 
+# Python packaging
+*.egg-info/
+dist/
+build/
+
 # Environment files
 .env
 .env.*

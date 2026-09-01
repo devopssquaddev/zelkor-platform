@@ -1,5 +1,5 @@
 # FinServe Demo Helm Values
-# Two ClusterIP workers (desk = advisor+research; quant = projections).
+# Three ClusterIP workers (desk = advisor+research; quant = projections; coder = Deep Agent).
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
@@ -67,6 +67,30 @@ quant:
   extraEnv:
     - name: QDRANT_COLLECTION
       value: "finserve_policies"
+
+coder:
+  fullnameOverride: finserve-coder
+  graphId: finserve-coder
+  aegraConfig: ""
+  replicaCount: 1
+  sharedRoute:
+    gatewayName: zelkor-platform-gateway
+    gatewayNamespace: default
+    host: ""
+  redis:
+    prefix: aegra:finserve-coder
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-example-finserve-coder
+    tag: "dev"
+    digest: ""
+  platform:
+    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+    consumerKey: ""
+    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+    databaseUrl: ""
+    valkeyUrl: ""
+    mcpInject: true
+    defaultLlmModel: "gpt-oss:20b"
 
 platform:
   postgresHost: "zelkor-platform-postgresql"

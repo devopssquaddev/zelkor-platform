@@ -1,4 +1,4 @@
-"""Guarantee aegra.json has auth.path so worker images cannot boot no-auth."""
+"""Guarantee aegra.json / langgraph.json has auth.path so worker images cannot boot no-auth."""
 from __future__ import annotations
 
 import json
@@ -10,11 +10,28 @@ from typing import Optional
 logger = logging.getLogger("zelkor-auth-inject")
 
 DEFAULT_AUTH_PATH = "./tenant_auth.py:auth"
+_DISCOVER = ("/app/aegra.json", "/app/langgraph.json")
+
+
+def _discover_config(path: Optional[str] = None) -> Optional[Path]:
+    if path:
+        candidate = Path(path)
+        return candidate if candidate.is_file() else None
+    env = (os.getenv("AEGRA_CONFIG") or "").strip()
+    if env:
+        candidate = Path(env)
+        if candidate.is_file():
+            return candidate
+    for rel in _DISCOVER:
+        candidate = Path(rel)
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def ensure_auth_config(path: Optional[str] = None) -> Optional[str]:
-    config_path = Path(path or os.getenv("AEGRA_CONFIG", "/app/aegra.json"))
-    if not config_path.is_file():
+    config_path = _discover_config(path)
+    if config_path is None:
         return None
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))

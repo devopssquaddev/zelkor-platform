@@ -30,6 +30,13 @@ class WorkerHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "not found"})
             return
 
+        expected = os.getenv("SANDBOX_WORKER_TOKEN", "").strip()
+        if expected:
+            got = (self.headers.get("X-Sandbox-Worker-Token") or "").strip()
+            if got != expected:
+                self._json(403, {"status": "error", "error": "unauthorized"})
+                return
+
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length else b"{}"
         try:

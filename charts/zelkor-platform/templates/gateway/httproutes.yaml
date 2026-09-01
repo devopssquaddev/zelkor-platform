@@ -24,6 +24,12 @@ spec:
 ---
 {{- end }}
 {{- if and .Values.gateway.enabled .Values.aegra.enabled .Values.gateway.hosts.aegra }}
+{{- $workers := .Values.aegra.workers | default list }}
+{{- $attachDefault := true }}
+{{- if hasKey .Values.aegra "attachDefaultRoute" }}
+{{- $attachDefault = .Values.aegra.attachDefaultRoute }}
+{{- end }}
+{{- if or (gt (len $workers) 0) $attachDefault }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -39,7 +45,7 @@ spec:
   hostnames:
     - {{ .Values.gateway.hosts.aegra | quote }}
   rules:
-    {{- range .Values.aegra.workers | default list }}
+    {{- range $workers }}
     {{- $graphId := required "aegra.workers[].graphId is required" .graphId }}
     {{- $service := required "aegra.workers[].service must be an in-cluster Service name (not an http:// URL)" .service }}
     - matches:
@@ -57,6 +63,7 @@ spec:
       timeouts:
         request: 0s
     {{- end }}
+    {{- if $attachDefault }}
     - matches:
         - path:
             type: PathPrefix
@@ -66,7 +73,9 @@ spec:
           port: 8000
       timeouts:
         request: 0s
+    {{- end }}
 ---
+{{- end }}
 {{- end }}
 {{- if and .Values.gateway.enabled .Values.guardrails.nemo.enabled .Values.gateway.hosts.nemo }}
 apiVersion: gateway.networking.k8s.io/v1

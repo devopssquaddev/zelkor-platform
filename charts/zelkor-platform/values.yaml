@@ -333,6 +333,9 @@ aegra:
   # Each entry: { graphId, service, port } — in-cluster Service, not an http:// URL.
   # Empty = topology 1 (catch-all / → this Service). No fixture graphId.
   workers: []
+  # Catch-all `/` on gateway.hosts.aegra → this Service. First zelkor-agent
+  # asDefault worker sets this false (do not use `| default true` in templates).
+  attachDefaultRoute: true
   # Mode B inject belongs on worker pods (charts/zelkor-agent), not the empty-graph front door.
   mcpInject:
     enabled: false
@@ -546,6 +549,7 @@ mcp:
       - python-base
     warmPool:
       replicas: 3
+    workerToken: ""
     strictIsolation: false
     workerImage:
       repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker

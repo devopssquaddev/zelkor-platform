@@ -14,11 +14,13 @@ graphIds: []
 aegraConfig: "/app/aegra.json"
 
 # Shared-host registration. Empty host or gatewayName = no HTTPRoute from this chart.
+# asDefault: path `/` catch-all (topology 1). false = X-Graph-ID / ?graph_id= matches.
 sharedRoute:
   enabled: true
   gatewayName: ""
   gatewayNamespace: ""
   host: ""
+  asDefault: false
 
 # REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY. Empty prefix → aegra:<release>.
 redis:

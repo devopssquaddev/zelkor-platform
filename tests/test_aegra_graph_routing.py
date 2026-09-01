@@ -30,6 +30,7 @@ def test_workers_default_empty_and_not_urls():
     values = (PLATFORM_CHART / "values.yaml").read_text()
     aegra = values.split("\naegra:", 1)[1].split("\nguardrails:", 1)[0]
     assert "workers: []" in aegra
+    assert "attachDefaultRoute: true" in aegra
     assert "localhost" not in aegra
     assert "http://" not in aegra.split("workers:", 1)[1].split("\n", 8)[0]
 
@@ -171,6 +172,61 @@ def _helm(*args: str) -> str:
 
 def _docs(rendered: str) -> list:
     return [d for d in yaml.safe_load_all(rendered) if d]
+
+
+def test_openai_model_regex_does_not_steal_gpt_oss():
+    import re
+
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "aiGateway.providers.openai.apiKey=sk-test",
+        "--set",
+        "aiGateway.providers.ollamaCloud.apiKey=ollama-test",
+        "-s",
+        "templates/ai-gateway/aigatewayroute.yaml",
+    )
+    openai_re = ollama_re = None
+    for doc in _docs(rendered):
+        for rule in (doc.get("spec") or {}).get("rules") or []:
+            for match in rule.get("matches") or []:
+                for header in match.get("headers") or []:
+                    if header.get("name") != "x-ai-eg-model":
+                        continue
+                    val = header.get("value") or ""
+                    backend = ((rule.get("backendRefs") or [{}])[0]).get("name") or ""
+                    if backend.endswith("-backend-openai"):
+                        openai_re = val
+                    if backend.endswith("-backend-ollama-cloud"):
+                        ollama_re = val
+    assert openai_re and ollama_re
+    assert re.match(openai_re, "gpt-4o-mini")
+    assert re.match(openai_re, "gpt-4.1")
+    assert not re.match(openai_re, "gpt-oss:20b")
+    assert re.match(ollama_re, "gpt-oss:20b")
+
+
+def test_aegra_openai_base_url_uses_in_cluster_service_not_envoy_fqdn():
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "aiGateway.internalUrl=http://envoy-default-zelkor-platform-gateway.envoy-gateway-system.svc.cluster.local:80/v1",
+        "-s",
+        "templates/aegra/deployment.yaml",
+    )
+    deploy = next(d for d in _docs(rendered) if d.get("kind") == "Deployment")
+    env = {e["name"]: e.get("value") for e in deploy["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "envoy-gateway-system" not in env["OPENAI_BASE_URL"]
+    assert env["OPENAI_BASE_URL"].endswith("/v1")
+    assert "ai-gateway" in env["OPENAI_BASE_URL"]
 
 
 def test_platform_httproute_single_backend_is_catch_all():
@@ -349,3 +405,86 @@ def test_agent_chart_no_shared_route_without_host():
     )
     docs = _docs(rendered)
     assert not any(d.get("kind") == "HTTPRoute" for d in docs)
+
+
+def test_platform_attach_default_route_false_drops_catchall():
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "aegra.attachDefaultRoute=false",
+        "-s",
+        "templates/gateway/httproutes.yaml",
+    )
+    routes = [d for d in _docs(rendered) if d.get("metadata", {}).get("name", "").endswith("-aegra-route")]
+    assert routes == []
+
+
+def test_platform_attach_default_route_false_keeps_workers():
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "aegra.attachDefaultRoute=false",
+        "--set",
+        "aegra.workers[0].graphId=fraud",
+        "--set",
+        "aegra.workers[0].service=fraud-agent",
+        "-s",
+        "templates/gateway/httproutes.yaml",
+    )
+    routes = [d for d in _docs(rendered) if d.get("metadata", {}).get("name", "").endswith("-aegra-route")]
+    assert len(routes) == 1
+    dumped = yaml.dump(routes[0])
+    assert "X-Graph-ID" in dumped
+    assert "fraud-agent" in dumped
+    for rule in routes[0]["spec"]["rules"]:
+        for match in rule.get("matches") or []:
+            assert match.get("path", {}).get("value") != "/"
+
+
+def test_agent_chart_as_default_is_catchall():
+    rendered = _helm(
+        "template",
+        "agent",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=agent",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "sharedRoute.host=aegra.example",
+        "--set",
+        "sharedRoute.gatewayName=zelkor-platform-gateway",
+        "--set",
+        "sharedRoute.asDefault=true",
+    )
+    docs = _docs(rendered)
+    route = next(d for d in docs if d.get("kind") == "HTTPRoute")
+    dumped = yaml.dump(route)
+    assert "X-Graph-ID" not in dumped
+    assert route["spec"]["rules"][0]["matches"][0]["path"]["value"] == "/"
+
+
+def test_agent_chart_empty_aegra_config_omits_env():
+    rendered = _helm(
+        "template",
+        "agent",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=agent",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set-string",
+        "aegraConfig=",
+    )
+    docs = _docs(rendered)
+    deploy = next(d for d in docs if d.get("kind") == "Deployment")
+    env = {e["name"]: e.get("value") for e in deploy["spec"]["template"]["spec"]["containers"][0]["env"]}
+    assert "AEGRA_CONFIG" not in env

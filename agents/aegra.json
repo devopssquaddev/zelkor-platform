@@ -1,5 +1,0 @@
-{
-  "auth": {
-    "path": "/app/agents/tenant_auth.py:auth"
-  }
-}

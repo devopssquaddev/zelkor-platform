@@ -2,10 +2,11 @@ dependencies:
 - name: zelkor-agent
   repository: file://../../../charts/zelkor-agent
   version: 0.1.0
-  alias: desk
 - name: zelkor-agent
   repository: file://../../../charts/zelkor-agent
   version: 0.1.0
-  alias: quant
-digest: sha256:484752fe646ba9a849b133d02d7bd370460f06a2c9f7d3a7a1a7c0483c8a28b9
-generated: "2026-08-30T18:41:54.237652+02:00"
+- name: zelkor-agent
+  repository: file://../../../charts/zelkor-agent
+  version: 0.1.0
+digest: sha256:c9b6a4bf1744d2e6ca3e5ec37bf22e83e4f33265d940785ffdc6c905bae04fb3
+generated: "2026-09-01T13:31:11.952205+02:00"

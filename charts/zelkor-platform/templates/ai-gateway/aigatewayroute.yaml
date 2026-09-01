@@ -24,6 +24,7 @@ spec:
   rules:
     {{- if $intercept }}
     {{- /* NeMo upstream: bypass header routes to providers (loop prevention). */}}
+    {{- /* gpt-[0-9] not gpt-.* — otherwise gpt-oss:* matches OpenAI when both providers are set. */}}
     {{- if .Values.aiGateway.providers.openai.apiKey }}
     - matches:
         - headers:
@@ -32,7 +33,7 @@ spec:
               value: "1"
             - type: RegularExpression
               name: x-ai-eg-model
-              value: "^(openai/.*|gpt-.*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
+              value: "^(openai/.*|gpt-[0-9].*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
     {{- end }}
@@ -114,7 +115,7 @@ spec:
         - headers:
             - type: RegularExpression
               name: x-ai-eg-model
-              value: "^(openai/.*|gpt-.*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
+              value: "^(openai/.*|gpt-[0-9].*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
     {{- end }}

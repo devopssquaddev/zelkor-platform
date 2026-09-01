@@ -86,11 +86,11 @@ All services and Web UIs are accessible via Kubernetes Gateway API on port `8088
 | **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Project: `Zelkor Platform`) |
 | **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
 | **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
-| **FinServe Demo** | [http://aegra.localhost:8088](http://aegra.localhost:8088) (`X-Graph-ID: finserve-advisor` / `research` / `quant`) | `Authorization: Bearer dev:Bank_Alpha` |
+| **FinServe Demo** | [http://aegra.localhost:8088](http://aegra.localhost:8088) (`X-Graph-ID: finserve-advisor` / `research` / `quant` / `coder`) | `Authorization: Bearer dev:Bank_Alpha` |
 | **Native MCP Gateway** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | `Authorization: Bearer dev:Bank_Alpha`, `X-Tenant-ID: Bank_Alpha` |
 | **NeMo Guardrails** | [http://nemo.localhost:8088/v1/rails/configs](http://nemo.localhost:8088/v1/rails/configs) | Native NeMo server (`content_safety` profile: LLM self-check I/O rails) |
 
-Platform security primitives (MCP tenant scoping, gVisor sandbox, NeMo intercept on `/v1`) are validated by `tests/test_mcp_*.py`, `tests/test_nemo_guardrails.py`, and `tests/test_drop_in_intercept.py`. FinServe is three Mode B graphs on two ClusterIP workers behind the platform Aegra front door.
+Platform security primitives (MCP tenant scoping, gVisor sandbox, NeMo intercept on `/v1`) are validated by `tests/test_mcp_*.py`, `tests/test_nemo_guardrails.py`, and `tests/test_drop_in_intercept.py`. FinServe is three Mode B graphs on two ClusterIP workers plus a deploy-first Deep Agent (`finserve-coder`) behind the platform Aegra front door.
 
 ## Quick Tests
 
@@ -130,7 +130,22 @@ curl -X POST http://zelkor-platform-ai-gateway/v1/chat/completions \
   -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Ship a customer agent as its **own ClusterIP Deployment** (production pattern). Use the helper chart `charts/zelkor-agent` (no public HTTPRoute). Clients use the platform Aegra host; `sharedRoute` registers the worker when host + gateway are set. Do not edit platform `aegra.workers` as a second step.
+Ship a customer agent with **one** CLI. `zelkor deploy` detects the project tree (Deep Agents `agent.json` + `AGENTS.md`, or an existing `langgraph.json` / `aegra.json` with a `graphs` map). Same chart, same Envoy host.
+
+```bash
+pip install -e ./cli
+zelkor env add local --kube-context kind-zelkor --namespace default
+zelkor init my-agent
+cd my-agent
+zelkor dev
+zelkor run --input "hello"
+```
+
+`dev` builds `FROM zelkor-aegra-deep` and `helm upgrade` without a registry push. `deploy` also pushes. Topology 1 (first worker): create-run + stream with body `graph_id` only — no `X-Graph-ID`. Later agents stay header-matched.
+
+An existing LangGraph / Aegra repo skips `init` and runs the same `deploy`. GitOps can still `helm upgrade` `charts/zelkor-agent` without the CLI (FinServe does).
+
+Manual Helm (same chart the CLI wraps):
 
 ```bash
 helm upgrade --install my-agent charts/zelkor-agent \
@@ -148,13 +163,12 @@ Optional fallback (platform overlay only): `aegra.workers: [{ graphId, service, 
 Clients set `X-Graph-ID: my-agent` (or `?graph_id=my-agent`) on every call to a non-default backend, including stream/join/cancel.
 
 ```dockerfile
-# Agent image — one independently released graph
-FROM ghcr.io/devopssquaddev/zelkor-aegra:dev
-COPY my_agent.py /app/my_agent.py
-COPY aegra.json /app/aegra.json
+# CLI-built workers — no customer Dockerfile on the happy path
+FROM ghcr.io/devopssquaddev/zelkor-aegra-deep:dev
+COPY . /app/
 ```
 
-`aegra.json` should keep `"auth": {"path": "./tenant_auth.py:auth"}` (the wrap injects it if omitted). Prefer `langchain.agents.create_agent` over deprecated `langgraph.prebuilt.create_react_agent`. Mode B patches `create_agent` only (`create_deep_agent` calls it with `tools=`). FinServe stays on `create_agent`.
+`aegra.json` / `langgraph.json` should keep `"auth": {"path": "./tenant_auth.py:auth"}` (the wrap injects it if omitted). Prefer `langchain.agents.create_agent` over deprecated `langgraph.prebuilt.create_react_agent`. Mode B patches `create_agent` only (`create_deep_agent` calls it with `tools=`). FinServe desk/quant stay on `create_agent`; `finserve-coder` is deploy-first (`agent.json` + `AGENTS.md`).
 
 Local/eval only: `aegra.graphs` + ConfigMap `graphModules` on the platform Aegra pod, or a demo-only public HTTPRoute. Do not use those paths for fleets of independently released agents.
 

@@ -71,8 +71,10 @@ spec:
               value: {{ (.Values.nJobsPerWorker | default 10) | quote }}
             - name: WORKER_DRAIN_TIMEOUT
               value: {{ (.Values.workerDrainTimeout | default 30) | quote }}
+            {{- if .Values.aegraConfig }}
             - name: AEGRA_CONFIG
-              value: {{ .Values.aegraConfig | default "/app/aegra.json" | quote }}
+              value: {{ .Values.aegraConfig | quote }}
+            {{- end }}
             - name: OPENAI_BASE_URL
               value: {{ .Values.platform.openaiBaseUrl | quote }}
             - name: OPENAI_API_KEY

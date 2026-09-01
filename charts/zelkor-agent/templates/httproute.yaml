@@ -21,6 +21,11 @@ spec:
     - {{ $sr.host | quote }}
   rules:
     - matches:
+        {{- if $sr.asDefault }}
+        - path:
+            type: PathPrefix
+            value: /
+        {{- else }}
         {{- range $graphIds }}
         - headers:
             - name: X-Graph-ID
@@ -30,6 +35,7 @@ spec:
             - name: graph_id
               type: Exact
               value: {{ . | quote }}
+        {{- end }}
         {{- end }}
       backendRefs:
         - name: {{ include "zelkor-agent.fullname" . }}

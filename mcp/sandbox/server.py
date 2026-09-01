@@ -36,7 +36,8 @@ class SandboxMCPServer(MCPToolHandler):
             raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
 
         code = arguments.get("code") or ""
-        return execute_on_worker(code, tenant_id)
+        timeout = int(arguments.get("timeout") or 5)
+        return execute_on_worker(code, tenant_id, timeout=timeout)
 
 
 if __name__ == "__main__":

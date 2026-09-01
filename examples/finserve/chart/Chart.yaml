@@ -13,3 +13,7 @@ dependencies:
     version: "0.1.0"
     repository: "file://../../../charts/zelkor-agent"
     alias: quant
+  - name: zelkor-agent
+    version: "0.1.0"
+    repository: "file://../../../charts/zelkor-agent"
+    alias: coder

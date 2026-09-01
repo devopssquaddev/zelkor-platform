@@ -1,0 +1,8 @@
+{
+  "graphs": {
+    "finserve-coder": "./zelkor_deep_factory.py:graph"
+  },
+  "auth": {
+    "path": "./tenant_auth.py:auth"
+  }
+}

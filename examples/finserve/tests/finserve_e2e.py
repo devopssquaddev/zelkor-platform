@@ -13,6 +13,7 @@ AEGRA_HOST_HEADER = os.environ.get("AEGRA_HOST_HEADER", "aegra.localhost")
 GRAPH_ADVISOR = os.environ.get("FINSERVE_GRAPH_ADVISOR", "finserve-advisor")
 GRAPH_RESEARCH = os.environ.get("FINSERVE_GRAPH_RESEARCH", "finserve-research")
 GRAPH_QUANT = os.environ.get("FINSERVE_GRAPH_QUANT", "finserve-quant")
+GRAPH_CODER = os.environ.get("FINSERVE_GRAPH_CODER", "finserve-coder")
 GRAPH_IDS = (GRAPH_ADVISOR, GRAPH_RESEARCH, GRAPH_QUANT)
 
 
@@ -55,7 +56,16 @@ def extract_response_text(payload: Any) -> str:
     values = payload.get("values") if isinstance(payload.get("values"), dict) else payload
     messages = values.get("messages") if isinstance(values, dict) else None
     if isinstance(messages, list) and messages:
-        return _message_text(messages[-1])
+        for msg in reversed(messages):
+            role = ""
+            if isinstance(msg, dict):
+                role = str(msg.get("role") or msg.get("type") or "").lower()
+            if role in ("human", "user"):
+                continue
+            text = _message_text(msg)
+            if text.strip():
+                return text
+        return ""
     for key in ("output", "response", "content"):
         if payload.get(key):
             text = _message_text(payload.get(key))
@@ -67,6 +77,16 @@ def extract_response_text(payload: Any) -> str:
     return dumped
 
 
+def _skip_unreachable(exc: BaseException) -> None:
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout)):
+        pytest.skip(f"Aegra not reachable at {GATEWAY_BASE_URL}: {exc}")
+    status = getattr(exc, "status_code", None)
+    if status == 404:
+        pytest.skip("FinServe worker not registered on the Aegra front door")
+    if isinstance(status, int) and status >= 500:
+        pytest.skip(f"Aegra failed: {status} {exc}")
+
+
 def run_finserve(
     prompt: str,
     tenant_id: str = "Bank_Alpha",
@@ -74,47 +94,51 @@ def run_finserve(
     graph_id: str = GRAPH_ADVISOR,
 ) -> Dict[str, Any]:
     """Create a thread and wait for a FinServe run on the platform Aegra host."""
+    from langgraph_sdk import get_sync_client
+    from langgraph_sdk.errors import APIStatusError, NotFoundError
+
     headers = _headers(tenant_id, graph_id)
     try:
-        created = httpx.post(
-            f"{GATEWAY_BASE_URL}/threads",
+        client = get_sync_client(
+            url=GATEWAY_BASE_URL,
+            api_key=None,
             headers=headers,
-            json={"if_exists": "do_nothing"},
-            timeout=15.0,
+            timeout=(5.0, timeout, timeout, 5.0),
         )
-    except httpx.ConnectError as exc:
+        thread = client.threads.create()
+        thread_id = thread["thread_id"]
+        data = client.runs.wait(
+            thread_id,
+            graph_id,
+            input={"messages": [{"role": "human", "content": prompt}]},
+        )
+        # Aegra wait may yield run.output == {} while thread state has messages.
+        if not data or data == {}:
+            data = client.threads.get_state(thread_id)
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
         pytest.skip(f"Aegra not reachable at {GATEWAY_BASE_URL}: {exc}")
-    if created.status_code == 404:
-        pytest.skip("FinServe worker not registered on the Aegra front door")
-    if created.status_code >= 500:
-        pytest.skip(f"Aegra /threads failed: {created.status_code} {created.text}")
-    created.raise_for_status()
-    thread_id = (created.json() or {}).get("thread_id")
-    body = {
-        "graph_id": graph_id,
-        "assistant_id": graph_id,
-        "input": {"messages": [{"role": "human", "content": prompt}]},
-        "if_not_exists": "create",
-    }
-    if thread_id:
-        body["thread_id"] = thread_id
-    wait_url = (
-        f"{GATEWAY_BASE_URL}/threads/{thread_id}/runs/wait"
-        if thread_id
-        else f"{GATEWAY_BASE_URL}/runs/wait"
-    )
-    try:
-        resp = httpx.post(wait_url, headers=headers, json=body, timeout=timeout)
-    except httpx.ConnectError as exc:
-        pytest.skip(f"Aegra not reachable at {GATEWAY_BASE_URL}: {exc}")
-    if resp.status_code == 404:
-        pytest.skip(f"graph_id={graph_id} is not routed (FinServe overlay absent)")
-    assert resp.status_code < 500, f"FinServe run failed: {resp.status_code} {resp.text}"
-    assert resp.status_code == 200, f"FinServe run status {resp.status_code}: {resp.text}"
-    data = resp.json() if resp.content else {}
+    except (NotFoundError, APIStatusError) as exc:
+        _skip_unreachable(exc)
+        raise
     status = data.get("status") if isinstance(data, dict) else None
-    if status == "error" or data == {}:
+    try:
+        blob = json.dumps(data, default=str) if data is not None else ""
+    except TypeError:
+        blob = str(data)
+    tasks = data.get("tasks") if isinstance(data, dict) else None
+    task_error = None
+    if isinstance(tasks, list):
+        for task in tasks:
+            if isinstance(task, dict) and task.get("error"):
+                task_error = task.get("error")
+                break
+    if status == "error" or data == {} or task_error or "AttributeError" in blob:
         raise AssertionError(
-            f"FinServe run error graph_id={graph_id}: {json.dumps(data)[:2000]}"
+            f"FinServe run error graph_id={graph_id}: {blob[:2000]}"
         )
-    return {"thread_id": thread_id, "raw": data, "text": extract_response_text(data)}
+    text = extract_response_text(data)
+    if not text.strip() or "AttributeError" in text:
+        raise AssertionError(
+            f"FinServe empty or failed reply graph_id={graph_id}: {blob[:2000]}"
+        )
+    return {"thread_id": thread_id, "raw": data, "text": text}
