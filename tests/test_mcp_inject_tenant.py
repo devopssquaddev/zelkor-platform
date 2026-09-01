@@ -33,6 +33,12 @@ def test_tenant_from_run_config_ignores_empty():
     assert tenant_from_run_config(None) == ""
 
 
+def test_mode_b_does_not_wrap_create_deep_agent():
+    text = Path(__file__).resolve().parents[1].joinpath("images/aegra/mcp_inject.py").read_text()
+    assert "create_agent" in text
+    assert "create_deep_agent" not in text
+
+
 def test_stamp_tenant_kwargs_overwrites_model_guess(monkeypatch):
     monkeypatch.setattr(
         "mcp_inject.tenant_from_run_config", lambda config=None: "Bank_Alpha"

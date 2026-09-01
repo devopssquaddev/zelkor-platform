@@ -283,7 +283,5 @@ def patch_langgraph() -> None:
         "create_react_agent",
         extra,
     )
-    if not _patch_factory(("deepagents", "deepagents.graph"), "create_deep_agent", extra):
-        logger.info("Mode B: deepagents.create_deep_agent not installed (optional)")
 
     logger.info("Mode B: injected %s MCP tools", len(extra))

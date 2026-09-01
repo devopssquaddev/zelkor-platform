@@ -295,7 +295,7 @@ fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
   HELM_EXTRA_ARGS+=(-f "$FINSERVE_PLATFORM_OVERLAY")
-  log "Platform overlay: $FINSERVE_PLATFORM_OVERLAY"
+  log "Platform overlay: $FINSERVE_PLATFORM_OVERLAY (MCP/Langfuse/NeMo; workers via FinServe sharedRoute)"
 fi
 
 if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then

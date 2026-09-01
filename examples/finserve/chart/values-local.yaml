@@ -6,6 +6,8 @@ gateway:
   enabled: false
 
 desk:
+  sharedRoute:
+    host: aegra.localhost
   auth:
     jwtSecret: "zelkor-local-jwt-secret"
     devTokens:
@@ -26,6 +28,8 @@ desk:
       value: "finserve_policies"
 
 quant:
+  sharedRoute:
+    host: aegra.localhost
   auth:
     jwtSecret: "zelkor-local-jwt-secret"
     devTokens:

@@ -1,6 +1,6 @@
 # Helper chart: one ClusterIP Aegra worker. Not the platform front door.
-# GitOps: set sharedRoute.host to gateway.hosts.aegra (same Gateway parentRef).
-# Overlay alternative on the platform chart: aegra.workers: [{ graphId, service, port }]
+# Self-register: HTTPRoute when sharedRoute.host + sharedRoute.gatewayName are set.
+# Do not edit platform aegra.workers as a second step. Overlay workers are optional fallback.
 
 global:
   imagePullPolicy: IfNotPresent
@@ -13,9 +13,9 @@ graphIds: []
 # Path to aegra.json inside the image. Override for multi-config images.
 aegraConfig: "/app/aegra.json"
 
-# Shared-host registration (recommended). Empty host = no HTTPRoute from this chart.
+# Shared-host registration. Empty host or gatewayName = no HTTPRoute from this chart.
 sharedRoute:
-  enabled: false
+  enabled: true
   gatewayName: ""
   gatewayNamespace: ""
   host: ""

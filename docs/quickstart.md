@@ -130,26 +130,20 @@ curl -X POST http://zelkor-platform-ai-gateway/v1/chat/completions \
   -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
-Ship a customer agent as its **own ClusterIP Deployment** (production pattern). Use the helper chart `charts/zelkor-agent` (no public HTTPRoute). Clients use the platform Aegra host; the front door routes by `graph_id`.
+Ship a customer agent as its **own ClusterIP Deployment** (production pattern). Use the helper chart `charts/zelkor-agent` (no public HTTPRoute). Clients use the platform Aegra host; `sharedRoute` registers the worker when host + gateway are set. Do not edit platform `aegra.workers` as a second step.
 
 ```bash
 helm upgrade --install my-agent charts/zelkor-agent \
   --set graphId=my-agent \
+  --set sharedRoute.host=aegra.example \
+  --set sharedRoute.gatewayName=zelkor-platform-gateway \
   --set platform.databaseUrl='postgresql://…/aegra' \
   --set platform.openaiBaseUrl=http://zelkor-platform-ai-gateway:80/v1 \
   --set platform.mcpUrl=http://zelkor-platform-mcp-gateway:8080 \
   --set platform.consumerKey="$CONSUMER_KEY"
 ```
 
-Register the worker on the shared Aegra host (not by merging graphs into the front-door pod). Preferred: set `sharedRoute` on `charts/zelkor-agent`. Overlay alternative:
-
-```yaml
-aegra:
-  workers:
-    - graphId: my-agent
-      service: my-agent-zelkor-agent
-      port: 8000
-```
+Optional fallback (platform overlay only): `aegra.workers: [{ graphId, service, port }]`.
 
 Clients set `X-Graph-ID: my-agent` (or `?graph_id=my-agent`) on every call to a non-default backend, including stream/join/cancel.
 
@@ -160,7 +154,7 @@ COPY my_agent.py /app/my_agent.py
 COPY aegra.json /app/aegra.json
 ```
 
-`aegra.json` should keep `"auth": {"path": "./tenant_auth.py:auth"}` (the wrap injects it if omitted). Prefer `langchain.agents.create_agent` over deprecated `langgraph.prebuilt.create_react_agent`. If the image has Deep Agents, Mode B also injects into `create_deep_agent`. FinServe stays on `create_agent`.
+`aegra.json` should keep `"auth": {"path": "./tenant_auth.py:auth"}` (the wrap injects it if omitted). Prefer `langchain.agents.create_agent` over deprecated `langgraph.prebuilt.create_react_agent`. Mode B patches `create_agent` only (`create_deep_agent` calls it with `tools=`). FinServe stays on `create_agent`.
 
 Local/eval only: `aegra.graphs` + ConfigMap `graphModules` on the platform Aegra pod, or a demo-only public HTTPRoute. Do not use those paths for fleets of independently released agents.
 

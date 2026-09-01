@@ -22,7 +22,8 @@ COPY images/aegra/mcp_inject.py /app/mcp_inject.py
 COPY images/aegra/trace_wrap.py /app/trace_wrap.py
 COPY images/aegra/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
 
-RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
+RUN chmod 644 /usr/local/lib/python3.12/site-packages/sitecustomize.py \
+    && useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && chown -R zelkor:zelkor /app
 USER 1000
 

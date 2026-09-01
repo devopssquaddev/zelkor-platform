@@ -1,5 +1,6 @@
 # Overlay applied to the platform chart when installing the FinServe example.
 # Not used for production / INSTALL_EXAMPLES=false.
+# Graph routing is self-register (zelkor-agent sharedRoute), not aegra.workers.
 mcp:
   postgresMCP:
     databaseUrl: "postgresql://finserve_mcp:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve"
@@ -12,16 +13,6 @@ langfuse:
     projectName: "FinServe AI"
 
 aegra:
-  workers:
-    - graphId: finserve-advisor
-      service: finserve-desk
-      port: 8000
-    - graphId: finserve-research
-      service: finserve-desk
-      port: 8000
-    - graphId: finserve-quant
-      service: finserve-quant
-      port: 8000
   tenantOrgMappings:
     org_alpha: Bank_Alpha
     org_beta: Bank_Beta

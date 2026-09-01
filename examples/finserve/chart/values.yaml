@@ -18,6 +18,10 @@ desk:
     - finserve-research
   aegraConfig: /app/aegra-desk.json
   replicaCount: 1
+  sharedRoute:
+    gatewayName: zelkor-platform-gateway
+    gatewayNamespace: default
+    host: ""
   redis:
     prefix: aegra:finserve-desk
   image:
@@ -42,6 +46,10 @@ quant:
     - finserve-quant
   aegraConfig: /app/aegra-quant.json
   replicaCount: 1
+  sharedRoute:
+    gatewayName: zelkor-platform-gateway
+    gatewayNamespace: default
+    host: ""
   redis:
     prefix: aegra:finserve-quant
   image:

@@ -1,5 +1,5 @@
 {{- $sr := .Values.sharedRoute | default dict }}
-{{- if and ($sr.enabled | default false) $sr.host $sr.gatewayName }}
+{{- if and $sr.host $sr.gatewayName }}
 {{- $graphIds := .Values.graphIds | default list }}
 {{- if and (not $graphIds) .Values.graphId }}
 {{- $graphIds = list .Values.graphId }}

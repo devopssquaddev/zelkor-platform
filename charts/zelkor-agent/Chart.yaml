@@ -1,6 +1,6 @@
 apiVersion: v2
 name: zelkor-agent
-description: ClusterIP worker for one or more graphs in one image (FROM zelkor-aegra). Register via sharedRoute HTTPRoute (graphIds) or platform aegra.workers.
+description: ClusterIP worker for one or more graphs in one image (FROM zelkor-aegra). Self-registers via sharedRoute HTTPRoute when host + gateway are set.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

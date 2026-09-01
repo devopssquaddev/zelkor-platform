@@ -64,29 +64,13 @@ flowchart TD
 
 ### A. Deploy via Helm
 
-`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlay (`aegra.workers` Service refs) and this chart. Manual:
+`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlay (MCP DSN / Langfuse / NeMo topic rails) and this chart. Desk and quant self-register on `gateway.hosts.aegra` via `sharedRoute` (host + gateway in `values-local.yaml`). Do not edit platform `aegra.workers`. Manual:
 
 ```bash
 helm dependency update examples/finserve/chart
 helm upgrade --install finserve examples/finserve/chart \
   -f examples/finserve/chart/values-local.yaml \
   --wait --timeout 10m
-```
-
-Register on the platform release (already in `values-platform-overlay.yaml`):
-
-```yaml
-aegra:
-  workers:
-    - graphId: finserve-advisor
-      service: finserve-desk
-      port: 8000
-    - graphId: finserve-research
-      service: finserve-desk
-      port: 8000
-    - graphId: finserve-quant
-      service: finserve-quant
-      port: 8000
 ```
 
 ### B. Query via platform Aegra

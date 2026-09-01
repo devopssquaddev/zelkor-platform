@@ -309,3 +309,43 @@ def test_agent_chart_graph_ids_share_one_service():
     assert "research" in dumped
     assert len(route["spec"]["rules"]) == 1
     assert route["spec"]["rules"][0]["backendRefs"][0]["name"] == "desk-zelkor-agent"
+
+
+def test_agent_chart_shared_route_emits_when_host_and_gateway_set():
+    """CE-1: HTTPRoute when host + gatewayName are set; enabled is not required."""
+    rendered = _helm(
+        "template",
+        "fraud",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=fraud",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "sharedRoute.host=aegra.example",
+        "--set",
+        "sharedRoute.gatewayName=zelkor-platform-gateway",
+    )
+    docs = _docs(rendered)
+    routes = [d for d in docs if d.get("kind") == "HTTPRoute"]
+    assert len(routes) == 1
+    assert routes[0]["spec"]["hostnames"] == ["aegra.example"]
+    dumped = yaml.dump(routes[0])
+    assert "X-Graph-ID" in dumped
+    assert "fraud" in dumped
+
+
+def test_agent_chart_no_shared_route_without_host():
+    rendered = _helm(
+        "template",
+        "fraud",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=fraud",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "sharedRoute.gatewayName=zelkor-platform-gateway",
+    )
+    docs = _docs(rendered)
+    assert not any(d.get("kind") == "HTTPRoute" for d in docs)

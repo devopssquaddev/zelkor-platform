@@ -108,3 +108,5 @@ def test_sitecustomize_and_dockerfile_ship_trace_wrap():
     assert "astream_events" in wrap
     assert "langfuse.observation.input" in wrap
     assert "trace_wrap.py" in dockerfile
+    assert "chmod 644" in dockerfile
+    assert "sitecustomize.py" in dockerfile
