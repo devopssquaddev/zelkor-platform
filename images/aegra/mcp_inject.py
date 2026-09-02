@@ -156,26 +156,56 @@ def _stamp_tenant_kwargs(kwargs: dict) -> dict:
     return stamped
 
 
+def _tool_error_text(exc: BaseException) -> str:
+    return f"Error: {type(exc).__name__}: {exc}"
+
+
+def _normalize_tool_result(tool, value):
+    """langchain-mcp-adapters uses response_format=content_and_artifact."""
+    if getattr(tool, "response_format", None) == "content_and_artifact":
+        if isinstance(value, tuple) and len(value) == 2:
+            return value
+        return (value, None)
+    return value
+
+
+def _stamp_invoke_args(args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+    if args and isinstance(args[0], dict):
+        args = (_stamp_tenant_kwargs(args[0]),) + args[1:]
+    return args, _stamp_tenant_kwargs(kwargs)
+
+
 def _stamp_tenant_on_tool(tool):
     orig_coro = getattr(tool, "coroutine", None)
     orig_func = getattr(tool, "func", None)
+    updates = {}
     if orig_coro is not None:
 
         async def coro(*args, **kwargs):
-            if args and isinstance(args[0], dict):
-                args = (_stamp_tenant_kwargs(args[0]),) + args[1:]
-            return await orig_coro(*args, **_stamp_tenant_kwargs(kwargs))
+            args, kwargs = _stamp_invoke_args(args, kwargs)
+            try:
+                return _normalize_tool_result(tool, await orig_coro(*args, **kwargs))
+            except Exception as exc:
+                logger.warning("MCP tool %s failed: %s", getattr(tool, "name", "?"), exc)
+                return _normalize_tool_result(tool, _tool_error_text(exc))
 
-        return tool.model_copy(update={"coroutine": coro})
+        updates["coroutine"] = coro
     if orig_func is not None:
 
         def func(*args, **kwargs):
-            if args and isinstance(args[0], dict):
-                args = (_stamp_tenant_kwargs(args[0]),) + args[1:]
-            return orig_func(*args, **_stamp_tenant_kwargs(kwargs))
+            args, kwargs = _stamp_invoke_args(args, kwargs)
+            try:
+                return _normalize_tool_result(tool, orig_func(*args, **kwargs))
+            except Exception as exc:
+                logger.warning("MCP tool %s failed: %s", getattr(tool, "name", "?"), exc)
+                return _normalize_tool_result(tool, _tool_error_text(exc))
 
-        return tool.model_copy(update={"func": func})
-    return tool
+        updates["func"] = func
+    if not updates:
+        return tool
+    if getattr(tool, "handle_tool_error", None) in (None, False):
+        updates["handle_tool_error"] = True
+    return tool.model_copy(update=updates)
 
 
 def _load_adapter_tools():

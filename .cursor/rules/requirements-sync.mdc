@@ -41,7 +41,9 @@ Update governing requirement and specification documents whenever:
 - **Platform Features & Helm Profiles:** `internal/plan/phase_1_requirements.md` (or relevant phase doc)
 - **Drop-in agent contract (intercept / wrap / MCP):** `internal/plan/requirements_drop_in_agent_contract.md`
 - **Agent Langfuse trace (one run = one waterfall):** `internal/plan/requirements_agent_trace.md`
+- **Platform logging (levels, JSON stdout, all components):** `internal/plan/requirements_platform_logging.md` (always-apply rule: `.cursor/rules/platform-logging.mdc`)
 - **Langfuse UI surfaces (connections / playground / tools / evaluators):** `internal/plan/requirements_langfuse_zelkor_surfaces.md`
+- **Langfuse projects (multi-project, seed-every-project, share vs separate):** `internal/plan/requirements_langfuse_projects.md`
 - **Deep Agents packager (CE-2):** `internal/plan/requirements_deepagents_zelkor.md`
 - **`zelkor` CLI (CE / Pro / Ent):** `internal/plan/requirements_zelkor_cli.md`
 - **Native MCP / BYO extra backends:** `internal/plan/requirements_native_mcp_servers.md` (§2.3 extra backends)

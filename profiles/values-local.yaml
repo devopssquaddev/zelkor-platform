@@ -60,6 +60,14 @@ clickhouse:
   auth:
     username: clickhouse
     password: zelkor-clickhouse-dev-password
+  # 1Gi CH max_server_memory_usage OOMs Langfuse events.filterOptions (~24h).
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
 
 seaweedfs:
   enabled: true
@@ -83,6 +91,16 @@ aiGateway:
 langfuse:
   enabled: true
   replicaCount: 1
+  # Chart default 30s delays first ready; local kind already has DBs up.
+  startupProbe:
+    initialDelaySeconds: 5
+  surfaces:
+    llmConnection:
+      enabled: true
+    tools:
+      seedFromMcp: true
+    evaluators:
+      seedCode: true
   nextauthUrl: "http://langfuse.localhost:8088"
   nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
   salt: "zelkor-langfuse-salt-123456789"
@@ -114,6 +132,7 @@ guardrails:
 mcp:
   enabled: true
   sandboxMCP:
+    # One gVisor worker is enough for Path A TTFV; sandbox still works.
     warmPool:
-      replicas: 2
+      replicas: 1
     workerToken: "zelkor-local-sandbox-worker-token"

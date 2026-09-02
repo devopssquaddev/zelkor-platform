@@ -1,6 +1,8 @@
 # Quick Start
 
-Deploy a production-like Zelkor Platform instance locally in under 5 minutes using Kubernetes IN Docker (`kind`).
+Deploy a production-like Zelkor Platform instance (including the FinServe demo) locally in under 5 minutes with `./install.sh` on a **first** kind cluster.
+
+**Clock starts when Docker is already running** and you have one LLM provider key. `./install.sh` prefetches first-party `zelkor-*` images while it creates the cluster. Postgres, Langfuse, ClickHouse, and other public images are pulled by the cluster, not by prefetch.
 
 ## Architecture & Pillars
 
@@ -16,7 +18,7 @@ The Community Edition local development environment deploys all seven core platf
 ## Prerequisites
 
 - macOS (Docker Desktop / OrbStack), Linux, or Windows (WSL2)
-- [Docker](https://docs.docker.com/get-docker/)
+- [Docker](https://docs.docker.com/get-docker/) **installed and running** (Desktop or Engine — start it before `./install.sh`)
 - [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
 - [Helm](https://helm.sh/docs/intro/install/) 3.x
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
@@ -49,18 +51,19 @@ OLLAMA_API_KEY="..." ./install.sh
 OLLAMA_LOCAL_HOST="http://host.docker.internal:11434" ./install.sh
 ```
 
-`./install.sh` without a provider exits with usage help. The platform is self-hosted on kind; inference uses **your** chosen provider (BYOK).
+`./install.sh` without a provider exits with usage help. The platform is self-hosted on kind; inference uses **your** chosen provider (BYOK). Default install includes FinServe.
 
 The script will:
 
-1. Verify `docker`, `kind`, `helm`, and `kubectl` are available
+1. Verify `docker`, `kind`, `helm`, and `kubectl` are available and Docker is running
 2. Require at least one LLM provider env var
-3. Create a `kind` cluster named `zelkor` (with gVisor container runtime support)
-4. Install Envoy Gateway and Envoy AI Gateway controller and CRDs
-5. Deploy the unified Helm chart with `profiles/values-local.yaml` (plus an example overlay when demos are enabled)
-6. Deploy the FinServe wealth management demo as a separate Helm release (when `INSTALL_EXAMPLES=true`)
+3. On first kind create, prefetch images in the background (`scripts/prefetch-images.sh`) while the cluster and gVisor install, then load them into kind
+4. Create a `kind` cluster named `zelkor` (with gVisor container runtime support)
+5. Install Envoy Gateway and Envoy AI Gateway controller and CRDs
+6. Deploy the unified Helm chart with `profiles/values-local.yaml` (plus the FinServe platform overlay). Sets the in-cluster AI Gateway URL on the first Helm when the Envoy Service name is known or predictable
+7. Deploy the FinServe wealth management demo as a separate Helm release (`INSTALL_EXAMPLES=true` by default)
 
-First-party images are pulled from `ghcr.io/devopssquaddev` (tag `dev`). To build locally:
+Optional: start pulls while you clone (`./scripts/prefetch-images.sh`). First-party images come from `ghcr.io/devopssquaddev` (tag `dev`). To build locally instead of pulling:
 
 ```bash
 BUILD_IMAGES=true OPENAI_API_KEY="sk-..." ./install.sh
@@ -83,7 +86,7 @@ All services and Web UIs are accessible via Kubernetes Gateway API on port `8088
 
 | Component | URL | Dev Credentials / Headers |
 | :--- | :--- | :--- |
-| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Project: `Zelkor Platform`) |
+| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Projects: `Zelkor Platform`, `FinServe AI`) |
 | **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
 | **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
 | **FinServe Demo** | [http://aegra.localhost:8088](http://aegra.localhost:8088) (`X-Graph-ID: finserve-advisor` / `research` / `quant` / `coder`) | `Authorization: Bearer dev:Bank_Alpha` |
@@ -210,6 +213,17 @@ DEFAULT_LLM_MODEL=openai/gpt-4o-mini pytest tests/ -v
 ## Configuration
 
 Local profile: `profiles/values-local.yaml`. Provider keys are passed at install time only — not stored in the profile file.
+
+Evaluation on any Kubernetes (still `databases.mode: in-cluster-basic`, no operators, no kind hosts or unsigned auth):
+
+```bash
+helm upgrade --install zelkor-platform charts/zelkor-platform \
+  -f profiles/values-quickstart.yaml \
+  --set aiGateway.consumerKey="$CONSUMER_KEY" \
+  --set langfuse.nextauthSecret=... --set langfuse.salt=... --set langfuse.encryptionKey=...
+```
+
+Surface seed no-ops until `langfuse.init.enabled` and `aiGateway.consumerKey` are set. `./install.sh` remains the kind path.
 
 ## Uninstall
 

@@ -1,8 +1,8 @@
 """Zelkor qdrant MCP security wrapper (CE).
 
 In-process wrap of official mcp-server-qdrant below the FastMCP tool schema.
-Public tool stays search_documents. Isolation is a tenant payload filter on
-the connector call, then a post-filter. Embeddings go through Envoy AI Gateway.
+Public tools: search_documents, upsert_document. Isolation is a tenant payload
+filter/stamp, then a post-filter. Embeddings go through Envoy AI Gateway.
 """
 from __future__ import annotations
 
@@ -203,6 +203,52 @@ def _scroll_tenant(collection: str, limit: int, tenant_id: str) -> list:
         return []
 
 
+def _require_tenant(arguments: dict, tenant_id: str) -> None:
+    arg_tenant = arguments.get("tenant_id")
+    if not arg_tenant or arg_tenant != tenant_id:
+        raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
+
+
+def stamp_upsert_payload(metadata: Optional[dict], content: str, tenant_id: str) -> dict:
+    payload = dict(metadata) if isinstance(metadata, dict) else {}
+    payload.pop("tenant_id", None)
+    payload["document"] = content
+    payload["tenant_id"] = tenant_id
+    return payload
+
+
+def _ensure_collection(client, models, collection: str, vector_size: int) -> None:
+    try:
+        client.get_collection(collection)
+        return
+    except Exception:
+        pass
+    client.create_collection(
+        collection_name=collection,
+        vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
+    )
+
+
+def _store_document(content: str, collection: str, tenant_id: str, metadata: Optional[dict] = None) -> dict:
+    """Upsert one point. Always stamps payload.tenant_id = caller."""
+    import uuid
+
+    from qdrant_client import QdrantClient, models
+
+    vector = _get_embedding(content)
+    if not vector:
+        raise RuntimeError("AI Gateway embeddings unavailable")
+    payload = stamp_upsert_payload(metadata, content, tenant_id)
+    point_id = str(uuid.uuid4())
+    client = QdrantClient(url=QDRANT_URL, timeout=10)
+    _ensure_collection(client, models, collection, len(vector))
+    client.upsert(
+        collection_name=collection,
+        points=[models.PointStruct(id=point_id, vector=vector, payload=payload)],
+    )
+    return {"id": point_id, "collection": collection, "tenant_id": payload["tenant_id"]}
+
+
 class QdrantMCPServer(MCPToolHandler):
     def list_tools(self):
         return [
@@ -223,26 +269,44 @@ class QdrantMCPServer(MCPToolHandler):
                     },
                     "required": ["query", "tenant_id"],
                 },
-            }
+            },
+            {
+                "name": "upsert_document",
+                "description": (
+                    "Upsert one document into a Qdrant collection. "
+                    "payload.tenant_id is forced to the authenticated caller."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "document": {"type": "string"},
+                        "tenant_id": {"type": "string"},
+                        "collection": {"type": "string"},
+                        "metadata": {"type": "object"},
+                    },
+                    "required": ["tenant_id"],
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict, tenant_id: str):
-        if name != "search_documents":
-            raise ValueError(f"Unknown tool: {name}")
-
-        query = arguments.get("query") or ""
-        arg_tenant = arguments.get("tenant_id")
-        if not arg_tenant or arg_tenant != tenant_id:
-            raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
-
-        limit = int(arguments.get("limit") or 3)
+        _require_tenant(arguments, tenant_id)
         collection = arguments.get("collection") or DEFAULT_COLLECTION
-
-        docs = _search_with_connector(query, collection, limit, tenant_id)
-        if docs is None:
-            docs = _scroll_tenant(collection, limit, tenant_id)
-        docs = [d for d in (docs or []) if (d.get("tenant_id") == tenant_id)]
-        return {"documents": docs, "count": len(docs), "collection": collection}
+        if name == "search_documents":
+            query = arguments.get("query") or ""
+            limit = int(arguments.get("limit") or 3)
+            docs = _search_with_connector(query, collection, limit, tenant_id)
+            if docs is None:
+                docs = _scroll_tenant(collection, limit, tenant_id)
+            docs = [d for d in (docs or []) if (d.get("tenant_id") == tenant_id)]
+            return {"documents": docs, "count": len(docs), "collection": collection}
+        if name == "upsert_document":
+            content = arguments.get("content") or arguments.get("document") or ""
+            if not str(content).strip():
+                raise ValueError("content or document is required")
+            return _store_document(str(content), collection, tenant_id, arguments.get("metadata"))
+        raise ValueError(f"Unknown tool: {name}")
 
 
 if __name__ == "__main__":

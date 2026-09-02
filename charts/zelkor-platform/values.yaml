@@ -194,7 +194,8 @@ aiGateway:
   enabled: true
   # Consumer key for in-cluster callers (MCP, agents). Upstream provider keys stay in gateway secrets.
   consumerKey: ""
-  # In-cluster OpenAI-compatible base URL (…/v1). Set by install.sh after Envoy data-plane Service exists.
+  # In-cluster OpenAI-compatible base URL (…/v1). install.sh sets this from the
+  # live Envoy Service (name includes a hash). Do not guess envoy-default-*-gateway.
   internalUrl: ""
   # ClusterIP/ExternalName service for in-cluster /v1 without Host: *.localhost
   inClusterService:
@@ -254,9 +255,27 @@ langfuse:
     bucket: langfuse
     region: auto
   migration:
-    v4WriteMode: legacy
+    v4WriteMode: events_only
     enableHistoricBackfill: false
-    nativeOtelBehaviour: dual_write
+    nativeOtelBehaviour: direct
+    allowPreviewOptIn: true
+  surfaces:
+    llmConnection:
+      enabled: false
+      name: zelkor-ai-gateway
+      models: []
+    tools:
+      seedFromMcp: false
+      seedTenant: "seed"
+      authToken: ""
+    evaluators:
+      seedCode: false
+    image:
+      repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
+      tag: "dev"
+      digest: ""
+  # Additional Langfuse projects + API keys (empty in the chart). Overlay, not init.projectId.
+  extraProjects: []
   nextauthUrl: ""
   nextauthSecret: ""
   salt: ""
@@ -542,6 +561,39 @@ mcp:
       periodSeconds: 5
       timeoutSeconds: 3
       failureThreshold: 3
+  egressMCP:
+    enabled: true
+    replicaCount: 1
+    allowedModels: []
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    startupProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
   sandboxMCP:
     enabled: true
     runtimeClassName: gvisor
@@ -614,8 +666,6 @@ mcp:
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
-  egress:
-    externalBackends: []
 
 seaweedfs:
   enabled: true

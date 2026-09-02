@@ -1,0 +1,37 @@
+---
+description: Every Zelkor process must emit Helm-controlled structured logs at the correct level; do not substitute Langfuse traces
+alwaysApply: true
+---
+
+# Platform logging
+
+Living spec (multi-root): `internal/plan/requirements_platform_logging.md`. Apply on every new or changed Deployment, Job, image, MCP server, CLI verb, and example chart.
+
+## Contract
+
+- stdout JSON. Levels: DEBUG / INFO / WARNING / ERROR / CRITICAL (table in the spec).
+- Chart default `logging.level: INFO`, `logging.format: json`. DEBUG and `text` are overlays (`profiles/values-local.yaml`) only.
+- Env: `ZELKOR_LOG_LEVEL`, `ZELKOR_LOG_FORMAT` via the shared Helm helper. Python: `os.getenv("ZELKOR_LOG_LEVEL", "INFO")` — do not hardcode `basicConfig(level=logging.INFO)`.
+- Logger name `zelkor-<component>`. Add a coverage-table row in the spec when adding a process.
+
+```python
+# BAD
+print("ready")
+logging.basicConfig(level=logging.INFO)
+logger.info("Authorization: %s", headers["Authorization"])
+
+# GOOD
+logger.info("listening", extra={"component": "zelkor-mcp-gateway", "event": "startup"})
+logger.debug("health probe")
+logger.warning("MCP tool %s failed: %s", name, exc)
+logger.exception("required dependency down")
+```
+
+## MUST NOT
+
+- Log secrets, tokens, JWT, API keys, `Authorization`, prompt/completion bodies at INFO+.
+- Log health probes at INFO+.
+- Bake DEBUG into `charts/zelkor-platform/values.yaml`.
+- Treat Langfuse traces as the only operational log.
+
+Unexpected ERROR logs after a live test are a stop, same as unexpected Langfuse ERROR observations.

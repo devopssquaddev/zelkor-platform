@@ -7,10 +7,14 @@ mcp:
   qdrantMCP:
     collection: "finserve_policies"
 
+# Do not set langfuse.init.projectId here — that steals the platform API key.
+# FinServe traces use extraProjects keys on the workers (values-local.yaml).
 langfuse:
-  init:
-    projectId: "finserve"
-    projectName: "FinServe AI"
+  extraProjects:
+    - id: finserve
+      name: FinServe AI
+      publicKey: "pk-lf-finserve-dev-00000000000000000000"
+      secretKey: "sk-lf-finserve-dev-00000000000000000000"
 
 aegra:
   tenantOrgMappings:

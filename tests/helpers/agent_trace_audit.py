@@ -169,10 +169,13 @@ def audit_trace(
                 "graph root input (user message)",
                 observation_io_nonempty(graph_root.get("input")),
             )
+            out = graph_root.get("output")
             report.add(
                 "3",
                 "graph root output (assistant)",
-                observation_io_nonempty(graph_root.get("output")),
+                observation_io_nonempty(out)
+                and '"type": "checkpoint"' not in str(out)
+                and '"type":"checkpoint"' not in str(out),
             )
 
     # §4 Audit fields derivable

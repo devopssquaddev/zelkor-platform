@@ -1,7 +1,7 @@
 FROM python:3.12-slim-bookworm
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
-LABEL org.opencontainers.image.description="Zelkor native MCP servers (gateway, postgres, qdrant, sandbox pool)"
+LABEL org.opencontainers.image.description="Zelkor native MCP servers (gateway, postgres, qdrant, sandbox, egress)"
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \

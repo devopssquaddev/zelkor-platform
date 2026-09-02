@@ -1,0 +1,55 @@
+# Evaluation on any Kubernetes — still databases.mode: in-cluster-basic.
+# No kind hosts, unsigned auth, or lab secrets. Customer supplies Secrets / --set.
+#
+#   helm upgrade --install zelkor-platform charts/zelkor-platform \
+#     -f profiles/values-quickstart.yaml \
+#     --set aiGateway.consumerKey=... \
+#     --set langfuse.nextauthSecret=... --set langfuse.salt=... --set langfuse.encryptionKey=...
+#
+# ./install.sh stays on profiles/values-local.yaml (kind).
+
+global:
+  tier: oss
+
+databases:
+  mode: in-cluster-basic
+
+highAvailability:
+  enabled: false
+
+security:
+  mTLS:
+    enabled: false
+  networkPolicies:
+    enabled: false
+
+auth:
+  sso:
+    enabled: false
+  devTokens:
+    enabled: false
+  trustTenantHeader: false
+
+gateway:
+  envoyProxy:
+    hostNetwork: false
+  hosts:
+    langfuse: ""
+    aiGateway: ""
+    aegra: ""
+    mcp: ""
+    nemo: ""
+
+aiGateway:
+  consumerKey: ""
+
+langfuse:
+  init:
+    enabled: false
+  surfaces:
+    llmConnection:
+      enabled: true
+    tools:
+      seedFromMcp: true
+    evaluators:
+      seedCode: true

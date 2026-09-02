@@ -6,7 +6,8 @@ LABEL org.opencontainers.image.description="Zelkor NeMo Guardrails FastAPI serve
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
@@ -18,9 +19,12 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+COPY images/guardrails/otel_project_route.py /app/otel_project_route.py
+COPY images/guardrails/boot.py /app/boot.py
+
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && mkdir -p /etc/nemoguardrails/configs/content_safety \
-    && chown -R zelkor:zelkor /etc/nemoguardrails
+    && chown -R zelkor:zelkor /etc/nemoguardrails /app/otel_project_route.py /app/boot.py
 USER 1000
 
 EXPOSE 8000

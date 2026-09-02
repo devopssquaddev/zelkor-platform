@@ -1,6 +1,6 @@
 """
 Unified MCP gateway — multiplexes native servers and mcp.extraBackends.
-Tool names are prefixed: postgres__query, qdrant__search_documents, sandbox__execute_python
+Tool names are prefixed: postgres__query, qdrant__search_documents, sandbox__execute_python, egress__call_external_api
 """
 import json
 import logging
@@ -21,17 +21,21 @@ logger = logging.getLogger("mcp-gateway")
 POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "http://zelkor-platform-mcp-postgres:8080")
 QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "http://zelkor-platform-mcp-qdrant:8080")
 SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "http://zelkor-platform-mcp-sandbox:8080")
+EGRESS_MCP_URL = os.getenv("EGRESS_MCP_URL", "").strip()
 
 RESERVED_PREFIXES = frozenset({"postgres", "qdrant", "sandbox", "egress", "nemo", "aegra"})
 _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def native_backends() -> Dict[str, str]:
-    return {
+    backends = {
         "postgres": POSTGRES_MCP_URL,
         "qdrant": QDRANT_MCP_URL,
         "sandbox": SANDBOX_MCP_URL,
     }
+    if EGRESS_MCP_URL:
+        backends["egress"] = EGRESS_MCP_URL
+    return backends
 
 
 def parse_extra_backends(raw: str) -> List[Dict[str, str]]:

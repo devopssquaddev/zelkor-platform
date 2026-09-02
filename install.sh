@@ -7,6 +7,10 @@
 #   OLLAMA_API_KEY=... ./install.sh
 #   OLLAMA_LOCAL_HOST=http://host.docker.internal:11434 ./install.sh
 #
+# First kind create prefetches first-party GHCR images (scripts/prefetch-images.sh)
+# while the cluster and gVisor install. Public chart images (postgres, Langfuse, …)
+# are not prefetched — kubelet pulls them. Optional: ./scripts/prefetch-images.sh while cloning.
+#
 # Prerequisites: docker, kind, helm, kubectl, and at least one LLM provider (see below)
 
 set -euo pipefail
@@ -23,13 +27,77 @@ FINSERVE_VALUES_FILE="${FINSERVE_VALUES_FILE:-${FINSERVE_CHART_PATH}/values-loca
 FINSERVE_PLATFORM_OVERLAY="${FINSERVE_PLATFORM_OVERLAY:-${FINSERVE_CHART_PATH}/values-platform-overlay.yaml}"
 BUILD_IMAGES="${BUILD_IMAGES:-false}"
 KIND_LOAD_IMAGES="${KIND_LOAD_IMAGES:-false}"
+PREFETCH_IMAGES="${PREFETCH_IMAGES:-true}"
+PREFETCH_KIND_LOAD="${PREFETCH_KIND_LOAD:-true}"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
 IMAGE_TAG="${IMAGE_TAG:-dev}"
+HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-zelkor-platform}"
+GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-default}"
 # Pinned gVisor point release for kind sandbox bootstrap (see internal/plan/component_compatibility_matrix.md)
 GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
 
 log() { echo "[install] $*"; }
 die() { echo "[install] ERROR: $*" >&2; exit 1; }
+
+# Incremental TTFV: skip healthy gateway bootstrap; wait independent rollouts in parallel.
+deployment_available() {
+  local ns="$1"
+  local name="$2"
+  local available
+  available=$(kubectl --context "$KCTX" get deployment "$name" -n "$ns" \
+    -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
+  [[ "$available" == "True" ]]
+}
+
+wait_rollout_group() {
+  local label="$1"
+  shift
+  local pids=()
+  local targets=()
+  local t pid failed=0 i=0
+  [[ $# -gt 0 ]] || return 0
+  log "  -> ${label}"
+  for t in "$@"; do
+    log "    waiting: ${t}"
+    kubectl --context "$KCTX" rollout status "$t" --timeout=5m &
+    pids+=("$!")
+    targets+=("$t")
+  done
+  for pid in "${pids[@]}"; do
+    if ! wait "$pid"; then
+      log "ERROR: rollout failed: ${targets[$i]}"
+      failed=1
+    fi
+    i=$((i + 1))
+  done
+  [[ "$failed" -eq 0 ]] || die "Rollout failed: ${label}"
+}
+
+helm_user_value() {
+  local dotted="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    return 0
+  fi
+  helm get values zelkor-platform --kube-context "$KCTX" -o json 2>/dev/null | python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(0)
+cur = data
+for part in sys.argv[1].split("."):
+    if not isinstance(cur, dict):
+        cur = ""
+        break
+    cur = cur.get(part, "")
+if cur is None:
+    cur = ""
+print(cur)
+' "$dotted"
+}
 
 LLM_PROVIDER_COUNT=0
 LLM_PROVIDER_SUMMARY=""
@@ -136,7 +204,41 @@ fi
 
 resolve_llm_provider_prerequisites
 
+FIRST_KIND_CREATE=false
+PREFETCH_PID=""
+
+start_image_prefetch() {
+  if [[ "$PREFETCH_IMAGES" != "true" ]]; then
+    return 0
+  fi
+  log "Prefetching images in background (kind/gVisor run in parallel)..."
+  INSTALL_EXAMPLES="$INSTALL_EXAMPLES" IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
+    KIND_CLUSTER="$CLUSTER_NAME" \
+    ./scripts/prefetch-images.sh &
+  PREFETCH_PID=$!
+}
+
+wait_image_prefetch() {
+  if [[ -z "$PREFETCH_PID" ]]; then
+    return 0
+  fi
+  log "Waiting for image prefetch to finish..."
+  if ! wait "$PREFETCH_PID"; then
+    log "WARNING: image prefetch reported errors; will kind-load any local first-party images"
+  fi
+  PREFETCH_PID=""
+  if [[ "$FIRST_KIND_CREATE" == "true" && "$PREFETCH_KIND_LOAD" == "true" ]]; then
+    log "Loading prefetched images into kind (kubelet local cache)..."
+    INSTALL_EXAMPLES="$INSTALL_EXAMPLES" IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
+      KIND_CLUSTER="$CLUSTER_NAME" \
+      ./scripts/prefetch-images.sh --load-only --kind-load \
+      || log "WARNING: kind load of prefetched images failed; kubelet will pull on demand"
+  fi
+}
+
 if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
+  FIRST_KIND_CREATE=true
+  start_image_prefetch
   log "Creating kind cluster: $CLUSTER_NAME"
   if [[ -f "$KIND_CONFIG" ]]; then
     kind create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG"
@@ -165,6 +267,8 @@ fi
 
 kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null
 
+wait_image_prefetch
+
 if [[ "$BUILD_IMAGES" == "true" ]]; then
   log "Building first-party images (tag ${IMAGE_TAG})..."
   IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" ./scripts/build-images.sh
@@ -183,13 +287,74 @@ fi
 
 KCTX="kind-${CLUSTER_NAME}"
 
-# Ensure Envoy Gateway & Gateway API CRDs are deployed
-log "Deploying Envoy Gateway & Gateway API CRDs..."
-kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.1/install.yaml
+EG_CM_BODY=$(cat <<'EOF'
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyGateway
+extensionApis:
+  enableBackend: true
+  enableEnvoyPatchPolicy: true
+extensionManager:
+  hooks:
+    xdsTranslator:
+      translation:
+        listener:
+          includeAll: true
+        route:
+          includeAll: true
+        cluster:
+          includeAll: true
+        secret:
+          includeAll: true
+      post:
+        - Translation
+        - Cluster
+        - Route
+  service:
+    fqdn:
+      hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
+      port: 1063
+gateway:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+logging:
+  level:
+    default: info
+provider:
+  kubernetes:
+    rateLimitDeployment:
+      container:
+        image: docker.io/envoyproxy/ratelimit:17b1956c
+      patch:
+        type: StrategicMerge
+        value:
+          spec:
+            template:
+              spec:
+                containers:
+                - imagePullPolicy: IfNotPresent
+                  name: envoy-ratelimit
+    shutdownManager:
+      image: envoyproxy/gateway:v1.9.1
+  type: Kubernetes
+EOF
+)
 
-# Enable Backend extension API in Envoy Gateway config
-log "Enabling Backend extension API in Envoy Gateway config..."
-kubectl --context "$KCTX" apply -f - <<'EOF'
+eg_cm_current=$(kubectl --context "$KCTX" get configmap envoy-gateway-config -n envoy-gateway-system \
+  -o jsonpath='{.data.envoy-gateway\.yaml}' 2>/dev/null || true)
+eg_ready=false
+if deployment_available envoy-gateway-system envoy-gateway; then
+  eg_ready=true
+fi
+
+if [[ "$eg_ready" != "true" ]]; then
+  log "Deploying Envoy Gateway & Gateway API CRDs..."
+  kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.1/install.yaml
+else
+  log "Envoy Gateway already ready; skipping CRD/chart apply"
+fi
+
+if [[ "${eg_cm_current%$'\n'}" != "${EG_CM_BODY%$'\n'}" ]]; then
+  log "Applying Envoy Gateway Backend extension config..."
+  kubectl --context "$KCTX" apply -f - <<EOF
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -197,75 +362,40 @@ metadata:
   namespace: envoy-gateway-system
 data:
   envoy-gateway.yaml: |
-    apiVersion: gateway.envoyproxy.io/v1alpha1
-    kind: EnvoyGateway
-    extensionApis:
-      enableBackend: true
-      enableEnvoyPatchPolicy: true
-    extensionManager:
-      hooks:
-        xdsTranslator:
-          translation:
-            listener:
-              includeAll: true
-            route:
-              includeAll: true
-            cluster:
-              includeAll: true
-            secret:
-              includeAll: true
-          post:
-            - Translation
-            - Cluster
-            - Route
-      service:
-        fqdn:
-          hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-          port: 1063
-    gateway:
-      controllerName: gateway.envoyproxy.io/gatewayclass-controller
-    logging:
-      level:
-        default: info
-    provider:
-      kubernetes:
-        rateLimitDeployment:
-          container:
-            image: docker.io/envoyproxy/ratelimit:17b1956c
-          patch:
-            type: StrategicMerge
-            value:
-              spec:
-                template:
-                  spec:
-                    containers:
-                    - imagePullPolicy: IfNotPresent
-                      name: envoy-ratelimit
-        shutdownManager:
-          image: envoyproxy/gateway:v1.9.1
-      type: Kubernetes
+$(printf '%s\n' "$EG_CM_BODY" | sed 's/^/    /')
 EOF
-kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
+  log "Restarting Envoy Gateway (config changed)..."
+  kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
+  log "Waiting for Envoy Gateway controller readiness..."
+  kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
+elif [[ "$eg_ready" != "true" ]]; then
+  log "Restarting Envoy Gateway (not ready)..."
+  kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
+  log "Waiting for Envoy Gateway controller readiness..."
+  kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
+else
+  log "Envoy Gateway config unchanged and ready; skipping restart"
+fi
 
-log "Waiting for Envoy Gateway controller readiness..."
-kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
+if deployment_available envoy-ai-gateway-system ai-gateway-controller; then
+  log "Envoy AI Gateway already ready; skipping Helm bootstrap"
+else
+  log "Deploying Envoy AI Gateway CRDs & Controller..."
+  helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
+    --kube-context "$KCTX" \
+    --version v1.1.0 \
+    --namespace envoy-ai-gateway-system \
+    --create-namespace
 
-# Ensure Envoy AI Gateway CRDs & Controller are deployed
-log "Deploying Envoy AI Gateway CRDs & Controller..."
-helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-  --kube-context "$KCTX" \
-  --version v1.1.0 \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
+  helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+    --kube-context "$KCTX" \
+    --version v1.1.0 \
+    --namespace envoy-ai-gateway-system \
+    --create-namespace
 
-helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-  --kube-context "$KCTX" \
-  --version v1.1.0 \
-  --namespace envoy-ai-gateway-system \
-  --create-namespace
-
-log "Waiting for Envoy AI Gateway controller readiness..."
-kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
+  log "Waiting for Envoy AI Gateway controller readiness..."
+  kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
+fi
 
 log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
@@ -291,6 +421,8 @@ if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
 fi
 if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")
+  # Playground needs a custom model id on the Zelkor connection (no baked gpt-4o list).
+  HELM_EXTRA_ARGS+=(--set-string "langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
 fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
@@ -298,24 +430,52 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
   log "Platform overlay: $FINSERVE_PLATFORM_OVERLAY (MCP/Langfuse/NeMo; workers via FinServe sharedRoute)"
 fi
 
+peek_internal_gateway_svc() {
+  kubectl --context "$KCTX" get svc -n envoy-gateway-system \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | grep -E '^envoy-default-.*gateway-' | head -1 || true
+}
+
+append_gateway_url_helm() {
+  local url="$1"
+  local host="${url#http://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+  HELM_EXTRA_ARGS+=(
+    --set "aiGateway.internalUrl=${url}"
+    --set "aiGateway.inClusterService.targetHost=${host}"
+    --set "mcp.qdrantMCP.aiGatewayUrl=${url}"
+  )
+}
+
+# Do not guess envoy-default-<release>-gateway — Envoy appends a hash
+# (…-gateway-890d4e31). A guessed name does not resolve.
+GATEWAY_INTERNAL_URL=""
+PEEKED_SVC=$(peek_internal_gateway_svc)
+if [[ -n "$PEEKED_SVC" ]]; then
+  GATEWAY_INTERNAL_URL="http://${PEEKED_SVC}.envoy-gateway-system.svc.cluster.local:80/v1"
+  log "Using existing Envoy data-plane Service: ${GATEWAY_INTERNAL_URL}"
+  append_gateway_url_helm "$GATEWAY_INTERNAL_URL"
+fi
+
 if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then
-  helm upgrade --install zelkor-platform "$CHART_PATH" \
+  helm upgrade --install "$HELM_RELEASE_NAME" "$CHART_PATH" \
     --kube-context "$KCTX" \
     -f "$VALUES_FILE" \
     "${HELM_EXTRA_ARGS[@]}"
 else
-  helm upgrade --install zelkor-platform "$CHART_PATH" \
+  helm upgrade --install "$HELM_RELEASE_NAME" "$CHART_PATH" \
     --kube-context "$KCTX" \
     -f "$VALUES_FILE"
 fi
 
 log "Tracking platform rollout progress..."
-log "  -> [1/5] Databases (PostgreSQL, Valkey, ClickHouse, Qdrant, SeaweedFS)..."
-kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-postgresql --timeout=5m
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-valkey --timeout=5m
-kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-clickhouse --timeout=5m
-kubectl --context "$KCTX" rollout status statefulset/zelkor-platform-qdrant --timeout=5m
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-seaweedfs --timeout=5m
+wait_rollout_group "[1/5] Databases (PostgreSQL, Valkey, ClickHouse, Qdrant, SeaweedFS)" \
+  statefulset/zelkor-platform-postgresql \
+  deployment/zelkor-platform-valkey \
+  statefulset/zelkor-platform-clickhouse \
+  statefulset/zelkor-platform-qdrant \
+  deployment/zelkor-platform-seaweedfs
 
 log "  -> [2/5] LLM Gateway (Envoy AI Gateway)..."
 kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
@@ -323,7 +483,7 @@ kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n env
 discover_internal_gateway_url() {
   local svc=""
   for _ in $(seq 1 30); do
-    svc=$(kubectl --context "$KCTX" get svc -n envoy-gateway-system -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep '^envoy-default-.*gateway-' | head -1 || true)
+    svc=$(peek_internal_gateway_svc)
     if [[ -n "$svc" ]]; then
       echo "http://${svc}.envoy-gateway-system.svc.cluster.local:80/v1"
       return 0
@@ -333,46 +493,54 @@ discover_internal_gateway_url() {
   return 1
 }
 
-if GATEWAY_INTERNAL_URL=$(discover_internal_gateway_url); then
-  GATEWAY_TARGET_HOST="${GATEWAY_INTERNAL_URL#http://}"
-  GATEWAY_TARGET_HOST="${GATEWAY_TARGET_HOST%%/*}"
-  GATEWAY_TARGET_HOST="${GATEWAY_TARGET_HOST%%:*}"
-  log "Patching in-cluster AI Gateway URL for platform workloads: ${GATEWAY_INTERNAL_URL}"
-  helm upgrade zelkor-platform "$CHART_PATH" \
-    --kube-context "$KCTX" \
-    -f "$VALUES_FILE" \
-    --reuse-values \
-    --set "aiGateway.internalUrl=${GATEWAY_INTERNAL_URL}" \
-    --set "aiGateway.inClusterService.targetHost=${GATEWAY_TARGET_HOST}" \
-    --set "mcp.qdrantMCP.aiGatewayUrl=${GATEWAY_INTERNAL_URL}" \
-    "${HELM_EXTRA_ARGS[@]}"
+if DISCOVERED_INTERNAL_URL=$(discover_internal_gateway_url); then
+  if [[ "$DISCOVERED_INTERNAL_URL" == "$GATEWAY_INTERNAL_URL" ]]; then
+    log "aiGateway.internalUrl already ${DISCOVERED_INTERNAL_URL}; skipping second Helm upgrade"
+  else
+    log "Patching in-cluster AI Gateway URL for platform workloads: ${DISCOVERED_INTERNAL_URL}"
+    GATEWAY_INTERNAL_URL="$DISCOVERED_INTERNAL_URL"
+    GATEWAY_TARGET_HOST="${GATEWAY_INTERNAL_URL#http://}"
+    GATEWAY_TARGET_HOST="${GATEWAY_TARGET_HOST%%/*}"
+    GATEWAY_TARGET_HOST="${GATEWAY_TARGET_HOST%%:*}"
+    # Do not pass HELM_EXTRA_ARGS: it may still contain a guessed internalUrl
+    # that Helm last-wins over these --set values.
+    helm upgrade "$HELM_RELEASE_NAME" "$CHART_PATH" \
+      --kube-context "$KCTX" \
+      --reuse-values \
+      --set "aiGateway.internalUrl=${GATEWAY_INTERNAL_URL}" \
+      --set "aiGateway.inClusterService.targetHost=${GATEWAY_TARGET_HOST}" \
+      --set "mcp.qdrantMCP.aiGatewayUrl=${GATEWAY_INTERNAL_URL}"
+  fi
 else
   log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until aiGateway.internalUrl is set."
 fi
 
-log "  -> [3/5] Observability (Langfuse web + worker)..."
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-langfuse --timeout=5m
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-langfuse-worker --timeout=5m
+wait_rollout_group "[3/5] Observability (Langfuse web + worker)" \
+  deployment/zelkor-platform-langfuse \
+  deployment/zelkor-platform-langfuse-worker
 
 log "  -> [4/5] Agent Orchestrator (Aegra)..."
 kubectl --context "$KCTX" rollout status deployment/zelkor-platform-aegra --timeout=5m
 
+MCP_WAIT_TARGETS=()
 if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
-  log "  -> Guardrails (NeMo CPU)..."
-  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-nemo --timeout=5m
+  MCP_WAIT_TARGETS+=(deployment/zelkor-platform-nemo)
 fi
-
 if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/null 2>&1; then
-  log "  -> Native MCP Servers (gateway, postgres, qdrant, sandbox)..."
-  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-gateway --timeout=5m
-  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-postgres --timeout=5m
-  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-qdrant --timeout=5m
-  kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-sandbox --timeout=5m
+  MCP_WAIT_TARGETS+=(
+    deployment/zelkor-platform-mcp-gateway
+    deployment/zelkor-platform-mcp-postgres
+    deployment/zelkor-platform-mcp-qdrant
+    deployment/zelkor-platform-mcp-sandbox
+  )
   for i in 0 1 2; do
     if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox-worker-$i >/dev/null 2>&1; then
-      kubectl --context "$KCTX" rollout status deployment/zelkor-platform-mcp-sandbox-worker-$i --timeout=5m
+      MCP_WAIT_TARGETS+=("deployment/zelkor-platform-mcp-sandbox-worker-$i")
     fi
   done
+fi
+if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
+  wait_rollout_group "[5/5] Guardrails + native MCP + sandbox workers" "${MCP_WAIT_TARGETS[@]}"
 fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
@@ -390,14 +558,12 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
     "${FINSERVE_HELM_ARGS[@]}"
 
   log "Tracking FinServe demo rollout..."
-  log "  -> [1/4] Seeding demo portfolio database..."
+  log "  -> [1/2] Seeding demo portfolio database..."
   kubectl --context "$KCTX" wait --for=condition=complete job -l app.kubernetes.io/instance=finserve --timeout=3m || true
-  log "  -> [2/4] FinServe desk (finserve-advisor, finserve-research)..."
-  kubectl --context "$KCTX" rollout status deployment/finserve-desk --timeout=5m
-  log "  -> [3/4] FinServe quant (finserve-quant)..."
-  kubectl --context "$KCTX" rollout status deployment/finserve-quant --timeout=5m
-  log "  -> [4/4] FinServe coder (finserve-coder)..."
-  kubectl --context "$KCTX" rollout status deployment/finserve-coder --timeout=5m
+  wait_rollout_group "[2/2] FinServe desk + quant + coder" \
+    deployment/finserve-desk \
+    deployment/finserve-quant \
+    deployment/finserve-coder
 fi
 
 END_TIME=$(date +%s)
@@ -442,6 +608,14 @@ cat <<EOF
     Project:          Zelkor Platform (zelkor-platform)
     Public API Key:   pk-lf-zelkor-dev-00000000000000000000
     Secret API Key:   sk-lf-zelkor-dev-00000000000000000000
+EOF
+if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
+cat <<EOF
+    FinServe project: FinServe AI (finserve)
+    FinServe PK/SK:   pk-lf-finserve-dev-00000000000000000000 / sk-lf-finserve-dev-00000000000000000000
+EOF
+fi
+cat <<EOF
 
   [Envoy AI Gateway]
     URL:              http://ai-gateway.localhost:8088/v1/chat/completions
@@ -500,7 +674,7 @@ fi
 cat <<EOF
 
   3. View Traces:
-     Open http://langfuse.localhost:8088 -> Log in -> Project: Zelkor Platform -> Traces
+     Open http://langfuse.localhost:8088 -> Log in -> Project: Zelkor Platform (playground) or FinServe AI (demo agents) -> Traces
 
 ======================================================================
   Total Installation Time: ${MINUTES}m ${SECONDS}s (${TOTAL_DURATION} seconds)

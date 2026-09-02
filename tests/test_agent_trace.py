@@ -11,11 +11,13 @@ import pytest
 
 from tests.helpers.langfuse import (
     GATEWAY_BASE_URL,
+    graph_root_output_is_assistant,
     has_graph_spans,
     has_nemo_spans,
     is_health_probe_trace,
     list_traces,
     observation_io_nonempty,
+    recent_orphan_http_client_ids,
     trace_detail,
     trace_observations,
     wait_for_traces,
@@ -83,6 +85,7 @@ async def test_agent_protocol_run_is_one_langfuse_trace():
     """§5: exactly one graph+NeMo trace; graph-named without NeMo fails."""
     graph_id = _require_worker()
     marker = f"zelkor-agent-trace-{uuid.uuid4().hex[:8]}"
+    run_started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     tenant = "tenant-a"
     client = aegra_sdk_client(tenant_id=tenant, graph_id=graph_id)
     try:
@@ -147,6 +150,49 @@ async def test_agent_protocol_run_is_one_langfuse_trace():
         assert isinstance(run_id, str) and run_id
 
     _, _, observations = _classify(trace)
+    by_id = {obs.get("id"): obs for obs in observations if isinstance(obs, dict) and obs.get("id")}
+    request_spans = [
+        obs
+        for obs in observations
+        if isinstance(obs, dict) and str(obs.get("name") or "") == "ChatOpenAI.request"
+    ]
+    chat_ids = {
+        obs.get("id")
+        for obs in observations
+        if isinstance(obs, dict) and "chatopenai" in str(obs.get("name") or "").lower()
+        and str(obs.get("name") or "") != "ChatOpenAI.request"
+    }
+    for req in request_spans:
+        parent = by_id.get(req.get("parentObservationId") or "")
+        parent_name = str((parent or {}).get("name") or "")
+        assert parent_name.lower() == "chatopenai" or req.get("parentObservationId") in chat_ids, (
+            f"ChatOpenAI.request must nest under ChatOpenAI, parent={parent_name!r} "
+            f"(trace {trace.get('id')})"
+        )
+
+    nemo_rows = [
+        obs
+        for obs in observations
+        if isinstance(obs, dict)
+        and (
+            "guardrails" in str(obs.get("name") or "").lower()
+            or str(obs.get("name") or "").startswith("POST")
+        )
+    ]
+    missing_name = [obs.get("name") for obs in nemo_rows if not obs.get("traceName")]
+    assert not missing_name, f"NeMo observations missing traceName: {missing_name[:8]}"
+    assert all(str(obs.get("traceName") or "") == graph_id for obs in nemo_rows)
+
+    graph_root = next(
+        (obs for obs in observations if str(obs.get("name") or "") == graph_id),
+        None,
+    )
+    if graph_root:
+        assert graph_root_output_is_assistant(graph_root.get("output")), graph_root.get("output")
+
+    orphans = recent_orphan_http_client_ids(since_iso=run_started)
+    assert not orphans, f"orphan http send traces: {orphans}"
+
     capture_off = os.environ.get("NEMO_OTEL_CAPTURE_CONTENT", "1").strip().lower() in (
         "0",
         "false",

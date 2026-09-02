@@ -34,8 +34,9 @@ except Exception:
     _log.exception("ChatOpenAI non-stream patch failed")
 
 try:
-    from trace_wrap import patch_http_clients, patch_otel_setup
+    from trace_wrap import attach_langfuse_project_baggage, patch_http_clients, patch_otel_setup
 
+    attach_langfuse_project_baggage()
     patch_http_clients()
     patch_otel_setup()
 except Exception:

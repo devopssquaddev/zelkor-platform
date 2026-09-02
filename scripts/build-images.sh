@@ -46,6 +46,7 @@ ALL_IMAGES=(
   zelkor-aegra-deep
   zelkor-aegra-cli
   zelkor-mcp
+  zelkor-langfuse-seed
   zelkor-sandbox-worker
   zelkor-guardrails
   zelkor-example-finserve
@@ -58,6 +59,7 @@ dockerfile_for() {
     zelkor-aegra-deep) echo images/aegra-deep/Dockerfile ;;
     zelkor-aegra-cli) echo images/aegra-cli/Dockerfile ;;
     zelkor-mcp) echo images/mcp/Dockerfile ;;
+    zelkor-langfuse-seed) echo images/langfuse-seed/Dockerfile ;;
     zelkor-sandbox-worker) echo images/sandbox-worker/Dockerfile ;;
     zelkor-guardrails) echo images/guardrails/Dockerfile ;;
     zelkor-example-finserve) echo images/example-finserve/Dockerfile ;;

@@ -1,0 +1,73 @@
+{{- $surfaces := .Values.langfuse.surfaces | default dict }}
+{{- $llm := $surfaces.llmConnection | default dict }}
+{{- $tools := $surfaces.tools | default dict }}
+{{- $evals := $surfaces.evaluators | default dict }}
+{{- $extraProjects := .Values.langfuse.extraProjects | default list }}
+{{- $seedOn := or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0) }}
+{{- if and .Values.langfuse.enabled .Values.langfuse.init.enabled $seedOn }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-surfaces
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse-seed
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: langfuse-seed
+    spec:
+      restartPolicy: OnFailure
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: seed
+          image: {{ include "zelkor-platform.image" $surfaces.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" $surfaces.image) }}
+          env:
+            - name: LANGFUSE_HOST
+              value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
+            - name: LANGFUSE_PUBLIC_KEY
+              value: {{ .Values.langfuse.init.projectPublicKey | quote }}
+            - name: LANGFUSE_SECRET_KEY
+              value: {{ .Values.langfuse.init.projectSecretKey | quote }}
+            - name: LANGFUSE_CONNECTION_NAME
+              value: {{ $llm.name | default "zelkor-ai-gateway" | quote }}
+            - name: AI_GATEWAY_BASE_URL
+              value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
+            - name: AI_GATEWAY_CONSUMER_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            - name: LANGFUSE_CUSTOM_MODELS
+              value: {{ join "," ($llm.models | default list) | quote }}
+            - name: SEED_LLM_CONNECTION
+              value: {{ $llm.enabled | quote }}
+            - name: SEED_MCP_TOOLS
+              value: {{ $tools.seedFromMcp | quote }}
+            - name: SEED_CODE_EVALUATORS
+              value: {{ $evals.seedCode | quote }}
+            - name: MCP_URL
+              value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+            - name: MCP_SEED_TENANT
+              value: {{ $tools.seedTenant | default "seed" | quote }}
+            - name: MCP_AUTH_TOKEN
+              value: {{ $tools.authToken | default "" | quote }}
+            - name: MCP_EXTRA_BACKENDS
+              value: {{ .Values.mcp.extraBackends | default list | toJson | quote }}
+            - name: LANGFUSE_PROJECT_ID
+              value: {{ .Values.langfuse.init.projectId | quote }}
+            - name: DATABASE_URL
+              value: {{ include "zelkor-platform.postgresUrl" (list . "langfuse") | quote }}
+            - name: LANGFUSE_ORG_ID
+              value: {{ .Values.langfuse.init.orgId | quote }}
+            - name: LANGFUSE_SALT
+              value: {{ .Values.langfuse.salt | quote }}
+            - name: LANGFUSE_EXTRA_PROJECTS
+              value: {{ $extraProjects | toJson | quote }}
+{{- end }}

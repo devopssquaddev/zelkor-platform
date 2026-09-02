@@ -91,7 +91,9 @@ def test_nemo_content_safety_passthrough_for_tools():
     )
     assert "checksum/config" in deploy
     assert "opentelemetry-instrument" in deploy
+    assert "/app/boot.py" in deploy
     assert "OTEL_METRICS_EXPORTER" in deploy
+    assert "LANGFUSE_EXTRA_OTLP" in deploy
     assert "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS" in deploy
     assert "/v1/health" in deploy
     assert "path: /v1/health" in deploy
@@ -145,6 +147,9 @@ def test_nemo_otel_uses_instrument_not_sitecustomize():
     reqs = (ROOT / "images/guardrails/requirements.txt").read_text()
     assert "sitecustomize" not in dockerfile
     assert not (ROOT / "images/guardrails/sitecustomize.py").exists()
+    assert "boot.py" in dockerfile
+    assert (ROOT / "images/guardrails/boot.py").exists()
+    assert (ROOT / "images/guardrails/otel_project_route.py").exists()
     assert "opentelemetry-distro==0.65b0" in reqs
     assert "opentelemetry-instrumentation-fastapi==0.65b0" in reqs
     assert "opentelemetry-instrumentation-asgi==0.65b0" in reqs

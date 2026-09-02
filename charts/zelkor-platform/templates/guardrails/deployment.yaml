@@ -16,6 +16,7 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/guardrails/configmap.yaml") . | sha256sum }}
+        checksum/langfuse-otel: {{ printf "%s%s" (.Values.langfuse.init.projectPublicKey | default "") (.Values.langfuse.extraProjects | default list | toJson) | sha256sum }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: guardrails
@@ -27,7 +28,18 @@ spec:
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.guardrails.nemo.image) }}
           {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
           command: ["opentelemetry-instrument"]
-          {{- end }}
+          args:
+            - python
+            - /app/boot.py
+            - server
+            - --config
+            - {{ .Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs" | quote }}
+            - --port
+            - "8000"
+            - --default-config-id
+            - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
+            - --disable-chat-ui
+          {{- else }}
           args:
             - nemoguardrails
             - server
@@ -38,6 +50,7 @@ spec:
             - --default-config-id
             - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
             - --disable-chat-ui
+          {{- end }}
           ports:
             - containerPort: 8000
               name: http

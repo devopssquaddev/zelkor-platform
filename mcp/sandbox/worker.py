@@ -52,8 +52,9 @@ class WorkerHandler(BaseHTTPRequestHandler):
         try:
             with open(temp_path, "w", encoding="utf-8") as f:
                 f.write(code)
+            py = shutil.which("python3") or shutil.which("python") or "python3"
             res = subprocess.run(
-                ["python", temp_path],
+                [py, temp_path],
                 capture_output=True,
                 text=True,
                 timeout=timeout,

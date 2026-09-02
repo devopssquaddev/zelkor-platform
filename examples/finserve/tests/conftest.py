@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+os.environ.setdefault("LANGFUSE_PUBLIC_KEY", "pk-lf-finserve-dev-00000000000000000000")
+os.environ.setdefault("LANGFUSE_SECRET_KEY", "sk-lf-finserve-dev-00000000000000000000")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 

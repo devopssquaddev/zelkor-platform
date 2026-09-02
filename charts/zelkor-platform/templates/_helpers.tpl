@@ -187,11 +187,19 @@ Only emitted when otelTargets or init keys are set.
 - name: TELEMETRY_ENABLED
   value: "false"
 - name: LANGFUSE_MIGRATION_V4_WRITE_MODE
-  value: {{ .Values.langfuse.migration.v4WriteMode | default "legacy" | quote }}
+  value: {{ .Values.langfuse.migration.v4WriteMode | default "events_only" | quote }}
+{{- $surfaces := .Values.langfuse.surfaces | default dict }}
+{{- $llmConn := $surfaces.llmConnection | default dict }}
+{{- if $llmConn.enabled }}
+- name: LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST
+  value: {{ printf "%s-ai-gateway,%s-ai-gateway.%s.svc.cluster.local" (include "zelkor-platform.fullname" .) (include "zelkor-platform.fullname" .) .Release.Namespace | quote }}
+{{- end }}
 - name: LANGFUSE_BACKGROUND_MIGRATION_V4_ENABLE_HISTORIC_BACKFILL
   value: {{ .Values.langfuse.migration.enableHistoricBackfill | default false | quote }}
 - name: LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR
-  value: {{ .Values.langfuse.migration.nativeOtelBehaviour | default "dual_write" | quote }}
+  value: {{ .Values.langfuse.migration.nativeOtelBehaviour | default "direct" | quote }}
+- name: LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN
+  value: {{ .Values.langfuse.migration.allowPreviewOptIn | default true | quote }}
 {{ include "zelkor-platform.langfuseS3Env" . }}
 {{- end }}
 
@@ -337,6 +345,10 @@ false
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey)) | quote }}
 - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
   value: "/v1/health"
+- name: LANGFUSE_PUBLIC_KEY
+  value: {{ .Values.langfuse.init.projectPublicKey | quote }}
+- name: LANGFUSE_EXTRA_OTLP
+  value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
 {{- end }}
 

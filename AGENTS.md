@@ -59,6 +59,7 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 - **Deprecation & Lifecycle Policy:** Always verify all third-party components, base images, and libraries are actively maintained and not deprecated or EOL
 - **Component Version Policy:** Pin latest **stable** releases at each Zelkor semver release; hold pins until the next release. Choose Postgres/ClickHouse/Valkey/etc. from **Langfuse + Aegra compatibility**; pin operators to the latest stable release that supports those datastore versions. See `.cursor/rules/component-versions.mdc` and `internal/plan/component_compatibility_matrix.md`.
 - **Langfuse** tracing must be enabled on all agent executions
+- **Platform logging:** Every process logs to stdout at a Helm-controlled level (default INFO JSON). Spec (multi-root): `internal/plan/requirements_platform_logging.md`. Rule: `.cursor/rules/platform-logging.mdc`. Do not hardcode log level, `print()` operational events, or log secrets. Traces are not a substitute.
 - Untrusted workloads use **gVisor** (`RuntimeClass: gvisor`)
 - Tenant isolation via Aegra `@auth.authenticate` handlers
 - No `kubectl apply` — all deployments are Helm/GitOps declarative
@@ -93,6 +94,7 @@ Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
    - [ ] Security Review if Helm, Terraform, auth, or security paths changed
    - [ ] Phase requirements checked when the change maps to a roadmap phase
    - [ ] Tests added/updated for behavior changes; tests did not shape chart defaults (see `tests-do-not-shape-platform`)
+   - [ ] Platform logging: new/changed processes honor `ZELKOR_LOG_LEVEL`; no secrets or probe INFO; DEBUG not in chart defaults (see `platform-logging`)
    - [ ] CI green (adversarial eval when `gateway/`, `agents/`, or `guardrails/` changed)
    - [ ] Test-server validation via `internal/dev/` after merge
 3. Squash merge after CI passes and review

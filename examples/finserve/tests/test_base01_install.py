@@ -1,7 +1,9 @@
 import json
 import os
 import subprocess
+import sys
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -13,6 +15,19 @@ from finserve_e2e import (
     GRAPH_QUANT,
     GRAPH_RESEARCH,
     run_finserve,
+)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from tests.helpers.langfuse import (  # noqa: E402
+    graph_root_output_is_assistant,
+    has_graph_spans,
+    has_nemo_spans,
+    list_traces,
+    recent_orphan_http_client_ids,
+    trace_detail,
+    trace_observations,
+    unexpected_error_observations,
+    wait_for_traces,
 )
 
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
@@ -77,97 +92,139 @@ def test_base01_langfuse_observability_endpoint():
         pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
 
 
-def test_base01_finserve_agent_generates_traces():
-    """E2E smoke: a FinServe run leaves LLM traces via gateway OTel."""
-    started = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime())
-    marker = f"zelkor-join-{int(time.time())}"
-    run_finserve(f"Summarize my portfolio holdings. [{marker}]")
-    auth = (
-        os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000"),
-        os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000"),
-    )
-    headers = {"Host": LANGFUSE_HOST_HEADER}
-    deadline = time.time() + 45
-    traces = []
-    matching = []
-    while time.time() < deadline:
-        try:
-            traces_resp = httpx.get(
-                f"{GATEWAY_BASE_URL}/api/public/traces",
-                headers=headers,
-                auth=auth,
-                params={"limit": 50},
-                timeout=10.0,
-            )
-        except httpx.ConnectError:
-            pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
-        assert traces_resp.status_code == 200, f"Failed to query Langfuse traces: {traces_resp.text}"
-        traces = traces_resp.json().get("data", [])
-        matching = [t for t in traces if marker in str(t)]
-        if not matching:
-            matching = [
-                t
-                for t in traces
-                if str(t.get("name") or "").startswith("finserve-")
-                and str(t.get("timestamp") or "") >= started
-            ]
-        if matching:
-            break
-        time.sleep(2)
-    if not traces:
-        pytest.skip("Langfuse OTel export may be async or empty")
-    assert matching or traces
+def test_base01_finserve_langfuse_connection_seeded():
+    """FinServe project gets the gateway LLM connection (armor seed on extraProjects)."""
+    try:
+        resp = httpx.get(
+            f"{GATEWAY_BASE_URL}/api/public/llm-connections",
+            headers={"Host": LANGFUSE_HOST_HEADER},
+            auth=(
+                os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-finserve-dev-00000000000000000000"),
+                os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-finserve-dev-00000000000000000000"),
+            ),
+            timeout=10.0,
+        )
+    except httpx.ConnectError:
+        pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
+    if resp.status_code in (401, 403, 404):
+        pytest.skip(f"llm-connections unavailable: {resp.status_code}")
+    assert resp.status_code == 200, resp.text
+    rows = resp.json().get("data") or resp.json()
+    if isinstance(rows, dict):
+        rows = rows.get("data") or [rows]
+    names = [r.get("provider") or r.get("name") for r in rows]
+    assert "zelkor-ai-gateway" in names, f"FinServe project missing gateway connection (got {names})"
 
-    candidates = matching or traces
+
+def test_base01_finserve_agent_generates_traces():
+    """E2E smoke: one FinServe run = one Langfuse waterfall (graph + NeMo)."""
+    marker = f"zelkor-join-{int(time.time())}"
+    run_started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    result = run_finserve(f"Summarize my portfolio holdings. [{marker}]")
+    thread_id = result.get("thread_id") or ""
     if os.environ.get("NEMO_OTEL_JOIN", "1").strip().lower() in ("0", "false", "off"):
         pytest.skip("NEMO_OTEL_JOIN disabled")
-    obs_deadline = time.time() + 30
-    seen: list = []
-    joined: list = []
-    split: list = []
-    while time.time() < obs_deadline:
-        seen = []
+    time.sleep(8)
+    matched = wait_for_traces(
+        lambda t: str(t.get("sessionId") or "") == thread_id or marker in str(t),
+        timeout=90.0,
+        session_id=thread_id or None,
+    )
+    if not matched:
+        pytest.skip("No Langfuse observations for the FinServe run within 45s")
+
+    joined = []
+    split = []
+    deadline = time.time() + 30
+    while time.time() < deadline:
         joined = []
         split = []
-        for tr in candidates:
-            trace_id = tr.get("id")
-            if not trace_id:
+        window = list_traces(limit=20, session_id=thread_id) if thread_id else list_traces(limit=20, name=GRAPH_ADVISOR)
+        for tr in window:
+            if thread_id and str(tr.get("sessionId") or "") != thread_id:
                 continue
-            detail_resp = httpx.get(
-                f"{GATEWAY_BASE_URL}/api/public/traces/{trace_id}",
-                headers=headers,
-                auth=auth,
-                timeout=10.0,
-            )
-            if detail_resp.status_code != 200:
-                continue
-            detail = detail_resp.json()
-            observations = detail.get("observations") or []
-            if not observations:
-                obs_resp = httpx.get(
-                    f"{GATEWAY_BASE_URL}/api/public/observations",
-                    headers=headers,
-                    auth=auth,
-                    params={"traceId": trace_id, "limit": 100},
-                    timeout=10.0,
-                )
-                if obs_resp.status_code == 200:
-                    observations = obs_resp.json().get("data", [])
-            blob = str(observations).lower() + str(detail).lower()
-            seen.append(trace_id)
-            has_nemo = any(token in blob for token in ("nemo", "guardrails", "content_safety"))
-            has_graph = any(
-                token in blob
-                for token in ("langgraph", "openinference", "create_agent", "chatopenai")
-            )
-            if has_nemo:
-                joined.append(trace_id)
-            elif has_graph:
-                split.append(trace_id)
+            detail = trace_detail(tr["id"])
+            observations = trace_observations(detail)
+            has_graph = has_graph_spans(observations, detail)
+            has_nemo = has_nemo_spans(observations, detail)
+            if has_graph and has_nemo:
+                joined.append(tr)
+            elif has_graph and not has_nemo:
+                split.append(tr["id"])
         if joined and not split:
-            return
+            break
         time.sleep(2)
-    pytest.fail(
-        f"Langfuse split traces: graph-without-NeMo {split}; joined {joined}; seen {seen} "
-        "(W3C join missing or OTel overlay off; set NEMO_OTEL_JOIN=0 to skip)"
+    assert not split, f"graph-named traces without NeMo: {split}"
+    assert joined, "FinServe run produced no joined graph+NeMo trace"
+    assert len(joined) == 1, f"expected one trace, got {len(joined)} ids={[t.get('id') for t in joined]}"
+
+    observations = trace_observations(trace_detail(joined[0]["id"]))
+    by_id = {obs.get("id"): obs for obs in observations if obs.get("id")}
+    chat_ids = {
+        obs.get("id")
+        for obs in observations
+        if "chatopenai" in str(obs.get("name") or "").lower()
+        and str(obs.get("name") or "") != "ChatOpenAI.request"
+    }
+    for req in observations:
+        if str(req.get("name") or "") != "ChatOpenAI.request":
+            continue
+        parent = by_id.get(req.get("parentObservationId") or "")
+        parent_name = str((parent or {}).get("name") or "")
+        assert parent_name.lower() == "chatopenai" or req.get("parentObservationId") in chat_ids, (
+            f"ChatOpenAI.request parent={parent_name!r} (trace {joined[0].get('id')})"
+        )
+    assert not unexpected_error_observations(observations)
+    nemo_rows = [
+        obs
+        for obs in observations
+        if "guardrails" in str(obs.get("name") or "").lower()
+        or str(obs.get("name") or "").startswith("POST")
+    ]
+    missing_name = [obs.get("name") for obs in nemo_rows if not obs.get("traceName")]
+    assert not missing_name, f"NeMo observations missing traceName: {missing_name[:8]}"
+    assert all(str(obs.get("traceName") or "") == GRAPH_ADVISOR for obs in nemo_rows)
+    graph_root = next((obs for obs in observations if str(obs.get("name") or "") == GRAPH_ADVISOR), None)
+    if graph_root:
+        assert graph_root_output_is_assistant(graph_root.get("output")), graph_root.get("output")
+    orphans = recent_orphan_http_client_ids(since_iso=run_started)
+    assert not orphans, f"orphan http send traces: {orphans}"
+
+
+def test_base01_finserve_trace_not_on_platform_project():
+    """Team A keys must not list a FinServe run (Langfuse project split)."""
+    marker = f"zelkor-split-{int(time.time())}"
+    result = run_finserve(f"Summarize my portfolio holdings. [{marker}]")
+    thread_id = result.get("thread_id") or ""
+    if not thread_id:
+        pytest.skip("no thread_id on FinServe run")
+    matched = wait_for_traces(
+        lambda t: str(t.get("sessionId") or "") == thread_id,
+        timeout=45.0,
+        session_id=thread_id,
+        name=GRAPH_ADVISOR,
     )
+    if not matched:
+        pytest.skip("FinServe trace not visible with FinServe keys")
+    platform_pk = os.environ.get("LANGFUSE_PLATFORM_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
+    platform_sk = os.environ.get("LANGFUSE_PLATFORM_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000")
+    try:
+        resp = httpx.get(
+            f"{GATEWAY_BASE_URL}/api/public/v2/observations",
+            headers={"Host": LANGFUSE_HOST_HEADER},
+            auth=(platform_pk, platform_sk),
+            params={
+                "limit": 100,
+                "fields": "core,basic,io,trace_context",
+                "filter": json.dumps(
+                    [{"type": "string", "column": "sessionId", "operator": "=", "value": thread_id}]
+                ),
+            },
+            timeout=10.0,
+        )
+    except httpx.ConnectError:
+        pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
+    if resp.status_code != 200:
+        pytest.skip(f"platform observations unavailable: {resp.status_code}")
+    rows = resp.json().get("data") or []
+    assert not rows, f"platform project saw FinServe session {thread_id}: {len(rows)} observations"

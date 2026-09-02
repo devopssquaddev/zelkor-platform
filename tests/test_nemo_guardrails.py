@@ -134,24 +134,12 @@ def test_nemo_otel_trace_in_langfuse():
     except httpx.ReadTimeout:
         pytest.skip("NeMo chat completion timed out (upstream LLM latency)")
 
-    auth = (DEV_PUBLIC_KEY, DEV_SECRET_KEY)
-    headers = {"Host": LANGFUSE_HOST_HEADER}
-    deadline = time.time() + 45
-    last_traces = []
-    named = []
-    matching = []
-    while time.time() < deadline:
-        traces_resp = httpx.get(
-            f"{GATEWAY_BASE_URL}/api/public/traces",
-            headers=headers,
-            auth=auth,
-            params={"limit": 50},
-            timeout=10.0,
-        )
-        assert traces_resp.status_code == 200, traces_resp.text
-        last_traces = traces_resp.json().get("data", [])
-        matching = [trace for trace in last_traces if marker in str(trace)]
-        named = [
+    from tests.helpers.langfuse import list_traces, trace_observations, wait_for_traces
+
+    matched = wait_for_traces(lambda t: marker in str(t), timeout=45.0)
+    last_traces = list_traces(limit=50)
+    if not matched:
+        matched = [
             trace
             for trace in last_traces
             if any(
@@ -159,40 +147,18 @@ def test_nemo_otel_trace_in_langfuse():
                 for token in ("nemo", "guardrails", "content_safety", "content safety")
             )
         ]
-        if matching:
-            break
-        time.sleep(2)
-    if not matching:
-        matching = named
-    if not matching:
+    if not matched:
         pytest.skip(
             "No NeMo-attributed Langfuse trace found within 45s "
             f"(retrieved {len(last_traces)} traces; OTel export may be async or disabled)."
         )
 
-    trace_id = matching[0].get("id")
-    assert trace_id, matching[0]
+    trace_id = matched[0].get("id")
+    assert trace_id, matched[0]
     observations = []
     obs_deadline = time.time() + 20
     while time.time() < obs_deadline:
-        detail_resp = httpx.get(
-            f"{GATEWAY_BASE_URL}/api/public/traces/{trace_id}",
-            headers=headers,
-            auth=auth,
-            timeout=10.0,
-        )
-        assert detail_resp.status_code == 200, detail_resp.text
-        observations = detail_resp.json().get("observations") or []
-        if not observations:
-            obs_resp = httpx.get(
-                f"{GATEWAY_BASE_URL}/api/public/observations",
-                headers=headers,
-                auth=auth,
-                params={"traceId": trace_id, "limit": 50},
-                timeout=10.0,
-            )
-            if obs_resp.status_code == 200:
-                observations = obs_resp.json().get("data", [])
+        observations = trace_observations(matched[0])
         has_io = any(
             _observation_io_nonempty(obs.get("input"))
             or _observation_io_nonempty(obs.get("output"))

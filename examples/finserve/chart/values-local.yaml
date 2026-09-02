@@ -20,8 +20,8 @@ desk:
     valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
     defaultLlmModel: "gpt-oss:20b"
     langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    langfusePublicKey: "pk-lf-finserve-dev-00000000000000000000"
+    langfuseSecretKey: "sk-lf-finserve-dev-00000000000000000000"
     otelTargets: "LANGFUSE"
   extraEnv:
     - name: QDRANT_COLLECTION
@@ -42,8 +42,8 @@ quant:
     valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
     defaultLlmModel: "gpt-oss:20b"
     langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    langfusePublicKey: "pk-lf-finserve-dev-00000000000000000000"
+    langfuseSecretKey: "sk-lf-finserve-dev-00000000000000000000"
     otelTargets: "LANGFUSE"
   extraEnv:
     - name: QDRANT_COLLECTION
@@ -64,8 +64,8 @@ coder:
     valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
     defaultLlmModel: "gpt-oss:20b"
     langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+    langfusePublicKey: "pk-lf-finserve-dev-00000000000000000000"
+    langfuseSecretKey: "sk-lf-finserve-dev-00000000000000000000"
     otelTargets: "LANGFUSE"
 
 platform:
@@ -79,5 +79,5 @@ platform:
   qdrantUrl: "http://zelkor-platform-qdrant:6333"
   qdrantCollection: "finserve_policies"
   langfuseHost: "http://zelkor-platform-langfuse:3000"
-  langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-  langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+  langfusePublicKey: "pk-lf-finserve-dev-00000000000000000000"
+  langfuseSecretKey: "sk-lf-finserve-dev-00000000000000000000"

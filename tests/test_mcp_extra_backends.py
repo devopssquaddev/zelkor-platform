@@ -9,9 +9,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 from gateway.gateway_server import (  # noqa: E402
     RESERVED_PREFIXES,
     merge_backends,
+    native_backends,
     parse_extra_backends,
     validate_extra_name,
 )
+
+
+def test_native_backends_include_egress_when_url_set(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "http://mcp-egress:8080")
+    backends = native_backends()
+    assert backends["egress"] == "http://mcp-egress:8080"
+    assert "postgres" in backends
+
+
+def test_native_backends_omit_egress_when_unset(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "")
+    assert "egress" not in native_backends()
 
 
 def test_parse_extra_backends_empty():
