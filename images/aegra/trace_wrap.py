@@ -518,14 +518,17 @@ def patch_otel_setup() -> None:
             return
         try:
             wrap_pregel_current_span(provider)
+            _log.info("Pregel current-span wrap ok")
         except Exception:
             _log.exception("Pregel current-span wrap failed")
         try:
             wrap_chat_openai_current_span(provider)
+            _log.info("ChatOpenAI current-span wrap ok")
         except Exception:
             _log.exception("ChatOpenAI current-span wrap failed")
         try:
             wrap_tool_current_span(provider)
+            _log.info("tool current-span wrap ok")
         except Exception:
             _log.exception("tool current-span wrap failed")
 

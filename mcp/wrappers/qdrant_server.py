@@ -49,7 +49,7 @@ def _get_embedding(text: str) -> Optional[list]:
         )
         return data["data"][0]["embedding"]
     except (urllib.error.URLError, TimeoutError, KeyError, IndexError, TypeError) as exc:
-        logger.info("Embedding unavailable (%s)", exc)
+        logger.debug("Embedding unavailable (%s)", exc)
         return None
 
 
@@ -130,7 +130,7 @@ def _search_with_connector(query: str, collection: str, limit: int, tenant_id: s
         from mcp_server_qdrant.qdrant import QdrantConnector
         from qdrant_client import models
     except ImportError as exc:
-        logger.info("mcp-server-qdrant not installed (%s); skipping connector search", exc)
+        logger.debug("mcp-server-qdrant not installed (%s); skipping connector search", exc)
         return None
 
     class _Provider(GatewayEmbeddingProvider, EmbeddingProvider):
@@ -155,7 +155,7 @@ def _search_with_connector(query: str, collection: str, limit: int, tenant_id: s
             if docs:
                 return docs
         except Exception as exc:
-            logger.info("Connector named-vector search failed (%s); trying default vector", exc)
+            logger.debug("Connector named-vector search failed (%s); trying default vector", exc)
 
         try:
             query_vector = await connector._embedding_provider.embed_query(query)
@@ -172,13 +172,13 @@ def _search_with_connector(query: str, collection: str, limit: int, tenant_id: s
                 raw.append({"payload": dict(payload) if payload else {}})
             return _payloads_from_points(raw, tenant_id)
         except Exception as exc:
-            logger.info("Connector default-vector search failed (%s)", exc)
+            logger.debug("Connector default-vector search failed (%s)", exc)
             return None
 
     try:
         return asyncio.run(_run())
     except Exception as exc:
-        logger.info("Connector search unavailable (%s)", exc)
+        logger.debug("Connector search unavailable (%s)", exc)
         return None
 
 
@@ -300,15 +300,26 @@ class QdrantMCPServer(MCPToolHandler):
             if docs is None:
                 docs = _scroll_tenant(collection, limit, tenant_id)
             docs = [d for d in (docs or []) if (d.get("tenant_id") == tenant_id)]
+            logger.info(
+                "qdrant search collection=%s count=%s",
+                collection,
+                len(docs),
+                extra={"event": "tools_call", "tenant_id": tenant_id},
+            )
             return {"documents": docs, "count": len(docs), "collection": collection}
         if name == "upsert_document":
             content = arguments.get("content") or arguments.get("document") or ""
             if not str(content).strip():
                 raise ValueError("content or document is required")
-            return _store_document(str(content), collection, tenant_id, arguments.get("metadata"))
+            result = _store_document(str(content), collection, tenant_id, arguments.get("metadata"))
+            logger.info(
+                "qdrant upsert collection=%s",
+                collection,
+                extra={"event": "tools_call", "tenant_id": tenant_id},
+            )
+            return result
         raise ValueError(f"Unknown tool: {name}")
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     run_mcp_server(QdrantMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))

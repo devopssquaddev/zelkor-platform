@@ -72,6 +72,7 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.sandboxMCP "name" "zelkor-mcp-sandbox") | nindent 12 }}
             {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: SANDBOX_WORKER_URLS
               value: {{ $workerUrlsStr | quote }}
@@ -115,6 +116,7 @@ spec:
           ports:
             - containerPort: 8081
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" $ "component" $.Values.mcp.sandboxMCP.worker "name" "zelkor-sandbox-worker") | nindent 12 }}
             - name: PORT
               value: "8081"
             {{- if $workerToken }}

@@ -45,6 +45,7 @@ spec:
             - containerPort: 8000
               name: http
           env:
+            {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             - name: AUTH_DEV_TOKENS_ENABLED
               value: {{ ((.Values.auth.devTokens).enabled | default false) | quote }}
             - name: AUTH_DEV_TOKEN_PREFIX

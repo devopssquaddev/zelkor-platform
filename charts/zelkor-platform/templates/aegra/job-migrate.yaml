@@ -35,6 +35,7 @@ spec:
               done
               aegra db upgrade
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.aegra.cli "name" "zelkor-aegra-cli") | nindent 12 }}
             - name: DATABASE_URL
               value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
             - name: RUN_MIGRATIONS_ON_STARTUP

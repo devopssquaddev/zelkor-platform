@@ -44,6 +44,7 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.egressMCP "name" "zelkor-mcp-egress") | nindent 12 }}
             {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: AI_GATEWAY_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}

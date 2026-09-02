@@ -15,6 +15,11 @@ global:
   imagePullSecrets: []
   initContainerImage: busybox:1.37
 
+# Process logs (stdout). DEBUG is overlay-only — see profiles/values-local.yaml.
+logging:
+  level: INFO
+  format: json
+
 databases:
   mode: in-cluster-basic  # in-cluster-basic (Gate A) | operators (Gate B)
 

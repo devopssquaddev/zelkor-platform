@@ -190,6 +190,13 @@ def build_graph(root: Path | None = None) -> Any:
     tools = _load_mcp_tools(kwargs["mcp_servers"])
     if tools:
         create["tools"] = tools
+    logger.info(
+        "deep agent graph=%s sandbox=%s tools=%s",
+        kwargs["name"],
+        bool(kwargs["sandbox"]),
+        len(tools),
+        extra={"event": "graph_build", "graph_id": kwargs["name"]},
+    )
     return create_deep_agent(**create)
 
 

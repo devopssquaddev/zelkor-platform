@@ -58,6 +58,7 @@ spec:
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.aegra.cli.image) }}
           command: ["aegra", "db", "upgrade"]
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.aegra.cli "name" "zelkor-aegra-cli") | nindent 12 }}
             - name: DATABASE_URL
               value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
             - name: RUN_MIGRATIONS_ON_STARTUP
@@ -72,6 +73,7 @@ spec:
             - containerPort: 8000
               name: http
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.aegra "name" "zelkor-aegra") | nindent 12 }}
             {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: DATABASE_URL
               value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}

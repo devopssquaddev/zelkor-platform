@@ -337,9 +337,15 @@ class ZelkorGvisorBackend(_ProtocolBase):
 
     def execute(self, command: str, *, timeout: int | None = None) -> Any:
         if not self._mcp:
+            logger.error("MCP_URL is not set")
             return _execute_response("MCP_URL is not set", 1)
         seconds = 5 if timeout is None else int(timeout)
         tenant = _tenant_id()
+        logger.info(
+            "gvisor execute timeout=%s",
+            seconds,
+            extra={"event": "sandbox_execute", "tenant_id": tenant},
+        )
         headers = dict(_identity_headers())
         headers["Content-Type"] = "application/json"
         args: Dict[str, Any] = {

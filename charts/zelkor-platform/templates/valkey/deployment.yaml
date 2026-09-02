@@ -40,14 +40,16 @@ spec:
           image: "{{ .Values.valkey.image.repository | default "valkey/valkey" }}:{{ .Values.valkey.image.tag | default "7.2.14-alpine" }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           {{- $redisPass := .Values.valkey.auth.password | default "" }}
-          {{- if $redisPass }}
           command:
             - valkey-server
+            {{- if $redisPass }}
             - --requirepass
             - {{ $redisPass | quote }}
+            {{- end }}
             - --maxmemory-policy
             - noeviction
-          {{- end }}
+            - --loglevel
+            - {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.valkey "vendor" "valkey") | quote }}
           ports:
             - containerPort: 6379
               name: valkey

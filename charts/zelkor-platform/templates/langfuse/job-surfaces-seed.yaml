@@ -32,6 +32,7 @@ spec:
           image: {{ include "zelkor-platform.image" $surfaces.image | quote }}
           imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" $surfaces.image) }}
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" $surfaces "name" "zelkor-langfuse-seed") | nindent 12 }}
             - name: LANGFUSE_HOST
               value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
             - name: LANGFUSE_PUBLIC_KEY

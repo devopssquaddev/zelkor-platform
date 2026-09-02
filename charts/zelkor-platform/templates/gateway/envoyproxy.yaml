@@ -7,6 +7,9 @@ metadata:
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
 spec:
+  logging:
+    level:
+      default: {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.gateway "vendor" "envoy") }}
   provider:
     type: Kubernetes
     kubernetes:

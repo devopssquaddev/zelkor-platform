@@ -3,16 +3,26 @@ import logging
 import os
 import sys
 
-_log = logging.getLogger("zelkor-aegra-wrap")
-
 # This file lives in site-packages. Wrap modules live in /app (WORKDIR).
 if "/app" not in sys.path:
     sys.path.insert(0, "/app")
 
 try:
+    from zelkor_logging import configure_logging
+
+    configure_logging("zelkor-aegra")
+except Exception:
+    logging.basicConfig(
+        level=getattr(logging, os.getenv("ZELKOR_LOG_LEVEL", "INFO").upper(), logging.INFO)
+    )
+
+_log = logging.getLogger("zelkor-aegra-wrap")
+
+try:
     from auth_inject import ensure_auth_config
 
     ensure_auth_config()
+    _log.info("auth.path wrap ready")
 except Exception:
     _log.exception("auth.path inject failed")
 
@@ -30,6 +40,7 @@ try:
 
         ChatOpenAI.__init__ = _chat_openai_init  # type: ignore[method-assign]
         ChatOpenAI._zelkor_nonstream_patched = True  # type: ignore[attr-defined]
+        _log.info("ChatOpenAI non-stream patch ok")
 except Exception:
     _log.exception("ChatOpenAI non-stream patch failed")
 
@@ -39,6 +50,7 @@ try:
     attach_langfuse_project_baggage()
     patch_http_clients()
     patch_otel_setup()
+    _log.info("trace wrap ready")
 except Exception:
     _log.exception("trace wrap (Pregel root / ChatOpenAI.request / traceparent) failed")
 
@@ -48,11 +60,14 @@ if os.getenv("MCP_INJECT_ENABLED", "").strip().lower() in ("1", "true", "yes", "
     try:
         patch_langgraph()
         write_inject_status("ok")
+        _log.info("Mode B MCP inject ready")
     except Exception:
         write_inject_status("failed")
         _log.exception("Mode B MCP inject failed")
         # site.py swallows sitecustomize exceptions; exit so the pod is not ready.
         os._exit(1)
+else:
+    _log.debug("MCP inject disabled")
 
 try:
     from fastapi import FastAPI
@@ -75,5 +90,6 @@ try:
         self.middleware("http")(_ready_gate)
 
     FastAPI.__init__ = _fastapi_init  # type: ignore[method-assign]
+    _log.info("ready gate installed")
 except Exception:
     _log.exception("ready gate install failed")

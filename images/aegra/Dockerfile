@@ -20,6 +20,7 @@ COPY images/aegra/aegra.json /app/aegra.json
 COPY images/aegra/auth_inject.py /app/auth_inject.py
 COPY images/aegra/mcp_inject.py /app/mcp_inject.py
 COPY images/aegra/trace_wrap.py /app/trace_wrap.py
+COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 COPY images/aegra/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
 
 RUN chmod 644 /usr/local/lib/python3.12/site-packages/sitecustomize.py \

@@ -32,15 +32,18 @@ def _discover_config(path: Optional[str] = None) -> Optional[Path]:
 def ensure_auth_config(path: Optional[str] = None) -> Optional[str]:
     config_path = _discover_config(path)
     if config_path is None:
+        logger.debug("auth.path inject: no aegra.json")
         return None
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        logger.debug("auth.path inject: unreadable config %s", config_path)
         return str(config_path)
     if not isinstance(data, dict):
         return str(config_path)
     auth = data.get("auth")
     if isinstance(auth, dict) and auth.get("path"):
+        logger.debug("auth.path already set")
         return str(config_path)
     data["auth"] = {"path": DEFAULT_AUTH_PATH}
     dest = Path(os.getenv("AEGRA_AUTH_CONFIG", "/tmp/aegra.with-auth.json"))

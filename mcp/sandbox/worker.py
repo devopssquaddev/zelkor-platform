@@ -1,15 +1,18 @@
 """gVisor sandbox worker — executes Python in isolated subprocess with workspace reset."""
 import json
+import logging
 import os
 import shutil
 import subprocess
 import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+logger = logging.getLogger("zelkor-sandbox-worker")
+
 
 class WorkerHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        pass
+        logger.debug(fmt, *args)
 
     def _json(self, code: int, payload: dict):
         body = json.dumps(payload).encode("utf-8")
@@ -34,6 +37,7 @@ class WorkerHandler(BaseHTTPRequestHandler):
         if expected:
             got = (self.headers.get("X-Sandbox-Worker-Token") or "").strip()
             if got != expected:
+                logger.warning("sandbox worker unauthorized")
                 self._json(403, {"status": "error", "error": "unauthorized"})
                 return
 
@@ -42,6 +46,7 @@ class WorkerHandler(BaseHTTPRequestHandler):
         try:
             payload = json.loads(raw.decode("utf-8"))
         except json.JSONDecodeError:
+            logger.warning("sandbox worker invalid json")
             self._json(400, {"status": "error", "error": "invalid json"})
             return
 
@@ -66,14 +71,25 @@ class WorkerHandler(BaseHTTPRequestHandler):
                 "stderr": res.stderr,
                 "exit_code": res.returncode,
             })
+            logger.info(
+                "sandbox execute exit_code=%s",
+                res.returncode,
+                extra={"event": "sandbox_execute"},
+            )
         except subprocess.TimeoutExpired:
+            logger.warning("sandbox execute timeout timeout=%s", timeout)
             self._json(200, {"status": "error", "error": "execution timeout", "stdout": "", "stderr": "timeout"})
         except Exception as exc:
+            logger.exception("sandbox execute failed")
             self._json(200, {"status": "error", "error": str(exc), "stdout": "", "stderr": str(exc)})
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
 
 
 if __name__ == "__main__":
+    from zelkor_logging import configure_logging
+
+    configure_logging("zelkor-sandbox-worker")
     port = int(os.getenv("PORT", "8081"))
+    logger.info("sandbox worker listening on 0.0.0.0:%s", port)
     HTTPServer(("0.0.0.0", port), WorkerHandler).serve_forever()

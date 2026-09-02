@@ -41,6 +41,72 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
+Process log level. Per-workload <component>.logging.level overrides logging.level.
+*/}}
+{{- define "zelkor-platform.logLevel" -}}
+{{- $root := .root -}}
+{{- $c := .component | default dict -}}
+{{- if not (kindIs "map" $c) -}}
+{{- $c = dict -}}
+{{- end -}}
+{{- $cl := $c.logging | default dict -}}
+{{- $gl := $root.Values.logging | default dict -}}
+{{- $cl.level | default $gl.level | default "INFO" | upper -}}
+{{- end }}
+
+{{- define "zelkor-platform.logFormat" -}}
+{{- $root := .root -}}
+{{- $c := .component | default dict -}}
+{{- if not (kindIs "map" $c) -}}
+{{- $c = dict -}}
+{{- end -}}
+{{- $cl := $c.logging | default dict -}}
+{{- $gl := $root.Values.logging | default dict -}}
+{{- $cl.format | default $gl.format | default "json" | lower -}}
+{{- end }}
+
+{{/*
+ZELKOR_LOG_* for first-party containers.
+Usage: {{ include "zelkor-platform.logEnv" (dict "root" . "component" .Values.aegra "name" "zelkor-aegra") }}
+*/}}
+{{- define "zelkor-platform.logEnv" -}}
+- name: ZELKOR_LOG_LEVEL
+  value: {{ include "zelkor-platform.logLevel" . | quote }}
+- name: ZELKOR_LOG_FORMAT
+  value: {{ include "zelkor-platform.logFormat" . | quote }}
+{{- if .name }}
+- name: ZELKOR_LOG_COMPONENT
+  value: {{ .name | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Map platform logging.level onto a vendor knob.
+vendor: langfuse | postgres | qdrant | valkey | envoy | clickhouse | seaweedfs
+*/}}
+{{- define "zelkor-platform.vendorLogLevel" -}}
+{{- $level := include "zelkor-platform.logLevel" (dict "root" .root "component" (.component | default dict)) -}}
+{{- $v := .vendor -}}
+{{- if eq $v "postgres" -}}
+{{- if eq $level "DEBUG" }}debug1{{ else if eq $level "INFO" }}info{{ else if eq $level "WARNING" }}warning{{ else if eq $level "ERROR" }}error{{ else }}fatal{{ end -}}
+{{- else if eq $v "qdrant" -}}
+{{- if eq $level "WARNING" }}WARN{{ else if eq $level "CRITICAL" }}ERROR{{ else }}{{ $level }}{{ end -}}
+{{- else if eq $v "langfuse" -}}
+{{- if eq $level "WARNING" }}warn{{ else if eq $level "CRITICAL" }}error{{ else }}{{ $level | lower }}{{ end -}}
+{{- else if eq $v "valkey" -}}
+{{- if eq $level "DEBUG" }}verbose{{ else if eq $level "INFO" }}notice{{ else }}warning{{ end -}}
+{{- else if eq $v "envoy" -}}
+{{- if eq $level "WARNING" }}warn{{ else if eq $level "CRITICAL" }}error{{ else }}{{ $level | lower }}{{ end -}}
+{{- else if eq $v "clickhouse" -}}
+{{- if eq $level "DEBUG" }}debug{{ else if eq $level "INFO" }}information{{ else if eq $level "WARNING" }}warning{{ else if eq $level "ERROR" }}error{{ else }}fatal{{ end -}}
+{{- else if eq $v "seaweedfs" -}}
+{{- if eq $level "DEBUG" }}2{{ else }}0{{ end -}}
+{{- else -}}
+{{- $level | lower -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Identity env for Aegra and MCP. Dev token shortcuts are off unless a local overlay sets them.
 */}}
 {{- define "zelkor-platform.authEnv" -}}
@@ -200,6 +266,8 @@ Only emitted when otelTargets or init keys are set.
   value: {{ .Values.langfuse.migration.nativeOtelBehaviour | default "direct" | quote }}
 - name: LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN
   value: {{ .Values.langfuse.migration.allowPreviewOptIn | default true | quote }}
+- name: LANGFUSE_LOG_LEVEL
+  value: {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.langfuse "vendor" "langfuse") | quote }}
 {{ include "zelkor-platform.langfuseS3Env" . }}
 {{- end }}
 

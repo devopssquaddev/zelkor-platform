@@ -19,6 +19,22 @@ spec:
     {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-clickhouse-log
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+data:
+  zelkor-log.xml: |
+    <clickhouse>
+      <logger>
+        <level>{{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.clickhouse "vendor" "clickhouse") }}</level>
+        <console>1</console>
+      </logger>
+    </clickhouse>
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -60,5 +76,13 @@ spec:
                   key: password
             - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
               value: "1"
+          volumeMounts:
+            - name: zelkor-log
+              mountPath: /etc/clickhouse-server/config.d/zelkor-log.xml
+              subPath: zelkor-log.xml
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.clickhouse) | nindent 10 }}
+      volumes:
+        - name: zelkor-log
+          configMap:
+            name: {{ include "zelkor-platform.fullname" . }}-clickhouse-log
 {{- end }}

@@ -201,9 +201,11 @@ def wait_healthy(attempts: int = 30) -> None:
     for _ in range(attempts):
         try:
             urllib.request.urlopen(f"{LANGFUSE_HOST}/api/public/health", timeout=5)
+            logger.info("Langfuse healthy")
             return
         except Exception as exc:
             last = str(exc)
+            logger.debug("Langfuse health retry: %s", exc)
             time.sleep(2)
     raise RuntimeError(f"Langfuse not healthy: {last}")
 
@@ -511,7 +513,9 @@ def seed_armor(projects: List[Dict[str, str]]) -> None:
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO)
+    from zelkor_logging import configure_logging
+
+    configure_logging("zelkor-langfuse-seed")
     extra = parse_extra_projects(EXTRA_PROJECTS_RAW)
     if not LANGFUSE_HOST or not PUBLIC_KEY or not SECRET_KEY:
         logger.info("skip: Langfuse host or keys unset")

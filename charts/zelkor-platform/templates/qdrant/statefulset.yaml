@@ -48,5 +48,8 @@ spec:
               name: http
             - containerPort: 6334
               name: grpc
+          env:
+            - name: QDRANT__LOG_LEVEL
+              value: {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.qdrant "vendor" "qdrant") | quote }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.qdrant) | nindent 10 }}
 {{- end }}

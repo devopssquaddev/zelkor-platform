@@ -41,6 +41,4 @@ class SandboxMCPServer(MCPToolHandler):
 
 
 if __name__ == "__main__":
-    import logging
-    logging.basicConfig(level=logging.INFO)
     run_mcp_server(SandboxMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))

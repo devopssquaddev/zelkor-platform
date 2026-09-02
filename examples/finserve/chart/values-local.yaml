@@ -6,6 +6,9 @@ gateway:
   enabled: false
 
 desk:
+  logging:
+    level: DEBUG
+    format: json
   sharedRoute:
     host: aegra.localhost
   auth:
@@ -28,6 +31,9 @@ desk:
       value: "finserve_policies"
 
 quant:
+  logging:
+    level: DEBUG
+    format: json
   sharedRoute:
     host: aegra.localhost
   auth:
@@ -50,6 +56,9 @@ quant:
       value: "finserve_policies"
 
 coder:
+  logging:
+    level: DEBUG
+    format: json
   sharedRoute:
     host: aegra.localhost
   auth:

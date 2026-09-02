@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -30,6 +31,8 @@ PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 NOT_YET = frozenset({"undeploy", "logs"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
 LATER = "This command is not in this release; it ships before v1.0.0-ce."
+
+logger = logging.getLogger("zelkor-cli")
 
 RunFn = Callable[..., subprocess.CompletedProcess]
 
@@ -525,7 +528,24 @@ def _env_from_args(args: argparse.Namespace, *, prefer_local: bool = False) -> E
     )
 
 
+def _boot_logging() -> None:
+    common = Path(__file__).resolve().parents[3] / "images" / "common"
+    if (common / "zelkor_logging.py").is_file() and str(common) not in sys.path:
+        sys.path.insert(0, str(common))
+    try:
+        from zelkor_logging import configure_logging
+    except ImportError:
+        logging.basicConfig(
+            level=getattr(logging, os.getenv("ZELKOR_LOG_LEVEL", "INFO").upper(), logging.INFO)
+        )
+        return
+    if not os.getenv("ZELKOR_LOG_FORMAT"):
+        os.environ["ZELKOR_LOG_FORMAT"] = "text" if sys.stderr.isatty() else "json"
+    configure_logging("zelkor-cli")
+
+
 def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> int:
+    _boot_logging()
     parser = argparse.ArgumentParser(prog="zelkor", description="One packager for every Zelkor agent")
     parser.add_argument("--env", default="", help="named env (kubecontext + namespace)")
     parser.add_argument("--store", default="", help=argparse.SUPPRESS)
@@ -573,6 +593,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         p.add_argument("directory", nargs="?", default=".")
 
     args = parser.parse_args(argv)
+    logger.info("cli cmd=%s", args.cmd)
     if args.cmd in PAID:
         print(UPGRADE, file=sys.stderr)
         return 2

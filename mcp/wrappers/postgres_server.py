@@ -4,6 +4,7 @@ Thin first-party tools: query, list_tables, get_schema. Tenant identity
 comes from the request auth header. SET LOCAL app.current_tenant is
 applied on the same transaction Zelkor opens.
 """
+import logging
 import os
 import re
 import sys
@@ -14,6 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common.mcp_server import MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
+
+logger = logging.getLogger("zelkor-mcp-postgres")
 
 try:
     import psycopg2
@@ -131,6 +134,7 @@ def _split_relation(name: str) -> tuple:
 
 def _with_tenant_txn(tenant_id: str, fn):
     if psycopg2 is None:
+        logger.error("psycopg2 not available")
         return {"error": "psycopg2 not available"}
     conn = psycopg2.connect(DATABASE_URL)
     try:
@@ -138,7 +142,12 @@ def _with_tenant_txn(tenant_id: str, fn):
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             try:
                 cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "SET LOCAL app.current_tenant failed: %s",
+                    exc,
+                    extra={"tenant_id": tenant_id},
+                )
                 conn.rollback()
             result = fn(cur)
             conn.commit()
@@ -226,7 +235,13 @@ class PostgresMCPServer(MCPToolHandler):
             rows = [_serialize_row(dict(r)) for r in cur.fetchall()]
             return {"rows": rows, "count": len(rows)}
 
-        return _with_tenant_txn(tenant_id, _run)
+        result = _with_tenant_txn(tenant_id, _run)
+        logger.info(
+            "postgres query rows=%s",
+            result.get("count") if isinstance(result, dict) else "?",
+            extra={"event": "tools_call", "tenant_id": tenant_id},
+        )
+        return result
 
     def _list_tables(self, tenant_id: str):
         def _run(cur):
@@ -234,7 +249,13 @@ class PostgresMCPServer(MCPToolHandler):
             tables = [_serialize_row(dict(r)) for r in cur.fetchall()]
             return {"tables": tables, "count": len(tables)}
 
-        return _with_tenant_txn(tenant_id, _run)
+        result = _with_tenant_txn(tenant_id, _run)
+        logger.info(
+            "postgres list_tables count=%s",
+            result.get("count") if isinstance(result, dict) else "?",
+            extra={"event": "tools_call", "tenant_id": tenant_id},
+        )
+        return result
 
     def _get_schema(self, arguments: dict, tenant_id: str):
         schema, table = _split_relation(arguments.get("name") or "")
@@ -250,10 +271,16 @@ class PostgresMCPServer(MCPToolHandler):
                 "count": len(columns),
             }
 
-        return _with_tenant_txn(tenant_id, _run)
+        result = _with_tenant_txn(tenant_id, _run)
+        logger.info(
+            "postgres get_schema %s.%s columns=%s",
+            schema,
+            table,
+            result.get("count") if isinstance(result, dict) else "?",
+            extra={"event": "tools_call", "tenant_id": tenant_id},
+        )
+        return result
 
 
 if __name__ == "__main__":
-    import logging
-    logging.basicConfig(level=logging.INFO)
     run_mcp_server(PostgresMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))

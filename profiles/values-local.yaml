@@ -5,6 +5,10 @@ global:
   tier: oss
   imagePullPolicy: IfNotPresent
 
+logging:
+  level: DEBUG
+  format: json
+
 databases:
   mode: in-cluster-basic
 

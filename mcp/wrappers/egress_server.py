@@ -122,9 +122,14 @@ class EgressMCPServer(MCPToolHandler):
         operation = arguments.get("operation") or "chat.completions"
         path = gateway_path(operation)
         body = build_body(operation, arguments, model)
+        logger.info(
+            "egress %s model=%s",
+            path,
+            model,
+            extra={"event": "tools_call", "tenant_id": tenant_id},
+        )
         return post_gateway(path, body)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     run_mcp_server(EgressMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))

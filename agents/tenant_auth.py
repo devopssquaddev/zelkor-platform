@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 try:
     import jwt
 except ImportError:
     jwt = None
 from typing import Dict, Any
+
+logger = logging.getLogger("zelkor-tenant-auth")
 
 
 def _flag(name: str) -> bool:
@@ -40,6 +43,10 @@ class TenantAuth:
             if auth_header.startswith(bearer):
                 tenant_id = auth_header[len(bearer):].strip()
                 if tenant_id:
+                    logger.debug(
+                        "auth ok mode=dev",
+                        extra={"event": "auth", "tenant_id": tenant_id},
+                    )
                     return {
                         "identity": tenant_id,
                         "tenant_id": tenant_id,
@@ -48,9 +55,14 @@ class TenantAuth:
                     }
 
         if self.trust_tenant_header and x_tenant and not auth_header:
+            tenant_id = x_tenant.strip()
+            logger.debug(
+                "auth ok mode=header",
+                extra={"event": "auth", "tenant_id": tenant_id},
+            )
             return {
-                "identity": x_tenant.strip(),
-                "tenant_id": x_tenant.strip(),
+                "identity": tenant_id,
+                "tenant_id": tenant_id,
                 "is_authenticated": True,
                 "mode": "header"
             }
@@ -58,6 +70,7 @@ class TenantAuth:
         if auth_header.startswith("Bearer "):
             token = auth_header.split("Bearer ", 1)[1].strip()
             if not jwt:
+                logger.error("PyJWT not installed")
                 return {
                     "is_authenticated": False,
                     "identity": None,
@@ -65,6 +78,7 @@ class TenantAuth:
                     "error": "PyJWT not installed"
                 }
             if not self.secret_key:
+                logger.error("AUTH_JWT_SECRET is required to verify Bearer JWT")
                 return {
                     "is_authenticated": False,
                     "identity": "anonymous",
@@ -82,6 +96,10 @@ class TenantAuth:
                 else:
                     tenant_id = "default"
 
+                logger.debug(
+                    "auth ok mode=jwt",
+                    extra={"event": "auth", "tenant_id": tenant_id},
+                )
                 return {
                     "identity": tenant_id,
                     "tenant_id": tenant_id,
@@ -90,6 +108,7 @@ class TenantAuth:
                     "mode": "jwt"
                 }
             except Exception as e:
+                logger.warning("JWT verify failed: %s", type(e).__name__)
                 return {
                     "identity": "anonymous",
                     "tenant_id": None,
@@ -97,6 +116,7 @@ class TenantAuth:
                     "error": str(e)
                 }
 
+        logger.debug("auth denied: no credentials")
         return {
             "identity": "anonymous",
             "tenant_id": None,

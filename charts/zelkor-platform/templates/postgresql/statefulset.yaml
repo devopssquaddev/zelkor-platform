@@ -59,6 +59,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "zelkor-platform.fullname" . }}-postgresql
                   key: database
+          args:
+            - postgres
+            - -c
+            - log_min_messages={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.postgresql "vendor" "postgres") }}
+            - -c
+            - log_destination=stderr
           volumeMounts:
             - name: init-scripts
               mountPath: /docker-entrypoint-initdb.d

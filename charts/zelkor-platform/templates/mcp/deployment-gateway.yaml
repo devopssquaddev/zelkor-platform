@@ -44,6 +44,7 @@ spec:
           ports:
             - containerPort: 8080
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.gateway "name" "zelkor-mcp-gateway") | nindent 12 }}
             {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: POSTGRES_MCP_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-postgres:8080"

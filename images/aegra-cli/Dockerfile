@@ -13,7 +13,12 @@ ENV PYTHONUNBUFFERED=1 \
 COPY images/aegra-cli/requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
+COPY images/common/zelkor_logging.py /usr/local/lib/python3.12/site-packages/zelkor_logging.py
+COPY images/aegra-cli/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
+
+RUN chmod 644 /usr/local/lib/python3.12/site-packages/sitecustomize.py \
+        /usr/local/lib/python3.12/site-packages/zelkor_logging.py \
+    && useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && chown -R zelkor:zelkor /app
 USER 1000
 

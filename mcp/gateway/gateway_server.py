@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.mcp_server import MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
 
-logger = logging.getLogger("mcp-gateway")
+logger = logging.getLogger("zelkor-mcp-gateway")
 
 POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "http://zelkor-platform-mcp-postgres:8080")
 QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "http://zelkor-platform-mcp-qdrant:8080")
@@ -109,12 +109,21 @@ class GatewayMCPServer(MCPToolHandler):
         for prefix, url in BACKENDS.items():
             try:
                 result = _rpc_call(url, "tools/list", {})
+                n = 0
                 for tool in result.get("tools") or []:
                     t = dict(tool)
                     t["name"] = f"{prefix}__{tool['name']}"
                     tools.append(t)
+                    n += 1
+                logger.debug("listed %s tools from backend %s", n, prefix)
             except Exception as exc:
                 logger.warning("Failed to list tools from %s: %s", prefix, exc)
+        logger.info(
+            "MCP gateway backends=%s tools=%s",
+            ",".join(sorted(BACKENDS)),
+            len(tools),
+            extra={"event": "tools_list"},
+        )
         return tools
 
     def call_tool(self, name: str, arguments: dict, tenant_id: str) -> Any:
@@ -127,6 +136,12 @@ class GatewayMCPServer(MCPToolHandler):
         args = dict(arguments)
         args.setdefault("tenant_id", tenant_id)
 
+        logger.debug(
+            "forward tools/call %s to %s",
+            tool_name,
+            prefix,
+            extra={"event": "tools_call", "tenant_id": tenant_id},
+        )
         result = _rpc_call(BACKENDS[prefix], "tools/call", {"name": tool_name, "arguments": args})
         text = (result.get("content") or [{}])[0].get("text", "{}")
         try:
@@ -141,5 +156,4 @@ def _tenant_with_headers(headers: Dict[str, str]):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     run_mcp_server(GatewayMCPServer(), _tenant_with_headers, port=int(os.getenv("PORT", "8080")))

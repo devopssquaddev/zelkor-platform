@@ -76,3 +76,22 @@ app.kubernetes.io/component: aegra
 {{- printf "%s:%s" $img.repository ($img.tag | default "dev") -}}
 {{- end -}}
 {{- end }}
+
+{{- define "zelkor-agent.logLevel" -}}
+{{- $c := .Values.logging | default dict -}}
+{{- $c.level | default "INFO" | upper -}}
+{{- end }}
+
+{{- define "zelkor-agent.logFormat" -}}
+{{- $c := .Values.logging | default dict -}}
+{{- $c.format | default "json" | lower -}}
+{{- end }}
+
+{{- define "zelkor-agent.logEnv" -}}
+- name: ZELKOR_LOG_LEVEL
+  value: {{ include "zelkor-agent.logLevel" . | quote }}
+- name: ZELKOR_LOG_FORMAT
+  value: {{ include "zelkor-agent.logFormat" . | quote }}
+- name: ZELKOR_LOG_COMPONENT
+  value: "zelkor-aegra"
+{{- end }}

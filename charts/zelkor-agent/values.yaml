@@ -6,6 +6,10 @@ global:
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
 
+logging:
+  level: INFO
+  format: json
+
 graphId: ""
 # Several ids on one Deployment (fat multi-graph image). Used when graphId is empty.
 graphIds: []

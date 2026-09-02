@@ -40,8 +40,8 @@ spec:
             - {{ .Values.guardrails.nemo.defaultConfigId | default "content_safety" | quote }}
             - --disable-chat-ui
           {{- else }}
+          command: ["python", "/app/boot.py"]
           args:
-            - nemoguardrails
             - server
             - --config
             - {{ .Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs" | quote }}
@@ -55,6 +55,7 @@ spec:
             - containerPort: 8000
               name: http
           env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.guardrails.nemo "name" "zelkor-nemo") | nindent 12 }}
             - name: OPENAI_API_KEY
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
             - name: MAIN_MODEL_BASE_URL

@@ -184,7 +184,9 @@ def _stamp_tenant_on_tool(tool):
         async def coro(*args, **kwargs):
             args, kwargs = _stamp_invoke_args(args, kwargs)
             try:
-                return _normalize_tool_result(tool, await orig_coro(*args, **kwargs))
+                result = _normalize_tool_result(tool, await orig_coro(*args, **kwargs))
+                logger.debug("MCP tool %s ok", getattr(tool, "name", "?"))
+                return result
             except Exception as exc:
                 logger.warning("MCP tool %s failed: %s", getattr(tool, "name", "?"), exc)
                 return _normalize_tool_result(tool, _tool_error_text(exc))
@@ -195,7 +197,9 @@ def _stamp_tenant_on_tool(tool):
         def func(*args, **kwargs):
             args, kwargs = _stamp_invoke_args(args, kwargs)
             try:
-                return _normalize_tool_result(tool, orig_func(*args, **kwargs))
+                result = _normalize_tool_result(tool, orig_func(*args, **kwargs))
+                logger.debug("MCP tool %s ok", getattr(tool, "name", "?"))
+                return result
             except Exception as exc:
                 logger.warning("MCP tool %s failed: %s", getattr(tool, "name", "?"), exc)
                 return _normalize_tool_result(tool, _tool_error_text(exc))

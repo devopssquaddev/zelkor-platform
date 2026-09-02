@@ -13,6 +13,7 @@ COPY images/mcp/requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY mcp /app/mcp
+COPY images/common/zelkor_logging.py /app/mcp/zelkor_logging.py
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && chown -R zelkor:zelkor /app
