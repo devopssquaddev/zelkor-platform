@@ -164,11 +164,7 @@ class PostgresMCPServer(MCPToolHandler):
         return [
             {
                 "name": "query",
-                "description": (
-                    "Execute a read-only SQL query against PostgreSQL. "
-                    "tenant_id must match the authenticated caller. "
-                    "Optional params are bound to %s or $1-style placeholders."
-                ),
+                "description": "Read-only SQL; tenant_id must match caller.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -184,11 +180,7 @@ class PostgresMCPServer(MCPToolHandler):
             },
             {
                 "name": "list_tables",
-                "description": (
-                    "List relation names the connected role can SELECT. "
-                    "Filtered by grants and search_path; no catalog dump. "
-                    "tenant_id must match the authenticated caller."
-                ),
+                "description": "List SELECT-visible relations for tenant_id.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {"tenant_id": {"type": "string"}},
@@ -197,11 +189,7 @@ class PostgresMCPServer(MCPToolHandler):
             },
             {
                 "name": "get_schema",
-                "description": (
-                    "Columns and types for one relation the role can SELECT. "
-                    "Rejects unknown or unauthorized names. "
-                    "tenant_id must match the authenticated caller."
-                ),
+                "description": "Column types for one authorized relation; tenant_id required.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

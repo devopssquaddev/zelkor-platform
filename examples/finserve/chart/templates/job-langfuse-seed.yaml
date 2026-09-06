@@ -5,11 +5,8 @@ metadata:
   name: {{ include "finserve.fullname" . }}-langfuse-seed
   labels:
     {{- include "finserve.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
-    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
+  ttlSecondsAfterFinished: 600
   backoffLimit: 5
   template:
     metadata:

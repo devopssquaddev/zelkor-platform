@@ -1,0 +1,7 @@
+# Envoy Gateway + AI Gateway bootstrap images (not in platform Helm chart).
+# Update with: ./scripts/install-images.sh --capture
+docker.io/envoyproxy/gateway:v1.9.1
+docker.io/envoyproxy/ratelimit:17b1956c
+docker.io/envoyproxy/ai-gateway-controller:v1.1.0
+docker.io/envoyproxy/ai-gateway-extproc:v1.1.0
+docker.io/envoyproxy/envoy@sha256:eb2c01c13125d1629637cb4e4cce7207009fb7cc2c8027f9742758549d15b6f4

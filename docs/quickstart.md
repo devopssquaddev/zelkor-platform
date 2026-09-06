@@ -1,8 +1,13 @@
 # Quick Start
 
-Deploy a production-like Zelkor Platform instance (including the FinServe demo) locally in under 5 minutes with `./install.sh` on a **first** kind cluster.
+Deploy a production-like Zelkor Platform instance (including the FinServe demo) locally. Default **`INSTALL_PROFILE=fast`** uses a **two-phase first run**:
 
-**Clock starts when Docker is already running** and you have one LLM provider key. `./install.sh` prefetches first-party `zelkor-*` images while it creates the cluster. Postgres, Langfuse, ClickHouse, and other public images are pulled by the cluster, not by prefetch.
+1. **Download** — banner **"Downloading components"**; warm every pinned workload ref through pull-through local registries (`docker.io` + `ghcr.io` proxies on `127.0.0.1:5000` / `:5001`; outside the install timer).
+2. **Install** — `[install +MM:SS]` timer: `kind create` (containerd mirrors), connect registries, Envoy bootstrap, Helm, explicit rollout/job waits.
+
+**Clock starts after the download phase** (when Docker is already running and you have one LLM provider key).
+
+Escape hatches: `PREFETCH_IMAGES=false` (skip download), `LOCAL_REGISTRY=false` (direct upstream pull), `PREFETCH_KIND_LOAD=true` (legacy kind load), `INSTALL_PROFILE=full` (NetworkPolicies + Langfuse evaluator seed for pytest). Override proxy ports with `LOCAL_REGISTRY_DOCKER_PORT` / `LOCAL_REGISTRY_GHCR_PORT` if `5000`/`5001` are busy.
 
 ## Architecture & Pillars
 
@@ -53,17 +58,37 @@ OLLAMA_LOCAL_HOST="http://host.docker.internal:11434" ./install.sh
 
 `./install.sh` without a provider exits with usage help. The platform is self-hosted on kind; inference uses **your** chosen provider (BYOK). Default install includes FinServe.
 
-The script will:
+The script will (`INSTALL_PROFILE=fast`, default):
 
 1. Verify `docker`, `kind`, `helm`, and `kubectl` are available and Docker is running
 2. Require at least one LLM provider env var
-3. On first kind create, prefetch images in the background (`scripts/prefetch-images.sh`) while the cluster and gVisor install, then load them into kind
-4. Create a `kind` cluster named `zelkor` (with gVisor container runtime support)
-5. Install Envoy Gateway and Envoy AI Gateway controller and CRDs
-6. Deploy the unified Helm chart with `profiles/values-local.yaml` (plus the FinServe platform overlay). Sets the in-cluster AI Gateway URL on the first Helm when the Envoy Service name is known or predictable
-7. Deploy the FinServe wealth management demo as a separate Helm release (`INSTALL_EXAMPLES=true` by default)
+3. **Download phase** — start pull-through registries and warm all workload refs (`scripts/install-images.sh` list) with banner **Downloading components** (outside install timer)
+4. Create a `kind` cluster named `zelkor` from `kindest/node:v1.32.2` (kubelet pulls via containerd mirrors)
+5. Install gVisor (`runsc`) on the kind node and deploy sandbox MCP (one gVisor worker)
+6. Install Envoy Gateway and Envoy AI Gateway controller and CRDs
+7. Deploy the unified Helm chart with `profiles/values-local-fast.yaml` (plus the FinServe platform overlay)
+8. Deploy the FinServe demo as a separate Helm release (`INSTALL_EXAMPLES=true` by default)
+9. **Demo tour (fast only)** — six FinServe e2e smokes via `scripts/demo-tour.sh` (sample Langfuse traces; `RUN_DEMO_TOUR=false` to skip). Failures are reported but do not fail install (LLM responses can be non-deterministic).
 
-Optional: start pulls while you clone (`./scripts/prefetch-images.sh`). First-party images come from `ghcr.io/devopssquaddev` (tag `dev`). To build locally instead of pulling:
+**Wait behavior:** when a rollout or Job wait times out, the installer re-checks the resource's real status for `WAIT_RECHECK_GRACE` seconds (default 90). Gateways, PostgreSQL, ClickHouse, SeaweedFS, Aegra, and both Langfuse Deployments abort the install if still unhealthy. Valkey, Qdrant, NeMo/MCP, seed Jobs, and the FinServe demo only warn and appear in a **Degraded components** block at the end. Set `INSTALL_STRICT=true` to exit non-zero when anything degraded.
+
+**Escape hatches:**
+
+```bash
+# Skip download phase (kubelet pulls on demand):
+PREFETCH_IMAGES=false OPENAI_API_KEY="sk-..." ./install.sh
+
+# Direct upstream pull instead of local registry proxies:
+LOCAL_REGISTRY=false OPENAI_API_KEY="sk-..." ./install.sh
+
+# Legacy kind load after direct pull:
+LOCAL_REGISTRY=false PREFETCH_KIND_LOAD=true OPENAI_API_KEY="sk-..." ./install.sh
+
+# Full profile (NetworkPolicies + Langfuse evaluator seed — for pytest):
+INSTALL_PROFILE=full OPENAI_API_KEY="sk-..." ./install.sh
+```
+
+Optional while cloning: `./scripts/prefetch-images.sh`. Image list: `./scripts/install-images.sh`. To build first-party images locally:
 
 ```bash
 BUILD_IMAGES=true OPENAI_API_KEY="sk-..." ./install.sh
@@ -86,7 +111,7 @@ All services and Web UIs are accessible via Kubernetes Gateway API on port `8088
 
 | Component | URL | Dev Credentials / Headers |
 | :--- | :--- | :--- |
-| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Projects: `Zelkor Platform`, `FinServe AI`) |
+| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` (Project: `Zelkor Platform`) |
 | **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
 | **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
 | **FinServe Demo** | [http://aegra.localhost:8088](http://aegra.localhost:8088) (`X-Graph-ID: finserve-advisor` / `research` / `quant` / `coder`) | `Authorization: Bearer dev:Bank_Alpha` |

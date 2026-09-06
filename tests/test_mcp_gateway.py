@@ -37,7 +37,9 @@ def test_platform_mcp_gateway_tools_list():
         names = [t.get("name") for t in tools]
         assert any("postgres__" in n for n in names), f"Expected postgres tools, got {names}"
         assert any("qdrant__" in n for n in names), f"Expected qdrant tools, got {names}"
-        assert any("sandbox__" in n for n in names), f"Expected sandbox tools, got {names}"
+        sandbox_on = os.environ.get("MCP_SANDBOX_ENABLED", "true").lower() not in ("0", "false", "no")
+        if sandbox_on:
+            assert any("sandbox__" in n for n in names), f"Expected sandbox tools, got {names}"
         if any(n.startswith("postgres__") for n in names):
             assert "postgres__query" in names
             assert "postgres__list_tables" in names

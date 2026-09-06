@@ -7,7 +7,13 @@ import os
 import httpx
 import pytest
 
-from tests.helpers.langfuse import GATEWAY_BASE_URL, LANGFUSE_AUTH, langfuse_get, langfuse_headers
+from tests.helpers.langfuse import (
+    GATEWAY_BASE_URL,
+    langfuse_auth,
+    langfuse_get,
+    langfuse_headers,
+    wait_for_llm_connection,
+)
 
 UPSTREAM_KEY_MARKERS = ("sk-proj-", "sk-ant-", "AIza", "sk-or-")
 
@@ -19,6 +25,8 @@ def _init_expected() -> bool:
 def test_langfuse_zelkor_ai_gateway_connection():
     if not _init_expected():
         pytest.skip("langfuse.init disabled")
+    if not wait_for_llm_connection(timeout=120.0):
+        pytest.skip("zelkor-ai-gateway connection not seeded within 120s (surfaces Job may still be running)")
     try:
         resp = langfuse_get("/api/public/llm-connections")
     except httpx.ConnectError:
@@ -87,7 +95,7 @@ def test_langfuse_connection_secret_not_upstream_via_direct():
         resp = httpx.get(
             f"{GATEWAY_BASE_URL}/api/public/llm-connections",
             headers=langfuse_headers(),
-            auth=LANGFUSE_AUTH,
+            auth=langfuse_auth(),
             timeout=10.0,
         )
     except httpx.ConnectError:

@@ -7,37 +7,127 @@
 #   OLLAMA_API_KEY=... ./install.sh
 #   OLLAMA_LOCAL_HOST=http://host.docker.internal:11434 ./install.sh
 #
-# First kind create prefetches first-party GHCR images (scripts/prefetch-images.sh)
-# while the cluster and gVisor install. Public chart images (postgres, Langfuse, …)
-# are not prefetched — kubelet pulls them. Optional: ./scripts/prefetch-images.sh while cloning.
+# Phase 1 (first create): pull-through local registries warm every workload ref
+# (download phase, outside install timer). Phase 2: kind create, registry connect, Helm.
+# Escape: LOCAL_REGISTRY=false → direct docker pull; PREFETCH_KIND_LOAD=true → kind load.
 #
 # Prerequisites: docker, kind, helm, kubectl, and at least one LLM provider (see below)
 
 set -euo pipefail
 
 START_TIME=$(date +%s)
+INSTALL_START_TIME=$START_TIME
+DOWNLOAD_DURATION=0
 
 CLUSTER_NAME="${CLUSTER_NAME:-zelkor}"
 CHART_PATH="${CHART_PATH:-charts/zelkor-platform}"
-VALUES_FILE="${VALUES_FILE:-profiles/values-local.yaml}"
-KIND_CONFIG="${KIND_CONFIG:-kind-config.yaml}"
-INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
+INSTALL_PROFILE="${INSTALL_PROFILE:-fast}"
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.32.2}"
 FINSERVE_CHART_PATH="${FINSERVE_CHART_PATH:-examples/finserve/chart}"
 FINSERVE_VALUES_FILE="${FINSERVE_VALUES_FILE:-${FINSERVE_CHART_PATH}/values-local.yaml}"
 FINSERVE_PLATFORM_OVERLAY="${FINSERVE_PLATFORM_OVERLAY:-${FINSERVE_CHART_PATH}/values-platform-overlay.yaml}"
 BUILD_IMAGES="${BUILD_IMAGES:-false}"
 KIND_LOAD_IMAGES="${KIND_LOAD_IMAGES:-false}"
 PREFETCH_IMAGES="${PREFETCH_IMAGES:-true}"
-PREFETCH_KIND_LOAD="${PREFETCH_KIND_LOAD:-true}"
+PREFETCH_KIND_LOAD="${PREFETCH_KIND_LOAD:-false}"
+LOCAL_REGISTRY="${LOCAL_REGISTRY:-true}"
+LOCAL_REGISTRY_DOCKER_NAME="${LOCAL_REGISTRY_DOCKER_NAME:-zelkor-registry-docker}"
+LOCAL_REGISTRY_GHCR_NAME="${LOCAL_REGISTRY_GHCR_NAME:-zelkor-registry-ghcr}"
+LOCAL_REGISTRY_DOCKER_PORT="${LOCAL_REGISTRY_DOCKER_PORT:-5000}"
+LOCAL_REGISTRY_GHCR_PORT="${LOCAL_REGISTRY_GHCR_PORT:-5001}"
+LOCAL_REGISTRY_BIND="${LOCAL_REGISTRY_BIND:-127.0.0.1}"
+INSTALL_TIMINGS_FILE="${INSTALL_TIMINGS_FILE:-/tmp/zelkor-install-timings.tsv}"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
 IMAGE_TAG="${IMAGE_TAG:-dev}"
 HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-zelkor-platform}"
 GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-default}"
 # Pinned gVisor point release for kind sandbox bootstrap (see internal/plan/component_compatibility_matrix.md)
 GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
+DOCKER_PLATFORM="${DOCKER_PLATFORM:-$(case "$(uname -m)" in aarch64|arm64) echo linux/arm64 ;; *) echo linux/amd64 ;; esac)}"
+# A lost watch is not a failed rollout: re-check real status before giving up.
+WAIT_RECHECK_GRACE="${WAIT_RECHECK_GRACE:-90}"
+JOB_WAIT_TIMEOUT="${JOB_WAIT_TIMEOUT:-10m}"
+# Optional components only warn. Set true to exit non-zero when anything degraded.
+INSTALL_STRICT="${INSTALL_STRICT:-false}"
+DEGRADED_COMPONENTS=()
+NOT_VERIFIED=()
 
-log() { echo "[install] $*"; }
-die() { echo "[install] ERROR: $*" >&2; exit 1; }
+case "$INSTALL_PROFILE" in
+  fast)
+    VALUES_FILE="${VALUES_FILE:-profiles/values-local-fast.yaml}"
+    KIND_CONFIG="${KIND_CONFIG:-kind-config.yaml}"
+    INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
+    GVISOR_INSTALL="${GVISOR_INSTALL:-true}"
+    RUN_DEMO_TOUR="${RUN_DEMO_TOUR:-true}"
+    ;;
+  full)
+    VALUES_FILE="${VALUES_FILE:-profiles/values-local.yaml}"
+    KIND_CONFIG="${KIND_CONFIG:-kind-config.yaml}"
+    INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
+    GVISOR_INSTALL="${GVISOR_INSTALL:-true}"
+    RUN_DEMO_TOUR="${RUN_DEMO_TOUR:-false}"
+    ;;
+  *)
+    echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" >&2
+    exit 1
+    ;;
+esac
+
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  C_GREEN=$'\033[32m'
+  C_YELLOW=$'\033[33m'
+  C_RESET=$'\033[0m'
+else
+  C_GREEN=''
+  C_YELLOW=''
+  C_RESET=''
+fi
+
+log() {
+  local elapsed=$(( $(date +%s) - INSTALL_START_TIME ))
+  printf '[install +%02d:%02d] %s\n' $((elapsed / 60)) $((elapsed % 60)) "$*"
+}
+log_green() { log "${C_GREEN}$*${C_RESET}"; }
+log_warn() { log "${C_YELLOW}$*${C_RESET}"; }
+die() { log "ERROR: $*"; exit 1; }
+
+mark_degraded() {
+  local what="$1"
+  local hint="${2:-}"
+  DEGRADED_COMPONENTS+=("${what}"$'\t'"${hint}")
+  log_warn "WARNING: ${what} is degraded; install continues.${hint:+ Inspect: ${hint}}"
+}
+
+inspect_hint() {
+  case "$1" in
+    "jobs -l "*) echo "kubectl --context ${KCTX} get $1" ;;
+    job/*) echo "kubectl --context ${KCTX} logs $1 --tail=50" ;;
+    *) echo "kubectl --context ${KCTX} describe $1" ;;
+  esac
+}
+
+skip_wait() {
+  local what="$1"
+  local reason="$2"
+  NOT_VERIFIED+=("${what}"$'\t'"$(inspect_hint "$what")")
+  log "    not waiting: ${what} (${reason})"
+}
+
+step_begin() {
+  local safe="${1//[^a-zA-Z0-9_]/_}"
+  eval "STEP_START_${safe}=\$(date +%s)"
+  log ">> $1"
+}
+
+step_end() {
+  local step="$1"
+  local safe="${step//[^a-zA-Z0-9_]/_}"
+  local var="STEP_START_${safe}"
+  local start=${!var:-0}
+  local s=$(( $(date +%s) - start ))
+  log "<< ${step} (${s}s)"
+  printf '%s\t%s\n' "$step" "$s" >> "$INSTALL_TIMINGS_FILE"
+}
 
 # Incremental TTFV: skip healthy gateway bootstrap; wait independent rollouts in parallel.
 deployment_available() {
@@ -49,28 +139,148 @@ deployment_available() {
   [[ "$available" == "True" ]]
 }
 
-wait_rollout_group() {
-  local label="$1"
+# Real status of a rollout/job, independent of whether a watch survived.
+resource_healthy() {
+  local target="$1"
+  local ns="${2:-}"
+  local -a args=(--context "$KCTX" get "$target")
+  [[ -n "$ns" ]] && args+=(-n "$ns")
+  case "${target%%/*}" in
+    deployment|deployments|deploy)
+      local available
+      available=$(kubectl "${args[@]}" \
+        -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
+      [[ "$available" == "True" ]]
+      ;;
+    statefulset|statefulsets|sts)
+      local ready desired
+      ready=$(kubectl "${args[@]}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)
+      desired=$(kubectl "${args[@]}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true)
+      [[ "${desired:-0}" -gt 0 && "${ready:-0}" -ge "${desired:-0}" ]]
+      ;;
+    job|jobs)
+      local succeeded complete
+      succeeded=$(kubectl "${args[@]}" -o jsonpath='{.status.succeeded}' 2>/dev/null || true)
+      complete=$(kubectl "${args[@]}" \
+        -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
+      [[ "${succeeded:-0}" -ge 1 || "$complete" == "True" ]]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# Every job matching a selector reports success.
+jobs_selector_healthy() {
+  local selector="$1"
+  local states
+  states=$(kubectl --context "$KCTX" get jobs -l "$selector" \
+    -o jsonpath='{range .items[*]}{.status.succeeded}{"\n"}{end}' 2>/dev/null || true)
+  [[ -n "$states" ]] || return 1
+  while IFS= read -r s; do
+    [[ "${s:-0}" -ge 1 ]] || return 1
+  done <<< "$states"
+  return 0
+}
+
+# Poll after a timed-out watch; the workload often lands seconds later.
+recheck_healthy() {
+  local checker="$1"
   shift
+  local waited=0
+  while true; do
+    if "$checker" "$@"; then
+      return 0
+    fi
+    [[ "$waited" -lt "$WAIT_RECHECK_GRACE" ]] || return 1
+    sleep 5
+    waited=$((waited + 5))
+  done
+}
+
+# criticality: critical -> die; optional -> record and continue.
+handle_wait_failure() {
+  local criticality="$1"
+  local what="$2"
+  local checker="$3"
+  shift 3
+  log_warn "wait for ${what} did not return cleanly; re-checking actual status (grace ${WAIT_RECHECK_GRACE}s)..."
+  if recheck_healthy "$checker" "$@"; then
+    log_green "${what} is healthy despite the wait timing out; continuing."
+    return 0
+  fi
+  local hint
+  hint=$(inspect_hint "$what")
+  if [[ "$criticality" == "critical" ]]; then
+    die "${what} is not healthy after ${WAIT_RECHECK_GRACE}s recheck. Inspect: ${hint}"
+  fi
+  mark_degraded "$what" "$hint"
+  return 0
+}
+
+wait_one() {
+  local criticality="$1"
+  local target="$2"
+  local ns="${3:-}"
+  local -a args=(--context "$KCTX" rollout status "$target" --timeout="$ROLLOUT_WAIT_TIMEOUT")
+  [[ -n "$ns" ]] && args+=(-n "$ns")
+  log "    waiting: ${target}${ns:+ (ns ${ns})}"
+  if kubectl "${args[@]}"; then
+    return 0
+  fi
+  handle_wait_failure "$criticality" "$target" resource_healthy "$target" "$ns"
+}
+
+wait_group() {
+  local criticality="$1"
+  local label="$2"
+  shift 2
   local pids=()
   local targets=()
-  local t pid failed=0 i=0
+  local failed=()
+  local t pid i=0
   [[ $# -gt 0 ]] || return 0
   log "  -> ${label}"
   for t in "$@"; do
     log "    waiting: ${t}"
-    kubectl --context "$KCTX" rollout status "$t" --timeout=5m &
+    kubectl --context "$KCTX" rollout status "$t" --timeout="$ROLLOUT_WAIT_TIMEOUT" &
     pids+=("$!")
     targets+=("$t")
   done
   for pid in "${pids[@]}"; do
     if ! wait "$pid"; then
-      log "ERROR: rollout failed: ${targets[$i]}"
-      failed=1
+      failed+=("${targets[$i]}")
     fi
     i=$((i + 1))
   done
-  [[ "$failed" -eq 0 ]] || die "Rollout failed: ${label}"
+  if [[ ${#failed[@]} -gt 0 ]]; then
+    for t in "${failed[@]}"; do
+      handle_wait_failure "$criticality" "$t" resource_healthy "$t"
+    done
+  fi
+}
+
+wait_job() {
+  local criticality="$1"
+  local name="$2"
+  log "  waiting: job/${name}"
+  if kubectl --context "$KCTX" wait --for=condition=complete \
+    "job/${name}" --timeout="$JOB_WAIT_TIMEOUT"; then
+    return 0
+  fi
+  handle_wait_failure "$criticality" "job/${name}" resource_healthy "job/${name}"
+}
+
+wait_jobs_selector() {
+  local criticality="$1"
+  local selector="$2"
+  log "  waiting: jobs -l ${selector}"
+  if kubectl --context "$KCTX" wait --for=condition=complete job -l "$selector" \
+    --timeout="$JOB_WAIT_TIMEOUT"; then
+    return 0
+  fi
+  handle_wait_failure "$criticality" "jobs -l ${selector}" jobs_selector_healthy "$selector"
 }
 
 helm_user_value() {
@@ -205,48 +415,104 @@ fi
 resolve_llm_provider_prerequisites
 
 FIRST_KIND_CREATE=false
-PREFETCH_PID=""
-
-start_image_prefetch() {
-  if [[ "$PREFETCH_IMAGES" != "true" ]]; then
-    return 0
-  fi
-  log "Prefetching images in background (kind/gVisor run in parallel)..."
-  INSTALL_EXAMPLES="$INSTALL_EXAMPLES" IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
-    KIND_CLUSTER="$CLUSTER_NAME" \
-    ./scripts/prefetch-images.sh &
-  PREFETCH_PID=$!
-}
-
-wait_image_prefetch() {
-  if [[ -z "$PREFETCH_PID" ]]; then
-    return 0
-  fi
-  log "Waiting for image prefetch to finish..."
-  if ! wait "$PREFETCH_PID"; then
-    log "WARNING: image prefetch reported errors; will kind-load any local first-party images"
-  fi
-  PREFETCH_PID=""
-  if [[ "$FIRST_KIND_CREATE" == "true" && "$PREFETCH_KIND_LOAD" == "true" ]]; then
-    log "Loading prefetched images into kind (kubelet local cache)..."
-    INSTALL_EXAMPLES="$INSTALL_EXAMPLES" IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
-      KIND_CLUSTER="$CLUSTER_NAME" \
-      ./scripts/prefetch-images.sh --load-only --kind-load \
-      || log "WARNING: kind load of prefetched images failed; kubelet will pull on demand"
-  fi
-}
-
 if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
   FIRST_KIND_CREATE=true
-  start_image_prefetch
-  log "Creating kind cluster: $CLUSTER_NAME"
-  if [[ -f "$KIND_CONFIG" ]]; then
-    kind create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG"
+fi
+
+# Cold create pulls large images during rollouts (registry mirrors); Langfuse migrations add minutes.
+ROLLOUT_WAIT_TIMEOUT="${ROLLOUT_WAIT_TIMEOUT:-$([ "$FIRST_KIND_CREATE" = true ] && echo 15m || echo 5m)}"
+
+download_components() {
+  [[ "$PREFETCH_IMAGES" == "true" ]] || return 0
+  [[ "$FIRST_KIND_CREATE" == "true" ]] || return 0
+
+  local dl_start count
+  dl_start=$(date +%s)
+  : > "$INSTALL_TIMINGS_FILE"
+  mapfile -t _PREFETCH_REFS < <(
+    VALUES_FILE="$VALUES_FILE" INSTALL_EXAMPLES="$INSTALL_EXAMPLES" \
+      IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
+      ./scripts/install-images.sh
+  )
+  count=${#_PREFETCH_REFS[@]}
+
+  cat <<EOF
+
+======================================================================
+  Downloading components
+======================================================================
+  Warming ${count} container images via pull-through local registries.
+  This phase is outside the install timer.
+======================================================================
+
+EOF
+
+  if ! docker image inspect "$KIND_NODE_IMAGE" >/dev/null 2>&1; then
+    echo "[download] pulling kind node base ${KIND_NODE_IMAGE} (platform=${DOCKER_PLATFORM})..."
+    docker pull --platform "$DOCKER_PLATFORM" "$KIND_NODE_IMAGE"
   else
-    kind create cluster --name "$CLUSTER_NAME"
+    echo "[download] kind node base already local: ${KIND_NODE_IMAGE}"
   fi
 
-  # Install runsc (gVisor) binary on kind control plane node (pinned release, not release/latest)
+  if [[ "$LOCAL_REGISTRY" == "true" ]]; then
+    step_begin download_registry_start
+    LOCAL_REGISTRY_DOCKER_NAME="$LOCAL_REGISTRY_DOCKER_NAME" \
+      LOCAL_REGISTRY_GHCR_NAME="$LOCAL_REGISTRY_GHCR_NAME" \
+      LOCAL_REGISTRY_DOCKER_PORT="$LOCAL_REGISTRY_DOCKER_PORT" \
+      LOCAL_REGISTRY_GHCR_PORT="$LOCAL_REGISTRY_GHCR_PORT" \
+      LOCAL_REGISTRY_BIND="$LOCAL_REGISTRY_BIND" \
+      ./scripts/local-registry.sh start
+    step_end download_registry_start
+
+    step_begin download_warm_cache
+    VALUES_FILE="$VALUES_FILE" INSTALL_EXAMPLES="$INSTALL_EXAMPLES" \
+      IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
+      DOCKER_PLATFORM="$DOCKER_PLATFORM" \
+      LOCAL_REGISTRY_BIND="$LOCAL_REGISTRY_BIND" \
+      LOCAL_REGISTRY_DOCKER_PORT="$LOCAL_REGISTRY_DOCKER_PORT" \
+      LOCAL_REGISTRY_GHCR_PORT="$LOCAL_REGISTRY_GHCR_PORT" \
+      ./scripts/warm-registry-cache.sh
+    step_end download_warm_cache
+  else
+    step_begin download_warm_cache
+    VALUES_FILE="$VALUES_FILE" INSTALL_EXAMPLES="$INSTALL_EXAMPLES" \
+      IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
+      DOCKER_PLATFORM="$DOCKER_PLATFORM" \
+      ./scripts/prefetch-images.sh --pull-only
+    step_end download_warm_cache
+  fi
+
+  DOWNLOAD_DURATION=$(( $(date +%s) - dl_start ))
+  echo "[download] complete (${DOWNLOAD_DURATION}s). Install timer starts now."
+}
+
+download_components
+INSTALL_START_TIME=$(date +%s)
+[[ -f "$INSTALL_TIMINGS_FILE" ]] || : > "$INSTALL_TIMINGS_FILE"
+log "Install profile: ${INSTALL_PROFILE} (values=${VALUES_FILE}, node=${KIND_NODE_IMAGE}, local_registry=${LOCAL_REGISTRY})"
+
+load_images_into_kind() {
+  if [[ "$FIRST_KIND_CREATE" != "true" || "$PREFETCH_KIND_LOAD" != "true" ]]; then
+    return 0
+  fi
+  log "Loading prefetched images into kind (kubelet local cache)..."
+  VALUES_FILE="$VALUES_FILE" INSTALL_EXAMPLES="$INSTALL_EXAMPLES" \
+    IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
+    DOCKER_PLATFORM="$DOCKER_PLATFORM" \
+    KIND_CLUSTER="$CLUSTER_NAME" \
+    ./scripts/prefetch-images.sh --load-only --kind-load \
+    || log "WARNING: kind load failed; kubelet will pull on demand"
+}
+
+install_gvisor_on_kind_node() {
+  if [[ "$GVISOR_INSTALL" != "true" ]]; then
+    return 0
+  fi
+  if ! docker inspect "${CLUSTER_NAME}-control-plane" >/dev/null 2>&1; then
+    log "WARNING: kind node ${CLUSTER_NAME}-control-plane not found; skipping gVisor install"
+    return 0
+  fi
+  step_begin gvisor_install
   log "Configuring gVisor (runsc) release ${GVISOR_RELEASE} on kind node..."
   docker exec "${CLUSTER_NAME}-control-plane" sh -c "
     set -e
@@ -256,6 +522,26 @@ if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
     curl -fsSL \"\${BASE}/containerd-shim-runsc-v1\" -o /usr/local/bin/containerd-shim-runsc-v1
     chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
   " || log "WARNING: gVisor install failed (sandbox RuntimeClass may not work on this node)"
+  step_end gvisor_install
+}
+
+if [[ "$FIRST_KIND_CREATE" == "true" ]]; then
+  step_begin kind_create
+  log "Creating kind cluster: $CLUSTER_NAME (node image: ${KIND_NODE_IMAGE})"
+  if [[ -f "$KIND_CONFIG" ]]; then
+    kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --config "$KIND_CONFIG"
+  else
+    kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE"
+  fi
+  step_end kind_create
+
+  if [[ "$LOCAL_REGISTRY" == "true" ]]; then
+    step_begin registry_connect
+    LOCAL_REGISTRY_DOCKER_NAME="$LOCAL_REGISTRY_DOCKER_NAME" \
+      LOCAL_REGISTRY_GHCR_NAME="$LOCAL_REGISTRY_GHCR_NAME" \
+      ./scripts/local-registry.sh connect
+    step_end registry_connect
+  fi
 
   if [[ -n "$SELECTED_OLLAMA_LOCAL_HOST" && "$SELECTED_OLLAMA_LOCAL_HOST" == *"host.docker.internal"* ]]; then
     patch_kind_host_docker_internal
@@ -265,9 +551,11 @@ else
   kind export kubeconfig --name "$CLUSTER_NAME"
 fi
 
+install_gvisor_on_kind_node
+
 kubectl cluster-info --context "kind-${CLUSTER_NAME}" >/dev/null
 
-wait_image_prefetch
+load_images_into_kind
 
 if [[ "$BUILD_IMAGES" == "true" ]]; then
   log "Building first-party images (tag ${IMAGE_TAG})..."
@@ -345,6 +633,7 @@ if deployment_available envoy-gateway-system envoy-gateway; then
   eg_ready=true
 fi
 
+step_begin envoy_gateway
 if [[ "$eg_ready" != "true" ]]; then
   log "Deploying Envoy Gateway & Gateway API CRDs..."
   kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.1/install.yaml
@@ -367,16 +656,18 @@ EOF
   log "Restarting Envoy Gateway (config changed)..."
   kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
   log "Waiting for Envoy Gateway controller readiness..."
-  kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
+  wait_one critical deployment/envoy-gateway envoy-gateway-system
 elif [[ "$eg_ready" != "true" ]]; then
   log "Restarting Envoy Gateway (not ready)..."
   kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
   log "Waiting for Envoy Gateway controller readiness..."
-  kubectl --context "$KCTX" rollout status deployment/envoy-gateway -n envoy-gateway-system --timeout=5m
+  wait_one critical deployment/envoy-gateway envoy-gateway-system
 else
   log "Envoy Gateway config unchanged and ready; skipping restart"
 fi
+step_end envoy_gateway
 
+step_begin ai_gateway
 if deployment_available envoy-ai-gateway-system ai-gateway-controller; then
   log "Envoy AI Gateway already ready; skipping Helm bootstrap"
 else
@@ -394,9 +685,18 @@ else
     --create-namespace
 
   log "Waiting for Envoy AI Gateway controller readiness..."
-  kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
+  wait_one critical deployment/ai-gateway-controller envoy-ai-gateway-system
+fi
+step_end ai_gateway
+
+if [[ "$FIRST_KIND_CREATE" != "true" ]]; then
+  if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-langfuse-surfaces" >/dev/null 2>&1; then
+    log "Deleting stale langfuse-surfaces Job (re-run; Job spec is immutable)..."
+    kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-langfuse-surfaces" --ignore-not-found
+  fi
 fi
 
+step_begin platform_helm
 log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
@@ -468,17 +768,18 @@ else
     --kube-context "$KCTX" \
     -f "$VALUES_FILE"
 fi
+step_end platform_helm
 
 log "Tracking platform rollout progress..."
-wait_rollout_group "[1/5] Databases (PostgreSQL, Valkey, ClickHouse, Qdrant, SeaweedFS)" \
+step_begin rollout_datastores
+# Langfuse consumes Postgres, ClickHouse, and S3; Valkey/Qdrant degrade without aborting.
+wait_group critical "[1/5] Databases (PostgreSQL, ClickHouse, SeaweedFS)" \
   statefulset/zelkor-platform-postgresql \
-  deployment/zelkor-platform-valkey \
   statefulset/zelkor-platform-clickhouse \
-  statefulset/zelkor-platform-qdrant \
   deployment/zelkor-platform-seaweedfs
-
-log "  -> [2/5] LLM Gateway (Envoy AI Gateway)..."
-kubectl --context "$KCTX" rollout status deployment/ai-gateway-controller -n envoy-ai-gateway-system --timeout=5m
+skip_wait deployment/zelkor-platform-valkey "Langfuse wait is the real gate"
+skip_wait statefulset/zelkor-platform-qdrant "mcp-qdrant wait is the real gate"
+step_end rollout_datastores
 
 discover_internal_gateway_url() {
   local svc=""
@@ -515,12 +816,16 @@ else
   log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until aiGateway.internalUrl is set."
 fi
 
-wait_rollout_group "[3/5] Observability (Langfuse web + worker)" \
+step_begin rollout_langfuse
+wait_group critical "[3/5] Observability (Langfuse web + worker)" \
   deployment/zelkor-platform-langfuse \
   deployment/zelkor-platform-langfuse-worker
+step_end rollout_langfuse
 
+step_begin rollout_aegra
 log "  -> [4/5] Agent Orchestrator (Aegra)..."
-kubectl --context "$KCTX" rollout status deployment/zelkor-platform-aegra --timeout=5m
+wait_one critical deployment/zelkor-platform-aegra
+step_end rollout_aegra
 
 MCP_WAIT_TARGETS=()
 if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
@@ -531,8 +836,10 @@ if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/nu
     deployment/zelkor-platform-mcp-gateway
     deployment/zelkor-platform-mcp-postgres
     deployment/zelkor-platform-mcp-qdrant
-    deployment/zelkor-platform-mcp-sandbox
   )
+  if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox >/dev/null 2>&1; then
+    MCP_WAIT_TARGETS+=(deployment/zelkor-platform-mcp-sandbox)
+  fi
   for i in 0 1 2; do
     if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox-worker-$i >/dev/null 2>&1; then
       MCP_WAIT_TARGETS+=("deployment/zelkor-platform-mcp-sandbox-worker-$i")
@@ -540,10 +847,21 @@ if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/nu
   done
 fi
 if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
-  wait_rollout_group "[5/5] Guardrails + native MCP + sandbox workers" "${MCP_WAIT_TARGETS[@]}"
+  step_begin rollout_mcp_nemo
+  wait_group optional "[5/5] Guardrails + native MCP (+ sandbox when enabled)" "${MCP_WAIT_TARGETS[@]}"
+  step_end rollout_mcp_nemo
 fi
 
+step_begin job_langfuse_surfaces
+if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-langfuse-surfaces" >/dev/null 2>&1; then
+  skip_wait "job/${HELM_RELEASE_NAME}-langfuse-surfaces" "Langfuse UI seeding only; agents and tracing do not need it"
+else
+  log "  skip: langfuse surfaces seed job not deployed"
+fi
+step_end job_langfuse_surfaces
+
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
+  step_begin finserve_helm
   log "Applying FinServe demo chart from $FINSERVE_CHART_PATH..."
   helm dependency update "$FINSERVE_CHART_PATH" >/dev/null
   FINSERVE_HELM_ARGS=()
@@ -556,22 +874,53 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
     --kube-context "$KCTX" \
     -f "$FINSERVE_VALUES_FILE" \
     "${FINSERVE_HELM_ARGS[@]}"
+  step_end finserve_helm
 
   log "Tracking FinServe demo rollout..."
+  step_begin job_finserve_seed
   log "  -> [1/2] Seeding demo portfolio database..."
-  kubectl --context "$KCTX" wait --for=condition=complete job -l app.kubernetes.io/instance=finserve --timeout=3m || true
-  wait_rollout_group "[2/2] FinServe desk + quant + coder" \
+  wait_jobs_selector optional "app.kubernetes.io/instance=finserve"
+  step_end job_finserve_seed
+  step_begin rollout_finserve
+  wait_group optional "[2/2] FinServe desk + quant + coder" \
     deployment/finserve-desk \
     deployment/finserve-quant \
     deployment/finserve-coder
+  step_end rollout_finserve
+fi
+
+if [[ "$INSTALL_PROFILE" == "fast" && "$INSTALL_EXAMPLES" == "true" && "$RUN_DEMO_TOUR" == "true" ]]; then
+  step_begin demo_tour
+  log "Running FinServe showcase e2e smokes (sample Langfuse traces in Zelkor Platform project)..."
+  DEMO_TOUR_FAILED=false
+  if ! KUBECONTEXT="$KCTX" DEFAULT_LLM_MODEL="${DEFAULT_LLM_MODEL:-}" DEMO_TOUR=1 \
+    ./scripts/demo-tour.sh; then
+    DEMO_TOUR_FAILED=true
+    DEGRADED_COMPONENTS+=("demo tour")
+    log_green "WARNING: Demo tour did not pass all checks. Due to LLM use, these tests may fail when the model hallucinates or responds non-deterministically. Install completed successfully."
+  fi
+  step_end demo_tour
 fi
 
 END_TIME=$(date +%s)
-TOTAL_DURATION=$((END_TIME - START_TIME))
-MINUTES=$((TOTAL_DURATION / 60))
-SECONDS=$((TOTAL_DURATION % 60))
+INSTALL_DURATION=$((END_TIME - INSTALL_START_TIME))
+WALL_DURATION=$((END_TIME - START_TIME))
+INSTALL_MINUTES=$((INSTALL_DURATION / 60))
+INSTALL_SECONDS=$((INSTALL_DURATION % 60))
+WALL_MINUTES=$((WALL_DURATION / 60))
+WALL_SECONDS=$((WALL_DURATION % 60))
 
-log "Done. Zelkor Platform and components are deployed and healthy on kind cluster: $CLUSTER_NAME (installation took ${MINUTES}m ${SECONDS}s / ${TOTAL_DURATION}s)"
+if [[ "$DOWNLOAD_DURATION" -gt 0 ]]; then
+  log "Done. Zelkor Platform deployed on kind cluster: $CLUSTER_NAME (download ${DOWNLOAD_DURATION}s + install ${INSTALL_MINUTES}m ${INSTALL_SECONDS}s / ${INSTALL_DURATION}s; wall ${WALL_MINUTES}m ${WALL_SECONDS}s)"
+else
+  log "Done. Zelkor Platform deployed on kind cluster: $CLUSTER_NAME (installation took ${INSTALL_MINUTES}m ${INSTALL_SECONDS}s / ${INSTALL_DURATION}s)"
+fi
+if [[ -s "$INSTALL_TIMINGS_FILE" ]]; then
+  log "Step timings (${INSTALL_TIMINGS_FILE}):"
+  while IFS=$'\t' read -r step secs; do
+    log "  ${step}: ${secs}s"
+  done < "$INSTALL_TIMINGS_FILE"
+fi
 
 {
 cat <<EOF
@@ -609,12 +958,6 @@ cat <<EOF
     Public API Key:   pk-lf-zelkor-dev-00000000000000000000
     Secret API Key:   sk-lf-zelkor-dev-00000000000000000000
 EOF
-if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
-cat <<EOF
-    FinServe project: FinServe AI (finserve)
-    FinServe PK/SK:   pk-lf-finserve-dev-00000000000000000000 / sk-lf-finserve-dev-00000000000000000000
-EOF
-fi
 cat <<EOF
 
   [Envoy AI Gateway]
@@ -674,10 +1017,72 @@ fi
 cat <<EOF
 
   3. View Traces:
-     Open http://langfuse.localhost:8088 -> Log in -> Project: Zelkor Platform (playground) or FinServe AI (demo agents) -> Traces
+     Agent runs (FinServe demo): Langfuse -> project **Zelkor Platform** -> Traces (name **finserve-advisor**)
+     Gateway / playground: same project
 
 ======================================================================
-  Total Installation Time: ${MINUTES}m ${SECONDS}s (${TOTAL_DURATION} seconds)
+EOF
+if [[ "${DEMO_TOUR_FAILED:-false}" == "true" ]]; then
+cat <<EOF
+${C_GREEN}  Demo tour (optional verification)
+  ------------------------------------------------------------------
+  Some demo tour checks did not pass. Due to LLM use, these tests may
+  fail when the model hallucinates or responds non-deterministically.
+  The platform install completed successfully.${C_RESET}
+
 ======================================================================
 EOF
+fi
+if [[ ${#DEGRADED_COMPONENTS[@]} -gt 0 ]]; then
+cat <<EOF
+${C_YELLOW}  Degraded components (install continued)
+  ------------------------------------------------------------------
+EOF
+for entry in "${DEGRADED_COMPONENTS[@]}"; do
+  component="${entry%%$'\t'*}"
+  hint="${entry#*$'\t'}"
+  [[ "$hint" == "$entry" ]] && hint=""
+  printf '  %s\n' "$component"
+  [[ -n "$hint" ]] && printf '      %s\n' "$hint"
+done
+cat <<EOF
+${C_RESET}
+======================================================================
+EOF
+fi
+if [[ ${#NOT_VERIFIED[@]} -gt 0 ]]; then
+cat <<EOF
+  Not verified (fire-and-forget)
+  ------------------------------------------------------------------
+EOF
+for entry in "${NOT_VERIFIED[@]}"; do
+  component="${entry%%$'\t'*}"
+  hint="${entry#*$'\t'}"
+  [[ "$hint" == "$entry" ]] && hint=""
+  printf '  %s\n' "$component"
+  [[ -n "$hint" ]] && printf '      %s\n' "$hint"
+done
+cat <<EOF
+
+======================================================================
+EOF
+fi
+if [[ "$DOWNLOAD_DURATION" -gt 0 ]]; then
+cat <<EOF
+  Component download:  ${DOWNLOAD_DURATION}s (outside install timer)
+  Install time:        ${INSTALL_MINUTES}m ${INSTALL_SECONDS}s (${INSTALL_DURATION} seconds)
+  Wall clock:          ${WALL_MINUTES}m ${WALL_SECONDS}s (${WALL_DURATION} seconds)
+======================================================================
+EOF
+else
+cat <<EOF
+  Total Installation Time: ${INSTALL_MINUTES}m ${INSTALL_SECONDS}s (${INSTALL_DURATION} seconds)
+======================================================================
+EOF
+fi
 }
+
+if [[ ${#DEGRADED_COMPONENTS[@]} -gt 0 && "$INSTALL_STRICT" == "true" ]]; then
+  die "INSTALL_STRICT=true and ${#DEGRADED_COMPONENTS[@]} component(s) degraded."
+fi
+exit 0

@@ -19,13 +19,13 @@ def test_parse_extra_otlp():
     raw = json.dumps(
         [
             {
-                "publicKey": "pk-lf-finserve-dev-00000000000000000000",
-                "secretKey": "sk-lf-finserve-dev-00000000000000000000",
+                "publicKey": "pk-lf-team-a-dev-00000000000000000000",
+                "secretKey": "sk-lf-team-a-dev-00000000000000000000",
             }
         ]
     )
     mapped = parse_extra_otlp(raw)
-    assert mapped["pk-lf-finserve-dev-00000000000000000000"] == "sk-lf-finserve-dev-00000000000000000000"
+    assert mapped["pk-lf-team-a-dev-00000000000000000000"] == "sk-lf-team-a-dev-00000000000000000000"
     assert parse_extra_otlp("") == {}
 
 

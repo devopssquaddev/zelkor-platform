@@ -50,8 +50,10 @@ spec:
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-postgres:8080"
             - name: QDRANT_MCP_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-qdrant:8080"
+            {{- if .Values.mcp.sandboxMCP.enabled }}
             - name: SANDBOX_MCP_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-sandbox:8080"
+            {{- end }}
             {{- if and .Values.mcp.egressMCP .Values.mcp.egressMCP.enabled }}
             - name: EGRESS_MCP_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-egress:8080"

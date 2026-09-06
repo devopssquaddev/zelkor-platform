@@ -52,6 +52,8 @@ platform:
   databaseUrl: ""
   valkeyUrl: ""
   mcpInject: true
+  # Optional comma-separated MCP tool prefixes when graph modules omit MCP_INJECT_PREFIXES.
+  mcpInjectToolPrefixes: ""
   defaultLlmModel: ""
   langfuseBaseUrl: ""
   langfusePublicKey: ""

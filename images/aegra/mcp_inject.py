@@ -212,6 +212,69 @@ def _stamp_tenant_on_tool(tool):
     return tool.model_copy(update=updates)
 
 
+def _parse_prefixes(value: str) -> tuple[str, ...]:
+    if not value or not str(value).strip():
+        return ()
+    return tuple(part.strip() for part in str(value).split(",") if part.strip())
+
+
+def _inject_prefixes() -> tuple[str, ...]:
+    return _parse_prefixes(os.getenv("MCP_INJECT_TOOL_PREFIXES", ""))
+
+
+def _prefixes_from_module(mod) -> tuple[str, ...]:
+    raw = getattr(mod, "MCP_INJECT_PREFIXES", None)
+    if raw is None:
+        return _inject_prefixes()
+    if isinstance(raw, str):
+        return _parse_prefixes(raw)
+    return tuple(str(part).strip() for part in raw if str(part).strip())
+
+
+def filter_tools_by_prefix(tools, prefixes: tuple[str, ...]):
+    if not prefixes:
+        return list(tools or [])
+    allowed = []
+    for tool in tools or []:
+        name = getattr(tool, "name", "") or ""
+        if any(name.startswith(f"{prefix}__") for prefix in prefixes):
+            allowed.append(tool)
+    return allowed
+
+
+def _caller_module_prefixes() -> tuple[str, ...]:
+    import inspect
+
+    skip = {
+        "mcp_inject",
+        "langchain.agents",
+        "langchain.agents.factory",
+    }
+    for frame_info in inspect.stack()[1:]:
+        mod = inspect.getmodule(frame_info.frame)
+        if mod is None:
+            continue
+        name = getattr(mod, "__name__", "") or ""
+        if name in skip or name.startswith(("langchain.", "langgraph.", "langchain_core.")):
+            continue
+        if getattr(mod, "MCP_INJECT_PREFIXES", None) is not None:
+            return _prefixes_from_module(mod)
+        return _inject_prefixes()
+    return _inject_prefixes()
+
+
+def _tools_for_caller(extra):
+    prefixes = _caller_module_prefixes()
+    filtered = filter_tools_by_prefix(extra, prefixes)
+    if prefixes:
+        logger.debug(
+            "Mode B: caller prefixes %s -> %s tools",
+            ",".join(prefixes),
+            len(filtered),
+        )
+    return filtered
+
+
 def _load_adapter_tools():
     url = _mcp_url()
     if not url:
@@ -250,12 +313,13 @@ def _merge_tools(existing, extra):
 
 def _wrap_agent_factory(orig, extra):
     def wrapped(*args, **kwargs):
+        inject = _tools_for_caller(extra)
         if "tools" in kwargs:
-            kwargs["tools"] = _merge_tools(kwargs.get("tools"), extra)
+            kwargs["tools"] = _merge_tools(kwargs.get("tools"), inject)
         elif len(args) >= 2:
-            args = (args[0], _merge_tools(args[1], extra), *args[2:])
+            args = (args[0], _merge_tools(args[1], inject), *args[2:])
         else:
-            kwargs["tools"] = list(extra)
+            kwargs["tools"] = list(inject)
         return orig(*args, **kwargs)
 
     return wrapped
@@ -296,7 +360,7 @@ def _patch_toolnode(extra) -> None:
         orig_init = tool_node.__init__
 
         def _toolnode_init(self, tools, *args, _orig=orig_init, **kwargs):
-            _orig(self, _merge_tools(tools, extra), *args, **kwargs)
+            _orig(self, _merge_tools(tools, _tools_for_caller(extra)), *args, **kwargs)
 
         tool_node.__init__ = _toolnode_init  # type: ignore[method-assign]
         tool_node._zelkor_mcp_patched = True  # type: ignore[attr-defined]

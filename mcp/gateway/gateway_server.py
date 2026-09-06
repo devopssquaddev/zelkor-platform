@@ -20,7 +20,7 @@ logger = logging.getLogger("zelkor-mcp-gateway")
 
 POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "http://zelkor-platform-mcp-postgres:8080")
 QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "http://zelkor-platform-mcp-qdrant:8080")
-SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "http://zelkor-platform-mcp-sandbox:8080")
+SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "").strip()
 EGRESS_MCP_URL = os.getenv("EGRESS_MCP_URL", "").strip()
 
 RESERVED_PREFIXES = frozenset({"postgres", "qdrant", "sandbox", "egress", "nemo", "aegra"})
@@ -31,8 +31,9 @@ def native_backends() -> Dict[str, str]:
     backends = {
         "postgres": POSTGRES_MCP_URL,
         "qdrant": QDRANT_MCP_URL,
-        "sandbox": SANDBOX_MCP_URL,
     }
+    if SANDBOX_MCP_URL:
+        backends["sandbox"] = SANDBOX_MCP_URL
     if EGRESS_MCP_URL:
         backends["egress"] = EGRESS_MCP_URL
     return backends
