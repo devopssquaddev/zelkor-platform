@@ -254,11 +254,7 @@ class QdrantMCPServer(MCPToolHandler):
         return [
             {
                 "name": "search_documents",
-                "description": (
-                    "Tenant-scoped vector search over a Qdrant collection. "
-                    "Always filters payload tenant_id to the authenticated caller. "
-                    "collection defaults to QDRANT_COLLECTION."
-                ),
+                "description": "Tenant-scoped vector search; collection defaults to QDRANT_COLLECTION.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -272,10 +268,7 @@ class QdrantMCPServer(MCPToolHandler):
             },
             {
                 "name": "upsert_document",
-                "description": (
-                    "Upsert one document into a Qdrant collection. "
-                    "payload.tenant_id is forced to the authenticated caller."
-                ),
+                "description": "Upsert one document; payload tenant_id forced to caller.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

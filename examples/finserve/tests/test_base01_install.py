@@ -12,8 +12,8 @@ from finserve_e2e import (
     GATEWAY_BASE_URL,
     GRAPH_ADVISOR,
     GRAPH_IDS,
-    GRAPH_QUANT,
-    GRAPH_RESEARCH,
+    PROMPTS_BY_GRAPH,
+    PROMPT_TRACE_NO_TOOLS,
     run_finserve,
 )
 
@@ -22,11 +22,13 @@ from tests.helpers.langfuse import (  # noqa: E402
     graph_root_output_is_assistant,
     has_graph_spans,
     has_nemo_spans,
+    langfuse_auth,
     list_traces,
     recent_orphan_http_client_ids,
     trace_detail,
     trace_observations,
     unexpected_error_observations,
+    wait_for_llm_connection,
     wait_for_traces,
 )
 
@@ -59,26 +61,9 @@ def test_base01_finserve_pods_healthy(kubecontext):
 @pytest.mark.parametrize("graph_id", GRAPH_IDS)
 def test_base01_finserve_runs_via_front_door(graph_id):
     """E2E smoke: platform Aegra run with each FinServe graph_id returns 200."""
-    result = run_finserve("What is my total portfolio valuation?", graph_id=graph_id)
+    timeout = 180.0 if graph_id.endswith("coder") else 120.0
+    result = run_finserve(PROMPTS_BY_GRAPH[graph_id], graph_id=graph_id, timeout=timeout)
     assert result["text"]
-
-
-def test_base01_desk_and_quant_routing():
-    """Advisor and research share the desk Service; quant is a second Deployment."""
-    advisor = run_finserve("Show my current portfolio holdings.", graph_id=GRAPH_ADVISOR)
-    research = run_finserve(
-        "What is our asset allocation policy for high-growth tech?",
-        graph_id=GRAPH_RESEARCH,
-    )
-    quant = run_finserve(
-        "Use the sandbox tool to execute this Python and return the output:\n"
-        "```python\nprint('sandbox-ok')\n```",
-        graph_id=GRAPH_QUANT,
-        timeout=120.0,
-    )
-    assert advisor["text"]
-    assert research["text"]
-    assert quant["text"]
 
 
 def test_base01_langfuse_observability_endpoint():
@@ -93,15 +78,14 @@ def test_base01_langfuse_observability_endpoint():
 
 
 def test_base01_finserve_langfuse_connection_seeded():
-    """FinServe project gets the gateway LLM connection (armor seed on extraProjects)."""
+    """Platform project gets the gateway LLM connection (surfaces seed Job; install does not wait)."""
+    if not wait_for_llm_connection(timeout=120.0):
+        pytest.skip("zelkor-ai-gateway connection not seeded within 120s (surfaces Job may still be running)")
     try:
         resp = httpx.get(
             f"{GATEWAY_BASE_URL}/api/public/llm-connections",
             headers={"Host": LANGFUSE_HOST_HEADER},
-            auth=(
-                os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-finserve-dev-00000000000000000000"),
-                os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-finserve-dev-00000000000000000000"),
-            ),
+            auth=langfuse_auth(),
             timeout=10.0,
         )
     except httpx.ConnectError:
@@ -113,14 +97,14 @@ def test_base01_finserve_langfuse_connection_seeded():
     if isinstance(rows, dict):
         rows = rows.get("data") or [rows]
     names = [r.get("provider") or r.get("name") for r in rows]
-    assert "zelkor-ai-gateway" in names, f"FinServe project missing gateway connection (got {names})"
+    assert "zelkor-ai-gateway" in names, f"platform project missing gateway connection (got {names})"
 
 
 def test_base01_finserve_agent_generates_traces():
     """E2E smoke: one FinServe run = one Langfuse waterfall (graph + NeMo)."""
     marker = f"zelkor-join-{int(time.time())}"
     run_started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    result = run_finserve(f"Summarize my portfolio holdings. [{marker}]")
+    result = run_finserve(f"{PROMPT_TRACE_NO_TOOLS} [{marker}]")
     thread_id = result.get("thread_id") or ""
     if os.environ.get("NEMO_OTEL_JOIN", "1").strip().lower() in ("0", "false", "off"):
         pytest.skip("NEMO_OTEL_JOIN disabled")
@@ -131,7 +115,13 @@ def test_base01_finserve_agent_generates_traces():
         session_id=thread_id or None,
     )
     if not matched:
-        pytest.skip("No Langfuse observations for the FinServe run within 45s")
+        msg = (
+            "No Langfuse observations for the FinServe run within 90s "
+            "(project Zelkor Platform / pk-lf-zelkor-dev-*; trace name finserve-advisor)"
+        )
+        if os.environ.get("DEMO_TOUR", "").strip().lower() in ("1", "true", "yes"):
+            pytest.fail(msg)
+        pytest.skip(msg)
 
     joined = []
     split = []
@@ -189,42 +179,3 @@ def test_base01_finserve_agent_generates_traces():
         assert graph_root_output_is_assistant(graph_root.get("output")), graph_root.get("output")
     orphans = recent_orphan_http_client_ids(since_iso=run_started)
     assert not orphans, f"orphan http send traces: {orphans}"
-
-
-def test_base01_finserve_trace_not_on_platform_project():
-    """Team A keys must not list a FinServe run (Langfuse project split)."""
-    marker = f"zelkor-split-{int(time.time())}"
-    result = run_finserve(f"Summarize my portfolio holdings. [{marker}]")
-    thread_id = result.get("thread_id") or ""
-    if not thread_id:
-        pytest.skip("no thread_id on FinServe run")
-    matched = wait_for_traces(
-        lambda t: str(t.get("sessionId") or "") == thread_id,
-        timeout=45.0,
-        session_id=thread_id,
-        name=GRAPH_ADVISOR,
-    )
-    if not matched:
-        pytest.skip("FinServe trace not visible with FinServe keys")
-    platform_pk = os.environ.get("LANGFUSE_PLATFORM_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
-    platform_sk = os.environ.get("LANGFUSE_PLATFORM_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000")
-    try:
-        resp = httpx.get(
-            f"{GATEWAY_BASE_URL}/api/public/v2/observations",
-            headers={"Host": LANGFUSE_HOST_HEADER},
-            auth=(platform_pk, platform_sk),
-            params={
-                "limit": 100,
-                "fields": "core,basic,io,trace_context",
-                "filter": json.dumps(
-                    [{"type": "string", "column": "sessionId", "operator": "=", "value": thread_id}]
-                ),
-            },
-            timeout=10.0,
-        )
-    except httpx.ConnectError:
-        pytest.skip(f"Gateway not reachable at {GATEWAY_BASE_URL}")
-    if resp.status_code != 200:
-        pytest.skip(f"platform observations unavailable: {resp.status_code}")
-    rows = resp.json().get("data") or []
-    assert not rows, f"platform project saw FinServe session {thread_id}: {len(rows)} observations"

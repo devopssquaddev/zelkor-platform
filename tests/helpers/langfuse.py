@@ -16,22 +16,46 @@ import pytest
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
-LANGFUSE_AUTH = (
-    os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000"),
-    os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000"),
-)
 V2_FIELDS = "core,basic,io,trace_context"
+
+
+def langfuse_auth() -> tuple[str, str]:
+    """Read keys at call time so FinServe conftest / demo-tour env apply."""
+    return (
+        os.environ.get("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000"),
+        os.environ.get("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000"),
+    )
 
 
 def langfuse_headers() -> dict[str, str]:
     return {"Host": LANGFUSE_HOST_HEADER}
 
 
+def wait_for_llm_connection(name: str = "zelkor-ai-gateway", timeout: float = 120.0) -> bool:
+    """Poll until surfaces seed Job has created the LLM connection (install does not wait on the Job)."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            resp = langfuse_get("/api/public/llm-connections")
+        except httpx.ConnectError:
+            time.sleep(2)
+            continue
+        if resp.status_code == 200:
+            rows = resp.json().get("data") or resp.json()
+            if isinstance(rows, dict):
+                rows = rows.get("data") or [rows]
+            names = [r.get("provider") or r.get("name") for r in rows]
+            if name in names:
+                return True
+        time.sleep(2)
+    return False
+
+
 def langfuse_get(path: str, params: dict[str, Any] | None = None) -> httpx.Response:
     return httpx.get(
         f"{GATEWAY_BASE_URL}{path}",
         headers=langfuse_headers(),
-        auth=LANGFUSE_AUTH,
+        auth=langfuse_auth(),
         params=params,
         timeout=20.0,
     )

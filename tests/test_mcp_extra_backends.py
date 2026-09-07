@@ -27,6 +27,16 @@ def test_native_backends_omit_egress_when_unset(monkeypatch):
     assert "egress" not in native_backends()
 
 
+def test_native_backends_omit_sandbox_when_unset(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.SANDBOX_MCP_URL", "")
+    assert "sandbox" not in native_backends()
+
+
+def test_native_backends_include_sandbox_when_url_set(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.SANDBOX_MCP_URL", "http://mcp-sandbox:8080")
+    assert native_backends()["sandbox"] == "http://mcp-sandbox:8080"
+
+
 def test_parse_extra_backends_empty():
     assert parse_extra_backends("") == []
     assert parse_extra_backends("[]") == []

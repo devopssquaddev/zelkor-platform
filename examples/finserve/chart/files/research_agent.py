@@ -11,17 +11,16 @@ import os
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
+from mcp_tools import MCP_INJECT_PREFIXES, single_mcp_tool
+
 COLLECTION = os.getenv("QDRANT_COLLECTION", "finserve_policies")
 MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
 
-SYSTEM = f"""You are FinServe Research, a policy-research assistant for the authenticated tenant.
-
-Use only the tools bound on this graph (the platform injects them). Prefer:
-- qdrant__search_documents for policy RAG; collection name is `{COLLECTION}`
-
-Do not invent collection names. Do not return other tenants' data.
-If a tool is unavailable, say so rather than fabricating policy text.
-"""
+SYSTEM = f"""FinServe Research. qdrant__search_documents on `{COLLECTION}` only."""
 
 _model = ChatOpenAI(model=MODEL, temperature=0)
-graph = create_agent(_model, tools=[], system_prompt=SYSTEM)
+graph = create_agent(
+    _model,
+    tools=[single_mcp_tool("qdrant__search_documents")],
+    system_prompt=SYSTEM,
+)

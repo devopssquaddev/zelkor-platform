@@ -55,17 +55,17 @@ def test_parse_extra_projects_skips_incomplete():
     raw = json.dumps(
         [
             {
-                "id": "finserve",
-                "name": "FinServe AI",
-                "publicKey": "pk-lf-finserve-dev-00000000000000000000",
-                "secretKey": "sk-lf-finserve-dev-00000000000000000000",
+                "id": "team-a",
+                "name": "Team A",
+                "publicKey": "pk-lf-team-a-dev-00000000000000000000",
+                "secretKey": "sk-lf-team-a-dev-00000000000000000000",
             },
             {"id": "no-keys"},
         ]
     )
     projects = parse_extra_projects(raw)
     assert len(projects) == 1
-    assert projects[0]["id"] == "finserve"
+    assert projects[0]["id"] == "team-a"
     assert parse_extra_projects("") == []
     assert parse_extra_projects("not-json") == []
 
@@ -74,8 +74,8 @@ def test_managed_projects_init_then_extras(monkeypatch):
     extra = json.dumps(
         [
             {
-                "id": "finserve",
-                "name": "FinServe AI",
+                "id": "team-a",
+                "name": "Team A",
                 "publicKey": "pk-extra",
                 "secretKey": "sk-extra",
             }
@@ -86,7 +86,7 @@ def test_managed_projects_init_then_extras(monkeypatch):
     monkeypatch.setattr(seed_mod, "SECRET_KEY", "sk-init")
     monkeypatch.setattr(seed_mod, "EXTRA_PROJECTS_RAW", extra)
     ids = [p["id"] for p in managed_projects()]
-    assert ids == ["zelkor-platform", "finserve"]
+    assert ids == ["zelkor-platform", "team-a"]
 
 
 def test_managed_projects_skips_duplicate_init_key(monkeypatch):
@@ -104,18 +104,29 @@ def test_managed_projects_skips_duplicate_init_key(monkeypatch):
 def test_finserve_overlay_does_not_steal_init():
     overlay = Path(__file__).resolve().parents[1] / "examples/finserve/chart/values-platform-overlay.yaml"
     raw = overlay.read_text()
-    assert "extraProjects:" in raw
     assert "projectId:" not in raw
+    assert "langfuse.init" not in raw
 
 
 def test_helm_extra_projects_on_seed_job_and_nemo():
     import subprocess
+    import tempfile
 
     root = Path(__file__).resolve().parents[1]
     chart = root / "charts/zelkor-platform"
     local = root / "profiles/values-local.yaml"
-    overlay = root / "examples/finserve/chart/values-platform-overlay.yaml"
+    extra_overlay = """
+langfuse:
+  extraProjects:
+    - id: team-a
+      name: Team A
+      publicKey: pk-lf-team-a-dev-00000000000000000000
+      secretKey: sk-lf-team-a-dev-00000000000000000000
+"""
     try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as fh:
+            fh.write(extra_overlay)
+            extra_path = fh.name
         seed = subprocess.run(
             [
                 "helm",
@@ -125,7 +136,7 @@ def test_helm_extra_projects_on_seed_job_and_nemo():
                 "-f",
                 str(local),
                 "-f",
-                str(overlay),
+                extra_path,
                 "-s",
                 "templates/langfuse/job-surfaces-seed.yaml",
             ],
@@ -142,7 +153,7 @@ def test_helm_extra_projects_on_seed_job_and_nemo():
                 "-f",
                 str(local),
                 "-f",
-                str(overlay),
+                extra_path,
                 "-s",
                 "templates/guardrails/deployment.yaml",
             ],
@@ -154,14 +165,19 @@ def test_helm_extra_projects_on_seed_job_and_nemo():
         import pytest
 
         pytest.skip("helm not installed")
+    finally:
+        try:
+            Path(extra_path).unlink(missing_ok=True)
+        except NameError:
+            pass
     if seed.returncode != 0:
         raise AssertionError(seed.stderr or seed.stdout)
     if nemo.returncode != 0:
         raise AssertionError(nemo.stderr or nemo.stdout)
     assert "LANGFUSE_EXTRA_PROJECTS" in seed.stdout
-    assert "pk-lf-finserve-dev-00000000000000000000" in seed.stdout
+    assert "pk-lf-team-a-dev-00000000000000000000" in seed.stdout
     assert "LANGFUSE_EXTRA_OTLP" in nemo.stdout
-    assert "pk-lf-finserve-dev-00000000000000000000" in nemo.stdout
+    assert "pk-lf-team-a-dev-00000000000000000000" in nemo.stdout
 
 
 def test_fast_hashed_secret_key_is_stable():

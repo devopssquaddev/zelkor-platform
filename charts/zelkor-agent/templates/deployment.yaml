@@ -86,6 +86,10 @@ spec:
               value: {{ .Values.platform.mcpUrl | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ .Values.platform.mcpInject | quote }}
+            {{- if .Values.platform.mcpInjectToolPrefixes }}
+            - name: MCP_INJECT_TOOL_PREFIXES
+              value: {{ .Values.platform.mcpInjectToolPrefixes | quote }}
+            {{- end }}
             {{- if .Values.platform.defaultLlmModel }}
             - name: DEFAULT_LLM_MODEL
               value: {{ .Values.platform.defaultLlmModel | quote }}

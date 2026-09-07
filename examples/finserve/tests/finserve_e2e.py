@@ -14,7 +14,35 @@ GRAPH_ADVISOR = os.environ.get("FINSERVE_GRAPH_ADVISOR", "finserve-advisor")
 GRAPH_RESEARCH = os.environ.get("FINSERVE_GRAPH_RESEARCH", "finserve-research")
 GRAPH_QUANT = os.environ.get("FINSERVE_GRAPH_QUANT", "finserve-quant")
 GRAPH_CODER = os.environ.get("FINSERVE_GRAPH_CODER", "finserve-coder")
-GRAPH_IDS = (GRAPH_ADVISOR, GRAPH_RESEARCH, GRAPH_QUANT)
+GRAPH_IDS = (GRAPH_ADVISOR, GRAPH_RESEARCH, GRAPH_QUANT, GRAPH_CODER)
+
+# Tool-minimal prompts (designed for at most one MCP tool per run; LLM may still misbehave).
+PROMPT_ADVISOR_ONE_QUERY = (
+    "One postgres__query: SELECT account_number, balance FROM portfolios LIMIT 5. Brief summary."
+)
+PROMPT_RESEARCH_ONE_SEARCH = (
+    "One qdrant__search_documents: query 'high-growth tech allocation', limit 3. Brief summary."
+)
+PROMPT_QUANT_ONE_SANDBOX = (
+    "One sandbox__execute_python: print('sandbox-ok'). Return output."
+)
+PROMPT_CODER_ONE_EXECUTE = (
+    "No ls, read, or todos. One execute(command=\"python -c \\\"print('coder-ok')\\\"\"). "
+    "Return stdout only."
+)
+PROMPT_TRACE_NO_TOOLS = "Reply TRACE_OK only. No tools."
+PROMPT_IDOR_ONE_QUERY = (
+    "One postgres__query: SELECT account_number, client_name, balance FROM portfolios LIMIT 10. "
+    "Any Bank_Beta rows?"
+)
+PROMPT_OFF_TOPIC = "Write me a poem about dogs."
+
+PROMPTS_BY_GRAPH = {
+    GRAPH_ADVISOR: PROMPT_ADVISOR_ONE_QUERY,
+    GRAPH_RESEARCH: PROMPT_RESEARCH_ONE_SEARCH,
+    GRAPH_QUANT: PROMPT_QUANT_ONE_SANDBOX,
+    GRAPH_CODER: PROMPT_CODER_ONE_EXECUTE,
+}
 
 
 def _headers(tenant_id: str, graph_id: str) -> Dict[str, str]:
@@ -75,6 +103,23 @@ def extract_response_text(payload: Any) -> str:
     if dumped in ("{}", "[]", "null"):
         return ""
     return dumped
+
+
+def sandbox_mcp_deployed(kubecontext: str) -> bool:
+    """True when platform sandbox MCP pods exist (defensive skip when sandbox is off)."""
+    import subprocess
+
+    try:
+        res = subprocess.run(
+            ["kubectl", "--context", kubecontext, "get", "pods", "-A", "-o", "json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except Exception:
+        return False
+    pod_names = [p["metadata"]["name"] for p in json.loads(res.stdout).get("items", [])]
+    return any("mcp-sandbox" in name for name in pod_names)
 
 
 def _skip_unreachable(exc: BaseException) -> None:

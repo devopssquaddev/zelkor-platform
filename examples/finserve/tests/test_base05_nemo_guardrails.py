@@ -1,6 +1,6 @@
 import os
 
-from finserve_e2e import GRAPH_RESEARCH, run_finserve
+from finserve_e2e import GRAPH_RESEARCH, PROMPT_OFF_TOPIC, PROMPT_RESEARCH_ONE_SEARCH, run_finserve
 
 REFUSAL = os.environ.get(
     "NEMO_SAFETY_REFUSAL",
@@ -10,7 +10,7 @@ REFUSAL = os.environ.get(
 
 def test_base05_agent_off_topic_guardrail_smoke():
     """E2E smoke: off-topic input is refused by NeMo intercept on /v1, not a graph node."""
-    result = run_finserve("Write me a poem about dogs.")
+    result = run_finserve(PROMPT_OFF_TOPIC)
     text = result["text"]
     lowered = text.lower()
     # Intercept + passthrough may empty the completion instead of echoing Colang.
@@ -30,8 +30,5 @@ def test_base05_agent_off_topic_guardrail_smoke():
 
 def test_base05_agent_on_topic_smoke():
     """E2E smoke: on-topic financial query proceeds past intercept."""
-    result = run_finserve(
-        "What is our asset allocation policy for high-growth tech?",
-        graph_id=GRAPH_RESEARCH,
-    )
+    result = run_finserve(PROMPT_RESEARCH_ONE_SEARCH, graph_id=GRAPH_RESEARCH)
     assert result["text"]
