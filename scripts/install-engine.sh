@@ -291,6 +291,29 @@ wait_jobs_selector() {
   handle_wait_failure "$criticality" "jobs -l ${selector}" jobs_selector_healthy "$selector"
 }
 
+langfuse_surfaces_job_enabled() {
+  helm get manifest "$HELM_RELEASE_NAME" --kube-context "$KCTX" 2>/dev/null \
+    | grep -q "${HELM_RELEASE_NAME}-langfuse-surfaces"
+}
+
+# First platform_helm creates the surfaces Job before Langfuse/MCP are ready; the Job may
+# fail or exit 0 without seeding the LLM connection. Re-create after rollouts so Playground
+# gets DEFAULT_LLM_MODEL on the zelkor-ai-gateway connection.
+refresh_langfuse_surfaces_job() {
+  if ! langfuse_surfaces_job_enabled; then
+    log "  skip: langfuse surfaces seed job not deployed"
+    return 0
+  fi
+  log "Re-seeding Langfuse surfaces (Playground LLM connection + MCP tools)..."
+  kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-langfuse-surfaces" --ignore-not-found
+  helm upgrade "$HELM_RELEASE_NAME" "$CHART_PATH" \
+    --kube-context "$KCTX" \
+    --reuse-values
+  if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-langfuse-surfaces" >/dev/null 2>&1; then
+    wait_job optional "${HELM_RELEASE_NAME}-langfuse-surfaces"
+  fi
+}
+
 helm_user_value() {
   local dotted="$1"
   if ! command -v python3 >/dev/null 2>&1; then
@@ -521,15 +544,30 @@ install_gvisor_on_kind_node() {
     return 0
   fi
   step_begin gvisor_install
-  log "Configuring gVisor (runsc) release ${GVISOR_RELEASE} on kind node..."
-  docker exec "${CLUSTER_NAME}-control-plane" sh -c "
-    set -e
-    ARCH=\$(uname -m)
-    BASE=https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/\${ARCH}
-    curl -fsSL \"\${BASE}/runsc\" -o /usr/local/bin/runsc
-    curl -fsSL \"\${BASE}/containerd-shim-runsc-v1\" -o /usr/local/bin/containerd-shim-runsc-v1
-    chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
-  " || log "WARNING: gVisor install failed (sandbox RuntimeClass may not work on this node)"
+  if docker exec "${CLUSTER_NAME}-control-plane" sh -c "
+    command -v runsc >/dev/null 2>&1 \
+      && runsc --version 2>/dev/null | grep -q '${GVISOR_RELEASE}'
+  "; then
+    log "gVisor release ${GVISOR_RELEASE} already on kind node; skipping install"
+  else
+    log "Configuring gVisor (runsc) release ${GVISOR_RELEASE} on kind node..."
+    if ! docker exec "${CLUSTER_NAME}-control-plane" sh -c "
+      set -e
+      ARCH=\$(uname -m)
+      case \"\$ARCH\" in
+        aarch64|arm64) ARCH=aarch64 ;;
+        x86_64|amd64) ARCH=x86_64 ;;
+      esac
+      BASE=https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/\${ARCH}
+      for bin in runsc containerd-shim-runsc-v1; do
+        curl -fsSL \"\${BASE}/\${bin}\" -o \"/tmp/\${bin}.new\"
+        mv -f \"/tmp/\${bin}.new\" \"/usr/local/bin/\${bin}\"
+      done
+      chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
+    "; then
+      log "WARNING: gVisor install failed (sandbox RuntimeClass may not work on this node)"
+    fi
+  fi
   step_end gvisor_install
 }
 
@@ -861,11 +899,7 @@ if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
 fi
 
 step_begin job_langfuse_surfaces
-if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-langfuse-surfaces" >/dev/null 2>&1; then
-  skip_wait "job/${HELM_RELEASE_NAME}-langfuse-surfaces" "Langfuse UI seeding only; agents and tracing do not need it"
-else
-  log "  skip: langfuse surfaces seed job not deployed"
-fi
+refresh_langfuse_surfaces_job
 step_end job_langfuse_surfaces
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
