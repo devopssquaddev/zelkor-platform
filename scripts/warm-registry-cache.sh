@@ -29,6 +29,26 @@ LOCAL_REGISTRY_GHCR_PORT="${LOCAL_REGISTRY_GHCR_PORT:-5001}"
 
 log() { echo "[warm-registry] $*"; }
 
+WARM_TOTAL=0
+WARM_COUNT_FILE=""
+WARM_LOCK_FILE=""
+
+warm_progress() {
+  local ref="$1"
+  if [[ -n "$WARM_COUNT_FILE" && -f "$WARM_COUNT_FILE" ]]; then
+    local n
+    exec 200>"${WARM_LOCK_FILE:-${WARM_COUNT_FILE}.lock}"
+    flock -x 200
+    read -r n < "$WARM_COUNT_FILE"
+    n=$((n + 1))
+    echo "$n" > "$WARM_COUNT_FILE"
+    flock -u 200
+    log "warming ${n}/${WARM_TOTAL}: ${ref}"
+  else
+    log "warming: ${ref}"
+  fi
+}
+
 proxy_path_for_ref() {
   local ref="$1"
   case "$ref" in
@@ -87,11 +107,12 @@ warm_one() {
   local ref="$1" proxy n
   proxy="$(proxy_path_for_ref "$ref")"
   if manifest_warm "$proxy"; then
-    log "skip warm (registry): ${proxy}"
+    warm_progress "skip (registry): ${ref}"
     return 0
   fi
+  warm_progress "$ref"
   for n in 1 2 3; do
-    if docker pull --platform "$DOCKER_PLATFORM" "$proxy"; then
+    if docker pull --quiet --platform "$DOCKER_PLATFORM" "$proxy" 2>&1; then
       docker rmi "$proxy" >/dev/null 2>&1 || log "WARNING: docker rmi failed: ${proxy}"
       return 0
     fi
@@ -107,9 +128,15 @@ mapfile -t IMAGES < <(
 )
 [[ ${#IMAGES[@]} -gt 0 ]] || { echo "[warm-registry] ERROR: no images from install-images.sh" >&2; exit 1; }
 
-log "warming ${#IMAGES[@]} refs via proxy (parallel ${PREFETCH_JOBS}, platform=${DOCKER_PLATFORM})..."
-export -f warm_one proxy_path_for_ref manifest_warm registry_port_for_proxy log
-export DOCKER_PLATFORM LOCAL_REGISTRY_BIND LOCAL_REGISTRY_DOCKER_PORT LOCAL_REGISTRY_GHCR_PORT
+WARM_TOTAL=${#IMAGES[@]}
+WARM_COUNT_FILE="$(mktemp)"
+WARM_LOCK_FILE="${WARM_COUNT_FILE}.lock"
+echo 0 > "$WARM_COUNT_FILE"
+trap 'rm -f "$WARM_COUNT_FILE" "$WARM_LOCK_FILE"' EXIT
+
+log "warming ${WARM_TOTAL} refs via proxy (parallel ${PREFETCH_JOBS}, platform=${DOCKER_PLATFORM})..."
+export -f warm_one proxy_path_for_ref manifest_warm registry_port_for_proxy log warm_progress
+export DOCKER_PLATFORM LOCAL_REGISTRY_BIND LOCAL_REGISTRY_DOCKER_PORT LOCAL_REGISTRY_GHCR_PORT WARM_TOTAL WARM_COUNT_FILE WARM_LOCK_FILE
 failed=0
 if ! printf '%s\n' "${IMAGES[@]}" | xargs -P "$PREFETCH_JOBS" -n 1 bash -c 'warm_one "$1"' _; then
   failed=1

@@ -58,6 +58,8 @@ OLLAMA_LOCAL_HOST="http://host.docker.internal:11434" ./install.sh
 
 `./install.sh` without a provider exits with usage help. The platform is self-hosted on kind; inference uses **your** chosen provider (BYOK). Default install includes FinServe.
 
+On a TTY, `./install.sh` prints a phase roadmap and an **Install summary** with start/end timestamps and slowest steps. For raw step logs (CI/bench): `INSTALL_UX=plain ./install.sh` or `scripts/install-engine.sh`.
+
 The script will (`INSTALL_PROFILE=fast`, default):
 
 1. Verify `docker`, `kind`, `helm`, and `kubectl` are available and Docker is running
@@ -68,7 +70,7 @@ The script will (`INSTALL_PROFILE=fast`, default):
 6. Install Envoy Gateway and Envoy AI Gateway controller and CRDs
 7. Deploy the unified Helm chart with `profiles/values-local-fast.yaml` (plus the FinServe platform overlay)
 8. Deploy the FinServe demo as a separate Helm release (`INSTALL_EXAMPLES=true` by default)
-9. **Demo tour (fast only)** — six FinServe e2e smokes via `scripts/demo-tour.sh` (sample Langfuse traces; `RUN_DEMO_TOUR=false` to skip). Failures are reported but do not fail install (LLM responses can be non-deterministic).
+9. **Demo tour (fast only)** — eight FinServe e2e smokes via `scripts/demo-tour.sh` (advisor traces + quant sandbox; `RUN_DEMO_TOUR=false` to skip). Failures are reported but do not fail install (LLM responses can be non-deterministic).
 
 **Wait behavior:** when a rollout or Job wait times out, the installer re-checks the resource's real status for `WAIT_RECHECK_GRACE` seconds (default 90). Gateways, PostgreSQL, ClickHouse, SeaweedFS, Aegra, and both Langfuse Deployments abort the install if still unhealthy. Valkey, Qdrant, NeMo/MCP, seed Jobs, and the FinServe demo only warn and appear in a **Degraded components** block at the end. Set `INSTALL_STRICT=true` to exit non-zero when anything degraded.
 

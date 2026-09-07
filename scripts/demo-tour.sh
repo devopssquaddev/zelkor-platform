@@ -42,13 +42,15 @@ fi
 
 PYTEST=(.venv/bin/pytest)
 
-# Curated FinServe smokes: routing, Langfuse waterfall, tenant isolation, NeMo guardrails.
+# Curated FinServe smokes: routing, Langfuse waterfall, tenant isolation, sandbox, NeMo guardrails.
 # Prompts are tool-minimal (0–1 MCP call per run) — see examples/finserve/tests/finserve_e2e.py.
 DEMO_TESTS=(
   "examples/finserve/tests/test_base01_install.py::test_base01_finserve_runs_via_front_door[finserve-advisor]"
   "examples/finserve/tests/test_base01_install.py::test_base01_finserve_agent_generates_traces"
   "examples/finserve/tests/test_base02_tenant_isolation.py::test_base02_tenant_isolation_authorized_access"
   "examples/finserve/tests/test_base02_tenant_isolation.py::test_base02_tenant_isolation_idor_smoke"
+  "examples/finserve/tests/test_base03_gvisor_sandbox.py::test_base03_agent_code_execution_smoke"
+  "examples/finserve/tests/test_base03_gvisor_sandbox.py::test_base03_sandbox_trace_contains_tool"
   "examples/finserve/tests/test_base05_nemo_guardrails.py::test_base05_agent_on_topic_smoke"
   "examples/finserve/tests/test_base05_nemo_guardrails.py::test_base05_agent_off_topic_guardrail_smoke"
 )
@@ -56,7 +58,7 @@ DEMO_TESTS=(
 wait_for_gateway
 
 log "running ${#DEMO_TESTS[@]} FinServe showcase tests..."
-log "Langfuse: project Zelkor Platform (pk-lf-zelkor-dev-*); trace name = graph_id (e.g. finserve-advisor)"
+log "Langfuse: project Zelkor Platform (pk-lf-zelkor-dev-*); trace names finserve-advisor, finserve-quant (sandbox__execute_python)"
 # Plain text by default: a non-deterministic LLM smoke should not print red in an install.
 "${PYTEST[@]}" "${DEMO_TESTS[@]}" -v --tb=short --color="${DEMO_TOUR_PYTEST_COLOR:-no}"
 log "done — open http://langfuse.localhost:8088 → project Zelkor Platform → Traces (filter: finserve-advisor)"
