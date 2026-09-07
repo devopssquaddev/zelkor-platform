@@ -1,4 +1,8 @@
-"""Drop-in: stock langgraph_sdk.get_client against the Zelkor Aegra front door."""
+"""Drop-in: stock langgraph_sdk against the Zelkor Aegra front door.
+
+Platform-only tests use async ``get_client``; worker-routed runs use sync
+``get_sync_client`` + ``X-Graph-ID`` (see ``tests.helpers.langgraph_client``).
+"""
 from __future__ import annotations
 
 import os
@@ -131,7 +135,7 @@ def _require_worker() -> str:
 
 @pytest.mark.asyncio
 async def test_sdk_runs_wait_with_graph_id_header_once():
-    """X-Graph-ID is set once on get_client; runs.wait is stock."""
+    """Worker runs.wait via sync client + X-Graph-ID (FinServe E2E pattern)."""
     graph_id = _require_worker()
     client = aegra_sdk_client(graph_id=graph_id)
     try:
@@ -151,7 +155,7 @@ async def test_sdk_runs_wait_with_graph_id_header_once():
 
 @pytest.mark.asyncio
 async def test_sdk_runs_stream_with_graph_id_header_once():
-    """Stock runs.stream yields at least one chunk; not a Zelkor 502."""
+    """Worker runs.stream via sync client + X-Graph-ID; not a Zelkor 502."""
     graph_id = _require_worker()
     client = aegra_sdk_client(graph_id=graph_id)
     chunks = []

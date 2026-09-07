@@ -16,7 +16,6 @@ CHART = ROOT / "charts" / "zelkor-platform"
 AGENT_CHART = ROOT / "charts" / "zelkor-agent"
 FIRST_PARTY_TEMPLATES = [
     CHART / "templates/aegra/deployment.yaml",
-    CHART / "templates/aegra/job-migrate.yaml",
     CHART / "templates/mcp/deployment-gateway.yaml",
     CHART / "templates/mcp/deployment-postgres.yaml",
     CHART / "templates/mcp/deployment-qdrant.yaml",
