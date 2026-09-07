@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build first-party Zelkor images. Optional: push to GHCR, load into kind.
+# Build first-party Zelkor images. Optional: push to GHCR.
 #
 # Usage (from repo root):
 #   ./scripts/build-images.sh
 #   ./scripts/build-images.sh --push
-#   ./scripts/build-images.sh --kind-load
-#   ./scripts/build-images.sh --push --kind-load
+#
+# Deprecated: --kind-load (use GHCR push + pull-through registries / containerd mirrors).
 #
 # Env:
 #   IMAGE_REGISTRY  default ghcr.io/devopssquaddev
@@ -101,6 +101,7 @@ if [[ "$PUSH" == true ]]; then
 fi
 
 if [[ "$KIND_LOAD" == true ]]; then
+  echo "[build-images] WARNING: --kind-load is deprecated; use GHCR push and kubelet pull via registry mirrors" >&2
   command -v kind >/dev/null 2>&1 || { echo "kind not found" >&2; exit 1; }
   for ref in "${BUILT[@]}"; do
     echo "[build-images] kind load ${ref} -> ${KIND_CLUSTER}"

@@ -26,8 +26,8 @@ if [[ -z "${OLLAMA_API_KEY:-}" ]]; then
 fi
 
 if [[ "${BUILD_IMAGES:-false}" == true ]]; then
-  log "building zelkor-aegra + zelkor-example-finserve (--kind-load)..."
-  IMAGES="zelkor-aegra zelkor-example-finserve" ./scripts/build-images.sh --kind-load
+  log "building zelkor-aegra + zelkor-example-finserve (push to GHCR; kind load deprecated)..."
+  IMAGES="zelkor-aegra zelkor-example-finserve" ./scripts/build-images.sh --push
 fi
 
 log "platform helm patch (Ollama Cloud, model=${MODEL})..."

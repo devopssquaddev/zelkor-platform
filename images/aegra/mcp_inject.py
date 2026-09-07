@@ -9,6 +9,7 @@ langchain-mcp-adapters is a required pin (images/aegra/requirements.txt).
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 from pathlib import Path
@@ -275,6 +276,17 @@ def _tools_for_caller(extra):
     return filtered
 
 
+
+def _run_coro_sync(coro):
+    """Run a coroutine from sync code, including during uvicorn lifespan."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 def _load_adapter_tools():
     url = _mcp_url()
     if not url:
@@ -294,16 +306,7 @@ def _load_adapter_tools():
         )
         return [_stamp_tenant_on_tool(tool) for tool in await client.get_tools()]
 
-    try:
-        return list(asyncio.run(_get()))
-    except RuntimeError as exc:
-        if "asyncio.run() cannot be called from a running event loop" not in str(exc):
-            raise
-        loop = asyncio.new_event_loop()
-        try:
-            return list(loop.run_until_complete(_get()))
-        finally:
-            loop.close()
+    return list(_run_coro_sync(_get()))
 
 
 def _merge_tools(existing, extra):

@@ -2,12 +2,13 @@
 # Prefetch container images for ./install.sh (escape hatch when LOCAL_REGISTRY=false).
 #
 # Default install path warms pull-through registries via warm-registry-cache.sh.
-# Use this script for direct docker pull + optional kind load:
+# Use this script for direct docker pull when LOCAL_REGISTRY=false:
 #
 # Usage (from repo root):
 #   LOCAL_REGISTRY=false ./install.sh
 #   ./scripts/prefetch-images.sh --pull-only
-#   ./scripts/prefetch-images.sh --load-only --kind-load
+#
+# Deprecated: --kind-load (use pull-through registries + containerd mirrors).
 #
 # Env:
 #   VALUES_FILE        passed to install-images.sh
@@ -129,6 +130,7 @@ if [[ "$PULL" == true ]]; then
 fi
 
 if [[ "$KIND_LOAD" == true ]]; then
+  log "WARNING: --kind-load is deprecated; use pull-through registries (LOCAL_REGISTRY=true default)"
   command -v kind >/dev/null 2>&1 || { echo "kind not found" >&2; exit 1; }
   if ! kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; then
     echo "[prefetch] ERROR: kind cluster ${KIND_CLUSTER} not found (create it first)" >&2

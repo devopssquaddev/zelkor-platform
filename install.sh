@@ -137,7 +137,7 @@ ux_phase_detail() {
   local jobs="${PREFETCH_JOBS:-3}"
   case "$phase" in
     1)
-      echo "  Warming ${jobs} container images in parallel via pull-through registries (untimed)."
+      echo "  Downloading container images in parallel (${jobs} at a time). Not counted in install timer."
       ;;
     2)
       echo "  kind cluster, registry connect, gVisor, Envoy Gateway, AI Gateway."
@@ -169,10 +169,11 @@ ux_heartbeat_start() {
   local msg="$1"
   ux_heartbeat_stop
   (
+    local t0="${INSTALL_START_TIME:-$START_TIME}"
     while true; do
       sleep 30
-      local el=$(( $(date +%s) - INSTALL_WALL_START_EPOCH ))
-      printf '\n  … still working (%dm%02ds) — %s\n' $((el / 60)) $((el % 60)) "$msg"
+      local el=$(( $(date +%s) - t0 ))
+      printf '\n  … still working [+%02d:%02d] — %s\n' $((el / 60)) $((el % 60)) "$msg"
     done
   ) &
   UX_HEARTBEAT_PID=$!
@@ -202,7 +203,7 @@ ux_step_begin() {
       ux_heartbeat_start "Datastore rollouts (Postgres, ClickHouse, Valkey, Qdrant)"
       ;;
     download_warm_cache)
-      ux_heartbeat_start "Warming image cache (${PREFETCH_JOBS:-3} parallel pulls via local registries)"
+      ux_heartbeat_start "Downloading container images (${PREFETCH_JOBS:-3} at a time)"
       ;;
   esac
 }
@@ -245,6 +246,35 @@ ux_print_roadmap() {
   UX_PHASE_TOTAL="$(ux_phase_total)"
   local jobs="${PREFETCH_JOBS:-3}"
 
+  if [[ "${INSTALL_PROFILE:-fast}" == "full" ]]; then
+    cat <<EOF
+
+======================================================================
+  Zelkor install — full profile upgrade
+======================================================================
+  Started: ${INSTALL_WALL_START}
+
+  Requires kind cluster ${CLUSTER_NAME:-zelkor} with a completed fast install.
+  Skips download and kind create; applies NetworkPolicies + evaluator seed.
+
+  Phase 1/${UX_PHASE_TOTAL}  Cluster bootstrap             (skip-if-ready)
+  Phase 2/${UX_PHASE_TOTAL}  Datastores                    ($(ux_phase_estimate 3))
+  Phase 3/${UX_PHASE_TOTAL}  Langfuse                      ($(ux_phase_estimate 4))
+  Phase 4/${UX_PHASE_TOTAL}  Agents & MCP                  ($(ux_phase_estimate 5))
+EOF
+    if [[ "${INSTALL_EXAMPLES:-true}" == "true" ]]; then
+      cat <<EOF
+  Phase 5/${UX_PHASE_TOTAL}  FinServe demo                 (helm upgrade)
+EOF
+    fi
+    cat <<EOF
+
+======================================================================
+
+EOF
+    return
+  fi
+
   cat <<EOF
 
 ======================================================================
@@ -252,7 +282,7 @@ ux_print_roadmap() {
 ======================================================================
   Started: ${INSTALL_WALL_START}
 
-  Phase 1/${UX_PHASE_TOTAL}  Download components           ($(ux_phase_estimate 1); ${jobs} parallel pulls)
+  Phase 1/${UX_PHASE_TOTAL}  Download components           ($(ux_phase_estimate 1); fetching images)
   Phase 2/${UX_PHASE_TOTAL}  Cluster bootstrap             ($(ux_phase_estimate 2))
   Phase 3/${UX_PHASE_TOTAL}  Datastores                    ($(ux_phase_estimate 3))
   Phase 4/${UX_PHASE_TOTAL}  Langfuse                      ($(ux_phase_estimate 4))

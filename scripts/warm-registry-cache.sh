@@ -27,7 +27,7 @@ LOCAL_REGISTRY_BIND="${LOCAL_REGISTRY_BIND:-127.0.0.1}"
 LOCAL_REGISTRY_DOCKER_PORT="${LOCAL_REGISTRY_DOCKER_PORT:-5000}"
 LOCAL_REGISTRY_GHCR_PORT="${LOCAL_REGISTRY_GHCR_PORT:-5001}"
 
-log() { echo "[warm-registry] $*"; }
+log() { echo "[download] $*"; }
 
 WARM_TOTAL=0
 WARM_COUNT_FILE=""
@@ -43,9 +43,9 @@ warm_progress() {
     n=$((n + 1))
     echo "$n" > "$WARM_COUNT_FILE"
     flock -u 200
-    log "warming ${n}/${WARM_TOTAL}: ${ref}"
+    log "image ${n}/${WARM_TOTAL}: ${ref}"
   else
-    log "warming: ${ref}"
+    log "image: ${ref}"
   fi
 }
 
@@ -107,7 +107,7 @@ warm_one() {
   local ref="$1" proxy n
   proxy="$(proxy_path_for_ref "$ref")"
   if manifest_warm "$proxy"; then
-    warm_progress "skip (registry): ${ref}"
+    warm_progress "cached: ${ref}"
     return 0
   fi
   warm_progress "$ref"
@@ -126,7 +126,7 @@ mapfile -t IMAGES < <(
     IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
     ./scripts/install-images.sh
 )
-[[ ${#IMAGES[@]} -gt 0 ]] || { echo "[warm-registry] ERROR: no images from install-images.sh" >&2; exit 1; }
+[[ ${#IMAGES[@]} -gt 0 ]] || { echo "[download] ERROR: no images from install-images.sh" >&2; exit 1; }
 
 WARM_TOTAL=${#IMAGES[@]}
 WARM_COUNT_FILE="$(mktemp)"
@@ -134,12 +134,12 @@ WARM_LOCK_FILE="${WARM_COUNT_FILE}.lock"
 echo 0 > "$WARM_COUNT_FILE"
 trap 'rm -f "$WARM_COUNT_FILE" "$WARM_LOCK_FILE"' EXIT
 
-log "warming ${WARM_TOTAL} refs via proxy (parallel ${PREFETCH_JOBS}, platform=${DOCKER_PLATFORM})..."
+log "Fetching ${WARM_TOTAL} container images (${PREFETCH_JOBS} at a time, platform=${DOCKER_PLATFORM})..."
 export -f warm_one proxy_path_for_ref manifest_warm registry_port_for_proxy log warm_progress
 export DOCKER_PLATFORM LOCAL_REGISTRY_BIND LOCAL_REGISTRY_DOCKER_PORT LOCAL_REGISTRY_GHCR_PORT WARM_TOTAL WARM_COUNT_FILE WARM_LOCK_FILE
 failed=0
 if ! printf '%s\n' "${IMAGES[@]}" | xargs -P "$PREFETCH_JOBS" -n 1 bash -c 'warm_one "$1"' _; then
   failed=1
 fi
-[[ "$failed" -eq 0 ]] || { echo "[warm-registry] ERROR: one or more proxy warms failed" >&2; exit 1; }
-log "done"
+[[ "$failed" -eq 0 ]] || { echo "[download] ERROR: one or more image downloads failed" >&2; exit 1; }
+log "all ${WARM_TOTAL} images ready"

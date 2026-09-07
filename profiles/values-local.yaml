@@ -1,5 +1,6 @@
-# Local kind overlay — not part of the production chart.
-# Used by ./install.sh. Demo-shaped values live in examples/<name>/chart/.
+# Local kind overlay — full / Gate A profile (INSTALL_PROFILE=full).
+# Upgrade only: run after a completed fast install on the same kind cluster.
+# Enables NetworkPolicies, Langfuse evaluator seed, DEBUG logging.
 
 global:
   tier: oss

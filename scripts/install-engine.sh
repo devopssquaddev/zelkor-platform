@@ -67,6 +67,8 @@ case "$INSTALL_PROFILE" in
     INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
     GVISOR_INSTALL="${GVISOR_INSTALL:-true}"
     RUN_DEMO_TOUR="${RUN_DEMO_TOUR:-false}"
+    # Upgrade-only: never create kind or run download on full (see require_full_profile_prereqs).
+    PREFETCH_IMAGES="${PREFETCH_IMAGES:-false}"
     ;;
   *)
     echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" >&2
@@ -340,6 +342,53 @@ print(cur)
 ' "$dotted"
 }
 
+helm_install_profile_state() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "unknown"
+    return 0
+  fi
+  helm get values "$HELM_RELEASE_NAME" --kube-context "$KCTX" -o json 2>/dev/null | python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    raise SystemExit(1)
+data = json.loads(raw)
+netpol = bool(((data.get("security") or {}).get("networkPolicies") or {}).get("enabled"))
+seed = bool((((data.get("langfuse") or {}).get("surfaces") or {}).get("evaluators") or {}).get("seedCode"))
+if netpol and seed:
+    print("full")
+elif not netpol and not seed:
+    print("fast")
+else:
+    print("mixed")
+'
+}
+
+require_full_profile_prereqs() {
+  [[ "$INSTALL_PROFILE" == "full" ]] || return 0
+  if ! helm list --kube-context "$KCTX" -q 2>/dev/null | grep -qx "$HELM_RELEASE_NAME"; then
+    die "INSTALL_PROFILE=full requires Helm release ${HELM_RELEASE_NAME} from a completed fast install on ${CLUSTER_NAME}."
+  fi
+  local state=""
+  if ! state="$(helm_install_profile_state)"; then
+    die "INSTALL_PROFILE=full could not read Helm values for ${HELM_RELEASE_NAME}."
+  fi
+  case "$state" in
+    fast)
+      log "Full profile: upgrading fast baseline → NetworkPolicies + Langfuse evaluator seed"
+      ;;
+    full)
+      log "Full profile: re-applying full overlay (already on full baseline)"
+      ;;
+    mixed)
+      die "Cluster has a mixed install profile. Delete kind cluster ${CLUSTER_NAME} and run ./install.sh (fast) before INSTALL_PROFILE=full."
+      ;;
+    *)
+      die "INSTALL_PROFILE=full requires a fast-profile baseline (networkPolicies off, Langfuse evaluators off)."
+      ;;
+  esac
+}
+
 LLM_PROVIDER_COUNT=0
 LLM_PROVIDER_SUMMARY=""
 SELECTED_OLLAMA_LOCAL_HOST=""
@@ -450,6 +499,10 @@ if ! kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
   FIRST_KIND_CREATE=true
 fi
 
+if [[ "$INSTALL_PROFILE" == "full" && "$FIRST_KIND_CREATE" == "true" ]]; then
+  die "INSTALL_PROFILE=full upgrades an existing fast install on kind cluster ${CLUSTER_NAME}. Run ./install.sh first (default INSTALL_PROFILE=fast)."
+fi
+
 # Cold create pulls large images during rollouts (registry mirrors); Langfuse migrations add minutes.
 ROLLOUT_WAIT_TIMEOUT="${ROLLOUT_WAIT_TIMEOUT:-$([ "$FIRST_KIND_CREATE" = true ] && echo 15m || echo 5m)}"
 
@@ -472,8 +525,8 @@ download_components() {
 ======================================================================
   Downloading components
 ======================================================================
-  Warming ${count} container images via pull-through local registries.
-  This phase is outside the install timer.
+  Fetching ${count} container images (${PREFETCH_JOBS:-3} at a time) into local registries.
+  This step is a one-time download and is not counted in the install timer.
 ======================================================================
 
 EOF
@@ -522,10 +575,19 @@ INSTALL_START_TIME=$(date +%s)
 [[ -f "$INSTALL_TIMINGS_FILE" ]] || : > "$INSTALL_TIMINGS_FILE"
 log "Install profile: ${INSTALL_PROFILE} (values=${VALUES_FILE}, node=${KIND_NODE_IMAGE}, local_registry=${LOCAL_REGISTRY})"
 
+warn_deprecated_kind_load() {
+  log_warn "WARNING: kind load is deprecated (PREFETCH_KIND_LOAD / KIND_LOAD_IMAGES / --kind-load). Use pull-through registries (LOCAL_REGISTRY=true default) so kubelet pulls via containerd mirrors."
+}
+
+if [[ "$PREFETCH_KIND_LOAD" == "true" ]]; then
+  warn_deprecated_kind_load
+fi
+
 load_images_into_kind() {
   if [[ "$FIRST_KIND_CREATE" != "true" || "$PREFETCH_KIND_LOAD" != "true" ]]; then
     return 0
   fi
+  warn_deprecated_kind_load
   log "Loading prefetched images into kind (kubelet local cache)..."
   VALUES_FILE="$VALUES_FILE" INSTALL_EXAMPLES="$INSTALL_EXAMPLES" \
     IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
@@ -610,6 +672,7 @@ if [[ "$BUILD_IMAGES" == "true" ]]; then
 fi
 
 if [[ "$KIND_LOAD_IMAGES" == "true" ]]; then
+  warn_deprecated_kind_load
   log "Loading first-party images into kind cluster ${CLUSTER_NAME}..."
   IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" KIND_CLUSTER="$CLUSTER_NAME" \
     ./scripts/build-images.sh --load-only --kind-load
@@ -620,6 +683,7 @@ if [[ ! -f "$VALUES_FILE" ]]; then
 fi
 
 KCTX="kind-${CLUSTER_NAME}"
+require_full_profile_prereqs
 
 EG_CM_BODY=$(cat <<'EOF'
 apiVersion: gateway.envoyproxy.io/v1alpha1

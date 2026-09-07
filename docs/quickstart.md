@@ -2,12 +2,12 @@
 
 Deploy a production-like Zelkor Platform instance (including the FinServe demo) locally. Default **`INSTALL_PROFILE=fast`** uses a **two-phase first run**:
 
-1. **Download** — banner **"Downloading components"**; warm every pinned workload ref through pull-through local registries (`docker.io` + `ghcr.io` proxies on `127.0.0.1:5000` / `:5001`; outside the install timer).
+1. **Download** — banner **"Downloading components"**; fetch every pinned workload ref through pull-through local registries (`docker.io` + `ghcr.io` proxies on `127.0.0.1:5000` / `:5001`; outside the install timer).
 2. **Install** — `[install +MM:SS]` timer: `kind create` (containerd mirrors), connect registries, Envoy bootstrap, Helm, explicit rollout/job waits.
 
 **Clock starts after the download phase** (when Docker is already running and you have one LLM provider key).
 
-Escape hatches: `PREFETCH_IMAGES=false` (skip download), `LOCAL_REGISTRY=false` (direct upstream pull), `PREFETCH_KIND_LOAD=true` (legacy kind load), `INSTALL_PROFILE=full` (NetworkPolicies + Langfuse evaluator seed for pytest). Override proxy ports with `LOCAL_REGISTRY_DOCKER_PORT` / `LOCAL_REGISTRY_GHCR_PORT` if `5000`/`5001` are busy.
+Escape hatches: `PREFETCH_IMAGES=false` (skip download), `LOCAL_REGISTRY=false` (direct upstream pull). **`INSTALL_PROFILE=full`** is an **upgrade** on an existing fast install (NetworkPolicies + Langfuse evaluator seed for pytest) — run `./install.sh` first, then `INSTALL_PROFILE=full ./install.sh` on the same kind cluster. Override proxy ports with `LOCAL_REGISTRY_DOCKER_PORT` / `LOCAL_REGISTRY_GHCR_PORT` if `5000`/`5001` are busy.
 
 ## Architecture & Pillars
 
@@ -64,7 +64,7 @@ The script will (`INSTALL_PROFILE=fast`, default):
 
 1. Verify `docker`, `kind`, `helm`, and `kubectl` are available and Docker is running
 2. Require at least one LLM provider env var
-3. **Download phase** — start pull-through registries and warm all workload refs (`scripts/install-images.sh` list) with banner **Downloading components** (outside install timer)
+3. **Download phase** — start pull-through registries and fetch all workload refs (`scripts/install-images.sh` list) with banner **Downloading components** (outside install timer)
 4. Create a `kind` cluster named `zelkor` from `kindest/node:v1.32.2` (kubelet pulls via containerd mirrors)
 5. Install gVisor (`runsc`) on the kind node and deploy sandbox MCP (one gVisor worker)
 6. Install Envoy Gateway and Envoy AI Gateway controller and CRDs
@@ -82,13 +82,16 @@ PREFETCH_IMAGES=false OPENAI_API_KEY="sk-..." ./install.sh
 
 # Direct upstream pull instead of local registry proxies:
 LOCAL_REGISTRY=false OPENAI_API_KEY="sk-..." ./install.sh
-
-# Legacy kind load after direct pull:
-LOCAL_REGISTRY=false PREFETCH_KIND_LOAD=true OPENAI_API_KEY="sk-..." ./install.sh
-
-# Full profile (NetworkPolicies + Langfuse evaluator seed — for pytest):
-INSTALL_PROFILE=full OPENAI_API_KEY="sk-..." ./install.sh
 ```
+
+**Full profile (upgrade only — after fast):** NetworkPolicies, Langfuse evaluator seed, and DEBUG logging for pytest. Requires kind cluster `zelkor` with a completed fast install first.
+
+```bash
+OLLAMA_API_KEY="..." ./install.sh
+INSTALL_PROFILE=full OLLAMA_API_KEY="..." ./install.sh
+```
+
+`INSTALL_PROFILE=full` on a missing cluster or without Helm release `zelkor-platform` exits with an error.
 
 Optional while cloning: `./scripts/prefetch-images.sh`. Image list: `./scripts/install-images.sh`. To build first-party images locally:
 
