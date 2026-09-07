@@ -1,4 +1,5 @@
 """gVisor sandbox worker — executes Python in isolated subprocess with workspace reset."""
+import hmac
 import json
 import logging
 import os
@@ -8,6 +9,8 @@ import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger("zelkor-sandbox-worker")
+
+MAX_BODY_BYTES = int(os.getenv("SANDBOX_MAX_BODY_BYTES", "1048576"))
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
@@ -34,14 +37,26 @@ class WorkerHandler(BaseHTTPRequestHandler):
             return
 
         expected = os.getenv("SANDBOX_WORKER_TOKEN", "").strip()
-        if expected:
-            got = (self.headers.get("X-Sandbox-Worker-Token") or "").strip()
-            if got != expected:
-                logger.warning("sandbox worker unauthorized")
-                self._json(403, {"status": "error", "error": "unauthorized"})
-                return
+        if not expected:
+            logger.warning("sandbox worker /run rejected: SANDBOX_WORKER_TOKEN not configured")
+            self._json(403, {"status": "error", "error": "unauthorized"})
+            return
 
-        length = int(self.headers.get("Content-Length", 0))
+        got = (self.headers.get("X-Sandbox-Worker-Token") or "").strip()
+        if not hmac.compare_digest(got, expected):
+            logger.warning("sandbox worker unauthorized")
+            self._json(403, {"status": "error", "error": "unauthorized"})
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._json(400, {"status": "error", "error": "invalid Content-Length"})
+            return
+        if length > MAX_BODY_BYTES:
+            self._json(413, {"status": "error", "error": "request body too large"})
+            return
+
         raw = self.rfile.read(length) if length else b"{}"
         try:
             payload = json.loads(raw.decode("utf-8"))
@@ -90,6 +105,11 @@ if __name__ == "__main__":
     from zelkor_logging import configure_logging
 
     configure_logging("zelkor-sandbox-worker")
+    if not os.getenv("SANDBOX_WORKER_TOKEN", "").strip():
+        logger.critical(
+            "SANDBOX_WORKER_TOKEN is not set; /run will reject all requests until configured",
+            extra={"component": "zelkor-sandbox-worker", "event": "startup"},
+        )
     port = int(os.getenv("PORT", "8081"))
     logger.info("sandbox worker listening on 0.0.0.0:%s", port)
     HTTPServer(("0.0.0.0", port), WorkerHandler).serve_forever()

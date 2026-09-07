@@ -16,15 +16,24 @@ from gateway.gateway_server import (  # noqa: E402
 
 
 def test_native_backends_include_egress_when_url_set(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.POSTGRES_MCP_URL", "http://mcp-postgres:8080")
     monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "http://mcp-egress:8080")
     backends = native_backends()
     assert backends["egress"] == "http://mcp-egress:8080"
-    assert "postgres" in backends
+    assert backends["postgres"] == "http://mcp-postgres:8080"
 
 
 def test_native_backends_omit_egress_when_unset(monkeypatch):
     monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "")
     assert "egress" not in native_backends()
+
+
+def test_native_backends_omit_postgres_and_qdrant_when_unset(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.POSTGRES_MCP_URL", "")
+    monkeypatch.setattr("gateway.gateway_server.QDRANT_MCP_URL", "")
+    monkeypatch.setattr("gateway.gateway_server.SANDBOX_MCP_URL", "")
+    monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "")
+    assert native_backends() == {}
 
 
 def test_native_backends_omit_sandbox_when_unset(monkeypatch):

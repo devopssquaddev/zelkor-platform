@@ -52,6 +52,8 @@ def execute_on_worker(code: str, tenant_id: str, timeout: int = 5) -> Dict[str, 
 
 
 def workers_healthy() -> bool:
+    if not WORKER_URLS:
+        return False
     for url in WORKER_URLS:
         try:
             with urllib.request.urlopen(f"{url.rstrip('/')}/health", timeout=2) as resp:
@@ -59,4 +61,8 @@ def workers_healthy() -> bool:
                     return True
         except Exception:
             continue
-    return bool(WORKER_URLS)
+    logger.warning(
+        "all sandbox worker health probes failed",
+        extra={"event": "sandbox_health", "worker_count": len(WORKER_URLS)},
+    )
+    return False

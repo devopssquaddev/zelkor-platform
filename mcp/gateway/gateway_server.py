@@ -18,8 +18,8 @@ from common.tenant import extract_tenant
 
 logger = logging.getLogger("zelkor-mcp-gateway")
 
-POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "http://zelkor-platform-mcp-postgres:8080")
-QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "http://zelkor-platform-mcp-qdrant:8080")
+POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "").strip()
+QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "").strip()
 SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "").strip()
 EGRESS_MCP_URL = os.getenv("EGRESS_MCP_URL", "").strip()
 
@@ -28,10 +28,11 @@ _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def native_backends() -> Dict[str, str]:
-    backends = {
-        "postgres": POSTGRES_MCP_URL,
-        "qdrant": QDRANT_MCP_URL,
-    }
+    backends: Dict[str, str] = {}
+    if POSTGRES_MCP_URL:
+        backends["postgres"] = POSTGRES_MCP_URL
+    if QDRANT_MCP_URL:
+        backends["qdrant"] = QDRANT_MCP_URL
     if SANDBOX_MCP_URL:
         backends["sandbox"] = SANDBOX_MCP_URL
     if EGRESS_MCP_URL:
@@ -157,4 +158,9 @@ def _tenant_with_headers(headers: Dict[str, str]):
 
 
 if __name__ == "__main__":
+    if not BACKENDS:
+        logger.warning(
+            "MCP gateway has no backends configured; tools/list will be empty",
+            extra={"event": "startup"},
+        )
     run_mcp_server(GatewayMCPServer(), _tenant_with_headers, port=int(os.getenv("PORT", "8080")))
