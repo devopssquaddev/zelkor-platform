@@ -1,0 +1,103 @@
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if and .Values.postgresql.enabled (eq $mode "operator-cr") }}
+{{- $name := printf "%s-postgresql" (include "zelkor-platform.fullname" .) -}}
+{{- $user := .Values.postgresql.auth.username -}}
+{{- $pg := .Values.databases.postgresql | default dict -}}
+{{- $instances := $pg.instances | default 1 -}}
+{{- $storage := $pg.storage | default dict -}}
+{{- $size := $storage.size | default "10Gi" -}}
+{{- $sc := $storage.storageClass | default "" -}}
+{{- $image := $pg.imageName | default "ghcr.io/cloudnative-pg/postgresql:16.15" -}}
+{{- $barman := $pg.barman | default dict -}}
+{{- $barmanOn := $barman.enabled | default false -}}
+{{- if $barmanOn }}
+{{- required "databases.postgresql.barman.destinationPath must be set when barman.enabled" $barman.destinationPath -}}
+{{- required "databases.postgresql.barman.s3CredentialsSecretRef must be set when barman.enabled" $barman.s3CredentialsSecretRef -}}
+{{- end }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  instances: {{ $instances }}
+  imageName: {{ $image | quote }}
+  enableSuperuserAccess: false
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/component: postgresql
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  bootstrap:
+    initdb:
+      database: aegra
+      owner: {{ $user | quote }}
+      secret:
+        name: {{ $name }}
+      postInitSQL:
+        - CREATE DATABASE langfuse OWNER {{ $user }};
+  storage:
+    size: {{ $size | quote }}
+    {{- if $sc }}
+    storageClass: {{ $sc | quote }}
+    {{- end }}
+  {{- if $barmanOn }}
+  plugins:
+    - name: {{ $barman.pluginName | default "barman-cloud.cloudnative-pg.io" | quote }}
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ $name }}-barman
+  {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ExternalName
+  externalName: {{ $name }}-rw.{{ .Release.Namespace }}.svc.cluster.local
+  ports:
+    - port: 5432
+      name: postgresql
+{{- if $barmanOn }}
+---
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ $name }}-barman
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  retentionPolicy: {{ $barman.retentionPolicy | default "30d" | quote }}
+  configuration:
+    destinationPath: {{ $barman.destinationPath | quote }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ $barman.s3CredentialsSecretRef | quote }}
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: {{ $barman.s3CredentialsSecretRef | quote }}
+        key: ACCESS_SECRET_KEY
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $name }}-daily
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  schedule: "0 0 0 * * *"
+  backupOwnerReference: self
+  method: plugin
+  pluginConfiguration:
+    name: {{ $barman.pluginName | default "barman-cloud.cloudnative-pg.io" | quote }}
+  cluster:
+    name: {{ $name }}
+{{- end }}
+{{- end }}

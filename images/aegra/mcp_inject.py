@@ -170,6 +170,22 @@ def _normalize_tool_result(tool, value):
     return value
 
 
+def _maybe_stamp_sandbox_tool(tool, result):
+    name = getattr(tool, "name", "") or ""
+    if name != "sandbox__execute_python":
+        return result
+    try:
+        from sandbox_trace import stamp_sandbox_execution_span
+
+        payload = result
+        if isinstance(result, tuple) and result:
+            payload = result[0]
+        stamp_sandbox_execution_span(payload)
+    except Exception:
+        logger.debug("sandbox trace stamp skipped for %s", name, exc_info=True)
+    return result
+
+
 def _stamp_invoke_args(args: tuple, kwargs: dict) -> tuple[tuple, dict]:
     if args and isinstance(args[0], dict):
         args = (_stamp_tenant_kwargs(args[0]),) + args[1:]
@@ -186,6 +202,7 @@ def _stamp_tenant_on_tool(tool):
             args, kwargs = _stamp_invoke_args(args, kwargs)
             try:
                 result = _normalize_tool_result(tool, await orig_coro(*args, **kwargs))
+                result = _maybe_stamp_sandbox_tool(tool, result)
                 logger.debug("MCP tool %s ok", getattr(tool, "name", "?"))
                 return result
             except Exception as exc:
@@ -199,6 +216,7 @@ def _stamp_tenant_on_tool(tool):
             args, kwargs = _stamp_invoke_args(args, kwargs)
             try:
                 result = _normalize_tool_result(tool, orig_func(*args, **kwargs))
+                result = _maybe_stamp_sandbox_tool(tool, result)
                 logger.debug("MCP tool %s ok", getattr(tool, "name", "?"))
                 return result
             except Exception as exc:

@@ -1,0 +1,92 @@
+{{- if eq (include "zelkor-platform.gvisorInstallerEnabled" .) "true" }}
+{{- $prov := .Values.security.sandbox.provisioning | default dict }}
+{{- $installer := $prov.installer | default dict }}
+{{- $containerd := $installer.containerd | default dict }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-gvisor-install-script
+  namespace: kube-system
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gvisor-installer
+data:
+  install-on-node.sh: |
+{{ .Files.Get "files/gvisor/install-on-node.sh" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-gvisor-installer
+  namespace: kube-system
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gvisor-installer
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "zelkor-platform.fullname" . }}-gvisor-installer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "zelkor-platform.fullname" . }}-gvisor-installer
+        app.kubernetes.io/component: gvisor-installer
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+    spec:
+{{ include "zelkor-platform.gvisorNodeScheduling" . | indent 6 }}
+      priorityClassName: system-node-critical
+      hostPID: true
+      hostNetwork: true
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: install
+          image: {{ include "zelkor-platform.image" ($installer.image | default dict) | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" ($installer.image | default dict)) }}
+          securityContext:
+            privileged: true
+          env:
+            - name: GVISOR_RELEASE
+              value: {{ include "zelkor-platform.gvisorRelease" . | quote }}
+            - name: GVISOR_BASE_URL
+              value: {{ $prov.baseUrl | default "https://storage.googleapis.com/gvisor/releases/release" | quote }}
+            - name: VERIFY_CHECKSUM
+              value: {{ $prov.verifyChecksum | default false | quote }}
+            - name: HOST_ROOT
+              value: /host
+            {{- with $containerd.dropInDir }}
+            - name: DROP_IN_DIR
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $containerd.configPaths }}
+            - name: CONFIG_PATHS
+              value: {{ join " " . | quote }}
+            {{- end }}
+            {{- with $containerd.restartUnits }}
+            - name: RESTART_UNITS
+              value: {{ join " " . | quote }}
+            {{- end }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              apk add --no-cache curl bash >/dev/null
+              while true; do
+                bash /scripts/install-on-node.sh && sleep 3600 || sleep 30
+              done
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+            - name: install-script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory
+        - name: install-script
+          configMap:
+            name: {{ include "zelkor-platform.fullname" . }}-gvisor-install-script
+            defaultMode: 0555
+{{- end }}

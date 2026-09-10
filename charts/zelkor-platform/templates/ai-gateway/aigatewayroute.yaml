@@ -13,10 +13,7 @@ metadata:
     app.kubernetes.io/component: ai-gateway
 spec:
   parentRefs:
-    - name: {{ include "zelkor-platform.fullname" . }}-gateway
-      namespace: {{ .Release.Namespace }}
-      kind: Gateway
-      group: gateway.networking.k8s.io
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
   hostnames:
     {{- range $hostnames }}
     - {{ . | quote }}

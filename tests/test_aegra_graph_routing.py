@@ -317,7 +317,7 @@ def test_agent_chart_redis_prefix_and_shared_route():
         "--set",
         "sharedRoute.enabled=true",
         "--set",
-        "sharedRoute.host=aegra.example",
+        "sharedRoute.host=agents.example",
         "--set",
         "sharedRoute.gatewayName=zelkor-platform-gateway",
     )
@@ -333,7 +333,7 @@ def test_agent_chart_redis_prefix_and_shared_route():
     dumped = yaml.dump(route)
     assert "X-Graph-ID" in dumped
     assert "graph_id" in dumped
-    assert route["spec"]["hostnames"] == ["aegra.example"]
+    assert route["spec"]["hostnames"] == ["agents.example"]
     assert route["spec"]["rules"][0]["backendRefs"][0]["name"] == "fraud-zelkor-agent"
 
 
@@ -353,7 +353,7 @@ def test_agent_chart_graph_ids_share_one_service():
         "--set",
         "sharedRoute.enabled=true",
         "--set",
-        "sharedRoute.host=aegra.example",
+        "sharedRoute.host=agents.example",
         "--set",
         "sharedRoute.gatewayName=zelkor-platform-gateway",
     )
@@ -383,14 +383,14 @@ def test_agent_chart_shared_route_emits_when_host_and_gateway_set():
         "--set",
         "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
         "--set",
-        "sharedRoute.host=aegra.example",
+        "sharedRoute.host=agents.example",
         "--set",
         "sharedRoute.gatewayName=zelkor-platform-gateway",
     )
     docs = _docs(rendered)
     routes = [d for d in docs if d.get("kind") == "HTTPRoute"]
     assert len(routes) == 1
-    assert routes[0]["spec"]["hostnames"] == ["aegra.example"]
+    assert routes[0]["spec"]["hostnames"] == ["agents.example"]
     dumped = yaml.dump(routes[0])
     assert "X-Graph-ID" in dumped
     assert "fraud" in dumped
@@ -464,7 +464,7 @@ def test_agent_chart_as_default_is_catchall():
         "--set",
         "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
         "--set",
-        "sharedRoute.host=aegra.example",
+        "sharedRoute.host=agents.example",
         "--set",
         "sharedRoute.gatewayName=zelkor-platform-gateway",
         "--set",

@@ -141,30 +141,118 @@ Only emitted when otelTargets or init keys are set.
 {{- end }}
 {{- end }}
 
+{{- define "zelkor-platform.dbMode" -}}
+{{- .Values.databases.mode | default "in-cluster-basic" -}}
+{{- end }}
+
 {{- define "zelkor-platform.postgresPassword" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- $ext := ((.Values.databases.postgresql).external) | default dict -}}
+{{- if and (eq $mode "external") $ext.password -}}
+{{- $ext.password -}}
+{{- else -}}
 {{- required "postgresql.auth.password must be set in a values overlay. The chart ships no default password." .Values.postgresql.auth.password -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.postgresHost" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- required "databases.postgresql.external.host must be set when databases.mode is external" ((.Values.databases.postgresql).external).host -}}
+{{- else -}}
+{{- printf "%s-postgresql" (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.postgresPort" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- $p := ((.Values.databases.postgresql).external).port | default 5432 -}}
+{{- $p -}}
+{{- else -}}
+5432
+{{- end -}}
 {{- end }}
 
 {{- define "zelkor-platform.postgresUrl" -}}
 {{- $db := index . 1 -}}
 {{- $root := index . 0 -}}
-{{- printf "postgresql://%s:%s@%s-postgresql:5432/%s" $root.Values.postgresql.auth.username (include "zelkor-platform.postgresPassword" $root) (include "zelkor-platform.fullname" $root) $db -}}
+{{- $mode := include "zelkor-platform.dbMode" $root -}}
+{{- $user := $root.Values.postgresql.auth.username -}}
+{{- $ext := (($root.Values.databases.postgresql).external) | default dict -}}
+{{- if and (eq $mode "external") $ext.username -}}
+{{- $user = $ext.username -}}
+{{- end -}}
+{{- printf "postgresql://%s:%s@%s:%v/%s" $user (include "zelkor-platform.postgresPassword" $root) (include "zelkor-platform.postgresHost" $root) (include "zelkor-platform.postgresPort" $root) $db -}}
 {{- end }}
 
 {{- define "zelkor-platform.clickhousePassword" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- $ext := ((.Values.databases.clickhouse).external) | default dict -}}
+{{- if and (eq $mode "external") $ext.password -}}
+{{- $ext.password -}}
+{{- else -}}
 {{- required "clickhouse.auth.password must be set in a values overlay. The chart ships no default password." .Values.clickhouse.auth.password -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.clickhouseHost" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- required "databases.clickhouse.external.host must be set when databases.mode is external" ((.Values.databases.clickhouse).external).host -}}
+{{- else -}}
+{{- printf "%s-clickhouse" (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.clickhouseHttpPort" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- ((.Values.databases.clickhouse).external).httpPort | default 8123 -}}
+{{- else -}}
+8123
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.clickhouseNativePort" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- ((.Values.databases.clickhouse).external).nativePort | default 9000 -}}
+{{- else -}}
+9000
+{{- end -}}
 {{- end }}
 
 {{- define "zelkor-platform.valkeyPassword" -}}
 {{- .Values.valkey.auth.password | default "" -}}
 {{- end }}
 
+{{- define "zelkor-platform.valkeyHost" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- required "databases.valkey.external.host must be set when databases.mode is external" ((.Values.databases.valkey).external).host -}}
+{{- else -}}
+{{- printf "%s-valkey" (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.valkeyPort" -}}
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if eq $mode "external" -}}
+{{- ((.Values.databases.valkey).external).port | default 6379 -}}
+{{- else -}}
+6379
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.valkeyUrl" -}}
 {{- $pass := include "zelkor-platform.valkeyPassword" . -}}
+{{- $host := include "zelkor-platform.valkeyHost" . -}}
+{{- $port := include "zelkor-platform.valkeyPort" . -}}
 {{- if $pass -}}
-{{- printf "redis://:%s@%s-valkey:6379/0" $pass (include "zelkor-platform.fullname" .) -}}
+{{- printf "redis://:%s@%s:%v/0" $pass $host $port -}}
 {{- else -}}
-{{- printf "redis://%s-valkey:6379/0" (include "zelkor-platform.fullname" .) -}}
+{{- printf "redis://%s:%v/0" $host $port -}}
 {{- end -}}
 {{- end }}
 
@@ -220,9 +308,9 @@ Only emitted when otelTargets or init keys are set.
 - name: DATABASE_URL
   value: {{ include "zelkor-platform.postgresUrl" (list . "langfuse") | quote }}
 - name: CLICKHOUSE_URL
-  value: {{ printf "http://%s-clickhouse:8123" (include "zelkor-platform.fullname" .) | quote }}
+  value: {{ printf "http://%s:%v" (include "zelkor-platform.clickhouseHost" .) (include "zelkor-platform.clickhouseHttpPort" .) | quote }}
 - name: CLICKHOUSE_MIGRATION_URL
-  value: {{ printf "clickhouse://%s-clickhouse:9000/default" (include "zelkor-platform.fullname" .) | quote }}
+  value: {{ printf "clickhouse://%s:%v/default" (include "zelkor-platform.clickhouseHost" .) (include "zelkor-platform.clickhouseNativePort" .) | quote }}
 - name: CLICKHOUSE_USER
   value: {{ .Values.clickhouse.auth.username | default "clickhouse" | quote }}
 - name: CLICKHOUSE_PASSWORD
@@ -232,9 +320,9 @@ Only emitted when otelTargets or init keys are set.
 - name: CLICKHOUSE_CLUSTER_ENABLED
   value: "false"
 - name: REDIS_HOST
-  value: {{ printf "%s-valkey" (include "zelkor-platform.fullname" .) | quote }}
+  value: {{ include "zelkor-platform.valkeyHost" . | quote }}
 - name: REDIS_PORT
-  value: "6379"
+  value: {{ include "zelkor-platform.valkeyPort" . | quote }}
 {{- $redisPass := include "zelkor-platform.valkeyPassword" . -}}
 {{- if $redisPass }}
 - name: REDIS_AUTH
@@ -272,22 +360,24 @@ Only emitted when otelTargets or init keys are set.
 {{- end }}
 
 {{- define "zelkor-platform.langfuseWaitScript" -}}
-until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-postgresql 5432; do
+until nc -z -w 2 {{ include "zelkor-platform.postgresHost" . }} {{ include "zelkor-platform.postgresPort" . }}; do
   echo "Waiting for postgresql..."
   sleep 1
 done
-until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-clickhouse 8123; do
+until nc -z -w 2 {{ include "zelkor-platform.clickhouseHost" . }} {{ include "zelkor-platform.clickhouseHttpPort" . }}; do
   echo "Waiting for clickhouse..."
   sleep 1
 done
-until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-valkey 6379; do
+until nc -z -w 2 {{ include "zelkor-platform.valkeyHost" . }} {{ include "zelkor-platform.valkeyPort" . }}; do
   echo "Waiting for valkey..."
   sleep 1
 done
+{{- if and .Values.seaweedfs.enabled .Values.langfuse.enabled }}
 until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-seaweedfs 8333; do
   echo "Waiting for seaweedfs..."
   sleep 1
 done
+{{- end }}
 echo "Dependencies ready."
 {{- end }}
 
@@ -328,6 +418,61 @@ true
 {{- end }}
 
 {{/*
+Public Agent Protocol hostname. Prefer gateway.hosts.agents (product-neutral).
+gateway.hosts.aegra is a one-upgrade fallback for existing overlays.
+*/}}
+{{- define "zelkor-platform.agentsHost" -}}
+{{- $h := "" -}}
+{{- if and (hasKey .Values.gateway "hosts") (hasKey .Values.gateway.hosts "agents") -}}
+{{- $h = .Values.gateway.hosts.agents | default "" -}}
+{{- end -}}
+{{- if and (not $h) (hasKey .Values.gateway "hosts") (hasKey .Values.gateway.hosts "aegra") -}}
+{{- $h = .Values.gateway.hosts.aegra | default "" -}}
+{{- end -}}
+{{- $h -}}
+{{- end }}
+
+{{/*
+Helm `default` treats false as empty. Use hasKey for create* flags.
+*/}}
+{{- define "zelkor-platform.gatewayCreateGatewayClass" -}}
+{{- if hasKey .Values.gateway "createGatewayClass" -}}
+{{- .Values.gateway.createGatewayClass -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+{{- define "zelkor-platform.gatewayCreateGateway" -}}
+{{- if hasKey .Values.gateway "createGateway" -}}
+{{- .Values.gateway.createGateway -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+parentRefs target: overlay gateway.parentRef or this release's Gateway.
+*/}}
+{{- define "zelkor-platform.gatewayParentRef" -}}
+{{- $pr := .Values.gateway.parentRef | default dict -}}
+{{- $name := $pr.name | default "" -}}
+{{- if not $name -}}
+{{- $name = printf "%s-gateway" (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- $ns := $pr.namespace | default "" -}}
+{{- if not $ns -}}
+{{- $ns = .Release.Namespace -}}
+{{- end -}}
+- group: gateway.networking.k8s.io
+  kind: Gateway
+  name: {{ $name | quote }}
+  namespace: {{ $ns | quote }}
+{{- with $pr.sectionName }}
+  sectionName: {{ . | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
 Hostnames accepted by AIGatewayRoute (external dev + in-cluster service DNS).
 */}}
 {{- define "zelkor-platform.aiGatewayHostnames" -}}
@@ -365,6 +510,11 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- end }}
 
 {{- define "zelkor-platform.aiGatewayInternalUrl" -}}
+{{- /* Same Host as AIGatewayRoute (*-ai-gateway). Envoy dataplane FQDN 404s. */ -}}
+{{- if .Values.aiGateway.inClusterService.enabled -}}
+{{- $port := .Values.aiGateway.inClusterService.port | default 80 -}}
+{{- printf "http://%s-ai-gateway:%v/v1" (include "zelkor-platform.fullname" .) $port -}}
+{{- else -}}
 {{- $override := .Values.aiGateway.internalUrl | default "" -}}
 {{- if not $override -}}
 {{- $override = .Values.mcp.qdrantMCP.aiGatewayUrl | default "" -}}
@@ -383,6 +533,7 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- $found -}}
 {{- else -}}
 {{- printf "http://envoy-default-%s-gateway.%s.svc.cluster.local:80/v1" (include "zelkor-platform.fullname" .) $ns -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -441,6 +592,30 @@ Usage: {{ include "zelkor-platform.image" .Values.aegra.image }}
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.langfuseAdminSecretName" -}}
+{{- $a := .Values.langfuse.admin | default dict -}}
+{{- if $a.existingSecret -}}
+{{- $a.existingSecret -}}
+{{- else -}}
+{{- printf "%s-langfuse-admin" (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseAdminEmailHost" -}}
+{{- $host := .Values.gateway.hosts.langfuse | default "" -}}
+{{- if not $host -}}
+{{- $u := .Values.langfuse.nextauthUrl | default "" -}}
+{{- $u = trimPrefix "https://" $u -}}
+{{- $u = trimPrefix "http://" $u -}}
+{{- $host = index (splitList "/" $u) 0 -}}
+{{- $host = index (splitList ":" $host) 0 -}}
+{{- end -}}
+{{- if not $host -}}
+{{- $host = "localhost" -}}
+{{- end -}}
+{{- $host -}}
+{{- end }}
+
 {{- define "zelkor-platform.imagePullPolicy" -}}
 {{- $img := .image | default dict -}}
 {{- $root := .root -}}
@@ -478,5 +653,120 @@ readinessProbe:
 resources:
   {{- toYaml . | nindent 2 }}
 {{- end }}
+{{- end }}
+
+{{/*
+gVisor provisioning mode: auto renders as daemonset (preflight resolves auto before Helm when possible).
+*/}}
+{{- define "zelkor-platform.gvisorProvisioningMode" -}}
+{{- $prov := .Values.security.sandbox.provisioning | default dict -}}
+{{- $mode := $prov.mode | default "auto" -}}
+{{- if eq $mode "auto" -}}
+daemonset
+{{- else -}}
+{{ $mode }}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorInstallerEnabled" -}}
+{{- if .Values.security.sandbox.enabled -}}
+{{- eq (include "zelkor-platform.gvisorProvisioningMode" .) "daemonset" -}}
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorCreateRuntimeClass" -}}
+{{- if kindIs "bool" .Values.security.sandbox.createRuntimeClass -}}
+{{- if .Values.security.sandbox.createRuntimeClass -}}true{{- else -}}false{{- end -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorRuntimeClassEnabled" -}}
+{{- if and .Values.security.sandbox.enabled (ne (include "zelkor-platform.gvisorProvisioningMode" .) "none") (eq (include "zelkor-platform.gvisorCreateRuntimeClass" .) "true") -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorVerifyHookEnabled" -}}
+{{- $verify := .Values.security.sandbox.provisioning.verify | default dict -}}
+{{- if kindIs "bool" $verify.enabled -}}
+{{- if $verify.enabled -}}true{{- else -}}false{{- end -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorVerifyEnabled" -}}
+{{- if and (eq (include "zelkor-platform.gvisorRuntimeClassEnabled" .) "true") (eq (include "zelkor-platform.gvisorVerifyHookEnabled" .) "true") -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorRelease" -}}
+{{- $prov := .Values.security.sandbox.provisioning | default dict -}}
+{{ $prov.gvisorRelease | default "20260817" }}
+{{- end }}
+
+{{- define "zelkor-platform.gvisorRuntimeClassName" -}}
+{{ .Values.security.sandbox.runtimeClass | default "gvisor" }}
+{{- end }}
+
+{{/*
+Shared nodeSelector / tolerations for gVisor installer DaemonSet pod spec (indented under spec:).
+*/}}
+{{- define "zelkor-platform.gvisorNodeScheduling" }}
+{{- $nodes := .Values.security.sandbox.nodes | default dict }}
+{{- $selector := $nodes.selector | default dict }}
+{{- if $selector }}
+nodeSelector:
+{{ toYaml $selector | indent 2 }}
+{{- end }}
+{{- $tols := $nodes.tolerations | default list }}
+tolerations:
+{{- if $tols }}
+{{ toYaml $tols | indent 2 }}
+{{- end }}
+  - operator: Exists
+{{- end }}
+
+{{/*
+RuntimeClass scheduling block (indented under RuntimeClass spec).
+*/}}
+{{- define "zelkor-platform.gvisorRuntimeClassScheduling" }}
+{{- $nodes := .Values.security.sandbox.nodes | default dict }}
+{{- $selector := $nodes.selector | default dict }}
+{{- $tols := $nodes.tolerations | default list }}
+{{- if or $selector $tols }}
+scheduling:
+{{- if $selector }}
+  nodeSelector:
+{{ toYaml $selector | indent 4 }}
+{{- end }}
+{{- if $tols }}
+  tolerations:
+{{ toYaml $tols | indent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Sandbox execution log env (orchestrator + worker).
+Usage: {{ include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
+*/}}
+{{- define "zelkor-platform.sandboxExecutionLogEnv" -}}
+{{- $log := .Values.security.sandbox.executionLog | default dict -}}
+- name: SANDBOX_EXECUTION_LOG_ENABLED
+  value: {{ ternary "true" "false" ($log.enabled | default true) | quote }}
+- name: SANDBOX_INCLUDE_STDOUT_PREVIEW
+  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default true) | quote }}
+- name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
+  value: {{ ternary "true" "false" ($log.suspiciousOnProbePlusError | default true) | quote }}
 {{- end }}
 

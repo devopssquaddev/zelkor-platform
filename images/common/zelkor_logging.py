@@ -5,10 +5,13 @@ internal/plan/requirements_platform_logging.md.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
+import signal
 import sys
+import threading
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -37,6 +40,9 @@ class JsonFormatter(logging.Formatter):
             val = getattr(record, key, None)
             if val:
                 payload[key] = val
+        sandbox = getattr(record, "sandbox", None)
+        if isinstance(sandbox, dict) and sandbox:
+            payload["sandbox"] = sandbox
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str)
@@ -63,6 +69,57 @@ def parse_format(raw: Optional[str] = None) -> str:
     if name in ("json", "text"):
         return name
     return "json"
+
+
+def _component_name() -> str:
+    return str(getattr(configure_logging, "_component", None) or os.getenv("ZELKOR_LOG_COMPONENT", "") or "zelkor")
+
+
+def _lifecycle_enabled() -> bool:
+    return os.getenv("ZELKOR_LOG_LIFECYCLE", "1").strip().lower() not in ("0", "false", "off")
+
+
+def log_startup(*, message: str = "starting") -> None:
+    name = _component_name()
+    logging.getLogger(name).info(message, extra={"event": "startup", "component": name})
+
+
+def log_shutdown(*, message: str = "stopping") -> None:
+    if getattr(log_shutdown, "_done", False):
+        return
+    log_shutdown._done = True  # type: ignore[attr-defined]
+    try:
+        name = _component_name()
+        logging.getLogger(name).info(message, extra={"event": "shutdown", "component": name})
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+    except Exception:
+        pass
+
+
+def _on_signal(signum: int, _frame: object) -> None:
+    log_shutdown()
+    signal.signal(signum, signal.SIG_DFL)
+    os.kill(os.getpid(), signum)
+
+
+def install_lifecycle_hooks() -> None:
+    """INFO shutdown on atexit and SIGTERM/SIGINT. Idempotent. Skip under pytest."""
+    if getattr(install_lifecycle_hooks, "_done", False):
+        return
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return
+    if not _lifecycle_enabled():
+        return
+    install_lifecycle_hooks._done = True  # type: ignore[attr-defined]
+    atexit.register(log_shutdown)
+    if threading.current_thread() is not threading.main_thread():
+        return
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _on_signal)
+        except (ValueError, OSError):
+            pass
 
 
 def configure_logging(component: Optional[str] = None, *, force: bool = False) -> str:
@@ -94,4 +151,8 @@ def configure_logging(component: Optional[str] = None, *, force: bool = False) -
 
     configure_logging._done = True  # type: ignore[attr-defined]
     configure_logging._component = name  # type: ignore[attr-defined]
+    if force:
+        log_shutdown._done = False  # type: ignore[attr-defined]
+    log_startup()
+    install_lifecycle_hooks()
     return name

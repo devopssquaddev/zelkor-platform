@@ -180,19 +180,113 @@ def wait_for_traces(predicate, *, timeout: float = 45.0, **list_kwargs) -> list[
     return []
 
 
-def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
-    """ERROR-level observations that are not expected guardrail refusals."""
-    if rows is None:
-        rows = list_observations(limit=100)
+def _observation_blob(obs: dict) -> str:
+    return f"{obs.get('statusMessage') or ''} {obs.get('output') or ''} {obs.get('input') or ''}"
+
+
+def failed_tool_observations(rows: list[dict]) -> list[dict]:
+    """Tool spans whose output reports MCP/tool failure (may be level DEFAULT)."""
     bad = []
     for obs in rows:
-        level = str(obs.get("level") or "").upper()
-        blob = f"{obs.get('statusMessage') or ''} {obs.get('output') or ''}".lower()
-        if level == "ERROR" or "exception" in blob or "traceback" in blob:
+        name = str(obs.get("name") or "")
+        if obs.get("type") not in ("TOOL", "tool") and "tool" not in name.lower():
+            continue
+        blob = _observation_blob(obs).lower()
+        if any(
+            token in blob
+            for token in ("mcperror", "password authentication failed", '"status": "error"')
+        ):
             if "blocked" in blob or "refused" in blob or "content_safety" in blob:
                 continue
             bad.append(obs)
     return bad
+
+
+def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
+    """ERROR-level observations and failed tool outputs (not guardrail refusals)."""
+    if rows is None:
+        rows = list_observations(limit=100)
+    bad = []
+    seen: set[str] = set()
+    for obs in rows:
+        oid = str(obs.get("id") or id(obs))
+        level = str(obs.get("level") or "").upper()
+        blob = _observation_blob(obs).lower()
+        is_bad = level == "ERROR" or "exception" in blob or "traceback" in blob
+        if is_bad:
+            if "blocked" in blob or "refused" in blob or "content_safety" in blob:
+                continue
+            if oid not in seen:
+                seen.add(oid)
+                bad.append(obs)
+    for obs in failed_tool_observations(rows):
+        oid = str(obs.get("id") or id(obs))
+        if oid not in seen:
+            seen.add(oid)
+            bad.append(obs)
+    return bad
+
+
+def has_execute_tool_span(observations: list) -> bool:
+    for obs in observations:
+        if str(obs.get("name") or "") == "execute":
+            return True
+    return False
+
+
+def has_sandbox_mcp_span(observations: list) -> bool:
+    for obs in observations:
+        if str(obs.get("name") or "") == "sandbox__execute_python":
+            return True
+    return False
+
+
+def _observation_metadata(obs: dict) -> dict:
+    meta = obs.get("metadata")
+    if isinstance(meta, dict):
+        return meta
+    if isinstance(meta, str):
+        try:
+            parsed = json.loads(meta)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def sandbox_execution_metadata(observations: list) -> dict | None:
+    """Return sandbox outcome/violation from TOOL observation metadata if present."""
+    for obs in observations:
+        if obs.get("type") not in ("TOOL", "tool"):
+            continue
+        name = str(obs.get("name") or "")
+        if name not in ("sandbox__execute_python", "execute"):
+            continue
+        meta = _observation_metadata(obs)
+        sandbox_meta = meta.get("sandbox") if isinstance(meta.get("sandbox"), dict) else meta
+        outcome = (
+            meta.get("sandbox.outcome")
+            or (sandbox_meta or {}).get("outcome")
+            or meta.get("sandbox_outcome")
+        )
+        violation = (
+            meta.get("sandbox.violation")
+            or (sandbox_meta or {}).get("violation")
+            or meta.get("sandbox_violation")
+        )
+        text = _observation_blob(obs)
+        if not outcome and "sandbox.outcome" in text:
+            for token in ("denied", "suspicious", "allowed", "exploit"):
+                if token in text:
+                    outcome = token
+                    break
+        if outcome or violation:
+            return {
+                "outcome": outcome,
+                "violation": violation,
+                "name": name,
+            }
+    return None
 
 
 def blob(value: Any) -> str:

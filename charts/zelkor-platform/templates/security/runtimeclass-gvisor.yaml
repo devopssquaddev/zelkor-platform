@@ -1,9 +1,16 @@
-{{- if .Values.security.sandbox.enabled }}
+{{- if eq (include "zelkor-platform.gvisorRuntimeClassEnabled" .) "true" }}
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: {{ .Values.security.sandbox.runtimeClass | default "gvisor" }}
+  name: {{ include "zelkor-platform.gvisorRuntimeClassName" . }}
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
 handler: runsc
+{{- $overhead := .Values.security.sandbox.overhead | default dict }}
+{{- with $overhead.podFixed }}
+overhead:
+  podFixed:
+    {{- toYaml . | nindent 4 }}
+{{- end }}
+{{ include "zelkor-platform.gvisorRuntimeClassScheduling" . }}
 {{- end }}

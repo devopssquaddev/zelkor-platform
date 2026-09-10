@@ -1,4 +1,5 @@
-{{- if and .Values.gateway.enabled .Values.aegra.enabled .Values.gateway.hosts.aegra }}
+{{- $agentsHost := include "zelkor-platform.agentsHost" . }}
+{{- if and .Values.gateway.enabled .Values.aegra.enabled $agentsHost }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:

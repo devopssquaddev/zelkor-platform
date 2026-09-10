@@ -41,6 +41,10 @@ PROJECT_ID = os.getenv("LANGFUSE_PROJECT_ID", "").strip()
 ORG_ID = os.getenv("LANGFUSE_ORG_ID", "").strip()
 LANGFUSE_SALT = os.getenv("LANGFUSE_SALT", "").strip()
 EXTRA_PROJECTS_RAW = os.getenv("LANGFUSE_EXTRA_PROJECTS", "").strip()
+SEED_ADMIN = os.getenv("SEED_ADMIN", "").lower() in ("1", "true", "yes")
+ADMIN_EMAIL = os.getenv("LANGFUSE_ADMIN_EMAIL", "").strip()
+ADMIN_PASSWORD = os.getenv("LANGFUSE_ADMIN_PASSWORD", "")
+ADMIN_NAME = os.getenv("LANGFUSE_ADMIN_NAME", "Admin").strip() or "Admin"
 MCP_URL = os.getenv("MCP_URL", "").rstrip("/")
 TOOL_NAME_OK = re.compile(r"^[a-zA-Z0-9._-]+$")
 MCP_TENANT = os.getenv("MCP_SEED_TENANT", "seed")
@@ -175,15 +179,16 @@ def _request(
     *,
     public_key: str = "",
     secret_key: str = "",
+    auth: bool = True,
 ) -> Any:
     data = None if body is None else json.dumps(body).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if auth:
+        headers["Authorization"] = _auth_header(public_key, secret_key)
     req = urllib.request.Request(
         f"{LANGFUSE_HOST}{path}",
         data=data,
-        headers={
-            "Authorization": _auth_header(public_key, secret_key),
-            "Content-Type": "application/json",
-        },
+        headers=headers,
         method=method,
     )
     ctx = ssl.create_default_context()
@@ -498,6 +503,64 @@ def wait_project_api(project: Dict[str, str], attempts: int = 20) -> None:
     raise RuntimeError(f"Langfuse API key for project {project['id']} not live: {last}")
 
 
+def _already_exists_detail(detail: str) -> bool:
+    low = (detail or "").lower()
+    return any(token in low for token in ("already", "exists", "taken", "duplicate", "unique"))
+
+
+def _admin_exists_sql(email: str) -> bool:
+    if not DATABASE_URL or psycopg is None:
+        return False
+    try:
+        with psycopg.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM users WHERE lower(email) = lower(%s) LIMIT 1",
+                    (email,),
+                )
+                return cur.fetchone() is not None
+    except Exception as exc:
+        logger.debug("admin sql lookup skipped: %s", exc)
+        return False
+
+
+def _signup(email: str, password: str, name: str) -> tuple[int, str]:
+    body = json.dumps({"name": name, "email": email, "password": password}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{LANGFUSE_HOST}/api/auth/signup",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+            raw = resp.read().decode("utf-8")
+            return resp.status, raw[:400]
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:400]
+        return exc.code, detail
+
+
+def seed_admin_user(email: str = "", password: str = "", name: str = "") -> str:
+    email = (email or ADMIN_EMAIL).strip()
+    password = password or ADMIN_PASSWORD
+    name = (name or ADMIN_NAME).strip() or "Admin"
+    if not email or not password:
+        raise RuntimeError("LANGFUSE_ADMIN_EMAIL and LANGFUSE_ADMIN_PASSWORD required")
+    if _admin_exists_sql(email):
+        logger.info("admin already present", extra={"event": "admin_exists", "email": email})
+        return "exists"
+    status, detail = _signup(email, password, name)
+    if status in (200, 201):
+        logger.info("admin created", extra={"event": "admin_created", "email": email})
+        return "created"
+    if status in (409, 422) or _already_exists_detail(detail):
+        logger.info("admin already present", extra={"event": "admin_exists", "email": email})
+        return "exists"
+    raise RuntimeError(f"signup failed {status}: {detail}")
+
+
 def seed_armor(projects: List[Dict[str, str]]) -> None:
     saved: List[Dict[str, Any]] = []
     if SEED_TOOLS:
@@ -517,17 +580,30 @@ def main() -> int:
 
     configure_logging("zelkor-langfuse-seed")
     extra = parse_extra_projects(EXTRA_PROJECTS_RAW)
-    if not LANGFUSE_HOST or not PUBLIC_KEY or not SECRET_KEY:
-        logger.info("skip: Langfuse host or keys unset")
-        return 0
-    if not (SEED_CONNECTION or SEED_TOOLS or SEED_EVALS or extra):
-        logger.info("skip: all seed knobs off")
+    need_admin = SEED_ADMIN and bool(LANGFUSE_HOST)
+    need_armor = bool(
+        LANGFUSE_HOST
+        and PUBLIC_KEY
+        and SECRET_KEY
+        and (SEED_CONNECTION or SEED_TOOLS or SEED_EVALS or extra)
+    )
+    if SEED_ADMIN and not LANGFUSE_HOST:
+        logger.info("skip admin: LANGFUSE_HOST unset")
+    if not need_admin and not need_armor:
+        if not LANGFUSE_HOST or not PUBLIC_KEY or not SECRET_KEY:
+            if not SEED_ADMIN:
+                logger.info("skip: Langfuse host or keys unset")
+        else:
+            logger.info("skip: all seed knobs off")
         return 0
     wait_healthy()
-    if extra or (DATABASE_URL and PUBLIC_KEY and PROJECT_ID):
-        seed_extra_projects()
-        ensure_init_key_on_project()
-    seed_armor(managed_projects())
+    if need_admin:
+        seed_admin_user()
+    if need_armor:
+        if extra or (DATABASE_URL and PUBLIC_KEY and PROJECT_ID):
+            seed_extra_projects()
+            ensure_init_key_on_project()
+        seed_armor(managed_projects())
     return 0
 
 

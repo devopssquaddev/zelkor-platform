@@ -10,13 +10,12 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "images" / "common"))
 
-from zelkor_logging import JsonFormatter, configure_logging, parse_format, parse_level  # noqa: E402
+from zelkor_logging import JsonFormatter, configure_logging, log_shutdown, parse_format, parse_level  # noqa: E402
 
 CHART = ROOT / "charts" / "zelkor-platform"
 AGENT_CHART = ROOT / "charts" / "zelkor-agent"
 FIRST_PARTY_TEMPLATES = [
     CHART / "templates/aegra/deployment.yaml",
-    CHART / "templates/aegra/job-migrate.yaml",
     CHART / "templates/mcp/deployment-gateway.yaml",
     CHART / "templates/mcp/deployment-postgres.yaml",
     CHART / "templates/mcp/deployment-qdrant.yaml",
@@ -24,6 +23,7 @@ FIRST_PARTY_TEMPLATES = [
     CHART / "templates/mcp/deployment-sandbox.yaml",
     CHART / "templates/guardrails/deployment.yaml",
     CHART / "templates/langfuse/job-surfaces-seed.yaml",
+    CHART / "templates/langfuse/job-admin-seed.yaml",
     AGENT_CHART / "templates/deployment.yaml",
 ]
 
@@ -76,6 +76,39 @@ def test_configure_honors_error_level(monkeypatch, capsys):
     assert line["level"] == "ERROR"
     assert line["message"] == "boom"
     assert line["component"] == "zelkor-test"
+
+
+def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
+    configure_logging("zelkor-mcp-gateway", force=True)
+    log_shutdown()
+    log_shutdown()
+    rows = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines() if line]
+    events = [row["event"] for row in rows]
+    assert events.count("startup") == 1
+    assert events.count("shutdown") == 1
+    start = next(row for row in rows if row["event"] == "startup")
+    stop = next(row for row in rows if row["event"] == "shutdown")
+    assert start["message"] == "starting"
+    assert start["component"] == "zelkor-mcp-gateway"
+    assert stop["message"] == "stopping"
+    assert stop["component"] == "zelkor-mcp-gateway"
+    assert "Authorization" not in json.dumps(rows)
+
+
+def test_first_party_entrypoints_configure_logging():
+    files = [
+        ROOT / "images/aegra/sitecustomize.py",
+        ROOT / "images/aegra-cli/sitecustomize.py",
+        ROOT / "images/guardrails/boot.py",
+        ROOT / "images/langfuse-seed/seed.py",
+        ROOT / "mcp/common/mcp_server.py",
+        ROOT / "mcp/sandbox/worker.py",
+    ]
+    for path in files:
+        text = path.read_text()
+        assert "configure_logging" in text, path.name
 
 
 def test_chart_default_is_info_json_not_debug():

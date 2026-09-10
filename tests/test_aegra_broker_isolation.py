@@ -45,16 +45,14 @@ def test_front_door_cannot_claim_worker_jobs():
 def test_app_pods_disable_lifespan_migrations():
     front = (ROOT / "charts/zelkor-platform/templates/aegra/deployment.yaml").read_text()
     worker = (ROOT / "charts/zelkor-agent/templates/deployment.yaml").read_text()
-    job = (ROOT / "charts/zelkor-platform/templates/aegra/job-migrate.yaml").read_text()
     assert "RUN_MIGRATIONS_ON_STARTUP" in front
     assert "RUN_MIGRATIONS_ON_STARTUP" in worker
     assert '"false"' in worker.split("RUN_MIGRATIONS_ON_STARTUP", 1)[1][:120]
+    assert 'name: migrate' in front
+    assert 'command: ["aegra", "db", "upgrade"]' in front
     assert _has_aegra_db_upgrade(front)
-    assert _has_aegra_db_upgrade(job)
     assert "migrate.py" not in front
-    assert "migrate.py" not in job
     assert "aegra.cli.image" in front
-    assert "aegra.cli.image" in job
     runtime_df = (ROOT / "images/aegra/Dockerfile").read_text()
     assert "migrate.py" not in runtime_df
     assert (ROOT / "images/aegra-cli/Dockerfile").is_file()

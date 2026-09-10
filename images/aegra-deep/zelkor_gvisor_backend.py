@@ -394,6 +394,12 @@ class ZelkorGvisorBackend(_ProtocolBase):
         exit_code = int(result.get("exit_code") or 0)
         if result.get("status") == "error" and exit_code == 0:
             exit_code = 1
+        try:
+            from sandbox_trace import stamp_sandbox_execution_span
+
+            stamp_sandbox_execution_span(result)
+        except Exception:
+            logger.debug("sandbox trace stamp skipped on execute backend", exc_info=True)
         return _execute_response(output, exit_code)
 
     async def aexecute(self, command: str, *, timeout: int | None = None) -> Any:

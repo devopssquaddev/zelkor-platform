@@ -26,3 +26,7 @@ guardrails:
             - '\bjoke\b'
             - '\bweather\b'
     complianceRefusal: "Request violated FinServe compliance, tenant privacy, and security guardrail policies."
+    observability:
+      otel:
+        enabled: true
+        captureContent: true

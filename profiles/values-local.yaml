@@ -22,6 +22,9 @@ security:
   sandbox:
     enabled: true
     runtimeClass: gvisor
+    failClosed: false
+    provisioning:
+      mode: daemonset
   networkPolicies:
     enabled: true
 
@@ -40,10 +43,12 @@ gateway:
   envoyProxy:
     enabled: true
     hostNetwork: true
+    nodeSelector:
+      ingress-ready: "true"  # kind control-plane; omit on Path B / k3s
   hosts:
     langfuse: "langfuse.localhost"
     aiGateway: "ai-gateway.localhost"
-    aegra: "aegra.localhost"
+    agents: "agents.localhost"
     mcp: "mcp.localhost"
     nemo: "nemo.localhost"
 
@@ -110,6 +115,10 @@ langfuse:
   nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
   salt: "zelkor-langfuse-salt-123456789"
   encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  admin:
+    email: "admin@zelkor.local"
+    name: "Zelkor Admin"
+    password: "zelkor-dev-password"
   init:
     enabled: true
     orgId: "zelkor-dev"

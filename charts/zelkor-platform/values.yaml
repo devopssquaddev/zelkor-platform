@@ -21,7 +21,40 @@ logging:
   format: json
 
 databases:
-  mode: in-cluster-basic  # in-cluster-basic (Gate A) | operators (Gate B)
+  # in-cluster-basic (Gate A STS) | operator-cr (CNPG + Altinity CHI) | external (customer hosts)
+  mode: in-cluster-basic
+  postgresql:
+    instances: 1
+    storage:
+      size: 10Gi
+      storageClass: ""
+    imageName: "ghcr.io/cloudnative-pg/postgresql:16.15"
+    barman:
+      enabled: false
+      destinationPath: ""
+      s3CredentialsSecretRef: ""
+      retentionPolicy: "30d"
+      pluginName: barman-cloud.cloudnative-pg.io
+    external:
+      host: ""
+      port: 5432
+      username: ""
+      password: ""
+  clickhouse:
+    ha: false
+    storage:
+      size: 20Gi
+      storageClass: ""
+    external:
+      host: ""
+      httpPort: 8123
+      nativePort: 9000
+      username: ""
+      password: ""
+  valkey:
+    external:
+      host: ""
+      port: 6379
 
 highAvailability:
   enabled: false  # Gate B production toggle
@@ -32,7 +65,33 @@ security:
   sandbox:
     enabled: true
     runtimeClass: gvisor
-  # Path A local overlay sets true. Production CE stays false until Path B.
+    failClosed: false
+    createRuntimeClass: true
+    overhead: {}
+    nodes:
+      selector: {}
+      tolerations: []
+    provisioning:
+      mode: auto
+      gvisorRelease: "20260817"
+      baseUrl: ""
+      verifyChecksum: false
+      installer:
+        image:
+          repository: alpine
+          tag: "3.22"
+          digest: ""
+        containerd:
+          dropInDir: ""
+          configPaths: []
+          restartUnits: []
+      verify:
+        enabled: true
+    executionLog:
+      enabled: true
+      includeStdoutPreview: true
+      suspiciousOnProbePlusError: true
+  # Path A local + Path B production overlays set true. Chart default stays false.
   networkPolicies:
     enabled: false
 
@@ -49,9 +108,21 @@ auth:
 gateway:
   enabled: true
   gatewayClassName: "eg"
+  # false when the customer already owns the GatewayClass / dataplane (option 2).
+  createGatewayClass: true
+  createGateway: true
+  parentRef:
+    name: ""
+    namespace: ""
+    sectionName: ""
   envoyProxy:
     enabled: false
     hostNetwork: false
+    nodeSelector: {}
+    # Empty type = Envoy Gateway default (LoadBalancer). Set ClusterIP when an
+    # existing Ingress fronts the dataplane and preserves Host.
+    service:
+      type: ""
     resources:
       requests:
         cpu: 100m
@@ -63,7 +134,8 @@ gateway:
   hosts:
     langfuse: ""
     aiGateway: ""
-    aegra: ""
+    # Public Agent Protocol hostname. Not the Aegra product name.
+    agents: ""
     mcp: ""
     nemo: ""
 
@@ -285,6 +357,15 @@ langfuse:
   nextauthSecret: ""
   salt: ""
   encryptionKey: ""
+  # First admin: Helm Secret + post-hook Job (signup if missing). Empty password
+  # is generated once and kept on upgrade. Admins: kubectl get secret
+  # {release}-langfuse-admin. No chart-default password.
+  admin:
+    enabled: true
+    existingSecret: ""
+    email: ""
+    name: "Admin"
+    password: ""
   init:
     enabled: false
     orgId: ""
@@ -353,11 +434,11 @@ aegra:
     enabled: false
     configMapName: ""
     mountPath: /app/graphs
-  # Extra Agent Protocol backends on gateway.hosts.aegra (overlay).
+  # Extra Agent Protocol backends on gateway.hosts.agents (overlay).
   # Each entry: { graphId, service, port } — in-cluster Service, not an http:// URL.
   # Empty = topology 1 (catch-all / → this Service). No fixture graphId.
   workers: []
-  # Catch-all `/` on gateway.hosts.aegra → this Service. First zelkor-agent
+  # Catch-all `/` on gateway.hosts.agents → this Service. First zelkor-agent
   # asDefault worker sets this false (do not use `| default true` in templates).
   attachDefaultRoute: true
   # Mode B inject belongs on worker pods (charts/zelkor-agent), not the empty-graph front door.

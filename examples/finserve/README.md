@@ -71,7 +71,7 @@ flowchart TD
 
 ### A. Deploy via Helm
 
-`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlay (MCP DSN / Langfuse / NeMo topic rails) and this chart. Desk, quant, and coder self-register on `gateway.hosts.aegra` via `sharedRoute` (host + gateway in `values-local.yaml`). Do not edit platform `aegra.workers`. Manual:
+`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlay (MCP DSN / Langfuse / NeMo topic rails) and this chart. Desk, quant, and coder self-register on `gateway.hosts.agents` via `sharedRoute` (host + gateway in `values-local.yaml`). Do not edit platform `aegra.workers`. Manual:
 
 ```bash
 helm dependency update examples/finserve/chart
@@ -84,7 +84,7 @@ helm upgrade --install finserve examples/finserve/chart \
 
 ```bash
 curl -X POST http://127.0.0.1:8088/runs/wait \
-  -H "Host: aegra.localhost" \
+  -H "Host: agents.localhost" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer dev:Bank_Alpha" \
   -H "X-Graph-ID: finserve-advisor" \

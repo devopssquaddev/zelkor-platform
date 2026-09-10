@@ -34,6 +34,14 @@ data:
         <console>1</console>
       </logger>
     </clickhouse>
+  zelkor-langfuse-compat.xml: |
+    <clickhouse>
+      <profiles>
+        <default>
+          <input_format_read_datetime_number_as_raw_value>1</input_format_read_datetime_number_as_raw_value>
+        </default>
+      </profiles>
+    </clickhouse>
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -80,6 +88,9 @@ spec:
             - name: zelkor-log
               mountPath: /etc/clickhouse-server/config.d/zelkor-log.xml
               subPath: zelkor-log.xml
+            - name: zelkor-log
+              mountPath: /etc/clickhouse-server/users.d/99-zelkor-langfuse-compat.xml
+              subPath: zelkor-langfuse-compat.xml
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.clickhouse) | nindent 10 }}
       volumes:
         - name: zelkor-log

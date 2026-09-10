@@ -46,7 +46,7 @@ class PlatformInfo:
     mcp_url: str = ""
     consumer_key: str = ""
     redis_url: str = ""
-    aegra_host: str = ""
+    agents_host: str = ""
     gateway_name: str = ""
     gateway_namespace: str = ""
     jwt_secret: str = ""
@@ -136,7 +136,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
     values = yaml.safe_load(values_raw.stdout or "") or {}
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
-    info.aegra_host = str(hosts.get("aegra") or "")
+    info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.gateway_namespace = env.namespace
     deploys = _run(
         kube_argv(env, "get", "deploy", "-l", "app.kubernetes.io/component=aegra", "-o", "json"),
@@ -293,7 +293,7 @@ def deploy_agent(
         "image": {"repository": image_repo, "tag": tag},
         "aegraConfig": "",
         "sharedRoute": {
-            "host": info.aegra_host,
+            "host": info.agents_host,
             "gatewayName": info.gateway_name,
             "gatewayNamespace": info.gateway_namespace,
             "asDefault": as_default,
@@ -437,7 +437,7 @@ def cmd_doctor(env: Env, runner: Optional[RunFn] = None) -> int:
         ("DATABASE_URL", bool(info.database_url)),
         ("OPENAI_BASE_URL", bool(info.openai_base_url)),
         ("MCP_URL", bool(info.mcp_url)),
-        ("Aegra host", bool(info.aegra_host)),
+        ("Agents host", bool(info.agents_host)),
         ("CE license", True),
     ]
     failed = 0
@@ -475,9 +475,11 @@ def cmd_run(
 ) -> int:
     shape = detect(root, graph_id_flag)
     info = discover_platform(env, runner=runner)
-    base = url or os.getenv("ZELKOR_AEGRA_URL") or (f"http://{info.aegra_host}" if info.aegra_host else "")
+    base = url or os.getenv("ZELKOR_AGENTS_URL") or os.getenv("ZELKOR_AEGRA_URL") or (
+        f"http://{info.agents_host}" if info.agents_host else ""
+    )
     if not base:
-        print("no Aegra URL; pass --url or set ZELKOR_AEGRA_URL", file=sys.stderr)
+        print("no agents URL; pass --url or set ZELKOR_AGENTS_URL", file=sys.stderr)
         return 1
     token = auth or os.getenv("ZELKOR_AUTH_TOKEN") or os.getenv("AEGRA_AUTH_TOKEN") or ""
     headers: dict[str, str] = {}
@@ -486,8 +488,8 @@ def cmd_run(
     from urllib.parse import urlparse
 
     parsed = urlparse(base)
-    if info.aegra_host and parsed.hostname != info.aegra_host:
-        headers["Host"] = info.aegra_host
+    if info.agents_host and parsed.hostname != info.agents_host:
+        headers["Host"] = info.agents_host
     as_default = should_attach_as_default(info.agent_route_names, helm_release_name(shape.graph_id))
     if not as_default:
         headers["X-Graph-ID"] = shape.graph_id

@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
 COPY images/sandbox-worker/requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY mcp/sandbox/worker.py /app/worker.py
+COPY mcp/sandbox/worker.py mcp/sandbox/execution_report.py mcp/sandbox/bootstrap_runner.py /app/
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \

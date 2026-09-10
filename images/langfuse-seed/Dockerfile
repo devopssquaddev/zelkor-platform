@@ -1,7 +1,7 @@
 FROM python:3.12-slim-bookworm
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
-LABEL org.opencontainers.image.description="Zelkor Langfuse surface seed (LLM connection, MCP tools, code evaluators)"
+LABEL org.opencontainers.image.description="Zelkor Langfuse seed (admin signup, LLM connection, MCP tools, code evaluators)"
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \

@@ -293,27 +293,11 @@ wait_jobs_selector() {
   handle_wait_failure "$criticality" "jobs -l ${selector}" jobs_selector_healthy "$selector"
 }
 
-langfuse_surfaces_job_enabled() {
-  helm get manifest "$HELM_RELEASE_NAME" --kube-context "$KCTX" 2>/dev/null \
-    | grep -q "${HELM_RELEASE_NAME}-langfuse-surfaces"
-}
-
-# First platform_helm creates the surfaces Job before Langfuse/MCP are ready; the Job may
-# fail or exit 0 without seeding the LLM connection. Re-create after rollouts so Playground
-# gets DEFAULT_LLM_MODEL on the zelkor-ai-gateway connection.
 refresh_langfuse_surfaces_job() {
-  if ! langfuse_surfaces_job_enabled; then
-    log "  skip: langfuse surfaces seed job not deployed"
-    return 0
-  fi
-  log "Re-seeding Langfuse surfaces (Playground LLM connection + MCP tools)..."
-  kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-langfuse-surfaces" --ignore-not-found
-  helm upgrade "$HELM_RELEASE_NAME" "$CHART_PATH" \
+  bash "$ZELKOR_REPO_ROOT/scripts/refresh-langfuse-surfaces.sh" \
     --kube-context "$KCTX" \
-    --reuse-values
-  if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-langfuse-surfaces" >/dev/null 2>&1; then
-    wait_job optional "${HELM_RELEASE_NAME}-langfuse-surfaces"
-  fi
+    --namespace "${ZELKOR_NAMESPACE:-default}" \
+    --release "$HELM_RELEASE_NAME" || return 0
 }
 
 helm_user_value() {
@@ -809,6 +793,14 @@ fi
 step_begin platform_helm
 log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
+if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
+  # shellcheck disable=SC1090
+  eval "$(bash "$ZELKOR_REPO_ROOT/scripts/gvisor-preflight.sh" --kube-context "$KCTX" --output shell)" || true
+  HELM_EXTRA_ARGS+=(
+    --set "security.sandbox.provisioning.mode=${GVISOR_PROVISIONING_MODE:-daemonset}"
+    --set "security.sandbox.createRuntimeClass=${GVISOR_CREATE_RUNTIME_CLASS:-true}"
+  )
+fi
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "aiGateway.providers.openai.apiKey=${OPENAI_API_KEY}")
 fi

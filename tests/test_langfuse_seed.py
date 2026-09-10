@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "langfuse-seed"))
 
 from seed import extra_backend_names, keep_mcp_tool, parse_extra_projects, managed_projects, fast_hashed_secret_key, display_secret_key, resolve_custom_models, to_llm_tool, to_openai_function  # noqa: E402
@@ -178,6 +180,35 @@ langfuse:
     assert "pk-lf-team-a-dev-00000000000000000000" in seed.stdout
     assert "LANGFUSE_EXTRA_OTLP" in nemo.stdout
     assert "pk-lf-team-a-dev-00000000000000000000" in nemo.stdout
+
+
+def test_seed_admin_created(monkeypatch):
+    monkeypatch.setattr(seed_mod, "LANGFUSE_HOST", "http://lf")
+    monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: False)
+    monkeypatch.setattr(seed_mod, "_signup", lambda e, p, n: (200, "{}"))
+    assert seed_mod.seed_admin_user("a@b.c", "secret", "Admin") == "created"
+
+
+def test_seed_admin_exists_http(monkeypatch):
+    monkeypatch.setattr(seed_mod, "LANGFUSE_HOST", "http://lf")
+    monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: False)
+    monkeypatch.setattr(seed_mod, "_signup", lambda e, p, n: (422, '{"message":"User already exists"}'))
+    assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
+
+
+def test_seed_admin_exists_sql(monkeypatch):
+    monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: True)
+
+    def boom(*_a, **_k):
+        raise AssertionError("signup should not run")
+
+    monkeypatch.setattr(seed_mod, "_signup", boom)
+    assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
+
+
+def test_seed_admin_requires_creds():
+    with pytest.raises(RuntimeError, match="LANGFUSE_ADMIN"):
+        seed_mod.seed_admin_user("", "")
 
 
 def test_fast_hashed_secret_key_is_stable():

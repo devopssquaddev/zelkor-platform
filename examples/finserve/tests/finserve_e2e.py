@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
-AEGRA_HOST_HEADER = os.environ.get("AEGRA_HOST_HEADER", "aegra.localhost")
+AEGRA_HOST_HEADER = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get("AEGRA_HOST_HEADER", "agents.localhost")
 GRAPH_ADVISOR = os.environ.get("FINSERVE_GRAPH_ADVISOR", "finserve-advisor")
 GRAPH_RESEARCH = os.environ.get("FINSERVE_GRAPH_RESEARCH", "finserve-research")
 GRAPH_QUANT = os.environ.get("FINSERVE_GRAPH_QUANT", "finserve-quant")
