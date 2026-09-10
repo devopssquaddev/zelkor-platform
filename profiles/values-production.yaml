@@ -117,6 +117,6 @@ langfuse:
   surfaces:
     image:
       tag: "1.0.0"
-      digest: "sha256:ebe0a714c04f7eee68026caea0e34808f960d7aa2e1156f84ea8ee91d783db50"
+      digest: "sha256:9b13cae05b48f1ef7c7fbdb15a7aed396d4f801cd1a10d5ccdae89ae1c9d1012"
   # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
   # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo
