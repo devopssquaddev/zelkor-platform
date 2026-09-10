@@ -110,9 +110,9 @@ def test_default_chart_has_no_hpa_https_or_servicemonitor():
 def test_production_overlay_uses_semver_not_dev():
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr
-    assert "ghcr.io/devopssquaddev/zelkor-aegra:1.0.0" in proc.stdout
-    assert "ghcr.io/devopssquaddev/zelkor-mcp:1.0.0" in proc.stdout
-    assert "ghcr.io/devopssquaddev/zelkor-guardrails:1.0.0" in proc.stdout
+    assert "ghcr.io/devopssquaddev/zelkor-aegra@sha256:" in proc.stdout
+    assert "ghcr.io/devopssquaddev/zelkor-mcp@sha256:" in proc.stdout
+    assert "ghcr.io/devopssquaddev/zelkor-guardrails@sha256:" in proc.stdout
     assert "zelkor-aegra:dev" not in proc.stdout
     assert "zelkor-mcp:dev" not in proc.stdout
 

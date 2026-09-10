@@ -19,11 +19,12 @@ OVERLAY="${OVERLAY:-$ROOT/profiles/values-production.yaml}"
 
 digest_of() {
   local ref="$1"
-  docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}'
+  docker buildx imagetools inspect "$ref" | awk '/^Digest:/ { print $2; exit }'
 }
 
 need() {
-  local name="$1" ref="${IMAGE_REGISTRY}/${name}:${IMAGE_TAG}"
+  local name="$1"
+  local ref="${IMAGE_REGISTRY}/${name}:${IMAGE_TAG}"
   local d
   d="$(digest_of "$ref")"
   [[ "$d" == sha256:* ]] || { echo "pin-production-digests: bad digest for ${ref}: ${d}" >&2; exit 1; }
