@@ -42,6 +42,8 @@ ORG_ID = os.getenv("LANGFUSE_ORG_ID", "").strip()
 LANGFUSE_SALT = os.getenv("LANGFUSE_SALT", "").strip()
 EXTRA_PROJECTS_RAW = os.getenv("LANGFUSE_EXTRA_PROJECTS", "").strip()
 SEED_ADMIN = os.getenv("SEED_ADMIN", "").lower() in ("1", "true", "yes")
+# Cold Langfuse (Prisma + ClickHouse) exceeds the old 60s window.
+HEALTH_ATTEMPTS = int(os.getenv("LANGFUSE_HEALTH_ATTEMPTS", "180"))
 ADMIN_EMAIL = os.getenv("LANGFUSE_ADMIN_EMAIL", "").strip()
 ADMIN_PASSWORD = os.getenv("LANGFUSE_ADMIN_PASSWORD", "")
 ADMIN_NAME = os.getenv("LANGFUSE_ADMIN_NAME", "Admin").strip() or "Admin"
@@ -201,9 +203,10 @@ def _request(
         raise RuntimeError(f"{method} {path} -> {exc.code}: {detail}") from exc
 
 
-def wait_healthy(attempts: int = 30) -> None:
+def wait_healthy(attempts: int | None = None) -> None:
     last = ""
-    for _ in range(attempts):
+    n = HEALTH_ATTEMPTS if attempts is None else attempts
+    for _ in range(n):
         try:
             urllib.request.urlopen(f"{LANGFUSE_HOST}/api/public/health", timeout=5)
             logger.info("Langfuse healthy")

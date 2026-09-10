@@ -784,10 +784,12 @@ fi
 step_end ai_gateway
 
 if [[ "$FIRST_KIND_CREATE" != "true" ]]; then
-  if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-langfuse-surfaces" >/dev/null 2>&1; then
-    log "Deleting stale langfuse-surfaces Job (re-run; Job spec is immutable)..."
-    kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-langfuse-surfaces" --ignore-not-found
-  fi
+  for job in langfuse-surfaces langfuse-admin gvisor-verify; do
+    if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-${job}" >/dev/null 2>&1; then
+      log "Deleting stale ${job} Job (re-run; Job spec is immutable)..."
+      kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-${job}" --ignore-not-found
+    fi
+  done
 fi
 
 step_begin platform_helm

@@ -78,7 +78,8 @@ def test_defaults_renders_installer_runtimeclass_and_verify():
     assert "zelkor-platform-gvisor-verify" in _names(docs, "Job")
     verify = next(d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-gvisor-verify")
     assert verify["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"
-    assert "post-install" in verify["metadata"]["annotations"]["helm.sh/hook"]
+    verify_ann = (verify.get("metadata") or {}).get("annotations") or {}
+    assert "helm.sh/hook" not in verify_ann
 
 
 def test_gvisor_installer_selector_matches_pod_labels():

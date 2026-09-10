@@ -374,7 +374,7 @@ langfuse:
   nextauthSecret: ""
   salt: ""
   encryptionKey: ""
-  # First admin: Helm Secret + post-hook Job (signup if missing). Empty password
+  # First admin: Helm Secret + Job (signup if missing; not a Helm hook). Empty password
   # is generated once and kept on upgrade. Admins: kubectl get secret
   # {release}-langfuse-admin. No chart-default password.
   admin:

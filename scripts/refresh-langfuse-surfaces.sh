@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Re-run the chart's {release}-langfuse-surfaces Job (zelkor-langfuse-seed image).
-# First platform Helm pass often runs before Langfuse/MCP/consumerKey are ready.
+# Re-run chart seed Jobs (langfuse-admin + langfuse-surfaces). First platform Helm
+# creates them before Langfuse is Ready; Jobs are not Helm hooks.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,9 +18,9 @@ usage() {
 Usage: ./scripts/refresh-langfuse-surfaces.sh [--kubeconfig PATH] [--kube-context NAME]
        [--namespace NS] [--release NAME] [--no-wait]
 
-Deletes and recreates the Helm-managed langfuse-surfaces Job so Playground gets
-the LLM connection (zelkor-ai-gateway + customModels) and MCP saved tools.
-Requires langfuse.init.enabled and langfuse.surfaces knobs in release values.
+Deletes and recreates Helm-managed langfuse-admin and langfuse-surfaces Jobs after
+Langfuse is up. Surfaces seeds Playground (zelkor-ai-gateway + customModels + MCP
+tools). Admin signs up the first user when langfuse.admin.enabled.
 EOF
 }
 
@@ -62,14 +62,39 @@ done
 
 log() { printf '%s\n' "$*"; }
 
-if ! "${HELM[@]}" get manifest "$RELEASE" -n "$NS" 2>/dev/null \
-  | grep -q "${RELEASE}-langfuse-surfaces"; then
-  log "refresh-langfuse-surfaces: skip (Job not in manifest; enable langfuse.init + surfaces)"
+wait_job() {
+  local name="$1"
+  if ! "${KUBECTL[@]}" -n "$NS" get job "$name" >/dev/null 2>&1; then
+    return 0
+  fi
+  "${KUBECTL[@]}" -n "$NS" wait --for=condition=complete "job/${name}" --timeout="$WAIT_TIMEOUT" || {
+    log "refresh-langfuse-surfaces: Job did not complete (check logs job/${name})"
+    return 1
+  }
+}
+
+MANIFEST="$("${HELM[@]}" get manifest "$RELEASE" -n "$NS" 2>/dev/null || true)"
+HAS_SURFACES=false
+HAS_ADMIN=false
+if printf '%s\n' "$MANIFEST" | grep -q "${RELEASE}-langfuse-surfaces"; then
+  HAS_SURFACES=true
+fi
+if printf '%s\n' "$MANIFEST" | grep -q "${RELEASE}-langfuse-admin"; then
+  HAS_ADMIN=true
+fi
+
+if [[ "$HAS_SURFACES" != "true" && "$HAS_ADMIN" != "true" ]]; then
+  log "refresh-langfuse-surfaces: skip (no admin/surfaces Job in manifest)"
   exit 0
 fi
 
-log "refresh-langfuse-surfaces: re-run ${RELEASE}-langfuse-surfaces Job"
-"${KUBECTL[@]}" -n "$NS" delete job "${RELEASE}-langfuse-surfaces" --ignore-not-found
+log "refresh-langfuse-surfaces: re-run seed Jobs (admin=${HAS_ADMIN} surfaces=${HAS_SURFACES})"
+if [[ "$HAS_SURFACES" == "true" ]]; then
+  "${KUBECTL[@]}" -n "$NS" delete job "${RELEASE}-langfuse-surfaces" --ignore-not-found
+fi
+if [[ "$HAS_ADMIN" == "true" ]]; then
+  "${KUBECTL[@]}" -n "$NS" delete job "${RELEASE}-langfuse-admin" --ignore-not-found
+fi
 "${HELM[@]}" upgrade "$RELEASE" "$CHART" \
   --namespace "$NS" \
   --reuse-values \
@@ -80,9 +105,11 @@ if [[ "$WAIT" != "true" ]]; then
   exit 0
 fi
 
-if "${KUBECTL[@]}" -n "$NS" get job "${RELEASE}-langfuse-surfaces" >/dev/null 2>&1; then
-  "${KUBECTL[@]}" -n "$NS" wait --for=condition=complete "job/${RELEASE}-langfuse-surfaces" --timeout="$WAIT_TIMEOUT" || {
-    log "refresh-langfuse-surfaces: Job did not complete (check logs job/${RELEASE}-langfuse-surfaces)"
-    exit 1
-  }
+failed=0
+if [[ "$HAS_ADMIN" == "true" ]]; then
+  wait_job "${RELEASE}-langfuse-admin" || failed=1
 fi
+if [[ "$HAS_SURFACES" == "true" ]]; then
+  wait_job "${RELEASE}-langfuse-surfaces" || failed=1
+fi
+exit "$failed"
