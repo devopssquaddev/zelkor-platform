@@ -24,7 +24,9 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: aegra
 spec:
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
   replicas: {{ .Values.aegra.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
@@ -113,6 +115,8 @@ spec:
               value: "X-Tenant-ID"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
+            - name: ENABLE_PROMETHEUS_METRICS
+              value: {{ ternary "true" "false" (eq (include "zelkor-platform.serviceMonitorEnabled" .) "true") | quote }}
             {{- include "zelkor-platform.aegraOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: agents-auth

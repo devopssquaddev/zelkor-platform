@@ -51,7 +51,9 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: mcp-sandbox
 spec:
-  replicas: 1
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
+  replicas: {{ .Values.mcp.sandboxMCP.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/component: mcp-sandbox

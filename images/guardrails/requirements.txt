@@ -5,3 +5,4 @@ opentelemetry-distro==0.65b0
 opentelemetry-instrumentation-fastapi==0.65b0
 opentelemetry-instrumentation-asgi==0.65b0
 opentelemetry-instrumentation-httpx==0.65b0
+prometheus-fastapi-instrumentator==8.0.2

@@ -1,0 +1,53 @@
+{{- if eq (include "zelkor-platform.haEnabled" .) "true" }}
+{{- $min := int (.Values.highAvailability.minReplicas | default 2) }}
+{{- $max := int (.Values.highAvailability.maxReplicas | default 8) }}
+{{- $cpu := int (.Values.highAvailability.cpuUtilization | default 70) }}
+{{- $fn := include "zelkor-platform.fullname" . }}
+{{- $workloads := list }}
+{{- if .Values.aegra.enabled }}
+{{- $workloads = append $workloads (printf "%s-aegra" $fn) }}
+{{- end }}
+{{- if .Values.langfuse.enabled }}
+{{- $workloads = append $workloads (printf "%s-langfuse" $fn) }}
+{{- if (.Values.langfuse.worker).enabled }}
+{{- $workloads = append $workloads (printf "%s-langfuse-worker" $fn) }}
+{{- end }}
+{{- end }}
+{{- if (.Values.guardrails.nemo).enabled }}
+{{- $workloads = append $workloads (printf "%s-nemo" $fn) }}
+{{- end }}
+{{- if .Values.mcp.enabled }}
+{{- $workloads = append $workloads (printf "%s-mcp-gateway" $fn) }}
+{{- if (.Values.mcp.postgresMCP).enabled }}
+{{- $workloads = append $workloads (printf "%s-mcp-postgres" $fn) }}
+{{- end }}
+{{- if (.Values.mcp.qdrantMCP).enabled }}
+{{- $workloads = append $workloads (printf "%s-mcp-qdrant" $fn) }}
+{{- end }}
+{{- if (.Values.mcp.egressMCP).enabled }}
+{{- $workloads = append $workloads (printf "%s-mcp-egress" $fn) }}
+{{- end }}
+{{- if (.Values.mcp.sandboxMCP).enabled }}
+{{- $workloads = append $workloads (printf "%s-mcp-sandbox" $fn) }}
+{{- end }}
+{{- end }}
+{{- range $i, $name := $workloads }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $min }}
+  maxReplicas: {{ $max }}
+  targetCPUUtilizationPercentage: {{ $cpu }}
+{{- end }}
+{{- end }}

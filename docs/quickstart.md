@@ -255,6 +255,17 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 Surface seed no-ops until `langfuse.init.enabled` and `aiGateway.consumerKey` are set. `./install.sh` remains the kind path.
 
+Production (operators): `-f profiles/values-production.yaml` turns HA on. Opt-in TLS and Prometheus:
+
+```bash
+helm upgrade --install zelkor-platform charts/zelkor-platform \
+  -f profiles/values-production.yaml \
+  --set gateway.tls.enabled=true --set gateway.tls.clusterIssuer=letsencrypt-prod \
+  --set observability.serviceMonitor.enabled=true
+```
+
+Customer supplies the ClusterIssuer and Prometheus Operator. Chart defaults stay off.
+
 ## Uninstall
 
 ```bash

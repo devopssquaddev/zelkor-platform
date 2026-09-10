@@ -1,8 +1,9 @@
-{{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGatewayClass" . | trim) "true") .Values.gateway.envoyProxy (hasKey .Values.gateway.envoyProxy "enabled") .Values.gateway.envoyProxy.enabled }}
-{{- $ep := .Values.gateway.envoyProxy -}}
+{{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGatewayClass" . | trim) "true") (eq (include "zelkor-platform.envoyProxyEmit" .) "true") }}
+{{- $ep := .Values.gateway.envoyProxy | default dict -}}
 {{- $svc := $ep.service | default dict -}}
 {{- $svcType := $svc.type | default "" -}}
 {{- $ns := $ep.nodeSelector | default dict -}}
+{{- $ha := eq (include "zelkor-platform.haEnabled" .) "true" -}}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
@@ -20,6 +21,18 @@ spec:
       {{- if $svcType }}
       envoyService:
         type: {{ $svcType | quote }}
+      {{- end }}
+      {{- if $ha }}
+      envoyHpa:
+        minReplicas: {{ int (.Values.highAvailability.minReplicas | default 2) }}
+        maxReplicas: {{ int (.Values.highAvailability.maxReplicas | default 8) }}
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: {{ int (.Values.highAvailability.cpuUtilization | default 70) }}
       {{- end }}
       envoyDeployment:
         patch:

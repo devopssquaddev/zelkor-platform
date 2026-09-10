@@ -40,6 +40,18 @@ image:
 
 replicaCount: 1
 
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  cpuUtilization: 70
+
+observability:
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    interval: 30s
+
 workerCount: 3
 nJobsPerWorker: 10
 workerDrainTimeout: 30

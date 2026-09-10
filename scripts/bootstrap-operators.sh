@@ -111,6 +111,7 @@ if [[ "$SKIP_CERT_MANAGER" -eq 0 ]]; then
     --namespace cert-manager --create-namespace \
     --version "$CERT_MANAGER_VERSION" \
     --set crds.enabled=true \
+    --set config.enableGatewayAPI=true \
     --wait --timeout 5m
 fi
 

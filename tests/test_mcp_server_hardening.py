@@ -46,3 +46,22 @@ def test_mcp_rejects_oversized_body(monkeypatch):
         thread.join(timeout=5)
     finally:
         server.server_close()
+
+
+def test_mcp_metrics_endpoint():
+    handler_cls = make_handler(_StubHandler(), lambda _h: "tenant-a")
+    server = HTTPServer(("127.0.0.1", 0), handler_cls)
+    thread = threading.Thread(target=server.handle_request, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        try:
+            body = urlopen(f"http://127.0.0.1:{port}/metrics", timeout=3).read().decode("utf-8")
+        except HTTPError as exc:
+            assert exc.code == 501
+            assert b"metrics unavailable" in exc.read()
+            return
+        assert "zelkor_mcp_http_requests_total" in body
+        thread.join(timeout=5)
+    finally:
+        server.server_close()

@@ -154,6 +154,7 @@ def test_nemo_otel_uses_instrument_not_sitecustomize():
     assert "opentelemetry-instrumentation-fastapi==0.65b0" in reqs
     assert "opentelemetry-instrumentation-asgi==0.65b0" in reqs
     assert "opentelemetry-instrumentation-httpx==0.65b0" in reqs
+    assert "prometheus-fastapi-instrumentator==8.0.2" in reqs
     assert '"nemoguardrails", "server"' in dockerfile
     assert "--disable-chat-ui" in dockerfile
     aegra_reqs = (ROOT / "images/aegra/requirements.txt").read_text()

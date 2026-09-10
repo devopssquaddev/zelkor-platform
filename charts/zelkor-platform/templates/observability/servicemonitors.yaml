@@ -1,0 +1,82 @@
+{{- if eq (include "zelkor-platform.serviceMonitorEnabled" .) "true" }}
+{{- $fn := include "zelkor-platform.fullname" . }}
+{{- $interval := ((.Values.observability).serviceMonitor).interval | default "30s" }}
+{{- $extra := ((.Values.observability).serviceMonitor).labels | default dict }}
+{{- $targets := list }}
+{{- if .Values.aegra.enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-aegra" $fn) "component" "aegra" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- if (.Values.guardrails.nemo).enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-nemo" $fn) "component" "guardrails" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- if .Values.mcp.enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-gateway" $fn) "component" "mcp-gateway" "port" "http" "path" "/metrics") }}
+{{- if (.Values.mcp.postgresMCP).enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-postgres" $fn) "component" "mcp-postgres" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- if (.Values.mcp.qdrantMCP).enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-qdrant" $fn) "component" "mcp-qdrant" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- if (.Values.mcp.egressMCP).enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-egress" $fn) "component" "mcp-egress" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- if (.Values.mcp.sandboxMCP).enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-sandbox" $fn) "component" "mcp-sandbox" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- end }}
+{{- if .Values.qdrant.enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-qdrant" $fn) "component" "qdrant" "port" "http" "path" "/metrics") }}
+{{- end }}
+{{- range $i, $t := $targets }}
+{{- if gt $i 0 }}
+---
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $t.name }}
+  labels:
+    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+    {{- with $extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      app.kubernetes.io/component: {{ $t.component }}
+  namespaceSelector:
+    matchNames:
+      - {{ $.Release.Namespace }}
+  endpoints:
+    - port: {{ $t.port }}
+      path: {{ $t.path | quote }}
+      interval: {{ $interval | quote }}
+{{- end }}
+{{- if eq (include "zelkor-platform.envoyProxyEmit" .) "true" }}
+{{- if $targets }}
+---
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ $fn }}-envoy
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- with $extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: proxy
+      app.kubernetes.io/managed-by: envoy-gateway
+  podMetricsEndpoints:
+    - port: metrics
+      path: /stats/prometheus
+      interval: {{ $interval | quote }}
+{{- end }}
+{{- end }}

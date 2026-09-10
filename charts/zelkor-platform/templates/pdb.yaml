@@ -1,0 +1,56 @@
+{{- if eq (include "zelkor-platform.haEnabled" .) "true" }}
+{{- $fn := include "zelkor-platform.fullname" . }}
+{{- $pdbs := list }}
+{{- if .Values.aegra.enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-aegra" $fn) "component" "aegra" "role" "") }}
+{{- end }}
+{{- if .Values.langfuse.enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-langfuse" $fn) "component" "langfuse" "role" "web") }}
+{{- if (.Values.langfuse.worker).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-langfuse-worker" $fn) "component" "langfuse" "role" "worker") }}
+{{- end }}
+{{- end }}
+{{- if (.Values.guardrails.nemo).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-nemo" $fn) "component" "guardrails" "role" "") }}
+{{- end }}
+{{- if .Values.mcp.enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-gateway" $fn) "component" "mcp-gateway" "role" "mcp") }}
+{{- if (.Values.mcp.postgresMCP).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-postgres" $fn) "component" "mcp-postgres" "role" "mcp") }}
+{{- end }}
+{{- if (.Values.mcp.qdrantMCP).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-qdrant" $fn) "component" "mcp-qdrant" "role" "mcp") }}
+{{- end }}
+{{- if (.Values.mcp.egressMCP).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-egress" $fn) "component" "mcp-egress" "role" "mcp") }}
+{{- end }}
+{{- if (.Values.mcp.sandboxMCP).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-sandbox" $fn) "component" "mcp-sandbox" "role" "mcp") }}
+{{- end }}
+{{- end }}
+{{- range $i, $w := $pdbs }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $w.name }}
+  labels:
+    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- if eq $w.role "mcp" }}
+      app.kubernetes.io/component: {{ $w.component }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      {{- else }}
+      {{- include "zelkor-platform.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $w.component }}
+      {{- if $w.role }}
+      app.kubernetes.io/langfuse-role: {{ $w.role }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}

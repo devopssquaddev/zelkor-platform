@@ -20,6 +20,20 @@ logging:
   level: INFO
   format: json
 
+# Path B overlay flips enabled. Chart default off (kind / single-replica).
+highAvailability:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 8
+  cpuUtilization: 70
+
+# Customer BYO Prometheus Operator. Helm fails if CRDs are missing and this is true.
+observability:
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    interval: 30s
+
 databases:
   # in-cluster-basic (Gate A STS) | operator-cr (CNPG + Altinity CHI) | external (customer hosts)
   mode: in-cluster-basic
@@ -55,9 +69,6 @@ databases:
     external:
       host: ""
       port: 6379
-
-highAvailability:
-  enabled: false  # Gate B production toggle
 
 security:
   mTLS:
@@ -131,6 +142,11 @@ gateway:
         cpu: 1000m
         memory: 512Mi
   annotations: {}
+  tls:
+    enabled: false
+    port: 443
+    clusterIssuer: ""
+    certificateRefs: []
   hosts:
     langfuse: ""
     aiGateway: ""
@@ -682,6 +698,7 @@ mcp:
       failureThreshold: 3
   sandboxMCP:
     enabled: true
+    replicaCount: 1
     runtimeClassName: gvisor
     environments:
       - python-base

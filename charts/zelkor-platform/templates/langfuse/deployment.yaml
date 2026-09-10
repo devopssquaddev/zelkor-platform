@@ -43,7 +43,9 @@ metadata:
     app.kubernetes.io/component: langfuse
     app.kubernetes.io/langfuse-role: web
 spec:
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
   replicas: {{ .Values.langfuse.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
@@ -120,7 +122,9 @@ metadata:
     app.kubernetes.io/component: langfuse
     app.kubernetes.io/langfuse-role: worker
 spec:
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
   replicas: {{ .Values.langfuse.worker.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}

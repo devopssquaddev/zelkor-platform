@@ -7,7 +7,9 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: guardrails
 spec:
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
   replicas: {{ .Values.guardrails.nemo.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
@@ -62,6 +64,8 @@ spec:
               value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
             - name: NEMO_GUARDRAILS_NO_USAGE_STATS
               value: "1"
+            - name: ENABLE_PROMETHEUS_METRICS
+              value: {{ ternary "true" "false" (eq (include "zelkor-platform.serviceMonitorEnabled" .) "true") | quote }}
             {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
           volumeMounts:
             - name: nemo-config

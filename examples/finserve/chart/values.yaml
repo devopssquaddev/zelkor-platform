@@ -18,6 +18,8 @@ desk:
     - finserve-research
   aegraConfig: /app/aegra-desk.json
   replicaCount: 1
+  autoscaling:
+    enabled: false
   sharedRoute:
     gatewayName: zelkor-platform-gateway
     gatewayNamespace: default
@@ -46,6 +48,8 @@ quant:
     - finserve-quant
   aegraConfig: /app/aegra-quant.json
   replicaCount: 1
+  autoscaling:
+    enabled: false
   sharedRoute:
     gatewayName: zelkor-platform-gateway
     gatewayNamespace: default
@@ -73,6 +77,8 @@ coder:
   graphId: finserve-coder
   aegraConfig: ""
   replicaCount: 1
+  autoscaling:
+    enabled: false
   sharedRoute:
     gatewayName: zelkor-platform-gateway
     gatewayNamespace: default

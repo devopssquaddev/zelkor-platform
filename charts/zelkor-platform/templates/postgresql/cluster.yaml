@@ -37,6 +37,10 @@ spec:
         name: {{ $name }}
       postInitSQL:
         - CREATE DATABASE langfuse OWNER {{ $user }};
+  {{- if eq (include "zelkor-platform.serviceMonitorEnabled" .) "true" }}
+  monitoring:
+    enablePodMonitor: true
+  {{- end }}
   storage:
     size: {{ $size | quote }}
     {{- if $sc }}

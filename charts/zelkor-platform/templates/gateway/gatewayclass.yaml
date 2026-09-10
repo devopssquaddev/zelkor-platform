@@ -7,7 +7,7 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
-  {{- if and .Values.gateway.envoyProxy .Values.gateway.envoyProxy.enabled }}
+  {{- if eq (include "zelkor-platform.envoyProxyEmit" .) "true" }}
   parametersRef:
     group: gateway.envoyproxy.io
     kind: EnvoyProxy

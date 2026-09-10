@@ -770,3 +770,34 @@ Usage: {{ include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
   value: {{ ternary "true" "false" ($log.suspiciousOnProbePlusError | default true) | quote }}
 {{- end }}
 
+{{/*
+Path B HA. Chart default false.
+*/}}
+{{- define "zelkor-platform.haEnabled" -}}
+{{- $ha := .Values.highAvailability | default dict -}}
+{{- if $ha.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.serviceMonitorEnabled" -}}
+{{- $obs := .Values.observability | default dict -}}
+{{- $sm := $obs.serviceMonitor | default dict -}}
+{{- if $sm.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyProxyEmit" -}}
+{{- $ep := .Values.gateway.envoyProxy | default dict -}}
+{{- if or $ep.enabled (eq (include "zelkor-platform.haEnabled" . | trim) "true") -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
