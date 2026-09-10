@@ -81,6 +81,17 @@ def test_defaults_renders_installer_runtimeclass_and_verify():
     assert "post-install" in verify["metadata"]["annotations"]["helm.sh/hook"]
 
 
+def test_gvisor_installer_selector_matches_pod_labels():
+    proc = _helm()
+    assert proc.returncode == 0, proc.stderr
+    ds = _gvisor_ds(_docs(proc.stdout))
+    assert ds is not None
+    match = ds["spec"]["selector"]["matchLabels"]
+    pod_labels = ds["spec"]["template"]["metadata"]["labels"]
+    for key, value in match.items():
+        assert pod_labels.get(key) == value, f"{key}={value!r} not on pod {pod_labels}"
+
+
 def test_preinstalled_without_runtimeclass_renders_nothing():
     proc = _helm(
         "--set",
