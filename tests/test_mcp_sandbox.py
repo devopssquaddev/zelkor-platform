@@ -76,6 +76,10 @@ def test_mcp_sandbox_blocks_mknod_outbreak():
     assert "BLOCKED" in stdout
     assert "EXPLOIT_SUCCEEDED" not in stdout
     assert "'host_root_visible': False" in stdout
+    execution = result.get("execution") or {}
+    assert execution.get("outcome") in ("denied", "suspicious", "exploit")
+    violations = execution.get("violations") or []
+    assert any("mknod" in str(v) for v in violations)
 
 
 def test_mcp_sandbox_blocks_privileged_syscall():

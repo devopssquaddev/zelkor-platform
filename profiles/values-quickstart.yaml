@@ -36,7 +36,7 @@ gateway:
   hosts:
     langfuse: ""
     aiGateway: ""
-    aegra: ""
+    agents: ""
     mcp: ""
     nemo: ""
 

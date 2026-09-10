@@ -7,6 +7,8 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List
 
+from sandbox.execution_report import log_sandbox_execution, report_from_worker_result
+
 logger = logging.getLogger("zelkor-mcp-sandbox")
 
 WORKER_URLS = [u.strip() for u in os.getenv("SANDBOX_WORKER_URLS", "").split(",") if u.strip()]
@@ -39,9 +41,14 @@ def execute_on_worker(code: str, tenant_id: str, timeout: int = 5) -> Dict[str, 
             )
             with urllib.request.urlopen(req, timeout=timeout + 2) as resp:
                 result = json.loads(resp.read().decode("utf-8"))
-            logger.info(
-                "sandbox execute ok",
-                extra={"event": "sandbox_execute", "tenant_id": tenant_id},
+            report = report_from_worker_result(code, result)
+            if not result.get("execution"):
+                result["execution"] = report.to_execution_dict()
+            log_sandbox_execution(
+                logger,
+                report,
+                tenant_id=tenant_id,
+                worker_url=worker_url,
             )
             return result
         except Exception as exc:

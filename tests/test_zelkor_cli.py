@@ -141,7 +141,7 @@ def test_doctor_status_mocked_kube(tmp_path, capsys):
                 [{"name": "zelkor-platform", "chart": "zelkor-platform-0.1.0", "status": "deployed"}]
             )
         elif "helm" in argv and "get" in argv and "values" in argv:
-            stdout = "gateway:\n  hosts:\n    aegra: aegra.example\n"
+            stdout = "gateway:\n  hosts:\n    agents: agents.example\n"
         elif "get" in argv and "deploy" in argv:
             stdout = json.dumps(
                 {
@@ -179,7 +179,7 @@ def test_doctor_status_mocked_kube(tmp_path, capsys):
                     "items": [
                         {
                             "metadata": {"name": "zelkor-platform-aegra-route"},
-                            "spec": {"hostnames": ["aegra.example"], "parentRefs": [{"name": "zelkor-platform-gateway"}]},
+                            "spec": {"hostnames": ["agents.example"], "parentRefs": [{"name": "zelkor-platform-gateway"}]},
                         }
                     ]
                 }

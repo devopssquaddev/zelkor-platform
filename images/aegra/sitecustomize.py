@@ -93,3 +93,5 @@ try:
     _log.info("ready gate installed")
 except Exception:
     _log.exception("ready gate install failed")
+
+logging.getLogger("zelkor-aegra").info("aegra wrap ready", extra={"event": "startup"})

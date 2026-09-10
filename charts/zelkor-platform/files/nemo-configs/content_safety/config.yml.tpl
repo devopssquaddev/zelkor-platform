@@ -33,5 +33,7 @@ rails:
       - {{ . }}
 {{- end }}
   output:
+    streaming:
+      enabled: true
     flows:
       - self check output

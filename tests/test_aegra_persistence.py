@@ -4,11 +4,12 @@ import httpx
 import uuid
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
+AGENTS_HOST_HEADER = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get("AEGRA_HOST_HEADER", "agents.localhost")
 
 
 def test_aegra_runtime_health():
     """Platform Aegra serves Agent Protocol with no default graphs."""
-    headers = {"Host": "aegra.localhost"}
+    headers = {"Host": AGENTS_HOST_HEADER}
     try:
         resp = httpx.get(f"{GATEWAY_BASE_URL}/health", headers=headers, timeout=5.0)
         assert resp.status_code == 200, f"Aegra /health failed: {resp.text}"
@@ -20,7 +21,7 @@ def test_aegra_thread_create_without_graph():
     """Threads persist via Aegra's checkpointer; the platform chart ships no graph."""
     thread_id = f"test-thread-{uuid.uuid4().hex[:8]}"
     headers = {
-        "Host": "aegra.localhost",
+        "Host": AGENTS_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": "Bearer dev:tenant_a",
     }

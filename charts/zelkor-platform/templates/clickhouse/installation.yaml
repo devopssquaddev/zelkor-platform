@@ -1,0 +1,58 @@
+{{- $mode := include "zelkor-platform.dbMode" . -}}
+{{- if and .Values.clickhouse.enabled (eq $mode "operator-cr") }}
+{{- $name := printf "%s-clickhouse" (include "zelkor-platform.fullname" .) -}}
+{{- $ch := .Values.databases.clickhouse | default dict -}}
+{{- $storage := $ch.storage | default dict -}}
+{{- $size := $storage.size | default "20Gi" -}}
+{{- $sc := $storage.storageClass | default "" -}}
+{{- $user := .Values.clickhouse.auth.username | default "clickhouse" -}}
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: clickhouse
+spec:
+  defaults:
+    templates:
+      dataVolumeClaimTemplate: data
+      serviceTemplate: svc
+  configuration:
+    profiles:
+      # Langfuse worker inserts DateTime64 ticks as numbers; CH 26.8+ defaults to
+      # input_format_read_datetime_number_as_raw_value=0 and rejects OTEL events.
+      default/input_format_read_datetime_number_as_raw_value: "1"
+    users:
+      {{ $user }}/password: {{ include "zelkor-platform.clickhousePassword" . | quote }}
+      {{ $user }}/networks/ip:
+        - 0.0.0.0/0
+      {{ $user }}/profile: default
+    clusters:
+      - name: default
+        layout:
+          shardsCount: 1
+          replicasCount: 1
+  templates:
+    volumeClaimTemplates:
+      - name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ $size | quote }}
+          {{- if $sc }}
+          storageClassName: {{ $sc | quote }}
+          {{- end }}
+    serviceTemplates:
+      - name: svc
+        generateName: "{chi}"
+        spec:
+          type: ClusterIP
+          ports:
+            - name: http
+              port: 8123
+            - name: tcp
+              port: 9000
+{{- end }}

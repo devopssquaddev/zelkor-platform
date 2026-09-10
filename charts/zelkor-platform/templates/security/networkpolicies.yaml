@@ -51,6 +51,8 @@ spec:
           port: 80
         - protocol: TCP
           port: 8080
+        - protocol: TCP
+          port: 10080
     - to:
         - podSelector:
             matchLabels:
@@ -136,6 +138,8 @@ spec:
           port: 80
         - protocol: TCP
           port: 8080
+        - protocol: TCP
+          port: 10080
     - to:
         - podSelector:
             matchLabels:
@@ -295,6 +299,8 @@ spec:
           port: 80
         - protocol: TCP
           port: 8080
+        - protocol: TCP
+          port: 10080
 {{- if and .Values.mcp.egressMCP .Values.mcp.egressMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -338,6 +344,8 @@ spec:
           port: 80
         - protocol: TCP
           port: 8080
+        - protocol: TCP
+          port: 10080
 {{- end }}
 ---
 apiVersion: networking.k8s.io/v1

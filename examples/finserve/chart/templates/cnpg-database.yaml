@@ -1,0 +1,66 @@
+{{- if .Values.platform.cnpgClusterName }}
+{{- $mcpSecret := printf "%s-mcp-postgres-auth" (include "finserve.fullname" .) }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $mcpSecret }}
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+type: kubernetes.io/basic-auth
+stringData:
+  username: finserve_mcp
+  password: {{ required "platform.postgresPassword must be set when platform.cnpgClusterName is set" .Values.platform.postgresPassword | quote }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ include "finserve.fullname" . }}-db
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+spec:
+  name: {{ .Values.platform.postgresDatabase }}
+  owner: {{ .Values.platform.postgresUser | quote }}
+  cluster:
+    name: {{ .Values.platform.cnpgClusterName | quote }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: DatabaseRole
+metadata:
+  name: {{ include "finserve.fullname" . }}-mcp-role
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+spec:
+  name: finserve_mcp
+  cluster:
+    name: {{ .Values.platform.cnpgClusterName | quote }}
+  login: true
+  passwordSecret:
+    name: {{ $mcpSecret }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "finserve.fullname" . }}-cnpg-mcp-secret-reader
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ $mcpSecret }}"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "finserve.fullname" . }}-cnpg-mcp-secret-reader
+  labels:
+    {{- include "finserve.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "finserve.fullname" . }}-cnpg-mcp-secret-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.platform.cnpgClusterName | quote }}
+    namespace: {{ .Release.Namespace | quote }}
+{{- end }}

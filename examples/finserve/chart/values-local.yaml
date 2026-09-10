@@ -10,7 +10,7 @@ desk:
     level: DEBUG
     format: json
   sharedRoute:
-    host: aegra.localhost
+    host: agents.localhost
   auth:
     jwtSecret: "zelkor-local-jwt-secret"
     devTokens:
@@ -35,7 +35,7 @@ quant:
     level: DEBUG
     format: json
   sharedRoute:
-    host: aegra.localhost
+    host: agents.localhost
   auth:
     jwtSecret: "zelkor-local-jwt-secret"
     devTokens:
@@ -60,7 +60,7 @@ coder:
     level: DEBUG
     format: json
   sharedRoute:
-    host: aegra.localhost
+    host: agents.localhost
   auth:
     jwtSecret: "zelkor-local-jwt-secret"
     devTokens:

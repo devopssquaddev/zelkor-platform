@@ -80,6 +80,7 @@ spec:
             - name: SANDBOX_WORKER_TOKEN
               value: {{ $workerToken | quote }}
             {{- end }}
+            {{- include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.sandboxMCP) | nindent 10 }}
 ---
 {{- range $i := until (int $replicas) }}
@@ -105,8 +106,10 @@ spec:
         sandbox-worker-id: "{{ $i }}"
     spec:
       {{- include "zelkor-platform.imagePullSecrets" $ | nindent 6 }}
-      {{- if $.Values.mcp.sandboxMCP.runtimeClassName }}
-      runtimeClassName: {{ $.Values.mcp.sandboxMCP.runtimeClassName }}
+      {{- if $.Values.security.sandbox.enabled }}
+      runtimeClassName: {{ required "mcp.sandboxMCP.runtimeClassName is required when security.sandbox.enabled" $.Values.mcp.sandboxMCP.runtimeClassName | quote }}
+      {{- else if $.Values.mcp.sandboxMCP.runtimeClassName }}
+      runtimeClassName: {{ $.Values.mcp.sandboxMCP.runtimeClassName | quote }}
       {{- end }}
       containers:
         - name: worker
@@ -123,6 +126,7 @@ spec:
             - name: SANDBOX_WORKER_TOKEN
               value: {{ $workerToken | quote }}
             {{- end }}
+            {{- include "zelkor-platform.sandboxExecutionLogEnv" $ | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" $ "values" $.Values.mcp.sandboxMCP.worker) | nindent 10 }}
 ---
 {{- end }}

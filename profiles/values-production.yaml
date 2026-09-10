@@ -1,0 +1,79 @@
+# Path B overlay — operator-backed datastores on customer Kubernetes.
+# No kind hosts, unsigned auth, or lab secrets. Customer supplies Secrets / --set.
+#
+#   ./scripts/bootstrap-operators.sh
+#   helm upgrade --install zelkor-platform charts/zelkor-platform \
+#     -f profiles/values-production.yaml \
+#     --set postgresql.auth.password=... \
+#     --set clickhouse.auth.password=... \
+#     --set seaweedfs.auth.accessKey=... --set seaweedfs.auth.secretKey=... \
+#     --set langfuse.nextauthSecret=... --set langfuse.salt=... --set langfuse.encryptionKey=... \
+#     --set langfuse.nextauthUrl=https://langfuse.example.com \
+#     --set gateway.hosts.agents=agents.example.com \
+#     --set gateway.hosts.langfuse=langfuse.example.com
+# Public AI Gateway /v1 is opt-in (--set gateway.hosts.aiGateway=...). Do not set hosts.mcp / hosts.nemo.
+#
+# ./install.sh stays on profiles/values-local.yaml (kind). Stateless HPA and
+# HTTPRoute TLS are remaining CE-4.
+
+global:
+  tier: oss
+
+databases:
+  mode: operator-cr
+  postgresql:
+    instances: 3
+    storage:
+      size: 50Gi
+      storageClass: ""
+    barman:
+      enabled: false
+      destinationPath: ""
+      s3CredentialsSecretRef: ""
+      retentionPolicy: "30d"
+  clickhouse:
+    ha: false
+    storage:
+      size: 100Gi
+      storageClass: ""
+
+highAvailability:
+  enabled: false
+
+security:
+  mTLS:
+    enabled: false
+  sandbox:
+    enabled: true
+    failClosed: false
+    provisioning:
+      mode: daemonset
+  networkPolicies:
+    enabled: true
+
+auth:
+  sso:
+    enabled: false
+  devTokens:
+    enabled: false
+  trustTenantHeader: false
+
+gateway:
+  envoyProxy:
+    hostNetwork: false
+    # ClusterIP + existing Ingress: overlay enabled=true and service.type=ClusterIP
+  hosts:
+    langfuse: ""
+    aiGateway: ""
+    agents: ""
+    mcp: ""
+    nemo: ""
+
+aiGateway:
+  consumerKey: ""
+
+langfuse:
+  init:
+    enabled: false
+  # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
+  # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo

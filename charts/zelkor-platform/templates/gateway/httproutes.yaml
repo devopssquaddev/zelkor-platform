@@ -9,8 +9,7 @@ metadata:
     app.kubernetes.io/component: langfuse
 spec:
   parentRefs:
-    - name: {{ include "zelkor-platform.fullname" . }}-gateway
-      namespace: {{ .Release.Namespace }}
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
   hostnames:
     - {{ .Values.gateway.hosts.langfuse | quote }}
   rules:
@@ -23,7 +22,8 @@ spec:
           port: 3000
 ---
 {{- end }}
-{{- if and .Values.gateway.enabled .Values.aegra.enabled .Values.gateway.hosts.aegra }}
+{{- $agentsHost := include "zelkor-platform.agentsHost" . }}
+{{- if and .Values.gateway.enabled .Values.aegra.enabled $agentsHost }}
 {{- $workers := .Values.aegra.workers | default list }}
 {{- $attachDefault := true }}
 {{- if hasKey .Values.aegra "attachDefaultRoute" }}
@@ -40,10 +40,9 @@ metadata:
     app.kubernetes.io/component: aegra
 spec:
   parentRefs:
-    - name: {{ include "zelkor-platform.fullname" . }}-gateway
-      namespace: {{ .Release.Namespace }}
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
   hostnames:
-    - {{ .Values.gateway.hosts.aegra | quote }}
+    - {{ $agentsHost | quote }}
   rules:
     {{- range $workers }}
     {{- $graphId := required "aegra.workers[].graphId is required" .graphId }}
@@ -88,8 +87,7 @@ metadata:
     app.kubernetes.io/component: guardrails
 spec:
   parentRefs:
-    - name: {{ include "zelkor-platform.fullname" . }}-gateway
-      namespace: {{ .Release.Namespace }}
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
   hostnames:
     - {{ .Values.gateway.hosts.nemo | quote }}
   rules:

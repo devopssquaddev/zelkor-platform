@@ -23,6 +23,9 @@ security:
   sandbox:
     enabled: true
     runtimeClass: gvisor
+    failClosed: false
+    provisioning:
+      mode: daemonset
   networkPolicies:
     enabled: false
 

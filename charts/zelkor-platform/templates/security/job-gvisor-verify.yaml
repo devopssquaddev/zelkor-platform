@@ -1,0 +1,45 @@
+{{- if eq (include "zelkor-platform.gvisorVerifyEnabled" .) "true" }}
+{{- $failClosed := .Values.security.sandbox.failClosed | default false }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-gvisor-verify
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gvisor-verify
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "20"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gvisor-verify
+    spec:
+      restartPolicy: Never
+      runtimeClassName: {{ include "zelkor-platform.gvisorRuntimeClassName" . }}
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: verify
+          image: busybox:1.37.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              if dmesg 2>/dev/null | grep -qi gvisor; then
+                echo "gVisor sandbox verified (gVisor kernel banner in dmesg)"
+                exit 0
+              fi
+              echo "gVisor verify failed: host kernel dmesg (runsc not active)" >&2
+              {{- if $failClosed }}
+              exit 1
+              {{- else }}
+              echo "WARNING: failClosed=false; continuing without gVisor sandbox" >&2
+              exit 0
+              {{- end }}
+{{- end }}

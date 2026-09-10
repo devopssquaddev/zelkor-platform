@@ -101,7 +101,7 @@ def test_gateway_resources_configured(kubecontext):
 
     assert "langfuse.localhost" in all_hosts, f"langfuse.localhost not in {all_hosts}"
     assert "ai-gateway.localhost" in all_hosts, f"ai-gateway.localhost not in {all_hosts}"
-    assert "aegra.localhost" in all_hosts, f"aegra.localhost not in {all_hosts}"
+    assert "agents.localhost" in all_hosts, f"agents.localhost not in {all_hosts}"
 
 def test_gateway_routing_http_endpoints():
     """
@@ -109,7 +109,7 @@ def test_gateway_routing_http_endpoints():
     """
     endpoints = [
         ("langfuse.localhost", "/api/public/health"),
-        ("aegra.localhost", "/health"),
+        ("agents.localhost", "/health"),
     ]
 
     for host, path in endpoints:

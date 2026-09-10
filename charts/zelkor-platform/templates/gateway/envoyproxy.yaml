@@ -1,4 +1,8 @@
-{{- if and .Values.gateway.enabled .Values.gateway.envoyProxy (hasKey .Values.gateway.envoyProxy "enabled") .Values.gateway.envoyProxy.enabled }}
+{{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGatewayClass" . | trim) "true") .Values.gateway.envoyProxy (hasKey .Values.gateway.envoyProxy "enabled") .Values.gateway.envoyProxy.enabled }}
+{{- $ep := .Values.gateway.envoyProxy -}}
+{{- $svc := $ep.service | default dict -}}
+{{- $svcType := $svc.type | default "" -}}
+{{- $ns := $ep.nodeSelector | default dict -}}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyProxy
 metadata:
@@ -13,6 +17,10 @@ spec:
   provider:
     type: Kubernetes
     kubernetes:
+      {{- if $svcType }}
+      envoyService:
+        type: {{ $svcType | quote }}
+      {{- end }}
       envoyDeployment:
         patch:
           type: StrategicMerge
@@ -23,15 +31,19 @@ spec:
                 rollingUpdate:
                   maxSurge: 0
                   maxUnavailable: 1
+              {{- if or $ns $ep.hostNetwork }}
               template:
                 spec:
+                  {{- if $ns }}
                   nodeSelector:
-                    ingress-ready: "true"
-                  hostNetwork: {{ .Values.gateway.envoyProxy.hostNetwork | default false }}
-                  {{- if .Values.gateway.envoyProxy.hostNetwork }}
+                    {{- toYaml $ns | nindent 20 }}
+                  {{- end }}
+                  {{- if $ep.hostNetwork }}
+                  hostNetwork: true
                   dnsPolicy: ClusterFirstWithHostNet
                   {{- end }}
-        {{- with .Values.gateway.envoyProxy.resources }}
+              {{- end }}
+        {{- with $ep.resources }}
         container:
           resources:
             {{- toYaml . | nindent 12 }}

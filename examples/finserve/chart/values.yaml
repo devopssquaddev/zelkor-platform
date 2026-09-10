@@ -93,6 +93,8 @@ coder:
     defaultLlmModel: "gpt-oss:20b"
 
 platform:
+  # Set when the platform Postgres is CloudNativePG (operator-cr); empty on kind in-cluster-basic.
+  cnpgClusterName: ""
   postgresHost: "zelkor-platform-postgresql"
   postgresPort: 5432
   postgresUser: "zelkor"
