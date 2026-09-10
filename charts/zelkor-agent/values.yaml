@@ -34,7 +34,7 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "dev"
+  tag: "1.0.0"
   digest: ""
   pullPolicy: ""
 

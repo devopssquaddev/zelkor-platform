@@ -86,8 +86,18 @@ for name in "${SELECTED[@]}"; do
   ref="${IMAGE_REGISTRY}/${name}:${IMAGE_TAG}"
   if [[ "$LOAD_ONLY" != true ]]; then
     echo "[build-images] docker build ${ref}"
+    extra_args=()
+    case "$name" in
+      zelkor-aegra-deep|zelkor-example-finserve)
+        extra_args+=(--build-arg "ZELKOR_AEGRA_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra:${IMAGE_TAG}")
+        ;;
+      zelkor-example-finserve-coder)
+        extra_args+=(--build-arg "ZELKOR_AEGRA_DEEP_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra-deep:${IMAGE_TAG}")
+        ;;
+    esac
     docker build -f "$df" -t "$ref" \
       --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
+      "${extra_args[@]}" \
       "$ROOT"
   fi
   BUILT+=("$ref")

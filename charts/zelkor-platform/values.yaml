@@ -6,8 +6,9 @@
 # Set secrets and hostnames in a customer overlay or existing Secret.
 #
 # First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
-# GHCR as ghcr.io/devopssquaddev/zelkor-*:dev until CI tags semver. Override
-# repository, tag, or digest per environment. Pin digest in production.
+# GHCR as ghcr.io/devopssquaddev/zelkor-*:1.0.0. Override repository, tag, or
+# digest per environment. Pin digest in profiles/values-production.yaml.
+# Kind keeps tag: "dev" in profiles/values-local*.yaml.
 
 global:
   tier: oss
@@ -365,7 +366,7 @@ langfuse:
       seedCode: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
   # Additional Langfuse projects + API keys (empty in the chart). Overlay, not init.projectId.
   extraProjects: []
@@ -462,12 +463,12 @@ aegra:
     enabled: false
   image:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
-    tag: "dev"
+    tag: "1.0.0"
     digest: ""
   cli:
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
   resources:
     requests:
@@ -505,7 +506,7 @@ guardrails:
     replicaCount: 1
     image:
       repository: ghcr.io/devopssquaddev/zelkor-guardrails
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
     configsDir: /etc/nemoguardrails/configs
     defaultConfigId: content_safety
@@ -560,7 +561,7 @@ mcp:
   extraBackends: []    # [{ name, url }] — customer ClusterIP MCP; empty in the platform chart
   image:
     repository: ghcr.io/devopssquaddev/zelkor-mcp
-    tag: "dev"
+    tag: "1.0.0"
     digest: ""
   gateway:
     replicaCount: 1
@@ -708,7 +709,7 @@ mcp:
     strictIsolation: false
     workerImage:
       repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
     resources:
       requests:

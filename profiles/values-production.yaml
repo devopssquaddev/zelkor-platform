@@ -85,8 +85,38 @@ gateway:
 aiGateway:
   consumerKey: ""
 
+# First-party images: tag 1.0.0 (chart default). Digests filled by
+# scripts/pin-production-digests.sh after GHCR push.
+aegra:
+  image:
+    tag: "1.0.0"
+    digest: ""
+  cli:
+    image:
+      tag: "1.0.0"
+      digest: ""
+
+guardrails:
+  nemo:
+    image:
+      tag: "1.0.0"
+      digest: ""
+
+mcp:
+  image:
+    tag: "1.0.0"
+    digest: ""
+  sandboxMCP:
+    workerImage:
+      tag: "1.0.0"
+      digest: ""
+
 langfuse:
   init:
     enabled: false
+  surfaces:
+    image:
+      tag: "1.0.0"
+      digest: ""
   # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
   # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo

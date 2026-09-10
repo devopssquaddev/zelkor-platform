@@ -118,9 +118,113 @@ def test_paid_verbs_fail_closed():
         assert code == 2
 
 
-def test_undeploy_logs_not_this_slice():
-    assert main(["undeploy"]) == 2
-    assert main(["logs"]) == 2
+def test_undeploy_logs_helm_and_kubectl(tmp_path, capsys):
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="local", kube_context="kind-zelkor", namespace="default"), store_path=store)
+    (tmp_path / "agent.json").write_text('{"name": "agent"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def runner(argv, **_kwargs):
+        seen.append(list(argv))
+        joined = " ".join(argv)
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps(
+                [{"name": "zelkor-platform", "chart": "zelkor-platform-1.0.0", "status": "deployed"}]
+            )
+        elif "helm" in argv and "get" in argv and "values" in argv and "zelkor-platform" in argv:
+            stdout = "gateway:\n  hosts:\n    agents: agents.example\n"
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "sharedRoute:\n  asDefault: true\n"
+        elif "helm" in argv and "uninstall" in argv:
+            stdout = ""
+        elif "helm" in argv and "upgrade" in argv:
+            stdout = ""
+        elif "get" in argv and "deploy" in argv:
+            stdout = json.dumps(
+                {
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "zelkor-platform-aegra",
+                                "labels": {"app.kubernetes.io/component": "aegra"},
+                            },
+                            "spec": {
+                                "template": {
+                                    "spec": {
+                                        "containers": [
+                                            {
+                                                "env": [
+                                                    {"name": "DATABASE_URL", "value": "postgresql://x"},
+                                                    {"name": "OPENAI_BASE_URL", "value": "http://gw/v1"},
+                                                    {"name": "MCP_URL", "value": "http://mcp:8080"},
+                                                    {"name": "OPENAI_API_KEY", "value": "k"},
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        elif "get" in argv and "svc" in argv:
+            stdout = json.dumps({"items": []})
+        elif "get" in argv and "httproute" in argv:
+            stdout = json.dumps({"items": []})
+        elif "logs" in argv:
+            stdout = "ready\n"
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    platform_chart = str(ROOT / "charts" / "zelkor-platform")
+    assert (
+        main(
+            [
+                "--store",
+                str(store),
+                "--env",
+                "local",
+                "--platform-chart",
+                platform_chart,
+                "undeploy",
+                str(tmp_path),
+            ],
+            runner=runner,
+        )
+        == 0
+    )
+    joined = [" ".join(a) for a in seen]
+    assert any("uninstall" in j and " agent " in f" {j} " for j in joined)
+    assert any("attachDefaultRoute=true" in j for j in joined)
+    out = capsys.readouterr().out
+    assert json.loads(out.strip().splitlines()[-1])["restored_default"] is True
+
+    seen.clear()
+    assert (
+        main(
+            [
+                "--store",
+                str(store),
+                "--env",
+                "local",
+                "logs",
+                "--no-follow",
+                "--tail",
+                "20",
+                str(tmp_path),
+            ],
+            runner=runner,
+        )
+        == 0
+    )
+    log_cmd = " ".join(seen[-1])
+    assert "logs" in log_cmd
+    assert "deployment/agent-zelkor-agent" in log_cmd
+    assert "--tail" in log_cmd
+    assert "-f" not in seen[-1]
+    assert "ready" in capsys.readouterr().out
 
 
 def test_version_without_env(capsys):
@@ -138,7 +242,7 @@ def test_doctor_status_mocked_kube(tmp_path, capsys):
         stdout = ""
         if "helm" in argv and "list" in argv:
             stdout = json.dumps(
-                [{"name": "zelkor-platform", "chart": "zelkor-platform-0.1.0", "status": "deployed"}]
+                [{"name": "zelkor-platform", "chart": "zelkor-platform-1.0.0", "status": "deployed"}]
             )
         elif "helm" in argv and "get" in argv and "values" in argv:
             stdout = "gateway:\n  hosts:\n    agents: agents.example\n"

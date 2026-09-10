@@ -1,6 +1,8 @@
 # Quick Start
 
-Deploy a production-like Zelkor Platform instance (including the FinServe demo) locally. Default **`INSTALL_PROFILE=fast`** uses a **two-phase first run**:
+Deploy Zelkor Community Edition locally on kind. Production Kubernetes (operators, HA): [docs/path-b.md](path-b.md).
+
+Default **`INSTALL_PROFILE=fast`** uses a **two-phase first run**:
 
 1. **Download** — banner **"Downloading components"**; fetch every pinned workload ref through pull-through local registries (`docker.io` + `ghcr.io` proxies on `127.0.0.1:5000` / `:5001`; outside the install timer).
 2. **Install** — `[install +MM:SS]` timer: `kind create` (containerd mirrors), connect registries, Envoy bootstrap, Helm, explicit rollout/job waits.
@@ -13,7 +15,7 @@ Escape hatches: `PREFETCH_IMAGES=false` (skip download), `LOCAL_REGISTRY=false` 
 
 The Community Edition local development environment deploys all seven core platform pillars:
 
-1. **Monitor (Observability):** Langfuse v2 seeded with golden datasets, prompts, and tracing.
+1. **Monitor (Observability):** Langfuse v4 seeded with golden datasets, prompts, and tracing.
 2. **Govern (LLM Gateway):** Official Envoy AI Gateway controller with Gateway API CRDs (`AIGatewayRoute`, `AIServiceBackend`, `BackendSecurityPolicy`), rate limiting, and multi-provider routing.
 3. **Guardrails:** NeMo Guardrails (CPU) on the **default** AI Gateway `/v1/chat/completions` path (intercept plane). Direct NeMo API remains available at `nemo.localhost` for debugging.
 4. **Deploy (Agent Orchestration):** Aegra (`aegra-api` via uvicorn) is the **default public** Agent Protocol front door (Postgres checkpointer, tenant auth, wrap env `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `MCP_URL`). Envoy Gateway routes by `X-Graph-ID` / `?graph_id=` when more than one Service is attached; a single backend needs no routing key. The empty-graph front door does **not** join Aegra's Redis job queue (`REDIS_BROKER_ENABLED=false`); ClusterIP workers do, with a per-release Redis prefix. Alembic runs out-of-band (Helm Job + front-door init). The platform chart ships no graphs. Each customer/demo agent is its **own ClusterIP** image and Deployment (`FROM` Zelkor Aegra). Helm `aegra.graphs` / `graphModules` and per-agent vanity HTTPRoutes are local/eval or explicit opt-in only.
@@ -172,9 +174,11 @@ zelkor init my-agent
 cd my-agent
 zelkor dev
 zelkor run --input "hello"
+zelkor logs --no-follow --tail 50
+zelkor undeploy
 ```
 
-`dev` builds `FROM zelkor-aegra-deep` and `helm upgrade` without a registry push. `deploy` also pushes. Topology 1 (first worker): create-run + stream with body `graph_id` only — no `X-Graph-ID`. Later agents stay header-matched.
+`dev` builds `FROM zelkor-aegra-deep` and `helm upgrade` without a registry push. `deploy` also pushes. `logs` follows the agent Deployment; `undeploy` is `helm uninstall` of that release (restores the platform catch-all when it owned topology 1). Topology 1 (first worker): create-run + stream with body `graph_id` only — no `X-Graph-ID`. Later agents stay header-matched.
 
 An existing LangGraph / Aegra repo skips `init` and runs the same `deploy`. GitOps can still `helm upgrade` `charts/zelkor-agent` without the CLI (FinServe does).
 
@@ -197,7 +201,7 @@ Clients set `X-Graph-ID: my-agent` (or `?graph_id=my-agent`) on every call to a 
 
 ```dockerfile
 # CLI-built workers — no customer Dockerfile on the happy path
-FROM ghcr.io/devopssquaddev/zelkor-aegra-deep:dev
+FROM ghcr.io/devopssquaddev/zelkor-aegra-deep:1.0.0
 COPY . /app/
 ```
 
@@ -255,16 +259,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 Surface seed no-ops until `langfuse.init.enabled` and `aiGateway.consumerKey` are set. `./install.sh` remains the kind path.
 
-Production (operators): `-f profiles/values-production.yaml` turns HA on. Opt-in TLS and Prometheus:
-
-```bash
-helm upgrade --install zelkor-platform charts/zelkor-platform \
-  -f profiles/values-production.yaml \
-  --set gateway.tls.enabled=true --set gateway.tls.clusterIssuer=letsencrypt-prod \
-  --set observability.serviceMonitor.enabled=true
-```
-
-Customer supplies the ClusterIssuer and Prometheus Operator. Chart defaults stay off.
+Production (operators, HA, digest-pinned images): [docs/path-b.md](path-b.md).
 
 ## Uninstall
 

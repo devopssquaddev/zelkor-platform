@@ -1,4 +1,4 @@
-ARG ZELKOR_AEGRA_IMAGE=ghcr.io/devopssquaddev/zelkor-aegra:dev
+ARG ZELKOR_AEGRA_IMAGE=ghcr.io/devopssquaddev/zelkor-aegra:1.0.0
 FROM ${ZELKOR_AEGRA_IMAGE}
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"

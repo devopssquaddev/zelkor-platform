@@ -101,6 +101,8 @@ langfuse:
   startupProbe:
     initialDelaySeconds: 5
   surfaces:
+    image:
+      tag: "dev"
     llmConnection:
       enabled: true
     tools:
@@ -126,10 +128,17 @@ langfuse:
 aegra:
   enabled: true
   replicaCount: 1
+  image:
+    tag: "dev"
+  cli:
+    image:
+      tag: "dev"
 
 guardrails:
   nemo:
     enabled: true
+    image:
+      tag: "dev"
     observability:
       otel:
         enabled: true
@@ -137,8 +146,12 @@ guardrails:
 
 mcp:
   enabled: true
+  image:
+    tag: "dev"
   sandboxMCP:
     # One gVisor worker is enough for fast-profile TTFV; sandbox still works.
     warmPool:
       replicas: 1
+    workerImage:
+      tag: "dev"
     workerToken: "zelkor-local-sandbox-worker-token"

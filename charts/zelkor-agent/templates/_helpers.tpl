@@ -73,7 +73,7 @@ app.kubernetes.io/component: aegra
 {{- if and $img.digest (ne $img.digest "") -}}
 {{- printf "%s@%s" $img.repository $img.digest -}}
 {{- else -}}
-{{- printf "%s:%s" $img.repository ($img.tag | default "dev") -}}
+{{- printf "%s:%s" $img.repository ($img.tag | default "1.0.0") -}}
 {{- end -}}
 {{- end }}
 
