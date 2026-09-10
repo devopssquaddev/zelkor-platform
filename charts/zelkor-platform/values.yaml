@@ -227,7 +227,7 @@ clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: "26.7.5-alpine"
+    tag: "26.8.2.7-alpine"
   auth:
     username: clickhouse
     password: ""
