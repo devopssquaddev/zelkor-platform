@@ -64,6 +64,16 @@ def test_in_cluster_basic_emits_sts_not_operator_crs():
     assert "zelkor-platform-seaweedfs" in _names(docs, "Deployment")
 
 
+def test_clickhouse_26_7_omits_unknown_datetime_setting():
+    """Pinned 26.7.5 has no input_format_read_datetime_number_as_raw_value (26.8+)."""
+    basic = _helm("--set", "databases.mode=in-cluster-basic")
+    assert basic.returncode == 0, basic.stderr
+    assert "input_format_read_datetime_number_as_raw_value" not in basic.stdout
+    op = _helm("--set", "databases.mode=operator-cr")
+    assert op.returncode == 0, op.stderr
+    assert "input_format_read_datetime_number_as_raw_value" not in op.stdout
+
+
 def test_operator_cr_emits_crs_and_first_party_valkey_qdrant():
     proc = _helm("--set", "databases.mode=operator-cr")
     assert proc.returncode == 0, proc.stderr

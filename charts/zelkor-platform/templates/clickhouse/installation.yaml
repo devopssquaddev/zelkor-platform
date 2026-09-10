@@ -19,10 +19,6 @@ spec:
       dataVolumeClaimTemplate: data
       serviceTemplate: svc
   configuration:
-    profiles:
-      # Langfuse worker inserts DateTime64 ticks as numbers; CH 26.8+ defaults to
-      # input_format_read_datetime_number_as_raw_value=0 and rejects OTEL events.
-      default/input_format_read_datetime_number_as_raw_value: "1"
     users:
       {{ $user }}/password: {{ include "zelkor-platform.clickhousePassword" . | quote }}
       {{ $user }}/networks/ip:
