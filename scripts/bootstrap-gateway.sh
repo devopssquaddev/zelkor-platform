@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # Idempotent Envoy Gateway + Envoy AI Gateway bootstrap for customer Kubernetes.
 # Also used by ./install.sh (kind). Skip controllers when already healthy or --skip-* is set.
+# Does not patch envoy-gateway-config on a pre-existing EG unless --patch-extension-manager
+# or Zelkor already owns that install.
 set -euo pipefail
+
+ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/bootstrap-ownership.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 
 ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.1}"
 AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.1.0}"
@@ -24,7 +30,7 @@ Installs Envoy Gateway and Envoy AI Gateway when missing. Idempotent.
 Options:
   --skip-envoy-gateway         Skip EG install and ConfigMap patch (shared-gateway tenant)
   --skip-ai-gateway            Skip AI Gateway Helm install
-  --patch-extension-manager    Patch envoy-gateway-config only (EG already installed)
+  --patch-extension-manager    Explicitly replace envoy-gateway-config (restarts EG; cluster-wide)
   --kubeconfig PATH            kubectl / helm kubeconfig
   --kube-context NAME          kubectl context / helm kube-context
   -h, --help                   Show this help
@@ -170,25 +176,52 @@ EOF
 }
 
 if [[ "$SKIP_ENVOY_GATEWAY" -eq 0 ]]; then
-  eg_ready=false
+  eg_ready=0
   if deployment_available envoy-gateway-system envoy-gateway; then
-    eg_ready=true
+    eg_ready=1
   fi
+  eg_owned=0
+  if zelkor_ownership_owns envoy-gateway || zelkor_ownership_ns_owned envoy-gateway-system; then
+    eg_owned=1
+  fi
+  eg_action="$(zelkor_eg_patch_action "$eg_ready" "$eg_owned" "$PATCH_EXTENSION_MANAGER" "$SKIP_AI_GATEWAY")"
 
-  if [[ "$eg_ready" != "true" ]]; then
+  if [[ "$eg_ready" -eq 0 ]]; then
     echo "Deploying Envoy Gateway ${ENVOY_GATEWAY_VERSION}..."
     kubectl "${KUBECTL_ARGS[@]}" apply --server-side -f \
       "https://github.com/envoyproxy/gateway/releases/download/${ENVOY_GATEWAY_VERSION}/install.yaml"
-  else
-    echo "Envoy Gateway already ready; skipping install.yaml"
-  fi
+    zelkor_ownership_annotate_ns envoy-gateway-system
+    zelkor_ownership_record envoy-gateway
+    apply_extension_config
+  elif [[ "$eg_action" == "apply" ]]; then
+    if [[ "$eg_owned" -eq 1 ]]; then
+      echo "Envoy Gateway already ready (Zelkor-owned); ensuring extension config"
+    else
+      echo "WARNING: --patch-extension-manager replaces envoy-gateway-config and restarts Envoy Gateway (cluster ingress)."
+    fi
+    apply_extension_config
+  elif [[ "$eg_action" == "fail" ]]; then
+    cat >&2 <<'EOF'
+error: Envoy Gateway is already running and was not installed by Zelkor.
+Refusing to replace envoy-gateway-config (that restarts EG and can take down cluster ingress).
 
-  apply_extension_config
+  Shared / attach to existing Gateway:
+    ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --skip-ai-gateway
+    ./scripts/install-quickstart.sh --topology shared --gateway-class ... --parent-ref-name ... --parent-ref-namespace ...
+
+  Explicitly add the AI Gateway hook (mutates their EG ConfigMap):
+    ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --patch-extension-manager
+EOF
+    exit 1
+  else
+    echo "Envoy Gateway already ready (not Zelkor-owned); not patching envoy-gateway-config"
+  fi
 
   if ! deployment_available envoy-gateway-system envoy-gateway; then
     wait_rollout envoy-gateway-system envoy-gateway
   fi
 elif [[ "$PATCH_EXTENSION_MANAGER" -eq 1 ]]; then
+  echo "WARNING: --patch-extension-manager replaces envoy-gateway-config and restarts Envoy Gateway (cluster ingress)."
   apply_extension_config
 else
   echo "skip Envoy Gateway (--skip-envoy-gateway)"
@@ -211,6 +244,8 @@ if [[ "$SKIP_AI_GATEWAY" -eq 0 ]]; then
       --namespace envoy-ai-gateway-system \
       --create-namespace
 
+    zelkor_ownership_annotate_ns envoy-ai-gateway-system
+    zelkor_ownership_record ai-gateway
     wait_rollout envoy-ai-gateway-system ai-gateway-controller
   fi
 else

@@ -1,6 +1,9 @@
 # Path B overlay — operator-backed datastores on customer Kubernetes.
 # No kind hosts, unsigned auth, or lab secrets. Customer supplies Secrets / --set.
 #
+#   OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
+#     --hosts-agents agents.example.com --hosts-langfuse langfuse.example.com --generate-passwords
+#   # or:
 #   ./scripts/bootstrap-operators.sh
 #   helm upgrade --install zelkor-platform charts/zelkor-platform \
 #     -f profiles/values-production.yaml \

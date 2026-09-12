@@ -25,9 +25,9 @@ For full details, see the [Local Quickstart Guide](docs/quickstart.md).
 
 Zelkor Community Edition can be deployed in three ways:
 
-1. **Local Quickstart:** Laptop-friendly deployment using `kind`. See [docs/quickstart.md](docs/quickstart.md).
-2. **Existing Cluster:** Lightweight deployment for evaluating Zelkor on an existing Kubernetes cluster (EKS, GKE, AKS). See [docs/helm-install.md](docs/helm-install.md).
-3. **Production Deployment:** Highly available deployment with operators (CloudNativePG, ClickHouse Operator, etc.) for production workloads. See [docs/production.md](docs/production.md).
+1. **Local Quickstart:** Laptop `kind` via `./install.sh`. See [docs/quickstart.md](docs/quickstart.md).
+2. **Existing Cluster:** Evaluate CE in a namespace with `./scripts/install-quickstart.sh`. See [docs/helm-install.md](docs/helm-install.md).
+3. **Production Deployment:** HA operators via `./scripts/install-production.sh`. See [docs/production.md](docs/production.md).
 
 Gateway setup depends on your cluster — greenfield, layered behind existing ingress, or shared Envoy infrastructure. See [docs/envoy-gateway-topologies.md](docs/envoy-gateway-topologies.md).
 

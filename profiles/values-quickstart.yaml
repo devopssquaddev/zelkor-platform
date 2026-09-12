@@ -1,9 +1,12 @@
 # Evaluation on any Kubernetes — still databases.mode: in-cluster-basic.
 # No kind hosts, unsigned auth, or lab secrets. Customer supplies Secrets / --set.
 #
+#   OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh
+#   # or:
 #   helm upgrade --install zelkor-platform charts/zelkor-platform \
 #     -f profiles/values-quickstart.yaml \
-#     --set aiGateway.consumerKey=... \
+#     -f profiles/values-gateway-greenfield.yaml \
+#     --set aiGateway.providers.openai.apiKey=... \
 #     --set langfuse.nextauthSecret=... --set langfuse.salt=... --set langfuse.encryptionKey=...
 #
 # ./install.sh stays on profiles/values-local.yaml (kind).

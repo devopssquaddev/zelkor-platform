@@ -9,7 +9,13 @@ Zelkor relies on **Envoy Gateway** (Kubernetes Gateway API routing) and **Envoy 
 | **EG only** | Envoy Gateway installed; AI Gateway extension missing | `./scripts/bootstrap-gateway.sh --skip-envoy-gateway --patch-extension-manager` | `profiles/values-gateway-shared.yaml` |
 | **Shared** | Both EG and AI Gateway already running | `./scripts/bootstrap-gateway.sh --skip-envoy-gateway --skip-ai-gateway` | `profiles/values-gateway-shared.yaml` |
 
-Compose any overlay with `profiles/values-production.yaml` (production) or `profiles/values-quickstart.yaml` (evaluation on existing Kubernetes).
+Compose any overlay with `profiles/values-production.yaml` (production) or `profiles/values-quickstart.yaml` (evaluation on existing Kubernetes). The install wrappers accept the same choice as `--topology greenfield|layered|shared` and call `bootstrap-gateway.sh` for you:
+
+```bash
+OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh --topology layered
+OPENAI_API_KEY=sk-... ./scripts/install-production.sh --topology greenfield \
+  --hosts-agents agents.example.com --hosts-langfuse langfuse.example.com --generate-passwords
+```
 
 ---
 
@@ -89,7 +95,7 @@ graph TD
 ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --patch-extension-manager
 ```
 
-This patches `envoy-gateway-config` with the AI Gateway `extensionManager` hook and installs the AI Gateway controller.
+This **replaces** `envoy-gateway-config` and restarts the Envoy Gateway controller (cluster ingress). It is opt-in. Greenfield/layered bootstrap **refuses** to patch when EG is already running and was not installed by Zelkor.
 
 ### 2. Attach Zelkor routes to your Gateway
 
@@ -158,3 +164,5 @@ The [Local Quickstart](quickstart.md) runs `./install.sh`, which calls the same 
 | `--kubeconfig` / `--kube-context` | Target a non-default cluster |
 
 Pinned versions: Envoy Gateway `v1.9.1`, Envoy AI Gateway Helm `v1.1.0`.
+
+Install wrappers (`install-quickstart.sh` / `install-production.sh`) pass these flags from `--topology`. Manual Helm still works as shown above.

@@ -2,7 +2,7 @@
 
 Deploy Zelkor Community Edition locally on your laptop using `kind`. This guide gets you a fully functional, self-hosted agentic runtime in under 5 minutes.
 
-For deploying to an existing Kubernetes cluster, see [Existing Cluster Deployment](helm-install.md). For production deployments, see [Production Deployment](production.md).
+For an existing cluster (no kind), use `./scripts/install-quickstart.sh` — see [Existing Cluster Deployment](helm-install.md). For production, see [Production Deployment](production.md).
 
 ## Prerequisites
 
@@ -100,7 +100,7 @@ zelkor undeploy
 
 ## Uninstalling
 
-To completely remove the local cluster and all data:
+On an existing (non-kind) cluster use `./scripts/uninstall.sh` — see [Existing Cluster Deployment](helm-install.md). To remove a local kind cluster and all data:
 
 ```bash
 helm --kube-context kind-zelkor uninstall finserve --ignore-not-found
