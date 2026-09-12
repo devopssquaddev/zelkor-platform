@@ -73,18 +73,28 @@ wait_job() {
   }
 }
 
-MANIFEST="$("${HELM[@]}" get manifest "$RELEASE" -n "$NS" 2>/dev/null || true)"
 HAS_SURFACES=false
 HAS_ADMIN=false
-if printf '%s\n' "$MANIFEST" | grep -q "${RELEASE}-langfuse-surfaces"; then
+if MANIFEST="$("${HELM[@]}" get manifest "$RELEASE" -n "$NS")"; then
+  # Here-string: `grep -q` + pipefail + a pipe SIGPIPEs printf on an early match.
+  if grep -Fq "${RELEASE}-langfuse-surfaces" <<<"$MANIFEST"; then
+    HAS_SURFACES=true
+  fi
+  if grep -Fq "${RELEASE}-langfuse-admin" <<<"$MANIFEST"; then
+    HAS_ADMIN=true
+  fi
+else
+  log "refresh-langfuse-surfaces: helm get manifest failed; falling back to live Jobs"
+fi
+if [[ "$HAS_SURFACES" != "true" ]] && "${KUBECTL[@]}" -n "$NS" get job "${RELEASE}-langfuse-surfaces" >/dev/null 2>&1; then
   HAS_SURFACES=true
 fi
-if printf '%s\n' "$MANIFEST" | grep -q "${RELEASE}-langfuse-admin"; then
+if [[ "$HAS_ADMIN" != "true" ]] && "${KUBECTL[@]}" -n "$NS" get job "${RELEASE}-langfuse-admin" >/dev/null 2>&1; then
   HAS_ADMIN=true
 fi
 
 if [[ "$HAS_SURFACES" != "true" && "$HAS_ADMIN" != "true" ]]; then
-  log "refresh-langfuse-surfaces: skip (no admin/surfaces Job in manifest)"
+  log "refresh-langfuse-surfaces: skip (no admin/surfaces Job in manifest or cluster)"
   exit 0
 fi
 

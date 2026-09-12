@@ -52,7 +52,12 @@ class PlatformInfo:
     auth_dev_token_prefix: str = ""
     auth_trust_tenant_header: str = ""
     default_llm_model: str = ""
+    langfuse_base_url: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    otel_targets: str = ""
     agent_route_names: list[str] = field(default_factory=list)
+    image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
 
 
 def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = "") -> Path:
@@ -135,6 +140,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     values = yaml.safe_load(values_raw.stdout or "") or {}
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
+    info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
     info.gateway_namespace = env.namespace
     deploys = _run(
         kube_argv(env, "get", "deploy", "-l", "app.kubernetes.io/component=aegra", "-o", "json"),
@@ -156,6 +162,10 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.auth_dev_token_prefix = env_map.get("AUTH_DEV_TOKEN_PREFIX", "")
         info.auth_trust_tenant_header = env_map.get("AUTH_TRUST_TENANT_HEADER", "")
         info.default_llm_model = default_llm_model_from(env_map, values)
+        info.langfuse_base_url = env_map.get("LANGFUSE_BASE_URL", "")
+        info.langfuse_public_key = env_map.get("LANGFUSE_PUBLIC_KEY", "")
+        info.langfuse_secret_key = env_map.get("LANGFUSE_SECRET_KEY", "")
+        info.otel_targets = env_map.get("OTEL_TARGETS", "")
         name = (dep.get("metadata") or {}).get("name") or ""
         if name:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
@@ -203,7 +213,13 @@ def default_llm_model_from(env_map: dict[str, str], values: dict[str, Any]) -> s
     direct = (env_map.get("DEFAULT_LLM_MODEL") or "").strip()
     if direct:
         return direct
-    return str(((values.get("guardrails") or {}).get("nemo") or {}).get("model") or "").strip()
+    nemo = str(((values.get("guardrails") or {}).get("nemo") or {}).get("model") or "").strip()
+    if nemo:
+        return nemo
+    models = (((values.get("langfuse") or {}).get("surfaces") or {}).get("llmConnection") or {}).get("models") or []
+    if isinstance(models, list) and models:
+        return str(models[0] or "").strip()
+    return ""
 
 
 def _truthy(val: str) -> bool:
@@ -304,9 +320,15 @@ def deploy_agent(
             "valkeyUrl": info.redis_url,
             "mcpInject": shape.mcp_inject,
             **({"defaultLlmModel": info.default_llm_model} if info.default_llm_model else {}),
+            **({"langfuseBaseUrl": info.langfuse_base_url} if info.langfuse_base_url else {}),
+            **({"langfusePublicKey": info.langfuse_public_key} if info.langfuse_public_key else {}),
+            **({"langfuseSecretKey": info.langfuse_secret_key} if info.langfuse_secret_key else {}),
+            **({"otelTargets": info.otel_targets} if info.otel_targets else {}),
         },
         "auth": auth_values(info),
     }
+    if info.image_pull_secrets:
+        overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
         yaml.safe_dump(overlay, fh)
         values_file = fh.name
@@ -741,6 +763,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
             agent_chart=agent_chart,
             platform_chart=platform_chart,
             runner=runner,
+            skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
         )
     except DetectError as exc:
         print(str(exc), file=sys.stderr)

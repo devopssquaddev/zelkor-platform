@@ -57,7 +57,8 @@ def test_detect_neither_errors(tmp_path):
 def test_customer_dockerfile_from_deep_image():
     text = customer_dockerfile("ghcr.io/devopssquaddev/zelkor-aegra-deep:dev")
     assert text.startswith("FROM ghcr.io/devopssquaddev/zelkor-aegra-deep:dev")
-    assert "COPY . /app/" in text
+    assert "COPY --chown=1000:1000 . /app/" in text
+    assert "USER 1000" in text
     assert "localhost" not in text
 
 
@@ -299,6 +300,7 @@ def test_doctor_status_mocked_kube(tmp_path, capsys):
 def test_default_llm_model_from_nemo_when_aegra_env_empty():
     assert default_llm_model_from({}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}}) == "gpt-oss:20b"
     assert default_llm_model_from({"DEFAULT_LLM_MODEL": "openai/gpt-4o-mini"}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}}) == "openai/gpt-4o-mini"
+    assert default_llm_model_from({}, {"langfuse": {"surfaces": {"llmConnection": {"models": ["gpt-oss:20b"]}}}}) == "gpt-oss:20b"
 
 
 def test_in_cluster_openai_base_url_uses_ai_gateway_service():
