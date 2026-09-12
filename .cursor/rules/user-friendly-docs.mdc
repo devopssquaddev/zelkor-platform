@@ -1,0 +1,19 @@
+---
+description: Rules for writing user-centric documentation. Focuses on progressive disclosure and avoiding internal jargon.
+globs: **/*.md, **/docs/**, **/examples/**, **/tutorials/**
+alwaysApply: false
+---
+
+# User-Friendly Documentation
+
+## Directives
+When writing or updating documentation for external users, prioritize clarity, progressive disclosure, and the "Happy Path".
+
+## Core Constraints
+1. **No Internal Jargon:** Do not expose internal script mechanics (e.g., `INSTALL_PROFILE=fast`, `WAIT_RECHECK_GRACE`), internal routing logic, or development-specific terminology (e.g., "Path A", "Path B") unless absolutely necessary. Translate these into user-centric concepts (e.g., "Quickstart", "Production Deployment").
+2. **Progressive Disclosure:** Start with the simplest, most common use case (the "Happy Path"). Move edge cases, manual overrides, and advanced configurations to the bottom of the document or to separate advanced guides.
+3. **Action-Oriented Headings:** Use headings that describe what the user is trying to achieve (e.g., "Deploying an Agent") rather than describing the system state.
+4. **Clear Prerequisites:** Always explicitly state what the user needs before they begin (e.g., Docker, Helm, specific API keys).
+5. **Copy-Paste Ready:** Ensure all code snippets and terminal commands are complete, correct, and easy to copy-paste. Avoid inline comments that break copy-pasting.
+6. **Explain the "Why":** When introducing a new component or requirement, briefly explain why it's needed (e.g., "CloudNativePG for highly available PostgreSQL") rather than assuming the user knows the acronym or the architecture.
+7. **Public Commit Hygiene:** Do not leak internal policies, plans, or directives in your commit messages. Use professional, user-facing descriptions of the changes (e.g., `docs: simplify quickstart guide`) rather than internal justifications (e.g., `docs: remove internal tech mess`).

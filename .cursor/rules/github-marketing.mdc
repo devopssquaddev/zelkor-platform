@@ -1,0 +1,20 @@
+---
+description: Rules for "Engineering as Marketing". Focuses on repo aesthetics, compelling READMEs, and clear value propositions.
+globs: README.md, docs/**/*.md
+alwaysApply: false
+---
+
+# GitHub Marketing & Repo Aesthetics
+
+## Directives
+When creating or updating top-level documentation (like `README.md`), optimize for "Engineering as Marketing" to drive adoption and clearly signal enterprise maturity.
+
+## Core Constraints
+1. **Compelling Value Proposition:** Clearly articulate what the project is and why a user should care in the first 2-3 sentences. Compare it to known alternatives if helpful (e.g., "An open-source alternative to LangGraph Platform").
+2. **Visual Appeal:** Use standard OSS badges (build status, license, version) at the top of the README.
+3. **Mermaid Diagrams:** Prefer clean Mermaid.js diagrams over ASCII art for architecture and data flows. Ensure diagrams are easy to read in both light and dark modes.
+4. **Frictionless Quickstart:** The README must contain a 3-step (or fewer) snippet to get the project running locally. Time-to-First-Value (TTFV) should be under 5 minutes.
+5. **Feature Highlights:** Clearly list the core pillars or features using bullet points or tables.
+6. **Enterprise Signaling:** Clearly delineate between Community Edition and Enterprise features. Include a prominent "🏢 For Enterprise" section to capture commercial interest.
+7. **Professional Tone:** Write for highly technical senior engineers and architects. Avoid marketing fluff, but ensure the presentation is polished and authoritative.
+8. **Public Commit Hygiene:** Never mention internal strategies, policies, or plans in commit messages. Avoid phrases like "Engineering as marketing", "internal tech mess", or "growth hack". Use standard, professional conventional commits (e.g., `docs(readme): improve quickstart and architecture overview`).

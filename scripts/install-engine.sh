@@ -669,118 +669,15 @@ fi
 KCTX="kind-${CLUSTER_NAME}"
 require_full_profile_prereqs
 
-EG_CM_BODY=$(cat <<'EOF'
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyGateway
-extensionApis:
-  enableBackend: true
-  enableEnvoyPatchPolicy: true
-extensionManager:
-  hooks:
-    xdsTranslator:
-      translation:
-        listener:
-          includeAll: true
-        route:
-          includeAll: true
-        cluster:
-          includeAll: true
-        secret:
-          includeAll: true
-      post:
-        - Translation
-        - Cluster
-        - Route
-  service:
-    fqdn:
-      hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-      port: 1063
-gateway:
-  controllerName: gateway.envoyproxy.io/gatewayclass-controller
-logging:
-  level:
-    default: info
-provider:
-  kubernetes:
-    rateLimitDeployment:
-      container:
-        image: docker.io/envoyproxy/ratelimit:17b1956c
-      patch:
-        type: StrategicMerge
-        value:
-          spec:
-            template:
-              spec:
-                containers:
-                - imagePullPolicy: IfNotPresent
-                  name: envoy-ratelimit
-    shutdownManager:
-      image: envoyproxy/gateway:v1.9.1
-  type: Kubernetes
-EOF
-)
-
-eg_cm_current=$(kubectl --context "$KCTX" get configmap envoy-gateway-config -n envoy-gateway-system \
-  -o jsonpath='{.data.envoy-gateway\.yaml}' 2>/dev/null || true)
-eg_ready=false
-if deployment_available envoy-gateway-system envoy-gateway; then
-  eg_ready=true
-fi
-
 step_begin envoy_gateway
-if [[ "$eg_ready" != "true" ]]; then
-  log "Deploying Envoy Gateway & Gateway API CRDs..."
-  kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.1/install.yaml
-else
-  log "Envoy Gateway already ready; skipping CRD/chart apply"
-fi
-
-if [[ "${eg_cm_current%$'\n'}" != "${EG_CM_BODY%$'\n'}" ]]; then
-  log "Applying Envoy Gateway Backend extension config..."
-  kubectl --context "$KCTX" apply -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: envoy-gateway-config
-  namespace: envoy-gateway-system
-data:
-  envoy-gateway.yaml: |
-$(printf '%s\n' "$EG_CM_BODY" | sed 's/^/    /')
-EOF
-  log "Restarting Envoy Gateway (config changed)..."
-  kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
-  log "Waiting for Envoy Gateway controller readiness..."
-  wait_one critical deployment/envoy-gateway envoy-gateway-system
-elif [[ "$eg_ready" != "true" ]]; then
-  log "Restarting Envoy Gateway (not ready)..."
-  kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
-  log "Waiting for Envoy Gateway controller readiness..."
-  wait_one critical deployment/envoy-gateway envoy-gateway-system
-else
-  log "Envoy Gateway config unchanged and ready; skipping restart"
+log "Bootstrapping Envoy Gateway and Envoy AI Gateway..."
+if ! bash "$ZELKOR_REPO_ROOT/scripts/bootstrap-gateway.sh" --kube-context "$KCTX"; then
+  die "Gateway bootstrap failed (Envoy Gateway / Envoy AI Gateway)"
 fi
 step_end envoy_gateway
 
 step_begin ai_gateway
-if deployment_available envoy-ai-gateway-system ai-gateway-controller; then
-  log "Envoy AI Gateway already ready; skipping Helm bootstrap"
-else
-  log "Deploying Envoy AI Gateway CRDs & Controller..."
-  helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-    --kube-context "$KCTX" \
-    --version v1.1.0 \
-    --namespace envoy-ai-gateway-system \
-    --create-namespace
-
-  helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-    --kube-context "$KCTX" \
-    --version v1.1.0 \
-    --namespace envoy-ai-gateway-system \
-    --create-namespace
-
-  log "Waiting for Envoy AI Gateway controller readiness..."
-  wait_one critical deployment/ai-gateway-controller envoy-ai-gateway-system
-fi
+log "Envoy AI Gateway included in gateway bootstrap"
 step_end ai_gateway
 
 if [[ "$FIRST_KIND_CREATE" != "true" ]]; then

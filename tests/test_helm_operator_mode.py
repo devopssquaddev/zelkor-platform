@@ -227,6 +227,41 @@ def test_attach_skips_gatewayclass_and_uses_parent_ref():
     assert all(p[0] != "zelkor-platform-gateway" for p in parents)
 
 
+def test_gateway_layered_profile_emits_clusterip():
+    proc = _helm("-f", str(ROOT / "profiles" / "values-gateway-layered.yaml"))
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    proxies = _kinds(docs, "EnvoyProxy")
+    assert proxies
+    k8s = proxies[0]["spec"]["provider"]["kubernetes"]
+    assert k8s["envoyService"]["type"] == "ClusterIP"
+
+
+def test_gateway_shared_profile_attaches_to_parent_ref():
+    proc = _helm(
+        "-f",
+        str(ROOT / "profiles" / "values-gateway-shared.yaml"),
+        "--set",
+        "gateway.parentRef.name=their-gw",
+        "--set",
+        "gateway.parentRef.namespace=envoy-system",
+        "--set",
+        "gateway.hosts.agents=agents.example.com",
+        "--set",
+        "gateway.hosts.langfuse=langfuse.example.com",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert not _kinds(docs, "GatewayClass")
+    assert not _kinds(docs, "Gateway")
+    assert not _kinds(docs, "EnvoyProxy")
+    parents = []
+    for route in _kinds(docs, "HTTPRoute"):
+        for ref in route["spec"]["parentRefs"]:
+            parents.append((ref["name"], ref.get("namespace")))
+    assert ("their-gw", "envoy-system") in parents
+
+
 def test_empty_optional_hosts_emit_no_public_mcp_nemo_v1():
     proc = _helm(
         "--set",

@@ -1,0 +1,31 @@
+# Gateway overlay — attach to an existing Envoy Gateway (and AI Gateway).
+# Compose with values-production.yaml or values-quickstart.yaml.
+#
+# Scenario: Envoy Gateway exists, add AI Gateway extension:
+#   ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --patch-extension-manager
+#
+# Scenario: both EG and AI Gateway already installed:
+#   ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --skip-ai-gateway
+#
+#   helm upgrade --install zelkor-platform charts/zelkor-platform \
+#     -f profiles/values-production.yaml \
+#     -f profiles/values-gateway-shared.yaml \
+#     --set gateway.gatewayClassName=your-gateway-class \
+#     --set gateway.parentRef.name=your-gateway \
+#     --set gateway.parentRef.namespace=your-gateway-namespace \
+#     --set gateway.hosts.agents=agents.example.com \
+#     --set gateway.hosts.langfuse=langfuse.example.com \
+#     --set aiGateway.internalUrl=http://envoy-default-....svc.cluster.local:80/v1
+
+gateway:
+  createGatewayClass: false
+  createGateway: false
+  gatewayClassName: ""
+  parentRef:
+    name: ""
+    namespace: ""
+    sectionName: ""
+
+# Optional: Envoy dataplane URL for NeMo/MCP when not using the in-cluster *-ai-gateway Service.
+aiGateway:
+  internalUrl: ""
