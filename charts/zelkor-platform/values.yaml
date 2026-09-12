@@ -520,6 +520,8 @@ guardrails:
         enabled: false  # when true: config.yml tracing adapter + opentelemetry-instrument (no sitecustomize)
         captureContent: false  # PII; LLMRails tracing.enable_content_capture (Langfuse observation I/O)
     safetyRefusal: "I can't help with that request."
+    selfCheck:
+      enabled: true  # LLM Yes/No I/O rails; false skips those extra completions (regex/extraColang still apply)
     extraInputFlows: []
     extraColang: ""
     extraRailsConfig: {}

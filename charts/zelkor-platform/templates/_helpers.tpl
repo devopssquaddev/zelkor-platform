@@ -405,6 +405,19 @@ true
 {{- end }}
 
 {{/*
+LLM self-check I/O rails on content_safety (Yes/No completions via the gateway).
+Chart default true. false omits those flows; intercept and extra* overlays remain.
+*/}}
+{{- define "zelkor-platform.nemoSelfCheckEnabled" -}}
+{{- $sc := .Values.guardrails.nemo.selfCheck | default dict -}}
+{{- if hasKey $sc "enabled" -}}
+{{- $sc.enabled | toString -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
 NeMo AIServiceBackend is required for intercept or legacy nemo/* prefix routing.
 */}}
 {{- define "zelkor-platform.nemoAiGatewayBackendEnabled" -}}

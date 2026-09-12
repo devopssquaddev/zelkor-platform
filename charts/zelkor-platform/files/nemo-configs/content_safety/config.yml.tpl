@@ -1,3 +1,4 @@
+{{- $selfCheck := eq (include "zelkor-platform.nemoSelfCheckEnabled" .) "true" }}
 models:
   - type: main
     engine: openai
@@ -10,7 +11,7 @@ models:
         Host: {{ .Values.gateway.hosts.aiGateway | quote }}
         {{- end }}
 
-# Required for OpenAI-style tools on NeMo's /v1 (still runs input/output rails).
+# Required for OpenAI-style tools on NeMo's /v1 (I/O rails when selfCheck.enabled).
 passthrough: true
 
 {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
@@ -27,13 +28,23 @@ rails:
 {{ toYaml .Values.guardrails.nemo.extraRailsConfig | indent 4 }}
 {{- end }}
   input:
+{{- if or $selfCheck .Values.guardrails.nemo.extraInputFlows }}
     flows:
+{{- if $selfCheck }}
       - self check input
+{{- end }}
 {{- range .Values.guardrails.nemo.extraInputFlows }}
       - {{ . }}
+{{- end }}
+{{- else }}
+    flows: []
 {{- end }}
   output:
     streaming:
       enabled: true
+{{- if $selfCheck }}
     flows:
       - self check output
+{{- else }}
+    flows: []
+{{- end }}
