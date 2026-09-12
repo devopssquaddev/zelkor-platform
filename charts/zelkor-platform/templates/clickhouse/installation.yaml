@@ -18,9 +18,10 @@ spec:
     templates:
       dataVolumeClaimTemplate: data
       serviceTemplate: svc
+      podTemplate: clickhouse
   configuration:
     profiles:
-      # Langfuse worker inserts DateTime64 ticks as numbers; CH 26.8+ defaults to
+      # Langfuse 4.24 inserts DateTime64 ticks as numbers; CH 26.8+ defaults to
       # input_format_read_datetime_number_as_raw_value=0 and rejects OTEL events.
       default/input_format_read_datetime_number_as_raw_value: "1"
     users:
@@ -34,6 +35,12 @@ spec:
           shardsCount: 1
           replicasCount: 1
   templates:
+    podTemplates:
+      - name: clickhouse
+        spec:
+          containers:
+            - name: clickhouse
+              image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "26.8.2.7-alpine" }}"
     volumeClaimTemplates:
       - name: data
         spec:

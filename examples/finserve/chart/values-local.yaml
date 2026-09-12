@@ -9,6 +9,8 @@ desk:
   logging:
     level: DEBUG
     format: json
+  image:
+    tag: "dev"
   sharedRoute:
     host: agents.localhost
   auth:
@@ -34,6 +36,8 @@ quant:
   logging:
     level: DEBUG
     format: json
+  image:
+    tag: "dev"
   sharedRoute:
     host: agents.localhost
   auth:
@@ -59,6 +63,8 @@ coder:
   logging:
     level: DEBUG
     format: json
+  image:
+    tag: "dev"
   sharedRoute:
     host: agents.localhost
   auth:

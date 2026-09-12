@@ -6,7 +6,7 @@ Zelkor wraps battle-tested open-source components — **Aegra**, **Envoy AI Gate
 
 ## Quick Start
 
-**Prerequisites:** Docker, `kind`, `helm`, `kubectl`, and **one LLM provider key** (OpenAI, Ollama Cloud, or Ollama Local — see [docs/quickstart.md](docs/quickstart.md)).
+**Kind (laptop):** Docker, `kind`, `helm`, `kubectl`, and **one LLM provider key**. See [docs/quickstart.md](docs/quickstart.md).
 
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
@@ -14,7 +14,7 @@ cd zelkor-platform
 OPENAI_API_KEY="sk-..." ./install.sh
 ```
 
-See [docs/quickstart.md](docs/quickstart.md) for details.
+**Production Kubernetes (Path B):** operators + HA overlay — [docs/path-b.md](docs/path-b.md).
 
 ## What's Included (Base Tier)
 

@@ -52,6 +52,43 @@ def test_sitecustomize_has_ready_gate_not_proxy():
     assert "HTTPXClientInstrumentor(" not in wrap
 
 
+def test_nemo_self_check_can_be_disabled():
+    no_self = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "guardrails.nemo.selfCheck.enabled=false",
+        "--set",
+        "guardrails.nemo.extraInputFlows[0]=regex-check-input",
+        "-s",
+        "templates/guardrails/configmap.yaml",
+    )
+    assert "passthrough: true" in no_self
+    assert "- self check input" not in no_self
+    assert "- self check output" not in no_self
+    assert "define flow self check input" not in no_self
+    assert "define flow self check output" not in no_self
+    assert "flows: []" in no_self
+    assert "- regex-check-input" in no_self
+    empty = _helm(
+        "template",
+        "zelkor",
+        str(PLATFORM_CHART),
+        "-f",
+        str(LOCAL_VALUES),
+        "--set",
+        "guardrails.nemo.selfCheck.enabled=false",
+        "-s",
+        "templates/guardrails/configmap.yaml",
+    )
+    assert "- self check input" not in empty
+    assert "- self check output" not in empty
+    assert "define flow self check input" not in empty
+
+
 def test_nemo_content_safety_passthrough_for_tools():
     rendered = _helm(
         "template",
@@ -63,6 +100,9 @@ def test_nemo_content_safety_passthrough_for_tools():
         "templates/guardrails/configmap.yaml",
     )
     assert "passthrough: true" in rendered
+    assert "- self check input" in rendered
+    assert "- self check output" in rendered
+    assert "define flow self check input" in rendered
     assert "name: OpenTelemetry" in rendered
     assert "enable_content_capture: true" in rendered
     assert "check finserve topic" not in rendered
@@ -154,6 +194,7 @@ def test_nemo_otel_uses_instrument_not_sitecustomize():
     assert "opentelemetry-instrumentation-fastapi==0.65b0" in reqs
     assert "opentelemetry-instrumentation-asgi==0.65b0" in reqs
     assert "opentelemetry-instrumentation-httpx==0.65b0" in reqs
+    assert "prometheus-fastapi-instrumentator==8.0.2" in reqs
     assert '"nemoguardrails", "server"' in dockerfile
     assert "--disable-chat-ui" in dockerfile
     aegra_reqs = (ROOT / "images/aegra/requirements.txt").read_text()

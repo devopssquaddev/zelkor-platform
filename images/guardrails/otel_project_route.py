@@ -228,6 +228,25 @@ def install() -> None:
 
             self.middleware("http")(_identity_mw)
 
+            if os.getenv("ENABLE_PROMETHEUS_METRICS", "").lower() in ("1", "true", "yes"):
+                try:
+                    from prometheus_fastapi_instrumentator import Instrumentator
+
+                    Instrumentator(
+                        should_group_status_codes=False,
+                        should_ignore_untemplated=True,
+                        excluded_handlers=[
+                            "/health",
+                            "/v1/health",
+                            "/metrics",
+                            "/docs",
+                            "/redoc",
+                            "/openapi.json",
+                        ],
+                    ).instrument(self).expose(self, endpoint="/metrics", include_in_schema=False)
+                except Exception:
+                    _log.exception("NeMo Prometheus metrics failed")
+
         FastAPI.__init__ = _fastapi_init  # type: ignore[method-assign]
     except Exception:
         _log.exception("NeMo Langfuse identity middleware failed")

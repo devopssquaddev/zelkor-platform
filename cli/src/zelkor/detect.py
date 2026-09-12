@@ -110,7 +110,12 @@ def detect(root: Path, graph_id: str = "") -> ProjectShape:
 
 
 def customer_dockerfile(base_image: str) -> str:
-    return f"FROM {base_image}\nCOPY . /app/\n"
+    return (
+        f"FROM {base_image}\n"
+        "USER root\n"
+        "COPY --chown=1000:1000 . /app/\n"
+        "USER 1000\n"
+    )
 
 
 def deploy_first_langgraph(graph_id: str) -> dict[str, Any]:

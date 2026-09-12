@@ -6,8 +6,9 @@
 # Set secrets and hostnames in a customer overlay or existing Secret.
 #
 # First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
-# GHCR as ghcr.io/devopssquaddev/zelkor-*:dev until CI tags semver. Override
-# repository, tag, or digest per environment. Pin digest in production.
+# GHCR as ghcr.io/devopssquaddev/zelkor-*:1.0.0. Override repository, tag, or
+# digest per environment. Pin digest in profiles/values-production.yaml.
+# Kind keeps tag: "dev" in profiles/values-local*.yaml.
 
 global:
   tier: oss
@@ -19,6 +20,20 @@ global:
 logging:
   level: INFO
   format: json
+
+# Path B overlay flips enabled. Chart default off (kind / single-replica).
+highAvailability:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 8
+  cpuUtilization: 70
+
+# Customer BYO Prometheus Operator. Helm fails if CRDs are missing and this is true.
+observability:
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    interval: 30s
 
 databases:
   # in-cluster-basic (Gate A STS) | operator-cr (CNPG + Altinity CHI) | external (customer hosts)
@@ -55,9 +70,6 @@ databases:
     external:
       host: ""
       port: 6379
-
-highAvailability:
-  enabled: false  # Gate B production toggle
 
 security:
   mTLS:
@@ -131,6 +143,11 @@ gateway:
         cpu: 1000m
         memory: 512Mi
   annotations: {}
+  tls:
+    enabled: false
+    port: 443
+    clusterIssuer: ""
+    certificateRefs: []
   hosts:
     langfuse: ""
     aiGateway: ""
@@ -210,7 +227,7 @@ clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: "26.7.5-alpine"
+    tag: "26.8.2.7-alpine"
   auth:
     username: clickhouse
     password: ""
@@ -349,7 +366,7 @@ langfuse:
       seedCode: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
   # Additional Langfuse projects + API keys (empty in the chart). Overlay, not init.projectId.
   extraProjects: []
@@ -357,7 +374,7 @@ langfuse:
   nextauthSecret: ""
   salt: ""
   encryptionKey: ""
-  # First admin: Helm Secret + post-hook Job (signup if missing). Empty password
+  # First admin: Helm Secret + Job (signup if missing; not a Helm hook). Empty password
   # is generated once and kept on upgrade. Admins: kubectl get secret
   # {release}-langfuse-admin. No chart-default password.
   admin:
@@ -446,12 +463,12 @@ aegra:
     enabled: false
   image:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
-    tag: "dev"
+    tag: "1.0.0"
     digest: ""
   cli:
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
   resources:
     requests:
@@ -489,7 +506,7 @@ guardrails:
     replicaCount: 1
     image:
       repository: ghcr.io/devopssquaddev/zelkor-guardrails
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
     configsDir: /etc/nemoguardrails/configs
     defaultConfigId: content_safety
@@ -503,6 +520,8 @@ guardrails:
         enabled: false  # when true: config.yml tracing adapter + opentelemetry-instrument (no sitecustomize)
         captureContent: false  # PII; LLMRails tracing.enable_content_capture (Langfuse observation I/O)
     safetyRefusal: "I can't help with that request."
+    selfCheck:
+      enabled: true  # LLM Yes/No I/O rails; false skips those extra completions (regex/extraColang still apply)
     extraInputFlows: []
     extraColang: ""
     extraRailsConfig: {}
@@ -544,7 +563,7 @@ mcp:
   extraBackends: []    # [{ name, url }] — customer ClusterIP MCP; empty in the platform chart
   image:
     repository: ghcr.io/devopssquaddev/zelkor-mcp
-    tag: "dev"
+    tag: "1.0.0"
     digest: ""
   gateway:
     replicaCount: 1
@@ -682,6 +701,7 @@ mcp:
       failureThreshold: 3
   sandboxMCP:
     enabled: true
+    replicaCount: 1
     runtimeClassName: gvisor
     environments:
       - python-base
@@ -691,7 +711,7 @@ mcp:
     strictIsolation: false
     workerImage:
       repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-      tag: "dev"
+      tag: "1.0.0"
       digest: ""
     resources:
       requests:

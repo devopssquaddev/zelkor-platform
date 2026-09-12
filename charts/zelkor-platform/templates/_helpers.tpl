@@ -405,6 +405,19 @@ true
 {{- end }}
 
 {{/*
+LLM self-check I/O rails on content_safety (Yes/No completions via the gateway).
+Chart default true. false omits those flows; intercept and extra* overlays remain.
+*/}}
+{{- define "zelkor-platform.nemoSelfCheckEnabled" -}}
+{{- $sc := .Values.guardrails.nemo.selfCheck | default dict -}}
+{{- if hasKey $sc "enabled" -}}
+{{- $sc.enabled | toString -}}
+{{- else -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
 NeMo AIServiceBackend is required for intercept or legacy nemo/* prefix routing.
 */}}
 {{- define "zelkor-platform.nemoAiGatewayBackendEnabled" -}}
@@ -588,7 +601,7 @@ Usage: {{ include "zelkor-platform.image" .Values.aegra.image }}
 {{- if and $img.digest (ne $img.digest "") -}}
 {{- printf "%s@%s" $img.repository $img.digest -}}
 {{- else -}}
-{{- printf "%s:%s" $img.repository ($img.tag | default "dev") -}}
+{{- printf "%s:%s" $img.repository ($img.tag | default "1.0.0") -}}
 {{- end -}}
 {{- end }}
 
@@ -768,5 +781,36 @@ Usage: {{ include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
   value: {{ ternary "true" "false" ($log.includeStdoutPreview | default true) | quote }}
 - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
   value: {{ ternary "true" "false" ($log.suspiciousOnProbePlusError | default true) | quote }}
+{{- end }}
+
+{{/*
+Path B HA. Chart default false.
+*/}}
+{{- define "zelkor-platform.haEnabled" -}}
+{{- $ha := .Values.highAvailability | default dict -}}
+{{- if $ha.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.serviceMonitorEnabled" -}}
+{{- $obs := .Values.observability | default dict -}}
+{{- $sm := $obs.serviceMonitor | default dict -}}
+{{- if $sm.enabled -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyProxyEmit" -}}
+{{- $ep := .Values.gateway.envoyProxy | default dict -}}
+{{- if or $ep.enabled (eq (include "zelkor-platform.haEnabled" . | trim) "true") -}}
+true
+{{- else -}}
+false
+{{- end -}}
 {{- end }}
 

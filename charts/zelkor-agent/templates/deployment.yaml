@@ -21,7 +21,9 @@ metadata:
   labels:
     {{- include "zelkor-agent.labels" . | nindent 4 }}
 spec:
+  {{- if not ((.Values.autoscaling).enabled | default false) }}
   replicas: {{ .Values.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "zelkor-agent.selectorLabels" . | nindent 6 }}
@@ -108,6 +110,8 @@ spec:
             {{- end }}
             - name: ZELKOR_GRAPH_ID
               value: {{ $graphId | quote }}
+            - name: ENABLE_PROMETHEUS_METRICS
+              value: {{ ternary "true" "false" ((.Values.observability.serviceMonitor).enabled | default false) | quote }}
             {{- range .Values.extraEnv }}
             - name: {{ .name | quote }}
               value: {{ .value | quote }}

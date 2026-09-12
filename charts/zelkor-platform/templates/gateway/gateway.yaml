@@ -1,4 +1,9 @@
 {{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGateway" . | trim) "true") }}
+{{- $tls := .Values.gateway.tls | default dict }}
+{{- $hosts := .Values.gateway.hosts | default dict }}
+{{- $issuer := $tls.clusterIssuer | default "" }}
+{{- $preCerts := $tls.certificateRefs | default list }}
+{{- $tlsOn := $tls.enabled | default false }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -6,9 +11,14 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
-  {{- with .Values.gateway.annotations }}
+  {{- if or .Values.gateway.annotations (and $tlsOn $issuer (not $preCerts)) }}
   annotations:
+    {{- with .Values.gateway.annotations }}
     {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- if and $tlsOn $issuer (not $preCerts) }}
+    cert-manager.io/cluster-issuer: {{ $issuer | quote }}
+    {{- end }}
   {{- end }}
 spec:
   gatewayClassName: {{ .Values.gateway.gatewayClassName | default "eg" }}
@@ -19,4 +29,27 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    {{- if $tlsOn }}
+    {{- $port := int ($tls.port | default 443) }}
+    {{- range $key := list "agents" "langfuse" "aiGateway" }}
+    {{- $host := index $hosts $key | default "" }}
+    {{- if $host }}
+    - name: {{ printf "https-%s" ($key | lower) }}
+      protocol: HTTPS
+      port: {{ $port }}
+      hostname: {{ $host | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          {{- if $preCerts }}
+          {{- toYaml $preCerts | nindent 10 }}
+          {{- else }}
+          - name: {{ printf "%s-tls-%s" (include "zelkor-platform.fullname" $) ($key | lower) }}
+          {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: All
+    {{- end }}
+    {{- end }}
+    {{- end }}
 {{- end }}

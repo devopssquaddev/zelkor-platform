@@ -64,6 +64,17 @@ def test_in_cluster_basic_emits_sts_not_operator_crs():
     assert "zelkor-platform-seaweedfs" in _names(docs, "Deployment")
 
 
+def test_clickhouse_26_8_sets_langfuse_datetime_compat():
+    basic = _helm("--set", "databases.mode=in-cluster-basic")
+    assert basic.returncode == 0, basic.stderr
+    assert "26.8.2.7-alpine" in basic.stdout
+    assert "input_format_read_datetime_number_as_raw_value" in basic.stdout
+    op = _helm("--set", "databases.mode=operator-cr")
+    assert op.returncode == 0, op.stderr
+    assert "26.8.2.7-alpine" in op.stdout
+    assert "input_format_read_datetime_number_as_raw_value" in op.stdout
+
+
 def test_operator_cr_emits_crs_and_first_party_valkey_qdrant():
     proc = _helm("--set", "databases.mode=operator-cr")
     assert proc.returncode == 0, proc.stderr
@@ -234,7 +245,7 @@ def test_empty_optional_hosts_emit_no_public_mcp_nemo_v1():
         assert not any("ai-gateway." in h and "svc.cluster.local" not in h and h != "zelkor-platform-ai-gateway" for h in hosts)
 
 
-def test_langfuse_admin_secret_and_hook():
+def test_langfuse_admin_secret_and_job():
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
@@ -250,7 +261,8 @@ def test_langfuse_admin_secret_and_hook():
     assert data["password"]
     jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-admin"]
     assert jobs
-    assert "post-install" in jobs[0]["metadata"]["annotations"]["helm.sh/hook"]
+    admin_ann = (jobs[0].get("metadata") or {}).get("annotations") or {}
+    assert "helm.sh/hook" not in admin_ann
     env = {
         e["name"]: e
         for e in jobs[0]["spec"]["template"]["spec"]["containers"][0]["env"]

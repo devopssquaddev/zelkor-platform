@@ -34,11 +34,23 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "dev"
+  tag: "1.0.0"
   digest: ""
   pullPolicy: ""
 
 replicaCount: 1
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 8
+  cpuUtilization: 70
+
+observability:
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    interval: 30s
 
 workerCount: 3
 nJobsPerWorker: 10

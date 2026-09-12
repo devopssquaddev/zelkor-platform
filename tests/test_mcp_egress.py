@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -7,6 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
+from tests.helpers.llm import llm_model_or_skip
 from tests.helpers.mcp_client import MCPGatewayClient
 from wrappers.egress_server import (
     EgressMCPServer,
@@ -119,7 +119,7 @@ def test_mcp_egress_rejects_tenant_mismatch():
 
 
 def test_mcp_egress_chat_via_ai_gateway():
-    model = os.environ.get("DEFAULT_LLM_MODEL", "openai/gpt-4o-mini")
+    model = llm_model_or_skip()
     client = MCPGatewayClient("tenant_a")
     try:
         result = client.call_tool(

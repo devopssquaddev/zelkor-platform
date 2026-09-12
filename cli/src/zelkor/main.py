@@ -28,9 +28,7 @@ from zelkor.detect import (
 from zelkor.envfile import Env, add_env, list_envs, load_store, remove_env, resolve_env
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
-NOT_YET = frozenset({"undeploy", "logs"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
-LATER = "This command is not in this release; it ships before v1.0.0-ce."
 
 logger = logging.getLogger("zelkor-cli")
 
@@ -54,7 +52,12 @@ class PlatformInfo:
     auth_dev_token_prefix: str = ""
     auth_trust_tenant_header: str = ""
     default_llm_model: str = ""
+    langfuse_base_url: str = ""
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    otel_targets: str = ""
     agent_route_names: list[str] = field(default_factory=list)
+    image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
 
 
 def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = "") -> Path:
@@ -137,6 +140,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     values = yaml.safe_load(values_raw.stdout or "") or {}
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
+    info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
     info.gateway_namespace = env.namespace
     deploys = _run(
         kube_argv(env, "get", "deploy", "-l", "app.kubernetes.io/component=aegra", "-o", "json"),
@@ -158,6 +162,10 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.auth_dev_token_prefix = env_map.get("AUTH_DEV_TOKEN_PREFIX", "")
         info.auth_trust_tenant_header = env_map.get("AUTH_TRUST_TENANT_HEADER", "")
         info.default_llm_model = default_llm_model_from(env_map, values)
+        info.langfuse_base_url = env_map.get("LANGFUSE_BASE_URL", "")
+        info.langfuse_public_key = env_map.get("LANGFUSE_PUBLIC_KEY", "")
+        info.langfuse_secret_key = env_map.get("LANGFUSE_SECRET_KEY", "")
+        info.otel_targets = env_map.get("OTEL_TARGETS", "")
         name = (dep.get("metadata") or {}).get("name") or ""
         if name:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
@@ -205,7 +213,13 @@ def default_llm_model_from(env_map: dict[str, str], values: dict[str, Any]) -> s
     direct = (env_map.get("DEFAULT_LLM_MODEL") or "").strip()
     if direct:
         return direct
-    return str(((values.get("guardrails") or {}).get("nemo") or {}).get("model") or "").strip()
+    nemo = str(((values.get("guardrails") or {}).get("nemo") or {}).get("model") or "").strip()
+    if nemo:
+        return nemo
+    models = (((values.get("langfuse") or {}).get("surfaces") or {}).get("llmConnection") or {}).get("models") or []
+    if isinstance(models, list) and models:
+        return str(models[0] or "").strip()
+    return ""
 
 
 def _truthy(val: str) -> bool:
@@ -245,7 +259,7 @@ def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) 
         else:
             shutil.copy2(item, target)
     (dest / "Dockerfile").write_text(
-        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:dev")),
+        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:1.0.0")),
         encoding="utf-8",
     )
     if shape_kind == "deploy-first":
@@ -306,9 +320,15 @@ def deploy_agent(
             "valkeyUrl": info.redis_url,
             "mcpInject": shape.mcp_inject,
             **({"defaultLlmModel": info.default_llm_model} if info.default_llm_model else {}),
+            **({"langfuseBaseUrl": info.langfuse_base_url} if info.langfuse_base_url else {}),
+            **({"langfusePublicKey": info.langfuse_public_key} if info.langfuse_public_key else {}),
+            **({"langfuseSecretKey": info.langfuse_secret_key} if info.langfuse_secret_key else {}),
+            **({"otelTargets": info.otel_targets} if info.otel_targets else {}),
         },
         "auth": auth_values(info),
     }
+    if info.image_pull_secrets:
+        overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
         yaml.safe_dump(overlay, fh)
         values_file = fh.name
@@ -364,6 +384,65 @@ def deploy_agent(
     finally:
         Path(values_file).unlink(missing_ok=True)
     return {"release": release, "graph_id": shape.graph_id, "as_default": as_default, "image": image_ref}
+
+
+def cmd_undeploy(
+    root: Path,
+    env: Env,
+    *,
+    graph_id_flag: str = "",
+    platform_chart: Path,
+    runner: Optional[RunFn] = None,
+) -> int:
+    shape = detect(root, graph_id_flag)
+    release = helm_release_name(shape.graph_id)
+    info = discover_platform(env, runner=runner)
+    got = _run(helm_argv(env, "get", "values", release, "-o", "yaml"), runner=runner, check=False)
+    if got.returncode != 0:
+        print(f"agent release {release} not found", file=sys.stderr)
+        return 1
+    values = yaml.safe_load(got.stdout or "") or {}
+    as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
+    _run(helm_argv(env, "uninstall", release), runner=runner)
+    if as_default:
+        _run(
+            helm_argv(
+                env,
+                "upgrade",
+                info.release,
+                str(platform_chart),
+                "--reuse-values",
+                "--set",
+                "aegra.attachDefaultRoute=true",
+            ),
+            runner=runner,
+        )
+    print(json.dumps({"release": release, "uninstalled": True, "restored_default": as_default}))
+    return 0
+
+
+def cmd_logs(
+    root: Path,
+    env: Env,
+    *,
+    graph_id_flag: str = "",
+    follow: bool = True,
+    tail: str = "",
+    runner: Optional[RunFn] = None,
+) -> int:
+    shape = detect(root, graph_id_flag)
+    release = helm_release_name(shape.graph_id)
+    deploy = f"deployment/{release}-zelkor-agent"
+    argv = kube_argv(env, "logs", deploy)
+    if follow:
+        argv.append("-f")
+    if tail:
+        argv.extend(["--tail", str(tail)])
+    logger.info("logs deploy=%s", deploy)
+    res = _run(argv, runner=runner, capture=not follow, check=True)
+    if not follow and res.stdout:
+        sys.stdout.write(res.stdout if res.stdout.endswith("\n") else res.stdout + "\n")
+    return 0
 
 
 def cmd_init(root: Path) -> int:
@@ -566,6 +645,15 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     p_run.add_argument("--url", default="")
     p_run.add_argument("--auth", default="")
     p_run.add_argument("--graph-id", default="")
+    p_undeploy = sub.add_parser("undeploy", help="helm uninstall the agent release")
+    p_undeploy.add_argument("--graph-id", default="")
+    p_undeploy.add_argument("directory", nargs="?", default=".")
+    p_logs = sub.add_parser("logs", help="follow the agent Deployment")
+    p_logs.add_argument("--graph-id", default="")
+    p_logs.add_argument("--tail", default="")
+    p_logs.add_argument("--follow", dest="follow", action="store_true", default=True)
+    p_logs.add_argument("--no-follow", dest="follow", action="store_false")
+    p_logs.add_argument("directory", nargs="?", default=".")
     sub.add_parser("status", help="agent Helm releases and HTTPRoutes")
     sub.add_parser("doctor", help="check discovered platform endpoints")
     sub.add_parser("version", help="CLI and platform chart version")
@@ -586,9 +674,6 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     for paid in sorted(PAID):
         paid_p = sub.add_parser(paid, help="Pro/Enterprise")
         paid_p.add_argument("rest", nargs=argparse.REMAINDER)
-    for later in sorted(NOT_YET):
-        later_p = sub.add_parser(later, help="ships before v1.0.0-ce")
-        later_p.add_argument("rest", nargs=argparse.REMAINDER)
 
     for p in (sub.choices["dev"], sub.choices["deploy"]):
         p.add_argument("--graph-id", default="")
@@ -598,9 +683,6 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     logger.info("cli cmd=%s", args.cmd)
     if args.cmd in PAID:
         print(UPGRADE, file=sys.stderr)
-        return 2
-    if args.cmd in NOT_YET:
-        print(LATER, file=sys.stderr)
         return 2
     if args.cmd == "init":
         return cmd_init(Path(args.directory))
@@ -623,6 +705,37 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         return cmd_status(env, runner=runner)
     if args.cmd == "doctor":
         return cmd_doctor(env, runner=runner)
+    if args.cmd == "undeploy":
+        try:
+            platform_chart = find_chart(
+                Path(args.directory).resolve(),
+                "zelkor-platform",
+                args.platform_chart,
+                "ZELKOR_PLATFORM_CHART",
+            )
+            return cmd_undeploy(
+                Path(args.directory).resolve(),
+                env,
+                graph_id_flag=args.graph_id,
+                platform_chart=platform_chart,
+                runner=runner,
+            )
+        except (FileNotFoundError, DetectError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+    if args.cmd == "logs":
+        try:
+            return cmd_logs(
+                Path(args.directory).resolve(),
+                env,
+                graph_id_flag=args.graph_id,
+                follow=args.follow,
+                tail=args.tail,
+                runner=runner,
+            )
+        except DetectError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
     if args.cmd == "run":
         return cmd_run(
             Path(args.directory),
@@ -650,6 +763,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
             agent_chart=agent_chart,
             platform_chart=platform_chart,
             runner=runner,
+            skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
         )
     except DetectError as exc:
         print(str(exc), file=sys.stderr)

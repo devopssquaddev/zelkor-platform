@@ -23,7 +23,9 @@ metadata:
     {{- include "zelkor-platform.labels" . | nindent 4 }}
     app.kubernetes.io/component: mcp-gateway
 spec:
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
   replicas: {{ .Values.mcp.gateway.replicaCount | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/component: mcp-gateway

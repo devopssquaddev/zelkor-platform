@@ -16,6 +16,54 @@ MAX_BODY_BYTES = int(os.getenv("MCP_MAX_BODY_BYTES", "1048576"))
 MAX_CONCURRENT_REQUESTS = int(os.getenv("MCP_MAX_CONCURRENT_REQUESTS", "32"))
 _request_semaphore = threading.Semaphore(MAX_CONCURRENT_REQUESTS)
 
+try:
+    from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+except ImportError:  # image extra; local unit tests without the dep
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
+    Counter = None  # type: ignore[assignment]
+    generate_latest = None  # type: ignore[assignment]
+
+_MCP_REQUESTS = (
+    Counter(
+        "zelkor_mcp_http_requests_total",
+        "MCP HTTP requests by method, handler, and status",
+        ["method", "handler", "code"],
+    )
+    if Counter is not None
+    else None
+)
+_MCP_ERRORS = (
+    Counter(
+        "zelkor_mcp_http_errors_total",
+        "MCP HTTP 5xx responses",
+        ["method", "handler"],
+    )
+    if Counter is not None
+    else None
+)
+
+
+def _handler_label(path: str) -> str:
+    route = (path or "/").split("?", 1)[0]
+    if route in ("/health", "/healthz"):
+        return "health"
+    if route == "/metrics":
+        return "metrics"
+    if route in ("/mcp", "/"):
+        return "mcp"
+    return "other"
+
+
+def _observe(method: str, path: str, code: int) -> None:
+    if _MCP_REQUESTS is None:
+        return
+    handler = _handler_label(path)
+    if handler in ("health", "metrics"):
+        return
+    _MCP_REQUESTS.labels(method=method, handler=handler, code=str(code)).inc()
+    if int(code) >= 500 and _MCP_ERRORS is not None:
+        _MCP_ERRORS.labels(method=method, handler=handler).inc()
+
 
 class MCPToolHandler:
     def list_tools(self) -> List[Dict[str, Any]]:
@@ -44,10 +92,23 @@ def make_handler(tool_handler: MCPToolHandler, tenant_extractor: Callable[[Dict[
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            _observe(self.command, self.path, code)
 
         def do_GET(self):
-            if self.path in ("/health", "/healthz"):
+            route = (self.path or "/").split("?", 1)[0]
+            if route in ("/health", "/healthz"):
                 self._send_json(200, {"status": "ok", "protocol": "mcp/1.0"})
+                return
+            if route == "/metrics":
+                if generate_latest is None:
+                    self._send_json(501, {"error": "metrics unavailable"})
+                    return
+                body = generate_latest()
+                self.send_response(200)
+                self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
                 return
             logger.debug("MCP GET not found: %s", self.path)
             self._send_json(404, {"error": "not found"})

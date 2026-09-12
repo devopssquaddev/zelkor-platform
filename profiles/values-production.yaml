@@ -13,8 +13,14 @@
 #     --set gateway.hosts.langfuse=langfuse.example.com
 # Public AI Gateway /v1 is opt-in (--set gateway.hosts.aiGateway=...). Do not set hosts.mcp / hosts.nemo.
 #
-# ./install.sh stays on profiles/values-local.yaml (kind). Stateless HPA and
-# HTTPRoute TLS are remaining CE-4.
+# HA is on. Requires metrics-server.
+# TLS: --set gateway.tls.enabled=true --set gateway.tls.clusterIssuer=<ClusterIssuer name>
+# Prometheus Operator: --set observability.serviceMonitor.enabled=true
+# Envoy Gateway + AI Gateway controllers: scale to 2 (kind ./install.sh stays 1):
+#   kubectl -n envoy-gateway-system scale deploy/envoy-gateway --replicas=2
+#   kubectl -n envoy-ai-gateway-system scale deploy/ai-gateway-controller --replicas=2
+#
+# ./install.sh stays on profiles/values-local.yaml (kind).
 
 global:
   tier: oss
@@ -38,7 +44,11 @@ databases:
       storageClass: ""
 
 highAvailability:
-  enabled: false
+  enabled: true
+
+observability:
+  serviceMonitor:
+    enabled: false
 
 security:
   mTLS:
@@ -62,6 +72,9 @@ gateway:
   envoyProxy:
     hostNetwork: false
     # ClusterIP + existing Ingress: overlay enabled=true and service.type=ClusterIP
+  tls:
+    enabled: false
+    clusterIssuer: ""
   hosts:
     langfuse: ""
     aiGateway: ""
@@ -72,8 +85,38 @@ gateway:
 aiGateway:
   consumerKey: ""
 
+# First-party images: tag 1.0.0 (chart default). Digests filled by
+# scripts/pin-production-digests.sh after GHCR push.
+aegra:
+  image:
+    tag: "1.0.0"
+    digest: "sha256:35c82db5c80123230d4e4e32e5c602ca1a139ee0e00600dd710e28d16cf4a165"
+  cli:
+    image:
+      tag: "1.0.0"
+      digest: "sha256:5abd847b4caa13f6ac0363593880593a9102e0cb90679e7e25ed9df00950105d"
+
+guardrails:
+  nemo:
+    image:
+      tag: "1.0.0"
+      digest: "sha256:d1e19d355b6ec9ca56acbd3d75d091a62f39a7cce551da3601e5d13b2de82605"
+
+mcp:
+  image:
+    tag: "1.0.0"
+    digest: "sha256:6133318c6e6f69b4f566c8c2fc33f49034276fcc151ad9cce2330d302b098acc"
+  sandboxMCP:
+    workerImage:
+      tag: "1.0.0"
+      digest: "sha256:b5dd22087605bbc86530456f1f7fa4f1150648d111f16c8a627fcd215e49767c"
+
 langfuse:
   init:
     enabled: false
+  surfaces:
+    image:
+      tag: "1.0.0"
+      digest: "sha256:9b13cae05b48f1ef7c7fbdb15a7aed396d4f801cd1a10d5ccdae89ae1c9d1012"
   # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
   # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo
