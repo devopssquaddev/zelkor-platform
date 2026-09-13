@@ -31,9 +31,15 @@
 {{- $workloads = append $workloads (printf "%s-mcp-sandbox" $fn) }}
 {{- end }}
 {{- end }}
+{{- $lfHa := (.Values.langfuse.highAvailability | default dict) }}
+{{- $lfMin := int ($lfHa.minReplicas | default 1) }}
 {{- range $i, $name := $workloads }}
 {{- if $i }}
 ---
+{{- end }}
+{{- $thisMin := $min }}
+{{- if eq $name (printf "%s-langfuse" $fn) }}
+{{- $thisMin = $lfMin }}
 {{- end }}
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
@@ -46,7 +52,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ $name }}
-  minReplicas: {{ $min }}
+  minReplicas: {{ $thisMin }}
   maxReplicas: {{ $max }}
   targetCPUUtilizationPercentage: {{ $cpu }}
 {{- end }}

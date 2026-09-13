@@ -20,6 +20,12 @@ cluster_install_init() {
   CLUSTER_INSTALL_TOPOLOGY="${CLUSTER_INSTALL_TOPOLOGY:-greenfield}"
   CLUSTER_INSTALL_DRY_RUN="${CLUSTER_INSTALL_DRY_RUN:-0}"
   CLUSTER_INSTALL_INSTALL_AI_GATEWAY="${CLUSTER_INSTALL_INSTALL_AI_GATEWAY:-0}"
+  CLUSTER_INSTALL_STRICT="${CLUSTER_INSTALL_STRICT:-0}"
+  CLUSTER_INSTALL_SKIP_ENVOY_GATEWAY="${CLUSTER_INSTALL_SKIP_ENVOY_GATEWAY:-0}"
+  CLUSTER_INSTALL_SKIP_AI_GATEWAY="${CLUSTER_INSTALL_SKIP_AI_GATEWAY:-0}"
+  CLUSTER_INSTALL_NEXTAUTH_SCHEME="${CLUSTER_INSTALL_NEXTAUTH_SCHEME:-http}"
+  CLUSTER_INSTALL_PG_INSTANCES="${CLUSTER_INSTALL_PG_INSTANCES:-1}"
+  CLUSTER_INSTALL_EXPECT_HA="${CLUSTER_INSTALL_EXPECT_HA:-0}"
   KUBECONFIG_FILE="${KUBECONFIG_FILE:-}"
   KUBE_CONTEXT="${KUBE_CONTEXT:-}"
   HOSTS_AGENTS="${HOSTS_AGENTS:-}"
@@ -96,6 +102,14 @@ cluster_install_try_common() {
     --install-ai-gateway)
       CLUSTER_INSTALL_INSTALL_AI_GATEWAY=1
       ;;
+    --strict)
+      CLUSTER_INSTALL_STRICT=1
+      ;;
+    --image-pull-secret)
+      [[ -n "$value" ]] || cluster_install_die "missing value for --image-pull-secret"
+      CLUSTER_INSTALL_HELM_SETS+=(--set "global.imagePullSecrets[0].name=${value}")
+      CLUSTER_INSTALL_SHIFT=2
+      ;;
     --dry-run)
       CLUSTER_INSTALL_DRY_RUN=1
       ;;
@@ -146,6 +160,34 @@ cluster_install_gateway_overlay() {
   esac
 }
 
+cluster_install_deployment_available() {
+  local ns="$1"
+  local name="$2"
+  local available
+  available=$(kubectl "${KUBECTL_ARGS[@]}" get deployment "$name" -n "$ns" \
+    -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
+  [[ "$available" == "True" ]]
+}
+
+cluster_install_eg_owned() {
+  zelkor_ownership_owns envoy-gateway || zelkor_ownership_ns_owned envoy-gateway-system
+}
+
+cluster_install_adapt_layered_bootstrap() {
+  [[ "$CLUSTER_INSTALL_TOPOLOGY" == "layered" ]] || return 0
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  if cluster_install_deployment_available envoy-gateway-system envoy-gateway; then
+    if ! cluster_install_eg_owned; then
+      CLUSTER_INSTALL_SKIP_ENVOY_GATEWAY=1
+      echo "install: layered + existing Envoy Gateway (not Zelkor-owned); skip EG install/patch"
+    fi
+  fi
+  if cluster_install_deployment_available envoy-ai-gateway-system ai-gateway-controller; then
+    CLUSTER_INSTALL_SKIP_AI_GATEWAY=1
+    echo "install: Envoy AI Gateway already Available; skip AI Gateway Helm"
+  fi
+}
+
 cluster_install_bootstrap_gateway_args() {
   local args=()
   if [[ -n "$KUBECONFIG_FILE" ]]; then
@@ -160,6 +202,15 @@ cluster_install_bootstrap_gateway_args() {
       args+=(--patch-extension-manager)
     else
       args+=(--skip-ai-gateway)
+    fi
+  elif [[ "$CLUSTER_INSTALL_TOPOLOGY" == "layered" ]]; then
+    if [[ "$CLUSTER_INSTALL_SKIP_ENVOY_GATEWAY" -eq 1 ]]; then
+      args+=(--skip-envoy-gateway)
+    fi
+    if [[ "$CLUSTER_INSTALL_SKIP_AI_GATEWAY" -eq 1 ]]; then
+      args+=(--skip-ai-gateway)
+    elif [[ "$CLUSTER_INSTALL_INSTALL_AI_GATEWAY" -eq 1 ]]; then
+      args+=(--patch-extension-manager)
     fi
   fi
   if [[ ${#args[@]} -gt 0 ]]; then
@@ -289,7 +340,7 @@ cluster_install_append_host_helm_sets() {
   CLUSTER_INSTALL_HELM_SETS+=(
     --set "gateway.hosts.agents=${HOSTS_AGENTS}"
     --set "gateway.hosts.langfuse=${HOSTS_LANGFUSE}"
-    --set "langfuse.nextauthUrl=http://${HOSTS_LANGFUSE}"
+    --set "langfuse.nextauthUrl=${CLUSTER_INSTALL_NEXTAUTH_SCHEME}://${HOSTS_LANGFUSE}"
   )
   if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]]; then
     CLUSTER_INSTALL_HELM_SETS+=(
@@ -368,20 +419,158 @@ cluster_install_run_helm() {
 }
 
 cluster_install_refuse_foreign_eg() {
-  case "$CLUSTER_INSTALL_TOPOLOGY" in
-    greenfield|layered) ;;
-    *) return 0 ;;
-  esac
+  [[ "$CLUSTER_INSTALL_TOPOLOGY" == "greenfield" ]] || return 0
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
-  local available
-  available=$(kubectl "${KUBECTL_ARGS[@]}" get deployment envoy-gateway \
-    -n envoy-gateway-system \
-    -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
-  [[ "$available" == "True" ]] || return 0
-  if zelkor_ownership_owns envoy-gateway || zelkor_ownership_ns_owned envoy-gateway-system; then
+  cluster_install_deployment_available envoy-gateway-system envoy-gateway || return 0
+  if cluster_install_eg_owned; then
     return 0
   fi
-  cluster_install_die "Envoy Gateway is already running and was not installed by Zelkor. Use --topology shared (attach) or --topology shared --install-ai-gateway (explicit ConfigMap patch). Greenfield/layered will not replace envoy-gateway-config."
+  cluster_install_die "Envoy Gateway is already running and was not installed by Zelkor. Use --topology layered (Zelkor Gateway + ClusterIP behind your ingress) or --topology shared (attach to their Gateway). Greenfield will not replace envoy-gateway-config."
+}
+
+cluster_install_warn_or_fail() {
+  echo "warning: $*" >&2
+  if [[ "$CLUSTER_INSTALL_STRICT" -eq 1 ]]; then
+    cluster_install_die "$*"
+  fi
+}
+
+cluster_install_resolved_pg_instances() {
+  local arg
+  local found=""
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    case "$arg" in
+      databases.postgresql.instances=*)
+        found="${arg#databases.postgresql.instances=}"
+        ;;
+    esac
+  done
+  if [[ -n "$found" ]]; then
+    echo "$found"
+  else
+    echo "$CLUSTER_INSTALL_PG_INSTANCES"
+  fi
+}
+
+cluster_install_preflight() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  local sc_default ready_nodes instances metrics
+  sc_default=$(kubectl "${KUBECTL_ARGS[@]}" get storageclass \
+    -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' \
+    2>/dev/null || true)
+  if [[ -z "$sc_default" ]]; then
+    cluster_install_warn_or_fail "no default StorageClass; set databases.postgresql.storage.storageClass and databases.clickhouse.storage.storageClass"
+  fi
+  ready_nodes=$(kubectl "${KUBECTL_ARGS[@]}" get nodes \
+    --field-selector=spec.unschedulable!=true \
+    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+    2>/dev/null | grep -c '^True$' || true)
+  instances="$(cluster_install_resolved_pg_instances)"
+  if [[ "$ready_nodes" -lt "$instances" ]]; then
+    cluster_install_warn_or_fail "Ready nodes (${ready_nodes}) < databases.postgresql.instances (${instances}); pass --set databases.postgresql.instances=${ready_nodes} or add schedulable nodes"
+  fi
+  if [[ "$CLUSTER_INSTALL_EXPECT_HA" -eq 1 ]]; then
+    metrics=$(kubectl "${KUBECTL_ARGS[@]}" get apiservice v1beta1.metrics.k8s.io \
+      -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
+    if [[ "$metrics" != "True" ]]; then
+      cluster_install_warn_or_fail "metrics-server API is not Available (required for highAvailability HPA)"
+    fi
+  fi
+}
+
+cluster_install_adopt_gatewayclass() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  local arg skip=0 name="${GATEWAY_CLASS:-eg}"
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    case "$arg" in
+      gateway.createGatewayClass=*) skip=1 ;;
+      gateway.gatewayClassName=*) name="${arg#gateway.gatewayClassName=}" ;;
+    esac
+  done
+  [[ "$skip" -eq 1 ]] && return 0
+  if kubectl "${KUBECTL_ARGS[@]}" get gatewayclass "$name" >/dev/null 2>&1; then
+    echo "install: GatewayClass ${name} already exists; skipping chart emit (gateway.createGatewayClass=false)"
+    CLUSTER_INSTALL_HELM_SETS+=(--set "gateway.createGatewayClass=false")
+  fi
+}
+
+cluster_install_gvisor_preflight() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  local args=()
+  local line pending="" skip_mode=0 skip_rc=0
+  local arg
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    case "$arg" in
+      security.sandbox.provisioning.mode=*) skip_mode=1 ;;
+      security.sandbox.createRuntimeClass=*) skip_rc=1 ;;
+    esac
+  done
+  if [[ -n "$KUBECONFIG_FILE" ]]; then
+    args+=(--kubeconfig "$KUBECONFIG_FILE")
+  fi
+  if [[ -n "$KUBE_CONTEXT" ]]; then
+    args+=(--kube-context "$KUBE_CONTEXT")
+  fi
+  while IFS= read -r line; do
+    if [[ "$line" == "--set" ]]; then
+      pending="--set"
+      continue
+    fi
+    [[ "$pending" == "--set" ]] || continue
+    pending=""
+    if [[ "$line" == security.sandbox.provisioning.mode=* && "$skip_mode" -eq 1 ]]; then
+      continue
+    fi
+    if [[ "$line" == security.sandbox.createRuntimeClass=* && "$skip_rc" -eq 1 ]]; then
+      continue
+    fi
+    CLUSTER_INSTALL_HELM_SETS+=(--set "$line")
+  done < <("${ZELKOR_REPO_ROOT}/scripts/gvisor-preflight.sh" "${args[@]}" --output helm)
+}
+
+cluster_install_dataplane_name() {
+  echo "${CLUSTER_INSTALL_NAMESPACE}-${CLUSTER_INSTALL_RELEASE}-dataplane"
+}
+
+cluster_install_dataplane_fqdn() {
+  echo "$(cluster_install_dataplane_name).envoy-gateway-system.svc.cluster.local"
+}
+
+cluster_install_print_dataplane() {
+  local fqdn
+  fqdn="$(cluster_install_dataplane_fqdn)"
+  echo
+  echo "Envoy dataplane Service (stable name): ${fqdn}:80"
+  if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "layered" ]]; then
+    echo "Point your existing ingress at that ClusterIP Service and preserve the Host header."
+    echo "Zelkor does not create Ingress objects."
+  fi
+}
+
+cluster_install_wait_langfuse() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  if ! kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
+    get deploy "${CLUSTER_INSTALL_RELEASE}-langfuse" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "install: waiting for Langfuse Deployment"
+  kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
+    rollout status "deploy/${CLUSTER_INSTALL_RELEASE}-langfuse" --timeout=10m || \
+    cluster_install_warn_or_fail "Langfuse Deployment not Ready"
+}
+
+cluster_install_refresh_surfaces() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  local args=()
+  if [[ -n "$KUBECONFIG_FILE" ]]; then
+    args+=(--kubeconfig "$KUBECONFIG_FILE")
+  fi
+  if [[ -n "$KUBE_CONTEXT" ]]; then
+    args+=(--kube-context "$KUBE_CONTEXT")
+  fi
+  args+=(--namespace "$CLUSTER_INSTALL_NAMESPACE" --release "$CLUSTER_INSTALL_RELEASE")
+  "${ZELKOR_REPO_ROOT}/scripts/refresh-langfuse-surfaces.sh" "${args[@]}" || \
+    cluster_install_warn_or_fail "Langfuse surfaces refresh did not complete"
 }
 
 cluster_install_prepare() {
@@ -392,6 +581,10 @@ cluster_install_prepare() {
   cluster_install_validate_topology
   cluster_install_require_shared_refs
   cluster_install_refuse_foreign_eg
+  cluster_install_adapt_layered_bootstrap
+  cluster_install_gvisor_preflight
+  cluster_install_adopt_gatewayclass
+  cluster_install_preflight
   cluster_install_resolve_llm
   cluster_install_append_llm_helm_sets
   cluster_install_langfuse_secrets

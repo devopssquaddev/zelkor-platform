@@ -10,7 +10,7 @@ This path uses `databases.mode: in-cluster-basic` (in-chart StatefulSets). For a
 - `kubectl` and `helm` installed and configured for that cluster
 - An LLM provider API key (OpenAI, Anthropic, Gemini, Ollama, or vLLM)
 
-Envoy Gateway and Envoy AI Gateway are installed automatically when missing (greenfield). If Envoy Gateway is **already running**, greenfield/layered **will not** replace `envoy-gateway-config` (that restarts EG). Use `--topology shared` — see [Gateway Topologies](envoy-gateway-topologies.md). `--patch-extension-manager` is an explicit, cluster-wide mutate.
+Envoy Gateway and Envoy AI Gateway are installed automatically when missing (greenfield). Greenfield **refuses** when Envoy Gateway is already running and was not installed by Zelkor. **Layered** is the path when you already have an ingress (or EG) and want Zelkor to create its own ClusterIP Gateway — it does not replace `envoy-gateway-config`. **Shared** attaches routes to **your** Gateway CR. See [Gateway Topologies](envoy-gateway-topologies.md). `--patch-extension-manager` is an explicit, cluster-wide mutate.
 
 ## Install
 
@@ -21,7 +21,7 @@ cd zelkor-platform
 OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --namespace zelkor-play
 ```
 
-The script bootstraps Envoy (if needed), generates Langfuse secrets, and deploys `profiles/values-quickstart.yaml`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`.
+The script bootstraps Envoy (if needed), generates Langfuse secrets, and deploys `profiles/values-quickstart.yaml`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`. CE GHCR images are public; `--image-pull-secret` is optional.
 
 ```bash
 # Layered behind existing ingress (NGINX, Traefik, ALB)
@@ -63,7 +63,7 @@ pip install -e ./cli
 zelkor env add my-cluster --kube-context your-kube-context --namespace zelkor-play
 ```
 
-Point DNS or `/etc/hosts` at the Envoy dataplane Service for the agent and Langfuse hosts printed by the script.
+Point DNS or `/etc/hosts` at the Envoy dataplane Service `{namespace}-{release}-dataplane` in `envoy-gateway-system` (printed by the script). For layered installs, point your existing ingress at that ClusterIP Service and preserve the Host header. Zelkor does not create Ingress objects.
 
 ## Uninstall
 
@@ -73,4 +73,4 @@ Point DNS or `/etc/hosts` at the Envoy dataplane Service for the agent and Langf
 ./scripts/uninstall.sh --namespace zelkor-play --delete-namespace --purge-gateway
 ```
 
-Default is Helm uninstall only. `--purge-gateway` / `--purge-operators` skip components Zelkor did not record as installed, unless `--force-purge`. cert-manager is never removed by `--purge-operators`.
+Default is Helm uninstall only. `--purge-gateway` / `--purge-operators` skip components Zelkor did not record as installed, unless `--force-purge`. cert-manager is never removed by `--purge-operators`. Missing Helm releases are skipped (no `helm uninstall --ignore-not-found`; Helm 3.10+).

@@ -463,6 +463,30 @@ true
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.gatewayClassName" -}}
+{{- .Values.gateway.gatewayClassName | default "eg" -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyDataplaneServiceName" -}}
+{{- $ep := .Values.gateway.envoyProxy | default dict -}}
+{{- $svc := $ep.service | default dict -}}
+{{- $explicit := $svc.name | default "" -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else -}}
+{{- printf "%s-%s-dataplane" .Release.Namespace (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyDataplaneHost" -}}
+{{- $override := ((.Values.aiGateway.inClusterService).targetHost) | default "" -}}
+{{- if $override -}}
+{{- $override -}}
+{{- else if eq (include "zelkor-platform.envoyProxyEmit" . | trim) "true" -}}
+{{- printf "%s.envoy-gateway-system.svc.cluster.local" (include "zelkor-platform.envoyDataplaneServiceName" .) -}}
+{{- end -}}
+{{- end }}
+
 {{/*
 parentRefs target: overlay gateway.parentRef or this release's Gateway.
 */}}
@@ -535,18 +559,7 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- if $override -}}
 {{- $override -}}
 {{- else -}}
-{{- $ns := "envoy-gateway-system" -}}
-{{- $found := "" -}}
-{{- range (lookup "v1" "Service" $ns "").items -}}
-{{- if and (not $found) (hasPrefix "envoy-default-" .metadata.name) (contains "gateway-" .metadata.name) -}}
-{{- $found = printf "http://%s.%s.svc.cluster.local:80/v1" .metadata.name $ns -}}
-{{- end -}}
-{{- end -}}
-{{- if $found -}}
-{{- $found -}}
-{{- else -}}
-{{- printf "http://envoy-default-%s-gateway.%s.svc.cluster.local:80/v1" (include "zelkor-platform.fullname" .) $ns -}}
-{{- end -}}
+{{- printf "http://%s:80/v1" (include "zelkor-platform.envoyDataplaneHost" .) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

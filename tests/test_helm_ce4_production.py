@@ -142,6 +142,20 @@ def test_production_overlay_emits_hpa_and_envoy_hpa():
     hpa = proxies[0]["spec"]["provider"]["kubernetes"]["envoyHpa"]
     assert hpa["minReplicas"] == 2
     assert hpa["maxReplicas"] == 8
+    assert proxies[0]["spec"]["provider"]["kubernetes"]["envoyService"]["name"] == (
+        "zelkor-zelkor-platform-dataplane"
+    )
+    lf_hpa = _named(docs, "HorizontalPodAutoscaler", "zelkor-platform-langfuse")
+    assert lf_hpa["spec"]["minReplicas"] == 1
+    aegra_hpa = _named(docs, "HorizontalPodAutoscaler", "zelkor-platform-aegra")
+    assert aegra_hpa["spec"]["minReplicas"] == 2
+    worker_hpa = _named(docs, "HorizontalPodAutoscaler", "zelkor-platform-langfuse-worker")
+    assert worker_hpa["spec"]["minReplicas"] == 2
+    ai_svc = _named(docs, "Service", "zelkor-platform-ai-gateway")
+    assert ai_svc["spec"]["type"] == "ExternalName"
+    assert ai_svc["spec"]["externalName"] == (
+        "zelkor-zelkor-platform-dataplane.envoy-gateway-system.svc.cluster.local"
+    )
     assert not _kinds(docs, "ServiceMonitor")
 
 

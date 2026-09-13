@@ -15,7 +15,7 @@
 #     --set gateway.parentRef.namespace=your-gateway-namespace \
 #     --set gateway.hosts.agents=agents.example.com \
 #     --set gateway.hosts.langfuse=langfuse.example.com \
-#     --set aiGateway.internalUrl=http://envoy-default-....svc.cluster.local:80/v1
+#     --set aiGateway.internalUrl=http://<namespace>-<release>-dataplane.envoy-gateway-system.svc.cluster.local:80/v1
 
 gateway:
   createGatewayClass: false

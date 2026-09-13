@@ -21,7 +21,7 @@ metadata:
     {{- end }}
   {{- end }}
 spec:
-  gatewayClassName: {{ .Values.gateway.gatewayClassName | default "eg" }}
+  gatewayClassName: {{ include "zelkor-platform.gatewayClassName" . }}
   listeners:
     - name: http
       protocol: HTTP

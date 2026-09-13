@@ -28,6 +28,8 @@ Options:
   --parent-ref-namespace NS    Required for --topology shared
   --gateway-class NAME         Required for --topology shared
   --install-ai-gateway         Shared topology: install AI Gateway + patch EG
+  --image-pull-secret NAME     Optional. CE GHCR images are public.
+  --strict                     Fail on preflight warnings
   --kubeconfig PATH
   --kube-context NAME
   --set key=value              Extra Helm --set (repeatable)
@@ -71,6 +73,10 @@ if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
   echo "install-quickstart: dry-run done"
   exit 0
 fi
+
+cluster_install_print_dataplane
+cluster_install_wait_langfuse
+cluster_install_refresh_surfaces
 
 echo
 echo "Zelkor evaluation release is applied."

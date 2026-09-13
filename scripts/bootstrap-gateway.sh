@@ -205,6 +205,10 @@ if [[ "$SKIP_ENVOY_GATEWAY" -eq 0 ]]; then
 error: Envoy Gateway is already running and was not installed by Zelkor.
 Refusing to replace envoy-gateway-config (that restarts EG and can take down cluster ingress).
 
+  Layered (your ingress fronts a Zelkor ClusterIP Gateway; no EG ConfigMap patch):
+    ./scripts/bootstrap-gateway.sh --skip-envoy-gateway
+    ./scripts/install-production.sh --topology layered --hosts-agents ... --hosts-langfuse ...
+
   Shared / attach to existing Gateway:
     ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --skip-ai-gateway
     ./scripts/install-quickstart.sh --topology shared --gateway-class ... --parent-ref-name ... --parent-ref-namespace ...

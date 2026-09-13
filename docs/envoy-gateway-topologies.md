@@ -49,7 +49,7 @@ Envoy provisions a **LoadBalancer** Service for the dataplane (chart default whe
 
 ## Layered routing (ClusterIP behind existing ingress)
 
-**When:** Your cluster already has NGINX, Traefik, AWS ALB, or similar as the internet front door.
+**When:** Your cluster already has NGINX, Traefik, AWS ALB, or similar as the internet front door. Also use this when Envoy Gateway is already running and you want Zelkor to create its **own** ClusterIP `Gateway` (not attach to theirs). The installer skips EG install/patch in that case.
 
 ### 1. Bootstrap gateways
 
@@ -70,7 +70,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 ### 3. Route external traffic
 
-Configure your primary ingress to forward Zelkor hostnames to the Envoy Gateway **ClusterIP** Service in `envoy-gateway-system`. **Preserve the Host header** — Envoy routes by hostname to Langfuse, Aegra, and the AI Gateway.
+Configure your primary ingress to forward Zelkor hostnames to the stable dataplane Service `{namespace}-{release}-dataplane` in `envoy-gateway-system` (ClusterIP). **Preserve the Host header** — Envoy routes by hostname to Langfuse, Aegra, and the AI Gateway. Zelkor does not create Ingress objects.
 
 ```mermaid
 graph TD
@@ -95,7 +95,7 @@ graph TD
 ./scripts/bootstrap-gateway.sh --skip-envoy-gateway --patch-extension-manager
 ```
 
-This **replaces** `envoy-gateway-config` and restarts the Envoy Gateway controller (cluster ingress). It is opt-in. Greenfield/layered bootstrap **refuses** to patch when EG is already running and was not installed by Zelkor.
+This **replaces** `envoy-gateway-config` and restarts the Envoy Gateway controller (cluster ingress). It is opt-in. Greenfield bootstrap **refuses** when EG is already running and was not installed by Zelkor. Layered skips the patch and creates a Zelkor Gateway instead.
 
 ### 2. Attach Zelkor routes to your Gateway
 

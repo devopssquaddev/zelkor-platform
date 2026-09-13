@@ -88,23 +88,35 @@ zelkor_uninstall_kubectl() {
   cluster_install_print_or_run "$label" "${cmd[@]}"
 }
 
-zelkor_uninstall_helm() {
+zelkor_helm_release_exists() {
   local release="$1"
   local ns="$2"
-  local cmd=(helm uninstall "$release" --namespace "$ns" --ignore-not-found)
+  local cmd=(helm status "$release" --namespace "$ns")
   if [[ ${#HELM_KUBE_ARGS[@]} -gt 0 ]]; then
     cmd+=("${HELM_KUBE_ARGS[@]}")
   fi
-  cluster_install_print_or_run "$3" "${cmd[@]}"
+  "${cmd[@]}" >/dev/null 2>&1
+}
+
+zelkor_uninstall_helm() {
+  local release="$1"
+  local ns="$2"
+  local label="$3"
+  if [[ "$CLUSTER_INSTALL_DRY_RUN" -ne 1 ]] && ! zelkor_helm_release_exists "$release" "$ns"; then
+    echo "SKIP missing helm release ${release} (${ns})"
+    return 0
+  fi
+  # Helm 3.10+ (docs minimum) has no `uninstall --ignore-not-found` (Helm 3.18+).
+  local cmd=(helm uninstall "$release" --namespace "$ns")
+  if [[ ${#HELM_KUBE_ARGS[@]} -gt 0 ]]; then
+    cmd+=("${HELM_KUBE_ARGS[@]}")
+  fi
+  cluster_install_print_or_run "$label" "${cmd[@]}"
 }
 
 echo "uninstall: release=${CLUSTER_INSTALL_RELEASE} namespace=${CLUSTER_INSTALL_NAMESPACE}"
 
-helm_un=(helm uninstall "$CLUSTER_INSTALL_RELEASE" --namespace "$CLUSTER_INSTALL_NAMESPACE" --ignore-not-found)
-if [[ ${#HELM_KUBE_ARGS[@]} -gt 0 ]]; then
-  helm_un+=("${HELM_KUBE_ARGS[@]}")
-fi
-cluster_install_print_or_run HELM_UNINSTALL "${helm_un[@]}"
+zelkor_uninstall_helm "$CLUSTER_INSTALL_RELEASE" "$CLUSTER_INSTALL_NAMESPACE" HELM_UNINSTALL
 
 if [[ "$PURGE_GATEWAY" -eq 1 ]]; then
   echo "WARNING: --purge-gateway is cluster-scoped."

@@ -93,6 +93,19 @@ def test_gvisor_installer_selector_matches_pod_labels():
         assert pod_labels.get(key) == value, f"{key}={value!r} not on pod {pod_labels}"
 
 
+def test_create_runtimeclass_false_omits_runtimeclass():
+    proc = _helm(
+        "--set",
+        "security.sandbox.provisioning.mode=daemonset",
+        "--set",
+        "security.sandbox.createRuntimeClass=false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert _gvisor_rc(docs) is None
+    assert _gvisor_ds(docs) is not None
+
+
 def test_preinstalled_without_runtimeclass_renders_nothing():
     proc = _helm(
         "--set",

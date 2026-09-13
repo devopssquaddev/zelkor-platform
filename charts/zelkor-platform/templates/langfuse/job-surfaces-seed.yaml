@@ -67,4 +67,10 @@ spec:
               value: {{ .Values.langfuse.salt | quote }}
             - name: LANGFUSE_EXTRA_PROJECTS
               value: {{ $extraProjects | toJson | quote }}
+            - name: VALKEY_HOST
+              value: {{ include "zelkor-platform.valkeyHost" . | quote }}
+            - name: VALKEY_PORT
+              value: {{ include "zelkor-platform.valkeyPort" . | quote }}
+            - name: VALKEY_PASSWORD
+              value: {{ include "zelkor-platform.valkeyPassword" . | quote }}
 {{- end }}

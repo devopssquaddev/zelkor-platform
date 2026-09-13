@@ -732,9 +732,16 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
 fi
 
 peek_internal_gateway_svc() {
+  local ns="${ZELKOR_NAMESPACE:-zelkor}"
+  local release="${HELM_RELEASE_NAME:-zelkor-platform}"
+  local stable="${ns}-${release}-dataplane"
+  if kubectl --context "$KCTX" get svc "$stable" -n envoy-gateway-system >/dev/null 2>&1; then
+    echo "$stable"
+    return 0
+  fi
   kubectl --context "$KCTX" get svc -n envoy-gateway-system \
-    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
-    | grep -E '^envoy-default-.*gateway-' | head -1 || true
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.gateway\.envoyproxy\.io/owning-gateway-name}{"\n"}{end}' 2>/dev/null \
+    | awk -F'\t' '$2 != "" { print $1; exit }' || true
 }
 
 append_gateway_url_helm() {

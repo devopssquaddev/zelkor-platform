@@ -137,6 +137,7 @@ def test_production_dry_run_greenfield():
     assert "values-gateway-greenfield.yaml" in out
     assert "values-local.yaml" not in out
     assert "gateway.hosts.agents=agents.example.com" in out
+    assert "langfuse.nextauthUrl=https://langfuse.example.com" in out
     assert "postgresql.auth.password=" in out
     assert "aiGateway.providers.openai.apiKey=sk-test-cluster-install" in out
 
@@ -165,6 +166,59 @@ def test_production_dry_run_skip_operators_and_tls():
     assert "gateway.tls.enabled=true" in out
     assert "gateway.tls.clusterIssuer=letsencrypt-prod" in out
     assert "observability.serviceMonitor.enabled=true" in out
+
+
+def test_production_image_pull_secret_quoted():
+    proc = _run(
+        PROD,
+        "--dry-run",
+        "--hosts-agents",
+        "agents.example.com",
+        "--hosts-langfuse",
+        "langfuse.example.com",
+        "--generate-passwords",
+        "--image-pull-secret",
+        "private-registry",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "global.imagePullSecrets[0].name=private-registry" in proc.stdout
+
+
+def test_refuse_foreign_eg_allows_layered():
+    script = f"""
+    set -euo pipefail
+    ZELKOR_REPO_ROOT={ROOT}
+    source {LIB}
+    cluster_install_init
+    CLUSTER_INSTALL_TOPOLOGY=layered
+    CLUSTER_INSTALL_DRY_RUN=0
+    cluster_install_deployment_available() {{ return 0; }}
+    cluster_install_eg_owned() {{ return 1; }}
+    cluster_install_refuse_foreign_eg
+    echo ok
+    """
+    proc = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "ok"
+
+
+def test_refuse_foreign_eg_greenfield_dies():
+    script = f"""
+    set -euo pipefail
+    ZELKOR_REPO_ROOT={ROOT}
+    source {LIB}
+    cluster_install_init
+    CLUSTER_INSTALL_TOPOLOGY=greenfield
+    CLUSTER_INSTALL_DRY_RUN=0
+    cluster_install_deployment_available() {{ return 0; }}
+    cluster_install_eg_owned() {{ return 1; }}
+    cluster_install_refuse_foreign_eg
+    echo should-not-reach
+    """
+    proc = subprocess.run(["bash", "-c", script], check=False, capture_output=True, text=True)
+    assert proc.returncode != 0
+    assert "already running" in proc.stderr
+    assert "should-not-reach" not in proc.stdout
 
 
 def test_production_rejects_localhost_hosts():

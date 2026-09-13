@@ -42,6 +42,9 @@ Options:
   --tls                        Enable Gateway HTTPS
   --cluster-issuer NAME        cert-manager ClusterIssuer (with --tls)
   --service-monitor            Enable Prometheus ServiceMonitors
+  --image-pull-secret NAME     Optional. CE GHCR images are public. Use for a
+                               private mirror or a licensed image later.
+  --strict                     Fail on preflight warnings (StorageClass, nodes, metrics-server)
   --kubeconfig PATH
   --kube-context NAME
   --set key=value              Extra Helm --set (repeatable)
@@ -104,6 +107,10 @@ if [[ "$TLS_ENABLED" -eq 1 && -z "$CLUSTER_ISSUER" ]]; then
   cluster_install_die "--tls requires --cluster-issuer"
 fi
 
+CLUSTER_INSTALL_NEXTAUTH_SCHEME=https
+CLUSTER_INSTALL_PG_INSTANCES=3
+CLUSTER_INSTALL_EXPECT_HA=1
+
 cluster_install_prepare
 
 CLUSTER_INSTALL_HELM_SETS+=(
@@ -111,7 +118,6 @@ CLUSTER_INSTALL_HELM_SETS+=(
   --set "clickhouse.auth.password=${CLICKHOUSE_PASSWORD}"
   --set "seaweedfs.auth.accessKey=${SEAWEEDFS_ACCESS_KEY}"
   --set "seaweedfs.auth.secretKey=${SEAWEEDFS_SECRET_KEY}"
-  --set "langfuse.nextauthUrl=https://${HOSTS_LANGFUSE}"
 )
 if [[ "$TLS_ENABLED" -eq 1 ]]; then
   CLUSTER_INSTALL_HELM_SETS+=(
@@ -147,6 +153,10 @@ if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
   echo "install-production: dry-run done"
   exit 0
 fi
+
+cluster_install_print_dataplane
+cluster_install_wait_langfuse
+cluster_install_refresh_surfaces
 
 if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then
   echo

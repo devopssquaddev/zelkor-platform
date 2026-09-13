@@ -14,7 +14,7 @@ Unlike the evaluation install, production uses operators for HA datastores, enab
 
 Do not use `*.localhost` domains, `dev-key` tokens, or unsigned authentication.
 
-Envoy Gateway topologies: [Gateway Topologies](envoy-gateway-topologies.md). Greenfield is the default (Zelkor installs Envoy when missing).
+Envoy Gateway topologies: [Gateway Topologies](envoy-gateway-topologies.md). Greenfield is the default (Zelkor installs Envoy when missing). If Envoy Gateway is already running, use `--topology layered` (Zelkor ClusterIP Gateway behind your ingress) or `--topology shared` (attach to their Gateway). CE first-party images on GHCR are **public** — no `imagePullSecret` is required. `--image-pull-secret` is optional (private mirror or a later licensed image). `--strict` fails the install on preflight warnings (StorageClass, node count vs Postgres instances, metrics-server).
 
 ## Install
 
@@ -32,12 +32,15 @@ OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
 The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. Store the printed datastore passwords.
 
 ```bash
-# Existing ingress (NGINX, Traefik, ALB)
+# Existing ingress (NGINX, Traefik, ALB) — also valid when EG is already running
 OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --topology layered \
   --hosts-agents agents.yourdomain.com \
   --hosts-langfuse langfuse.yourdomain.com \
   --generate-passwords
+
+# Then point that ingress at Service zelkor-zelkor-platform-dataplane
+# in envoy-gateway-system (port 80) and preserve the Host header.
 
 # Existing Envoy Gateway
 OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
@@ -76,8 +79,8 @@ Skip when using managed databases (`databases.mode: external`).
 ./scripts/bootstrap-gateway.sh
 ```
 
-Layered routing: same bootstrap, then `-f profiles/values-gateway-layered.yaml`.
-Existing Envoy: `./scripts/bootstrap-gateway.sh --skip-envoy-gateway --patch-extension-manager` and `-f profiles/values-gateway-shared.yaml`.
+Layered routing: `./scripts/bootstrap-gateway.sh --skip-envoy-gateway` when EG already exists (no ConfigMap patch), then `-f profiles/values-gateway-layered.yaml`. Point your ingress at `{namespace}-{release}-dataplane` in `envoy-gateway-system`.
+Existing Envoy attach: `./scripts/bootstrap-gateway.sh --skip-envoy-gateway --skip-ai-gateway` and `-f profiles/values-gateway-shared.yaml`. `--patch-extension-manager` only when you explicitly want to mutate their EG ConfigMap.
 
 ### Layer 2: Platform
 

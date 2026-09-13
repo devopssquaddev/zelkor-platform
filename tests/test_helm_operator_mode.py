@@ -174,6 +174,7 @@ def test_envoyproxy_clusterip_has_no_kind_nodeselector():
     assert "ingress-ready" not in rendered
     k8s = proxies[0]["spec"]["provider"]["kubernetes"]
     assert k8s["envoyService"]["type"] == "ClusterIP"
+    assert k8s["envoyService"]["name"] == "zelkor-zelkor-platform-dataplane"
     patch = k8s["envoyDeployment"]["patch"]["value"]
     spec = ((patch.get("spec") or {}).get("template") or {}).get("spec") or {}
     assert "ingress-ready" not in str(spec.get("nodeSelector") or {})
@@ -235,6 +236,15 @@ def test_gateway_layered_profile_emits_clusterip():
     assert proxies
     k8s = proxies[0]["spec"]["provider"]["kubernetes"]
     assert k8s["envoyService"]["type"] == "ClusterIP"
+    assert k8s["envoyService"]["name"] == "zelkor-zelkor-platform-dataplane"
+    ai_svc = next(
+        d
+        for d in _kinds(docs, "Service")
+        if d["metadata"]["name"] == "zelkor-platform-ai-gateway"
+    )
+    assert ai_svc["spec"]["externalName"] == (
+        "zelkor-zelkor-platform-dataplane.envoy-gateway-system.svc.cluster.local"
+    )
 
 
 def test_gateway_shared_profile_attaches_to_parent_ref():

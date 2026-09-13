@@ -211,6 +211,57 @@ def test_seed_admin_requires_creds():
         seed_mod.seed_admin_user("", "")
 
 
+def test_wait_project_api_waits_for_db_then_succeeds(monkeypatch):
+    hits = {"db": 0, "api": 0}
+
+    def db(_pk: str) -> bool:
+        hits["db"] += 1
+        return hits["db"] >= 2
+
+    def req(*_a, **_k):
+        hits["api"] += 1
+        return {"data": []}
+
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgres://x")
+    monkeypatch.setattr(seed_mod, "project_key_in_db", db)
+    monkeypatch.setattr(seed_mod, "_request", req)
+    monkeypatch.setattr(seed_mod.time, "sleep", lambda *_a, **_k: None)
+    seed_mod.wait_project_api(
+        {"id": "p", "publicKey": "pk", "secretKey": "sk"},
+        attempts=5,
+    )
+    assert hits["db"] >= 2
+    assert hits["api"] == 1
+
+
+def test_wait_project_api_flushes_valkey_on_401(monkeypatch):
+    flushed: list[str] = []
+
+    def req(*_a, **_k):
+        if not flushed:
+            raise RuntimeError("GET /api/public/llm-connections -> 401: invalid")
+        return {"data": []}
+
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgres://x")
+    monkeypatch.setattr(seed_mod, "project_key_in_db", lambda *_a, **_k: True)
+    monkeypatch.setattr(seed_mod, "invalidate_api_key_cache", lambda sk: flushed.append(sk) or True)
+    monkeypatch.setattr(seed_mod, "_request", req)
+    monkeypatch.setattr(seed_mod.time, "sleep", lambda *_a, **_k: None)
+    seed_mod.wait_project_api(
+        {"id": "p", "publicKey": "pk", "secretKey": "sk-lf-x"},
+        attempts=5,
+    )
+    assert flushed == ["sk-lf-x"]
+
+
+def test_invalidate_api_key_cache_uses_fast_hash(monkeypatch):
+    deleted: list[str] = []
+    monkeypatch.setattr(seed_mod, "LANGFUSE_SALT", "salt")
+    monkeypatch.setattr(seed_mod, "valkey_del", lambda key: deleted.append(key) or True)
+    assert seed_mod.invalidate_api_key_cache("sk-lf-x")
+    assert deleted == [f"api-key:{fast_hashed_secret_key('sk-lf-x', 'salt')}"]
+
+
 def test_fast_hashed_secret_key_is_stable():
     first = fast_hashed_secret_key("sk-lf-x", "salt")
     second = fast_hashed_secret_key("sk-lf-x", "salt")

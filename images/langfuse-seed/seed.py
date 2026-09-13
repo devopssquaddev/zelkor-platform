@@ -40,6 +40,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 PROJECT_ID = os.getenv("LANGFUSE_PROJECT_ID", "").strip()
 ORG_ID = os.getenv("LANGFUSE_ORG_ID", "").strip()
 LANGFUSE_SALT = os.getenv("LANGFUSE_SALT", "").strip()
+VALKEY_HOST = os.getenv("VALKEY_HOST", "").strip()
+VALKEY_PORT = int(os.getenv("VALKEY_PORT", "6379") or "6379")
+VALKEY_PASSWORD = os.getenv("VALKEY_PASSWORD", "")
 EXTRA_PROJECTS_RAW = os.getenv("LANGFUSE_EXTRA_PROJECTS", "").strip()
 SEED_ADMIN = os.getenv("SEED_ADMIN", "").lower() in ("1", "true", "yes")
 # Cold Langfuse (Prisma + ClickHouse) exceeds the old 60s window.
@@ -488,20 +491,81 @@ def seed_evaluators(project: Dict[str, str]) -> None:
     logger.info("seeded code evaluator score-configs project=%s", project["id"])
 
 
-def wait_project_api(project: Dict[str, str], attempts: int = 20) -> None:
-    """Langfuse caches API keys; extra-project keys 401 until web/worker reload the row."""
+def project_key_in_db(public_key: str) -> bool:
+    if not public_key or not DATABASE_URL or psycopg is None:
+        return False
+    try:
+        with psycopg.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM api_keys WHERE public_key = %s LIMIT 1",
+                    (public_key,),
+                )
+                return cur.fetchone() is not None
+    except Exception as exc:
+        logger.debug("api_keys lookup skipped: %s", exc)
+        return False
+
+
+def _encode_resp(parts: List[str]) -> bytes:
+    chunks = [f"*{len(parts)}\r\n".encode("utf-8")]
+    for part in parts:
+        payload = part.encode("utf-8")
+        chunks.append(f"${len(payload)}\r\n".encode("utf-8"))
+        chunks.append(payload)
+        chunks.append(b"\r\n")
+    return b"".join(chunks)
+
+
+def valkey_del(key: str) -> bool:
+    if not VALKEY_HOST or not key:
+        return False
+    try:
+        import socket
+
+        with socket.create_connection((VALKEY_HOST, VALKEY_PORT), timeout=5) as sock:
+            if VALKEY_PASSWORD:
+                sock.sendall(_encode_resp(["AUTH", VALKEY_PASSWORD]))
+                sock.recv(256)
+            sock.sendall(_encode_resp(["DEL", key]))
+            reply = sock.recv(256)
+        return reply.startswith(b":") and not reply.startswith(b":0")
+    except Exception as exc:
+        logger.debug("valkey DEL skipped: %s", exc)
+        return False
+
+
+def invalidate_api_key_cache(secret_key: str) -> bool:
+    if not secret_key or not LANGFUSE_SALT:
+        return False
+    cache_key = f"api-key:{fast_hashed_secret_key(secret_key, LANGFUSE_SALT)}"
+    deleted = valkey_del(cache_key)
+    if deleted:
+        logger.info("cleared Langfuse API-key negative cache")
+    return deleted
+
+
+def wait_project_api(project: Dict[str, str], attempts: int = 40) -> None:
+    """Wait for Postgres key + live API auth. Flush Valkey negative cache on 401."""
     last = ""
+    public_key = project["publicKey"]
     for _ in range(attempts):
+        if DATABASE_URL and not project_key_in_db(public_key):
+            last = "api_keys row not present"
+            time.sleep(2)
+            continue
         try:
             _request(
                 "GET",
                 "/api/public/llm-connections",
-                public_key=project["publicKey"],
+                public_key=public_key,
                 secret_key=project["secretKey"],
             )
             return
         except Exception as exc:
             last = str(exc)
+            if "401" in last:
+                invalidate_api_key_cache(project["secretKey"])
             time.sleep(2)
     raise RuntimeError(f"Langfuse API key for project {project['id']} not live: {last}")
 
