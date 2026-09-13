@@ -618,6 +618,34 @@ Usage: {{ include "zelkor-platform.image" .Values.aegra.image }}
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.langfuseInitKeysConfigured" -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- if and .Values.langfuse.enabled $init.enabled $init.projectPublicKey $init.projectSecretKey -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseBootstrapWaitInitContainer" -}}
+{{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" }}
+- name: wait-langfuse-bootstrap
+  image: {{ .Values.global.kubectlImage | default "bitnami/kubectl:1.32.3" | quote }}
+  command:
+    - kubectl
+    - wait
+    - job/{{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+    - --for=condition=complete
+    - --timeout=20m
+    - -n
+    - {{ .Release.Namespace }}
+{{- end }}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseBootstrapWaitServiceAccount" -}}
+{{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" -}}
+serviceAccountName: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.langfuseAdminSecretName" -}}
 {{- $a := .Values.langfuse.admin | default dict -}}
 {{- if $a.existingSecret -}}

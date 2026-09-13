@@ -21,7 +21,7 @@ cd zelkor-platform
 OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --namespace zelkor-play
 ```
 
-The script bootstraps Envoy (if needed), generates Langfuse secrets, and deploys `profiles/values-quickstart.yaml`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`. CE GHCR images are public; `--image-pull-secret` is optional.
+The script bootstraps Envoy (if needed), generates install secrets (datastores, sandbox worker token, Langfuse crypto) into cluster Secrets, and deploys `profiles/values-quickstart.yaml`. Override with `POSTGRES_PASSWORD`, `WORKER_TOKEN`, `LANGFUSE_*`, and the other env names listed in `install-production.sh`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`. CE GHCR images are public; `--image-pull-secret` is optional.
 
 ```bash
 # Layered behind existing ingress (NGINX, Traefik, ALB)
@@ -39,9 +39,8 @@ OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --topology shared \
 ```bash
 ./scripts/bootstrap-gateway.sh
 
-LANGFUSE_SECRET=$(openssl rand -base64 32)
-LANGFUSE_SALT=$(openssl rand -base64 32)
-LANGFUSE_ENCRYPTION_KEY=$(openssl rand -hex 32)
+# Prefer install-quickstart.sh (generates datastore + worker + Langfuse secrets).
+# Manual Helm still requires those --set values (or existing cluster Secrets on upgrade).
 
 helm upgrade --install zelkor-platform charts/zelkor-platform \
   -f profiles/values-quickstart.yaml \
@@ -49,9 +48,11 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set aiGateway.providers.openai.apiKey="sk-your-llm-api-key" \
   --set gateway.hosts.agents=agents.zelkor.local \
   --set gateway.hosts.langfuse=langfuse.zelkor.local \
-  --set langfuse.nextauthSecret="${LANGFUSE_SECRET}" \
-  --set langfuse.salt="${LANGFUSE_SALT}" \
-  --set langfuse.encryptionKey="${LANGFUSE_ENCRYPTION_KEY}"
+  --set postgresql.auth.password="..." \
+  --set clickhouse.auth.password="..." \
+  --set seaweedfs.auth.accessKey="..." --set seaweedfs.auth.secretKey="..." \
+  --set langfuse.nextauthSecret="..." --set langfuse.salt="..." \
+  --set langfuse.encryptionKey="$(openssl rand -hex 32)"
 ```
 
 Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud). Do not put the upstream provider key in `aiGateway.consumerKey`.

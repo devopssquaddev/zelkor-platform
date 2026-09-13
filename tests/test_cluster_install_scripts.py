@@ -55,6 +55,8 @@ def test_quickstart_dry_run_greenfield():
     assert "aiGateway.consumerKey=" not in out
     assert "gateway.hosts.agents=agents.zelkor-play.zelkor.local" in out
     assert "gateway.hosts.langfuse=langfuse.zelkor-play.zelkor.local" in out
+    assert "postgresql.auth.password=" in out
+    assert "mcp.sandboxMCP.workerToken=" in out
 
 
 def test_quickstart_dry_run_layered():
@@ -139,6 +141,8 @@ def test_production_dry_run_greenfield():
     assert "gateway.hosts.agents=agents.example.com" in out
     assert "langfuse.nextauthUrl=https://langfuse.example.com" in out
     assert "postgresql.auth.password=" in out
+    assert "mcp.sandboxMCP.workerToken=" in out
+    assert "Generated install secrets" in out
     assert "aiGateway.providers.openai.apiKey=sk-test-cluster-install" in out
 
 
@@ -219,6 +223,21 @@ def test_refuse_foreign_eg_greenfield_dies():
     assert proc.returncode != 0
     assert "already running" in proc.stderr
     assert "should-not-reach" not in proc.stdout
+
+
+def test_production_dry_run_generates_secrets_without_flag():
+    proc = _run(
+        PROD,
+        "--dry-run",
+        "--hosts-agents",
+        "agents.example.com",
+        "--hosts-langfuse",
+        "langfuse.example.com",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "postgresql.auth.password=" in proc.stdout
+    assert "mcp.sandboxMCP.workerToken=" in proc.stdout
+    assert "Generated install secrets" not in proc.stdout
 
 
 def test_production_rejects_localhost_hosts():

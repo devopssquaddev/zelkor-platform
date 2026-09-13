@@ -250,3 +250,24 @@ def test_metrics_deps_in_images():
     assert "prometheus-fastapi-instrumentator" in guardrails
     mcp = (ROOT / "mcp" / "common" / "mcp_server.py").read_text()
     assert "/metrics" in mcp
+
+
+def test_production_profile_renders_langfuse_seed_network_policy():
+    proc = _helm("-f", str(PRODUCTION))
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    np = _named(docs, "NetworkPolicy", "zelkor-platform-langfuse-bootstrap-egress")
+    peers = []
+    for rule in (np.get("spec") or {}).get("egress") or []:
+        for peer in rule.get("to") or []:
+            labels = (peer.get("podSelector") or {}).get("matchLabels") or {}
+            peers.append(labels)
+    assert any(p.get("app.kubernetes.io/component") == "valkey" for p in peers), peers
+    match_labels = (
+        ((np.get("spec") or {}).get("podSelector") or {}).get("matchExpressions") or []
+    )
+    components = next(
+        (expr.get("values") or [] for expr in match_labels if expr.get("key") == "app.kubernetes.io/component"),
+        [],
+    )
+    assert components == ["langfuse-bootstrap"]

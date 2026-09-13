@@ -76,7 +76,7 @@ fi
 
 cluster_install_print_dataplane
 cluster_install_wait_langfuse
-cluster_install_refresh_surfaces
+cluster_install_wait_langfuse_bootstrap
 
 echo
 echo "Zelkor evaluation release is applied."
@@ -90,6 +90,7 @@ fi
 echo "  pip install -e ${ZELKOR_REPO_ROOT}/cli"
 echo "  zelkor env add ${CLUSTER_INSTALL_NAMESPACE}${ctx_flag} --namespace ${CLUSTER_INSTALL_NAMESPACE}"
 echo
+cluster_install_print_secret_howto
 echo "Langfuse admin (generated if unset):"
 echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${CLUSTER_INSTALL_NAMESPACE} get secret ${CLUSTER_INSTALL_RELEASE}-langfuse-admin -o jsonpath='{.data.email}' | base64 -d; echo"
 echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${CLUSTER_INSTALL_NAMESPACE} get secret ${CLUSTER_INSTALL_RELEASE}-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo"

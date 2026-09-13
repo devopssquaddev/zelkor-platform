@@ -712,6 +712,8 @@ mcp:
       - python-base
     warmPool:
       replicas: 3
+    # Empty: installer generates; chart keeps Secret {release}-sandbox-worker.
+    # Override with mcp.sandboxMCP.workerToken or WORKER_TOKEN on install-*.sh.
     workerToken: ""
     strictIsolation: false
     workerImage:

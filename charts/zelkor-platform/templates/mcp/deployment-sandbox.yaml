@@ -6,7 +6,7 @@
 {{- $workerUrls = append $workerUrls (printf "http://%s-mcp-sandbox-worker-%d:8081" $fullname $i) }}
 {{- end }}
 {{- $workerUrlsStr := join "," $workerUrls }}
-{{- $workerToken := .Values.mcp.sandboxMCP.workerToken | default "" }}
+{{- $workerSecret := printf "%s-sandbox-worker" $fullname }}
 ---
 apiVersion: v1
 kind: Service
@@ -78,10 +78,11 @@ spec:
             {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: SANDBOX_WORKER_URLS
               value: {{ $workerUrlsStr | quote }}
-            {{- if $workerToken }}
             - name: SANDBOX_WORKER_TOKEN
-              value: {{ $workerToken | quote }}
-            {{- end }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $workerSecret | quote }}
+                  key: token
             {{- include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.sandboxMCP) | nindent 10 }}
 ---
@@ -124,10 +125,11 @@ spec:
             {{- include "zelkor-platform.logEnv" (dict "root" $ "component" $.Values.mcp.sandboxMCP.worker "name" "zelkor-sandbox-worker") | nindent 12 }}
             - name: PORT
               value: "8081"
-            {{- if $workerToken }}
             - name: SANDBOX_WORKER_TOKEN
-              value: {{ $workerToken | quote }}
-            {{- end }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $workerSecret | quote }}
+                  key: token
             {{- include "zelkor-platform.sandboxExecutionLogEnv" $ | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" $ "values" $.Values.mcp.sandboxMCP.worker) | nindent 10 }}
 ---

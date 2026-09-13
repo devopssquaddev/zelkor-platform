@@ -14,7 +14,7 @@ Compose any overlay with `profiles/values-production.yaml` (production) or `prof
 ```bash
 OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh --topology layered
 OPENAI_API_KEY=sk-... ./scripts/install-production.sh --topology greenfield \
-  --hosts-agents agents.example.com --hosts-langfuse langfuse.example.com --generate-passwords
+  --hosts-agents agents.example.com --hosts-langfuse langfuse.example.com
 ```
 
 ---

@@ -293,11 +293,17 @@ wait_jobs_selector() {
   handle_wait_failure "$criticality" "jobs -l ${selector}" jobs_selector_healthy "$selector"
 }
 
-refresh_langfuse_surfaces_job() {
-  bash "$ZELKOR_REPO_ROOT/scripts/refresh-langfuse-surfaces.sh" \
-    --kube-context "$KCTX" \
-    --namespace "${ZELKOR_NAMESPACE:-default}" \
-    --release "$HELM_RELEASE_NAME" || return 0
+wait_langfuse_bootstrap_job() {
+  local job="${HELM_RELEASE_NAME}-langfuse-bootstrap"
+  if ! kubectl --context "$KCTX" get job "$job" >/dev/null 2>&1; then
+    return 0
+  fi
+  log "  waiting: job/${job}"
+  if kubectl --context "$KCTX" wait --for=condition=complete "job/${job}" \
+    --timeout="$JOB_WAIT_TIMEOUT"; then
+    return 0
+  fi
+  handle_wait_failure optional "job/${job}" resource_healthy "job/${job}"
 }
 
 helm_user_value() {
@@ -681,7 +687,7 @@ log "Envoy AI Gateway included in gateway bootstrap"
 step_end ai_gateway
 
 if [[ "$FIRST_KIND_CREATE" != "true" ]]; then
-  for job in langfuse-surfaces langfuse-admin gvisor-verify; do
+  for job in langfuse-bootstrap gvisor-verify; do
     if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-${job}" >/dev/null 2>&1; then
       log "Deleting stale ${job} Job (re-run; Job spec is immutable)..."
       kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-${job}" --ignore-not-found
@@ -860,9 +866,9 @@ if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
   step_end rollout_mcp_nemo
 fi
 
-step_begin job_langfuse_surfaces
-refresh_langfuse_surfaces_job
-step_end job_langfuse_surfaces
+step_begin job_langfuse_bootstrap
+wait_langfuse_bootstrap_job
+step_end job_langfuse_bootstrap
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   step_begin finserve_helm

@@ -290,7 +290,7 @@ def test_empty_optional_hosts_emit_no_public_mcp_nemo_v1():
         assert not any("ai-gateway." in h and "svc.cluster.local" not in h and h != "zelkor-platform-ai-gateway" for h in hosts)
 
 
-def test_langfuse_admin_secret_and_job():
+def test_langfuse_admin_secret_and_bootstrap_job():
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
@@ -304,15 +304,16 @@ def test_langfuse_admin_secret_and_job():
     assert data["email"] == "admin@langfuse.example.com"
     assert data["name"] == "Admin"
     assert data["password"]
-    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-admin"]
+    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-bootstrap"]
     assert jobs
-    admin_ann = (jobs[0].get("metadata") or {}).get("annotations") or {}
-    assert "helm.sh/hook" not in admin_ann
+    bootstrap_ann = (jobs[0].get("metadata") or {}).get("annotations") or {}
+    assert "helm.sh/hook" not in bootstrap_ann
     env = {
         e["name"]: e
         for e in jobs[0]["spec"]["template"]["spec"]["containers"][0]["env"]
     }
     assert env["SEED_ADMIN"]["value"] == "true"
+    assert env["SEED_INIT"]["value"] == "false"
     ref = env["LANGFUSE_ADMIN_PASSWORD"]["valueFrom"]["secretKeyRef"]
     assert ref["name"] == "zelkor-platform-langfuse-admin"
     assert ref["key"] == "password"
@@ -321,12 +322,18 @@ def test_langfuse_admin_secret_and_job():
     assert "admin@zelkor.local" not in values
 
 
-def test_langfuse_admin_disabled_emits_nothing():
+def test_langfuse_admin_disabled_still_emits_bootstrap_job():
     proc = _helm("--set", "langfuse.admin.enabled=false")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     assert "zelkor-platform-langfuse-admin" not in _names(docs, "Secret")
-    assert "zelkor-platform-langfuse-admin" not in _names(docs, "Job")
+    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-bootstrap"]
+    assert jobs
+    env = {
+        e["name"]: e
+        for e in jobs[0]["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["SEED_ADMIN"]["value"] == "false"
 
 
 def test_langfuse_admin_existing_secret_skips_generated_secret():
@@ -334,7 +341,7 @@ def test_langfuse_admin_existing_secret_skips_generated_secret():
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     assert "zelkor-platform-langfuse-admin" not in _names(docs, "Secret")
-    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-admin"]
+    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-bootstrap"]
     assert jobs
     env = {
         e["name"]: e

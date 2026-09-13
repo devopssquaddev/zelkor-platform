@@ -22,8 +22,7 @@ FIRST_PARTY_TEMPLATES = [
     CHART / "templates/mcp/deployment-egress.yaml",
     CHART / "templates/mcp/deployment-sandbox.yaml",
     CHART / "templates/guardrails/deployment.yaml",
-    CHART / "templates/langfuse/job-surfaces-seed.yaml",
-    CHART / "templates/langfuse/job-admin-seed.yaml",
+    CHART / "templates/langfuse/job-bootstrap.yaml",
     AGENT_CHART / "templates/deployment.yaml",
 ]
 

@@ -25,19 +25,17 @@ cd zelkor-platform
 OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --namespace zelkor \
   --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com \
-  --generate-passwords
+  --hosts-langfuse langfuse.yourdomain.com
 ```
 
-The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. Store the printed datastore passwords.
+The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. Datastore, sandbox worker, and Langfuse crypto secrets are generated when unset and stored in cluster Secrets. Override with `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `SEAWEEDFS_*`, `WORKER_TOKEN`, or `LANGFUSE_*`. `--generate-passwords` also prints them once.
 
 ```bash
 # Existing ingress (NGINX, Traefik, ALB) — also valid when EG is already running
 OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --topology layered \
   --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com \
-  --generate-passwords
+  --hosts-langfuse langfuse.yourdomain.com
 
 # Then point that ingress at Service zelkor-zelkor-platform-dataplane
 # in envoy-gateway-system (port 80) and preserve the Host header.
@@ -49,14 +47,12 @@ OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --parent-ref-name your-gateway \
   --parent-ref-namespace your-gateway-namespace \
   --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com \
-  --generate-passwords
+  --hosts-langfuse langfuse.yourdomain.com
 
 # TLS + Prometheus (optional)
 OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --hosts-agents agents.yourdomain.com \
   --hosts-langfuse langfuse.yourdomain.com \
-  --generate-passwords \
   --tls --cluster-issuer letsencrypt-prod \
   --service-monitor
 ```

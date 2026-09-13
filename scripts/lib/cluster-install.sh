@@ -334,6 +334,45 @@ cluster_install_langfuse_secrets() {
   )
 }
 
+# Generate missing install secrets (override via env). Chart writes them to Secrets.
+cluster_install_platform_secrets() {
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    POSTGRES_PASSWORD="$(cluster_install_rand_b64)"
+  fi
+  if [[ -z "${CLICKHOUSE_PASSWORD:-}" ]]; then
+    CLICKHOUSE_PASSWORD="$(cluster_install_rand_b64)"
+  fi
+  if [[ -z "${SEAWEEDFS_ACCESS_KEY:-}" ]]; then
+    SEAWEEDFS_ACCESS_KEY="$(cluster_install_rand_b64)"
+  fi
+  if [[ -z "${SEAWEEDFS_SECRET_KEY:-}" ]]; then
+    SEAWEEDFS_SECRET_KEY="$(cluster_install_rand_b64)"
+  fi
+  if [[ -z "${WORKER_TOKEN:-}" ]]; then
+    WORKER_TOKEN="$(cluster_install_rand_b64)"
+  fi
+  CLUSTER_INSTALL_HELM_SETS+=(
+    --set "postgresql.auth.password=${POSTGRES_PASSWORD}"
+    --set "clickhouse.auth.password=${CLICKHOUSE_PASSWORD}"
+    --set "seaweedfs.auth.accessKey=${SEAWEEDFS_ACCESS_KEY}"
+    --set "seaweedfs.auth.secretKey=${SEAWEEDFS_SECRET_KEY}"
+    --set "mcp.sandboxMCP.workerToken=${WORKER_TOKEN}"
+  )
+}
+
+cluster_install_print_secret_howto() {
+  local ns="$CLUSTER_INSTALL_NAMESPACE"
+  local rel="$CLUSTER_INSTALL_RELEASE"
+  echo
+  echo "Install secrets are in cluster Secrets (override with env before install):"
+  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN"
+  echo "  LANGFUSE_NEXTAUTH_SECRET / LANGFUSE_SALT / LANGFUSE_ENCRYPTION_KEY"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-postgresql -o jsonpath='{.data.password}' | base64 -d; echo"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-clickhouse -o jsonpath='{.data.password}' | base64 -d; echo"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-seaweedfs -o jsonpath='{.data.access-key}' | base64 -d; echo"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-sandbox-worker -o jsonpath='{.data.token}' | base64 -d; echo"
+}
+
 cluster_install_append_host_helm_sets() {
   [[ -n "$HOSTS_AGENTS" ]] || cluster_install_die "gateway.hosts.agents is required"
   [[ -n "$HOSTS_LANGFUSE" ]] || cluster_install_die "gateway.hosts.langfuse is required"
@@ -559,18 +598,17 @@ cluster_install_wait_langfuse() {
     cluster_install_warn_or_fail "Langfuse Deployment not Ready"
 }
 
-cluster_install_refresh_surfaces() {
+cluster_install_wait_langfuse_bootstrap() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
-  local args=()
-  if [[ -n "$KUBECONFIG_FILE" ]]; then
-    args+=(--kubeconfig "$KUBECONFIG_FILE")
+  local job="${CLUSTER_INSTALL_RELEASE}-langfuse-bootstrap"
+  if ! kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
+    get job "$job" >/dev/null 2>&1; then
+    return 0
   fi
-  if [[ -n "$KUBE_CONTEXT" ]]; then
-    args+=(--kube-context "$KUBE_CONTEXT")
-  fi
-  args+=(--namespace "$CLUSTER_INSTALL_NAMESPACE" --release "$CLUSTER_INSTALL_RELEASE")
-  "${ZELKOR_REPO_ROOT}/scripts/refresh-langfuse-surfaces.sh" "${args[@]}" || \
-    cluster_install_warn_or_fail "Langfuse surfaces refresh did not complete"
+  echo "install: waiting for Langfuse bootstrap Job"
+  kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
+    wait "job/${job}" --for=condition=complete --timeout=20m || \
+    cluster_install_warn_or_fail "Langfuse bootstrap Job did not complete"
 }
 
 cluster_install_prepare() {
@@ -588,5 +626,6 @@ cluster_install_prepare() {
   cluster_install_resolve_llm
   cluster_install_append_llm_helm_sets
   cluster_install_langfuse_secrets
+  cluster_install_platform_secrets
   cluster_install_append_host_helm_sets
 }

@@ -38,7 +38,8 @@ Options:
   --gateway-class NAME         Required for --topology shared
   --install-ai-gateway         Shared topology: install AI Gateway + patch EG
   --skip-operators             Do not run bootstrap-operators.sh
-  --generate-passwords         Generate datastore passwords and print once
+  --generate-passwords         Print generated install secrets once (always
+                               generated into cluster Secrets if env is unset)
   --tls                        Enable Gateway HTTPS
   --cluster-issuer NAME        cert-manager ClusterIssuer (with --tls)
   --service-monitor            Enable Prometheus ServiceMonitors
@@ -51,9 +52,10 @@ Options:
   --dry-run                    Print bootstrap + helm argv; do not apply
   -h, --help
 
-Datastore passwords (or --generate-passwords):
+Install secrets (generated if unset; stored in cluster Secrets):
   POSTGRES_PASSWORD, CLICKHOUSE_PASSWORD,
-  SEAWEEDFS_ACCESS_KEY, SEAWEEDFS_SECRET_KEY
+  SEAWEEDFS_ACCESS_KEY, SEAWEEDFS_SECRET_KEY, WORKER_TOKEN
+  LANGFUSE_NEXTAUTH_SECRET, LANGFUSE_SALT, LANGFUSE_ENCRYPTION_KEY
 
 LLM provider (at least one env):
   OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY,
@@ -91,18 +93,6 @@ if [[ "$HOSTS_AGENTS" == *.zelkor.local || "$HOSTS_LANGFUSE" == *.zelkor.local ]
   cluster_install_die "production hosts must not use *.zelkor.local; pass real DNS names"
 fi
 
-if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then
-  : "${POSTGRES_PASSWORD:=$(cluster_install_rand_b64)}"
-  : "${CLICKHOUSE_PASSWORD:=$(cluster_install_rand_b64)}"
-  : "${SEAWEEDFS_ACCESS_KEY:=$(cluster_install_rand_b64)}"
-  : "${SEAWEEDFS_SECRET_KEY:=$(cluster_install_rand_b64)}"
-fi
-
-[[ -n "${POSTGRES_PASSWORD:-}" ]] || cluster_install_die "POSTGRES_PASSWORD is required (or --generate-passwords)"
-[[ -n "${CLICKHOUSE_PASSWORD:-}" ]] || cluster_install_die "CLICKHOUSE_PASSWORD is required (or --generate-passwords)"
-[[ -n "${SEAWEEDFS_ACCESS_KEY:-}" ]] || cluster_install_die "SEAWEEDFS_ACCESS_KEY is required (or --generate-passwords)"
-[[ -n "${SEAWEEDFS_SECRET_KEY:-}" ]] || cluster_install_die "SEAWEEDFS_SECRET_KEY is required (or --generate-passwords)"
-
 if [[ "$TLS_ENABLED" -eq 1 && -z "$CLUSTER_ISSUER" ]]; then
   cluster_install_die "--tls requires --cluster-issuer"
 fi
@@ -113,12 +103,6 @@ CLUSTER_INSTALL_EXPECT_HA=1
 
 cluster_install_prepare
 
-CLUSTER_INSTALL_HELM_SETS+=(
-  --set "postgresql.auth.password=${POSTGRES_PASSWORD}"
-  --set "clickhouse.auth.password=${CLICKHOUSE_PASSWORD}"
-  --set "seaweedfs.auth.accessKey=${SEAWEEDFS_ACCESS_KEY}"
-  --set "seaweedfs.auth.secretKey=${SEAWEEDFS_SECRET_KEY}"
-)
 if [[ "$TLS_ENABLED" -eq 1 ]]; then
   CLUSTER_INSTALL_HELM_SETS+=(
     --set "gateway.tls.enabled=true"
@@ -149,6 +133,16 @@ fi
 cluster_install_run_bootstrap_gateway
 cluster_install_run_helm "${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
 
+if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then
+  echo
+  echo "Generated install secrets (store these; they are not shown again):"
+  echo "  POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
+  echo "  CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}"
+  echo "  SEAWEEDFS_ACCESS_KEY=${SEAWEEDFS_ACCESS_KEY}"
+  echo "  SEAWEEDFS_SECRET_KEY=${SEAWEEDFS_SECRET_KEY}"
+  echo "  WORKER_TOKEN=${WORKER_TOKEN}"
+fi
+
 if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
   echo "install-production: dry-run done"
   exit 0
@@ -156,16 +150,8 @@ fi
 
 cluster_install_print_dataplane
 cluster_install_wait_langfuse
-cluster_install_refresh_surfaces
-
-if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then
-  echo
-  echo "Generated datastore passwords (store these; they are not shown again):"
-  echo "  POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
-  echo "  CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}"
-  echo "  SEAWEEDFS_ACCESS_KEY=${SEAWEEDFS_ACCESS_KEY}"
-  echo "  SEAWEEDFS_SECRET_KEY=${SEAWEEDFS_SECRET_KEY}"
-fi
+cluster_install_wait_langfuse_bootstrap
+cluster_install_print_secret_howto
 
 echo
 echo "Zelkor production release is applied."

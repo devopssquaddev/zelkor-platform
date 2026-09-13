@@ -1,0 +1,45 @@
+{{- if .Values.langfuse.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse-bootstrap
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse-bootstrap-wait
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    resourceNames:
+      - {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -11,10 +11,6 @@ stringData:
   nextauth-secret: {{ required "langfuse.nextauthSecret is required when langfuse.enabled" .Values.langfuse.nextauthSecret | quote }}
   salt: {{ required "langfuse.salt is required when langfuse.enabled" .Values.langfuse.salt | quote }}
   encryption-key: {{ required "langfuse.encryptionKey is required when langfuse.enabled" .Values.langfuse.encryptionKey | quote }}
-  {{- if and .Values.langfuse.init .Values.langfuse.init.enabled }}
-  init-user-password: {{ required "langfuse.init.userPassword is required when langfuse.init.enabled" .Values.langfuse.init.userPassword | quote }}
-  init-secret-key: {{ required "langfuse.init.projectSecretKey is required when langfuse.init.enabled" .Values.langfuse.init.projectSecretKey | quote }}
-  {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -84,32 +80,6 @@ spec:
               value: {{ required "langfuse.nextauthUrl is required when langfuse.enabled" .Values.langfuse.nextauthUrl | quote }}
             - name: AUTH_TRUST_HOST
               value: "true"
-            {{- if and .Values.langfuse.init .Values.langfuse.init.enabled }}
-            - name: LANGFUSE_INIT_ORG_ID
-              value: {{ required "langfuse.init.orgId is required when langfuse.init.enabled" .Values.langfuse.init.orgId | quote }}
-            - name: LANGFUSE_INIT_ORG_NAME
-              value: {{ required "langfuse.init.orgName is required when langfuse.init.enabled" .Values.langfuse.init.orgName | quote }}
-            - name: LANGFUSE_INIT_PROJECT_ID
-              value: {{ required "langfuse.init.projectId is required when langfuse.init.enabled" .Values.langfuse.init.projectId | quote }}
-            - name: LANGFUSE_INIT_PROJECT_NAME
-              value: {{ required "langfuse.init.projectName is required when langfuse.init.enabled" .Values.langfuse.init.projectName | quote }}
-            - name: LANGFUSE_INIT_PROJECT_PUBLIC_KEY
-              value: {{ required "langfuse.init.projectPublicKey is required when langfuse.init.enabled" .Values.langfuse.init.projectPublicKey | quote }}
-            - name: LANGFUSE_INIT_PROJECT_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
-                  key: init-secret-key
-            - name: LANGFUSE_INIT_USER_EMAIL
-              value: {{ required "langfuse.init.userEmail is required when langfuse.init.enabled" .Values.langfuse.init.userEmail | quote }}
-            - name: LANGFUSE_INIT_USER_NAME
-              value: {{ required "langfuse.init.userName is required when langfuse.init.enabled" .Values.langfuse.init.userName | quote }}
-            - name: LANGFUSE_INIT_USER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
-                  key: init-user-password
-            {{- end }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.langfuse) | nindent 10 }}
 {{- if .Values.langfuse.worker.enabled }}
 ---
