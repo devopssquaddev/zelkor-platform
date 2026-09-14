@@ -57,6 +57,8 @@ Update governing requirement and specification documents whenever:
 - **Langfuse traces after live tests (check ERROR observations):** `internal/.cursor/rules/langfuse-trace-errors.mdc`
 - **Platform vs demo + tests-must-not-shape-chart:** `internal/requirements/dev/examples_and_demos.md`
 - **Quickstart & User Documentation:** `internal/requirements/quickstart/`, `zelkor-platform/docs/quickstart.md`
+- **Agent platform install (greenfield/brownfield):** `docs/agent-install.md`, `internal/requirements/dev/agent_zelkor_install.md` (multi-root)
+- **Agent deploy / routing:** `docs/agent-deploy.md` (+ living specs in `internal/plan/`)
 
 ---
 

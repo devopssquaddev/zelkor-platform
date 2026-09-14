@@ -1,4 +1,7 @@
-"""Offline checks for existing-cluster CE install wrappers (--dry-run)."""
+"""Offline checks for existing-cluster CE install wrappers (--dry-run).
+
+Agent install contract: docs/agent-install.md
+"""
 from __future__ import annotations
 
 import subprocess
