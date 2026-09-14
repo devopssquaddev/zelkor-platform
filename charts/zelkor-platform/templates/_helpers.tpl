@@ -628,23 +628,36 @@ true
 
 {{- define "zelkor-platform.langfuseBootstrapWaitInitContainer" -}}
 {{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" }}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- $lfHost := printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) -}}
 - name: wait-langfuse-bootstrap
-  image: {{ .Values.global.kubectlImage | default "bitnami/kubectl:1.32.3" | quote }}
+  image: {{ .Values.global.initContainerImage | default "busybox:1.37" | quote }}
+  env:
+    - name: LANGFUSE_HOST
+      value: {{ $lfHost | quote }}
+    - name: LANGFUSE_PUBLIC_KEY
+      value: {{ $init.projectPublicKey | quote }}
+    - name: LANGFUSE_SECRET_KEY
+      value: {{ $init.projectSecretKey | quote }}
   command:
-    - kubectl
-    - wait
-    - job/{{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
-    - --for=condition=complete
-    - --timeout=20m
-    - -n
-    - {{ .Release.Namespace }}
+    - sh
+    - -c
+    - |
+      set -e
+      deadline=$(( $(date +%s) + 1200 ))
+      while [ "$(date +%s)" -lt "$deadline" ]; do
+        if wget -q -O /dev/null "${LANGFUSE_HOST}/api/public/health" 2>/dev/null; then
+          auth=$(printf '%s:%s' "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\n')
+          if wget -q -O /dev/null --header="Authorization: Basic ${auth}" "${LANGFUSE_HOST}/api/public/llm-connections" 2>/dev/null; then
+            echo "Langfuse init project API ready"
+            exit 0
+          fi
+        fi
+        sleep 5
+      done
+      echo "Timed out waiting for Langfuse bootstrap (init project API)" >&2
+      exit 1
 {{- end }}
-{{- end }}
-
-{{- define "zelkor-platform.langfuseBootstrapWaitServiceAccount" -}}
-{{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" -}}
-serviceAccountName: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
-{{- end -}}
 {{- end }}
 
 {{- define "zelkor-platform.langfuseAdminSecretName" -}}

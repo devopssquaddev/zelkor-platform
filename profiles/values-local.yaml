@@ -120,7 +120,7 @@ langfuse:
   admin:
     email: "admin@zelkor.local"
     name: "Zelkor Admin"
-    password: "zelkor-dev-password"
+    password: "Zelkor-dev1!"
   init:
     enabled: true
     orgId: "zelkor-dev"
@@ -131,7 +131,7 @@ langfuse:
     projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
     userEmail: "admin@zelkor.local"
     userName: "Zelkor Admin"
-    userPassword: "zelkor-dev-password"
+    userPassword: "Zelkor-dev1!"
 
 aegra:
   enabled: true

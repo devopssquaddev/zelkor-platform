@@ -23,7 +23,8 @@ _ux_hook() {
 CLUSTER_NAME="${CLUSTER_NAME:-zelkor}"
 CHART_PATH="${CHART_PATH:-charts/zelkor-platform}"
 INSTALL_PROFILE="${INSTALL_PROFILE:-fast}"
-KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-kindest/node:v1.32.2}"
+# Empty = kind CLI default node image (latest for the installed kind). Override with KIND_NODE_IMAGE=kindest/node:<tag>.
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-}"
 FINSERVE_CHART_PATH="${FINSERVE_CHART_PATH:-examples/finserve/chart}"
 FINSERVE_VALUES_FILE="${FINSERVE_VALUES_FILE:-${FINSERVE_CHART_PATH}/values-local.yaml}"
 FINSERVE_PLATFORM_OVERLAY="${FINSERVE_PLATFORM_OVERLAY:-${FINSERVE_CHART_PATH}/values-platform-overlay.yaml}"
@@ -472,6 +473,33 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing prerequisite: $1"
 }
 
+# Leftover kind node volumes after `kind delete` can ENOSPC the download phase.
+reclaim_unused_docker() {
+  echo "[download] reclaiming unused Docker volumes and build cache..."
+  docker volume prune -f || true
+  docker builder prune -af || true
+}
+
+require_docker_free_gb() {
+  local need_gb="${INSTALL_MIN_FREE_GB:-8}"
+  local warn_gb="${INSTALL_WARN_FREE_GB:-20}"
+  local avail_kb avail_gb
+  avail_kb=$(df -Pk /var/lib/docker 2>/dev/null | awk 'NR==2 {print $4}')
+  if [[ -z "$avail_kb" || ! "$avail_kb" =~ ^[0-9]+$ ]]; then
+    log_warn "Could not measure Docker disk free space"
+    return 0
+  fi
+  avail_gb=$((avail_kb / 1024 / 1024))
+  if (( avail_gb < need_gb )); then
+    die "Need ${need_gb}Gi free for kind download (have ${avail_gb}Gi). Reclaim leftover kind data: docker volume prune -f && docker builder prune -af"
+  fi
+  if (( avail_gb < warn_gb )); then
+    log_warn "Only ${avail_gb}Gi free on Docker disk; download may fail with ENOSPC"
+  else
+    log "Docker disk: ${avail_gb}Gi free"
+  fi
+}
+
 log "Checking prerequisites..."
 require_cmd docker
 require_cmd kind
@@ -500,6 +528,9 @@ download_components() {
   [[ "$PREFETCH_IMAGES" == "true" ]] || return 0
   [[ "$FIRST_KIND_CREATE" == "true" ]] || return 0
 
+  reclaim_unused_docker
+  require_docker_free_gb
+
   local dl_start count
   dl_start=$(date +%s)
   : > "$INSTALL_TIMINGS_FILE"
@@ -521,11 +552,15 @@ download_components() {
 
 EOF
 
-  if ! docker image inspect "$KIND_NODE_IMAGE" >/dev/null 2>&1; then
-    echo "[download] pulling kind node base ${KIND_NODE_IMAGE} (platform=${DOCKER_PLATFORM})..."
-    docker pull --platform "$DOCKER_PLATFORM" "$KIND_NODE_IMAGE"
+  if [[ -n "$KIND_NODE_IMAGE" ]]; then
+    if ! docker image inspect "$KIND_NODE_IMAGE" >/dev/null 2>&1; then
+      echo "[download] pulling kind node base ${KIND_NODE_IMAGE} (platform=${DOCKER_PLATFORM})..."
+      docker pull --platform "$DOCKER_PLATFORM" "$KIND_NODE_IMAGE"
+    else
+      echo "[download] kind node base already local: ${KIND_NODE_IMAGE}"
+    fi
   else
-    echo "[download] kind node base already local: ${KIND_NODE_IMAGE}"
+    echo "[download] kind node image: kind CLI default (not pre-pulled)"
   fi
 
   if [[ "$LOCAL_REGISTRY" == "true" ]]; then
@@ -563,7 +598,7 @@ EOF
 download_components
 INSTALL_START_TIME=$(date +%s)
 [[ -f "$INSTALL_TIMINGS_FILE" ]] || : > "$INSTALL_TIMINGS_FILE"
-log "Install profile: ${INSTALL_PROFILE} (values=${VALUES_FILE}, node=${KIND_NODE_IMAGE}, local_registry=${LOCAL_REGISTRY})"
+log "Install profile: ${INSTALL_PROFILE} (values=${VALUES_FILE}, node=${KIND_NODE_IMAGE:-kind-default}, local_registry=${LOCAL_REGISTRY})"
 
 warn_deprecated_kind_load() {
   log_warn "WARNING: kind load is deprecated (PREFETCH_KIND_LOAD / KIND_LOAD_IMAGES / --kind-load). Use pull-through registries (LOCAL_REGISTRY=true default) so kubelet pulls via containerd mirrors."
@@ -625,12 +660,18 @@ install_gvisor_on_kind_node() {
 
 if [[ "$FIRST_KIND_CREATE" == "true" ]]; then
   step_begin kind_create
-  log "Creating kind cluster: $CLUSTER_NAME (node image: ${KIND_NODE_IMAGE})"
-  if [[ -f "$KIND_CONFIG" ]]; then
-    kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE" --config "$KIND_CONFIG"
+  _kind_args=(create cluster --name "$CLUSTER_NAME")
+  if [[ -n "$KIND_NODE_IMAGE" ]]; then
+    _kind_args+=(--image "$KIND_NODE_IMAGE")
+    log "Creating kind cluster: $CLUSTER_NAME (node image: ${KIND_NODE_IMAGE})"
   else
-    kind create cluster --name "$CLUSTER_NAME" --image "$KIND_NODE_IMAGE"
+    log "Creating kind cluster: $CLUSTER_NAME (kind default node image)"
   fi
+  if [[ -f "$KIND_CONFIG" ]]; then
+    _kind_args+=(--config "$KIND_CONFIG")
+  fi
+  kind "${_kind_args[@]}"
+  unset _kind_args
   step_end kind_create
 
   if [[ "$LOCAL_REGISTRY" == "true" ]]; then
@@ -933,6 +974,25 @@ if [[ -s "$INSTALL_TIMINGS_FILE" ]]; then
 fi
 
 install_print_access_footer() {
+local lf_host="${INSTALL_DISPLAY_GATEWAY_LANGFUSE_HOST:-langfuse.localhost}"
+local aigw_host="${INSTALL_DISPLAY_GATEWAY_AIGW_HOST:-ai-gateway.localhost}"
+local agents_host="${INSTALL_DISPLAY_GATEWAY_AGENTS_HOST:-agents.localhost}"
+LF_UI_EMAIL="${INSTALL_DISPLAY_LANGFUSE_ADMIN_EMAIL:-}"
+LF_UI_PASSWORD="${INSTALL_DISPLAY_LANGFUSE_ADMIN_PASSWORD:-}"
+LF_PUBLIC_KEY="${INSTALL_DISPLAY_LANGFUSE_PUBLIC_KEY:-}"
+LF_SECRET_KEY="${INSTALL_DISPLAY_LANGFUSE_SECRET_KEY:-}"
+LF_ORG_NAME="${INSTALL_DISPLAY_LANGFUSE_ORG_NAME:-}"
+LF_ORG_ID="${INSTALL_DISPLAY_LANGFUSE_ORG_ID:-}"
+LF_PROJECT_NAME="${INSTALL_DISPLAY_LANGFUSE_PROJECT_NAME:-}"
+LF_PROJECT_ID="${INSTALL_DISPLAY_LANGFUSE_PROJECT_ID:-}"
+PG_USER="${INSTALL_DISPLAY_POSTGRES_USER:-zelkor}"
+PG_PASS="${INSTALL_DISPLAY_POSTGRES_PASSWORD:-}"
+PG_DB="${INSTALL_DISPLAY_POSTGRES_DATABASE:-zelkor}"
+AIGW_KEY="${INSTALL_DISPLAY_AI_GATEWAY_CONSUMER_KEY:-}"
+if kubectl --context "$KCTX" get secret "${HELM_RELEASE_NAME}-langfuse-admin" -o name &>/dev/null; then
+  LF_UI_EMAIL="$(kubectl --context "$KCTX" get secret "${HELM_RELEASE_NAME}-langfuse-admin" -o jsonpath='{.data.email}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  LF_UI_PASSWORD="$(kubectl --context "$KCTX" get secret "${HELM_RELEASE_NAME}-langfuse-admin" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
 cat <<EOF
 
 ======================================================================
@@ -941,13 +1001,13 @@ cat <<EOF
 
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
-  Langfuse Observability  zelkor-platform-langfuse    http://langfuse.localhost:8088
-  Envoy AI Gateway        ai-gateway-controller       http://ai-gateway.localhost:8088
+  Langfuse Observability  zelkor-platform-langfuse    http://${lf_host}:8088
+  Envoy AI Gateway        ai-gateway-controller       http://${aigw_host}:8088
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
-  FinServe Demo (front door) zelkor-platform-aegra    http://aegra.localhost:8088  graph_id=finserve-advisor|research|quant|coder
+  FinServe Demo (front door) ${agents_host}              http://${agents_host}:8088  X-Graph-ID: finserve-advisor|research|quant|coder
 EOF
 fi
 cat <<EOF
@@ -961,18 +1021,18 @@ cat <<EOF
 ======================================================================
 
   [Langfuse UI & API]
-    URL:              http://langfuse.localhost:8088
-    User / Password:  admin@zelkor.local / zelkor-dev-password
-    Organization:     Zelkor Dev (zelkor-dev)
-    Project:          Zelkor Platform (zelkor-platform)
-    Public API Key:   pk-lf-zelkor-dev-00000000000000000000
-    Secret API Key:   sk-lf-zelkor-dev-00000000000000000000
+    URL:              http://${lf_host}:8088
+    User / Password:  ${LF_UI_EMAIL:-<see ${HELM_RELEASE_NAME}-langfuse-admin secret>} / ${LF_UI_PASSWORD:-<see secret>}
+    Organization:     ${LF_ORG_NAME:-<org>} (${LF_ORG_ID:-<org-id>})
+    Project:          ${LF_PROJECT_NAME:-<project>} (${LF_PROJECT_ID:-<project-id>})
+    Public API Key:   ${LF_PUBLIC_KEY:-<see langfuse init keys in profile>}
+    Secret API Key:   ${LF_SECRET_KEY:-<see langfuse init keys in profile>}
 EOF
 cat <<EOF
 
   [Envoy AI Gateway]
-    URL:              http://ai-gateway.localhost:8088/v1/chat/completions
-    Bearer Token:     dev-key (or zelkor-community-key)
+    URL:              http://${aigw_host}:8088/v1/chat/completions
+    Bearer Token:     ${AIGW_KEY:-<aiGateway.consumerKey in profile>}
     Tenant Header:    X-Tenant-ID: tenant_a
     LLM Providers:    ${LLM_PROVIDER_SUMMARY}
     Default Model:    ${DEFAULT_LLM_MODEL}
@@ -981,7 +1041,7 @@ if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
   [FinServe Demo Agent]
-    URL:              http://aegra.localhost:8088  (platform Aegra; X-Graph-ID: finserve-advisor|research|quant|coder)
+    URL:              http://${agents_host}:8088  (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder)
     Bearer Tokens:    Authorization: Bearer dev:Bank_Alpha
                       Authorization: Bearer dev:Bank_Beta
 EOF
@@ -993,7 +1053,7 @@ cat <<EOF
     Bearer Token:     Authorization: Bearer dev:tenant_a
 
   [Databases (Internal Cluster / Port-Forward)]
-    PostgreSQL:       postgresql://zelkor:zelkor-dev-password@localhost:5432/zelkor
+    PostgreSQL:       postgresql://${PG_USER}:${PG_PASS:-<password>}@localhost:5432/${PG_DB}
     Valkey (Redis):   localhost:6379
     ClickHouse:       http://localhost:8123 (user: default)
     Qdrant:           http://localhost:6333
@@ -1009,21 +1069,23 @@ cat <<EOF
 ======================================================================
 
   1. Test Envoy AI Gateway (model must match your install provider):
-     curl -X POST http://ai-gateway.localhost:8088/v1/chat/completions \\
+     curl -X POST http://${aigw_host}:8088/v1/chat/completions \\
        -H "Content-Type: application/json" \\
-       -H "Authorization: Bearer dev-key" \\
+       -H "Authorization: Bearer ${AIGW_KEY:-dev-key}" \\
        -H "X-Tenant-ID: tenant_a" \\
        -d '{"model":"${DEFAULT_LLM_MODEL}","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
-  2. Test FinServe via platform Aegra (X-Graph-ID: finserve-advisor|research|quant|coder):
-     curl -X POST http://aegra.localhost:8088/threads \\
+  2. Test FinServe (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder):
+     curl -X POST http://${agents_host}:8088/threads \\
+       -H "Host: ${agents_host}" \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer dev:Bank_Alpha" \\
        -d '{"if_exists":"do_nothing"}'
-     curl -X POST http://aegra.localhost:8088/runs/wait \\
+     curl -X POST http://${agents_host}:8088/runs/wait \\
+       -H "Host: ${agents_host}" \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer dev:Bank_Alpha" \\
        -H "X-Graph-ID: finserve-advisor" \\

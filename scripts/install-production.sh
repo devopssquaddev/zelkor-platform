@@ -4,6 +4,8 @@
 #
 #   OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
 #     --hosts-agents agents.example.com --hosts-langfuse langfuse.example.com
+#
+#   INSTALL_LOG_FILE=/tmp/zelkor-install.log   # default; INSTALL_LOG_FILE=off to disable
 set -euo pipefail
 
 ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -101,6 +103,7 @@ CLUSTER_INSTALL_NEXTAUTH_SCHEME=https
 CLUSTER_INSTALL_PG_INSTANCES=3
 CLUSTER_INSTALL_EXPECT_HA=1
 
+cluster_install_setup_log
 cluster_install_prepare
 
 if [[ "$TLS_ENABLED" -eq 1 ]]; then

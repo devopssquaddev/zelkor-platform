@@ -23,7 +23,6 @@ spec:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: guardrails
     spec:
-      {{- include "zelkor-platform.langfuseBootstrapWaitServiceAccount" . | nindent 6 }}
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       initContainers:
         {{- include "zelkor-platform.langfuseBootstrapWaitInitContainer" . | nindent 8 }}

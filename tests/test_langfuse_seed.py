@@ -196,6 +196,17 @@ def test_seed_admin_exists_http(monkeypatch):
     assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
 
 
+def test_seed_admin_weak_password_fails(monkeypatch):
+    monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: False)
+    monkeypatch.setattr(
+        seed_mod,
+        "_signup",
+        lambda e, p, n: (422, '{"message":{"name":"ZodError","message":"invalid password"}}'),
+    )
+    with pytest.raises(RuntimeError, match="signup failed 422"):
+        seed_mod.seed_admin_user("a@b.c", "weak", "Admin")
+
+
 def test_seed_admin_exists_sql(monkeypatch):
     monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: True)
 
@@ -353,5 +364,11 @@ def test_helm_bootstrap_wait_init_on_aegra_when_init_enabled():
     except FileNotFoundError:
         pytest.skip("helm not installed")
     assert proc.returncode == 0, proc.stderr or proc.stdout
-    assert "wait-langfuse-bootstrap" in proc.stdout
-    assert "langfuse-bootstrap-wait" in proc.stdout
+    out = proc.stdout
+    assert "wait-langfuse-bootstrap" in out
+    assert "LANGFUSE_HOST" in out
+    assert "/api/public/llm-connections" in out
+    assert "busybox:1.37" in out
+    assert "kubectl" not in out
+    assert "bitnami" not in out.lower()
+    assert "langfuse-bootstrap-wait" not in out

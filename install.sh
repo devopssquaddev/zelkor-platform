@@ -5,6 +5,8 @@
 #   OPENAI_API_KEY=sk-... ./install.sh
 #   OLLAMA_API_KEY=... ./install.sh
 #   INSTALL_UX=plain ./install.sh          # raw engine logs (same as scripts/install-engine.sh)
+#   INSTALL_LOG_FILE=/tmp/zelkor-install.log ./install.sh   # default; set off to disable
+#   (Same env on scripts/install-production.sh and scripts/install-quickstart.sh.)
 #
 # Rich UX (default on TTY): phase roadmap, heartbeats, install summary with start/end times.
 # Engine logic lives in scripts/install-engine.sh (unchanged behavior at checkpoint).
@@ -14,6 +16,10 @@ set -euo pipefail
 ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ZELKOR_REPO_ROOT"
 
+# shellcheck source=scripts/lib/install-log.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/install-log.sh"
+install_log_setup
+
 if [[ -z "${INSTALL_UX:-}" ]]; then
   if [[ -t 1 ]]; then
     INSTALL_UX=rich
@@ -22,7 +28,14 @@ if [[ -z "${INSTALL_UX:-}" ]]; then
   fi
 fi
 
+local_install_prepare_engine() {
+  # shellcheck source=scripts/lib/local-install-display.sh
+  source "${ZELKOR_REPO_ROOT}/scripts/lib/local-install-display.sh"
+  local_install_export_display_env
+}
+
 if [[ "$INSTALL_UX" == "plain" ]]; then
+  local_install_prepare_engine
   exec "$ZELKOR_REPO_ROOT/scripts/install-engine.sh" "$@"
 fi
 
@@ -354,6 +367,7 @@ EOF
 }
 
 ux_print_roadmap
+local_install_prepare_engine
 # shellcheck source=scripts/install-engine.sh
 source "$ZELKOR_REPO_ROOT/scripts/install-engine.sh"
 ux_print_summary

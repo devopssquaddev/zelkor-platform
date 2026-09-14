@@ -11,6 +11,13 @@ cluster_install_need() {
   command -v "$1" >/dev/null 2>&1 || cluster_install_die "missing required command: $1"
 }
 
+cluster_install_setup_log() {
+  : "${ZELKOR_REPO_ROOT:?ZELKOR_REPO_ROOT must be set before cluster_install_setup_log}"
+  # shellcheck source=install-log.sh
+  source "${ZELKOR_REPO_ROOT}/scripts/lib/install-log.sh"
+  install_log_setup
+}
+
 cluster_install_init() {
   : "${ZELKOR_REPO_ROOT:?ZELKOR_REPO_ROOT must be set before sourcing cluster-install.sh}"
   # shellcheck source=bootstrap-ownership.sh

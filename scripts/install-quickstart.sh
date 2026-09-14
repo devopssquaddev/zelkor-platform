@@ -3,6 +3,8 @@
 # Does not create kind, install FinServe, or apply values-local.yaml.
 #
 #   OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh --namespace zelkor-play
+#
+#   INSTALL_LOG_FILE=/tmp/zelkor-install.log   # default; INSTALL_LOG_FILE=off to disable
 set -euo pipefail
 
 ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -60,6 +62,7 @@ if [[ -z "$HOSTS_LANGFUSE" ]]; then
   HOSTS_LANGFUSE="langfuse.${CLUSTER_INSTALL_NAMESPACE}.zelkor.local"
 fi
 
+cluster_install_setup_log
 cluster_install_prepare
 
 echo "install-quickstart: topology=${CLUSTER_INSTALL_TOPOLOGY} namespace=${CLUSTER_INSTALL_NAMESPACE} release=${CLUSTER_INSTALL_RELEASE}"

@@ -113,6 +113,10 @@ langfuse:
   nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
   salt: "zelkor-langfuse-salt-123456789"
   encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  admin:
+    email: "admin@zelkor.local"
+    name: "Zelkor Admin"
+    password: "Zelkor-dev1!"
   init:
     enabled: true
     orgId: "zelkor-dev"
@@ -123,7 +127,7 @@ langfuse:
     projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
     userEmail: "admin@zelkor.local"
     userName: "Zelkor Admin"
-    userPassword: "zelkor-dev-password"
+    userPassword: "Zelkor-dev1!"
 
 aegra:
   enabled: true

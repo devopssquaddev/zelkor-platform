@@ -14,6 +14,7 @@ QS = ROOT / "scripts" / "install-quickstart.sh"
 PROD = ROOT / "scripts" / "install-production.sh"
 UNINSTALL = ROOT / "scripts" / "uninstall.sh"
 LIB = ROOT / "scripts" / "lib" / "cluster-install.sh"
+INSTALL_LOG = ROOT / "scripts" / "lib" / "install-log.sh"
 OWN = ROOT / "scripts" / "lib" / "bootstrap-ownership.sh"
 GW = ROOT / "scripts" / "bootstrap-gateway.sh"
 OPS = ROOT / "scripts" / "bootstrap-operators.sh"
@@ -24,6 +25,7 @@ def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subproc
         "PATH": __import__("os").environ.get("PATH", ""),
         "HOME": __import__("os").environ.get("HOME", "/tmp"),
         "OPENAI_API_KEY": "sk-test-cluster-install",
+        "INSTALL_LOG_FILE": "off",
     }
     if env:
         full_env.update(env)
@@ -38,7 +40,7 @@ def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subproc
 
 
 def test_scripts_bash_n():
-    for path in (LIB, OWN, QS, PROD, UNINSTALL, GW, OPS):
+    for path in (LIB, INSTALL_LOG, OWN, QS, PROD, UNINSTALL, GW, OPS):
         proc = subprocess.run(["bash", "-n", str(path)], check=False, capture_output=True, text=True)
         assert proc.returncode == 0, f"{path}: {proc.stderr}"
 

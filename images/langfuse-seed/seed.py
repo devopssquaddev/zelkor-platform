@@ -809,7 +809,7 @@ def seed_admin_user(email: str = "", password: str = "", name: str = "") -> str:
     if status in (200, 201):
         logger.info("admin created", extra={"event": "admin_created", "email": email})
         return "created"
-    if status in (409, 422) or _already_exists_detail(detail):
+    if status == 409 or _already_exists_detail(detail):
         logger.info("admin already present", extra={"event": "admin_exists", "email": email})
         return "exists"
     raise RuntimeError(f"signup failed {status}: {detail}")

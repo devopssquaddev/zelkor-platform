@@ -14,22 +14,29 @@ log() { echo "[demo-tour] $*"; }
 
 export GATEWAY_BASE_URL="${GATEWAY_BASE_URL:-http://127.0.0.1:8088}"
 export KUBECONTEXT="${KUBECONTEXT:-kind-zelkor}"
-export AEGRA_HOST_HEADER="${AEGRA_HOST_HEADER:-aegra.localhost}"
+export AGENTS_HOST_HEADER="${AGENTS_HOST_HEADER:-agents.localhost}"
+export AEGRA_HOST_HEADER="${AEGRA_HOST_HEADER:-${AGENTS_HOST_HEADER}}"
 export LANGFUSE_HOST_HEADER="${LANGFUSE_HOST_HEADER:-langfuse.localhost}"
 export DEMO_TOUR=1
 
 wait_for_gateway() {
-  local url="${GATEWAY_BASE_URL}/health"
+  local url="${GATEWAY_BASE_URL}/assistants/search"
   local i
-  log "waiting for gateway at ${GATEWAY_BASE_URL} (Host: ${AEGRA_HOST_HEADER})..."
+  log "waiting for FinServe front door at ${GATEWAY_BASE_URL} (Host: ${AEGRA_HOST_HEADER})..."
   for i in $(seq 1 60); do
-    if curl -fsS -o /dev/null -H "Host: ${AEGRA_HOST_HEADER}" "${url}" 2>/dev/null; then
+    if curl -fsS -o /dev/null \
+      -H "Host: ${AEGRA_HOST_HEADER}" \
+      -H "Authorization: Bearer dev:Bank_Alpha" \
+      -H "X-Graph-ID: finserve-advisor" \
+      -H "Content-Type: application/json" \
+      -X POST "${url}" \
+      -d '{}' 2>/dev/null; then
       log "gateway ready"
       return 0
     fi
     sleep 2
   done
-  echo "[demo-tour] ERROR: gateway not reachable at ${url}" >&2
+  echo "[demo-tour] ERROR: FinServe front door not reachable at ${url}" >&2
   return 1
 }
 
