@@ -28,7 +28,7 @@ OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --hosts-langfuse langfuse.yourdomain.com
 ```
 
-The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. Datastore, sandbox worker, and Langfuse crypto secrets are generated when unset and stored in cluster Secrets. Override with `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `SEAWEEDFS_*`, `WORKER_TOKEN`, or `LANGFUSE_*`. `--generate-passwords` also prints them once.
+The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. Datastore, sandbox worker, and Langfuse crypto secrets are generated when unset and stored in cluster Secrets. Auto-generated `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, and `SEAWEEDFS_*` are hex (URL-safe for Langfuse migration URLs). If you set `CLICKHOUSE_PASSWORD` yourself, use a URL-safe value (no `+`, `/`, `=`, `@`, `&`, etc.). Override with `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `SEAWEEDFS_*`, `WORKER_TOKEN`, or `LANGFUSE_*`. `--generate-passwords` also prints them once.
 
 ```bash
 # Existing ingress (NGINX, Traefik, ALB) — also valid when EG is already running

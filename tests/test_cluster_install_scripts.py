@@ -146,6 +146,36 @@ def test_production_dry_run_greenfield():
     assert "aiGateway.providers.openai.apiKey=sk-test-cluster-install" in out
 
 
+def _printed_secret(stdout: str, name: str) -> str:
+    prefix = f"  {name}="
+    for line in stdout.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix) :]
+    raise AssertionError(f"{name} not printed in Generated install secrets block")
+
+
+def test_production_generated_url_secrets_are_hex():
+    """Postgres/ClickHouse passwords must be URL-safe (Langfuse migration URLs)."""
+    proc = _run(
+        PROD,
+        "--dry-run",
+        "--hosts-agents",
+        "agents.example.com",
+        "--hosts-langfuse",
+        "langfuse.example.com",
+        "--generate-passwords",
+    )
+    assert proc.returncode == 0, proc.stderr
+    for name in ("POSTGRES_PASSWORD", "CLICKHOUSE_PASSWORD", "SEAWEEDFS_ACCESS_KEY", "SEAWEEDFS_SECRET_KEY"):
+        value = _printed_secret(proc.stdout, name)
+        assert value, name
+        assert all(c in "0123456789abcdef" for c in value), f"{name}={value!r} is not hex"
+    worker = _printed_secret(proc.stdout, "WORKER_TOKEN")
+    assert worker
+    # Bearer token may stay base64; must not be forced through the hex URL-safe path alone.
+    assert len(worker) >= 32
+
+
 def test_production_dry_run_skip_operators_and_tls():
     proc = _run(
         PROD,

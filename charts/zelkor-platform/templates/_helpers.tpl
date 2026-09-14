@@ -183,7 +183,8 @@ Only emitted when otelTargets or init keys are set.
 {{- if and (eq $mode "external") $ext.username -}}
 {{- $user = $ext.username -}}
 {{- end -}}
-{{- printf "postgresql://%s:%s@%s:%v/%s" $user (include "zelkor-platform.postgresPassword" $root) (include "zelkor-platform.postgresHost" $root) (include "zelkor-platform.postgresPort" $root) $db -}}
+{{- $pass := include "zelkor-platform.postgresPassword" $root | urlquery -}}
+{{- printf "postgresql://%s:%s@%s:%v/%s" $user $pass (include "zelkor-platform.postgresHost" $root) (include "zelkor-platform.postgresPort" $root) $db -}}
 {{- end }}
 
 {{- define "zelkor-platform.clickhousePassword" -}}

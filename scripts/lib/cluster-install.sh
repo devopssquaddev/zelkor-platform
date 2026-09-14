@@ -313,8 +313,13 @@ cluster_install_rand_b64() {
   openssl rand -base64 32 | tr -d '\n'
 }
 
+# Hex bytes (URL-safe). Length is openssl -hex byte count (output is 2x hex chars).
+cluster_install_rand_hex() {
+  openssl rand -hex "${1:-24}" | tr -d '\n'
+}
+
 cluster_install_rand_hex32() {
-  openssl rand -hex 32 | tr -d '\n'
+  cluster_install_rand_hex 32
 }
 
 cluster_install_langfuse_secrets() {
@@ -335,18 +340,20 @@ cluster_install_langfuse_secrets() {
 }
 
 # Generate missing install secrets (override via env). Chart writes them to Secrets.
+# Postgres/ClickHouse/SeaweedFS use hex: Langfuse embeds passwords in migration URLs
+# and base64 (+ / =) breaks ClickHouse auth. WORKER_TOKEN stays base64 (bearer, not URL).
 cluster_install_platform_secrets() {
   if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-    POSTGRES_PASSWORD="$(cluster_install_rand_b64)"
+    POSTGRES_PASSWORD="$(cluster_install_rand_hex 24)"
   fi
   if [[ -z "${CLICKHOUSE_PASSWORD:-}" ]]; then
-    CLICKHOUSE_PASSWORD="$(cluster_install_rand_b64)"
+    CLICKHOUSE_PASSWORD="$(cluster_install_rand_hex 24)"
   fi
   if [[ -z "${SEAWEEDFS_ACCESS_KEY:-}" ]]; then
-    SEAWEEDFS_ACCESS_KEY="$(cluster_install_rand_b64)"
+    SEAWEEDFS_ACCESS_KEY="$(cluster_install_rand_hex 12)"
   fi
   if [[ -z "${SEAWEEDFS_SECRET_KEY:-}" ]]; then
-    SEAWEEDFS_SECRET_KEY="$(cluster_install_rand_b64)"
+    SEAWEEDFS_SECRET_KEY="$(cluster_install_rand_hex 24)"
   fi
   if [[ -z "${WORKER_TOKEN:-}" ]]; then
     WORKER_TOKEN="$(cluster_install_rand_b64)"

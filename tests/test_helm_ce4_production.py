@@ -91,6 +91,17 @@ def _env(deploy: dict, name: str) -> str | None:
     return None
 
 
+def test_postgres_url_percent_encodes_password():
+    proc = _helm("--set", "postgresql.auth.password=p@ss&word")
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    langfuse = _named(docs, "Deployment", "zelkor-platform-langfuse")
+    db_url = _env(langfuse, "DATABASE_URL")
+    assert db_url is not None
+    assert "p%40ss%26word" in db_url
+    assert "p@ss&word" not in db_url
+
+
 def test_default_chart_has_no_hpa_https_or_servicemonitor():
     proc = _helm()
     assert proc.returncode == 0, proc.stderr
