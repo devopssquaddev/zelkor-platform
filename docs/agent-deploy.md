@@ -80,6 +80,18 @@ Required values (see `charts/zelkor-agent/values.yaml`):
 
 Chart can emit HTTPRoute when `sharedRoute` is set; otherwise add routes via GitOps.
 
+### Kubernetes probes (in-cluster)
+
+Zelkor runtime images (`zelkor-aegra`, `zelkor-aegra-deep`) serve health on port **8000**. The chart configures kubelet probes against the pod **ClusterIP** Service (not the public agents host):
+
+| Path | Probe | Purpose |
+| :--- | :--- | :--- |
+| `/health` | startup | Process is up |
+| `/live` | liveness | Keep pod running |
+| `/ready` | readiness | Accept traffic (503 if Mode B MCP inject is not ready) |
+
+Tune `startupProbe` / `livenessProbe` / `readinessProbe` in `values.yaml`; do not change paths unless you use a non-Aegra base image.
+
 Example:
 
 ```bash

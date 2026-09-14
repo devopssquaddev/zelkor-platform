@@ -95,3 +95,25 @@ app.kubernetes.io/component: aegra
 - name: ZELKOR_LOG_COMPONENT
   value: "zelkor-aegra"
 {{- end }}
+
+{{/*
+Render startup/liveness/readiness probes from chart values.
+Usage: {{ include "zelkor-agent.containerProbes" (dict "root" . "values" .Values) | nindent 12 }}
+Set a probe to null in values to omit it. Strings inside probes are tpl-evaluated against root.
+*/}}
+{{- define "zelkor-agent.containerProbes" -}}
+{{- $root := .root -}}
+{{- $v := .values -}}
+{{- with $v.startupProbe }}
+startupProbe:
+  {{- tpl (toYaml .) $root | nindent 2 }}
+{{- end }}
+{{- with $v.livenessProbe }}
+livenessProbe:
+  {{- tpl (toYaml .) $root | nindent 2 }}
+{{- end }}
+{{- with $v.readinessProbe }}
+readinessProbe:
+  {{- tpl (toYaml .) $root | nindent 2 }}
+{{- end }}
+{{- end }}

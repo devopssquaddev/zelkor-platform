@@ -90,6 +90,8 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
+# Kubernetes probes (zelkor-aegra / zelkor-aegra-deep): GET /health, /live, /ready on port 8000.
+# Override timing only; set a probe to null to omit (advanced debugging).
 startupProbe:
   httpGet:
     path: /health
