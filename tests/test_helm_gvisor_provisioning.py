@@ -93,6 +93,19 @@ def test_gvisor_installer_selector_matches_pod_labels():
         assert pod_labels.get(key) == value, f"{key}={value!r} not on pod {pod_labels}"
 
 
+def test_create_runtimeclass_false_omits_runtimeclass():
+    proc = _helm(
+        "--set",
+        "security.sandbox.provisioning.mode=daemonset",
+        "--set",
+        "security.sandbox.createRuntimeClass=false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert _gvisor_rc(docs) is None
+    assert _gvisor_ds(docs) is not None
+
+
 def test_preinstalled_without_runtimeclass_renders_nothing():
     proc = _helm(
         "--set",
@@ -132,6 +145,27 @@ def test_sandbox_execution_log_env_on_mcp_and_worker():
         assert names.get("SANDBOX_EXECUTION_LOG_ENABLED") == "true"
         assert names.get("SANDBOX_INCLUDE_STDOUT_PREVIEW") == "true"
         assert names.get("SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR") == "true"
+
+
+def test_sandbox_worker_token_from_secret():
+    proc = _helm("--set", "mcp.sandboxMCP.workerToken=unit-token")
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    secrets = [d for d in _kinds(docs, "Secret") if d["metadata"]["name"] == "zelkor-platform-sandbox-worker"]
+    assert secrets and secrets[0]["stringData"]["token"] == "unit-token"
+    sandbox_deps = [
+        d
+        for d in _kinds(docs, "Deployment")
+        if "mcp-sandbox" in d.get("metadata", {}).get("name", "")
+    ]
+    assert sandbox_deps
+    for dep in sandbox_deps:
+        env = dep["spec"]["template"]["spec"]["containers"][0]["env"]
+        token = next(item for item in env if item["name"] == "SANDBOX_WORKER_TOKEN")
+        assert token["valueFrom"]["secretKeyRef"] == {
+            "name": "zelkor-platform-sandbox-worker",
+            "key": "token",
+        }
 
 
 def test_node_selector_applies_to_installer_and_runtimeclass():

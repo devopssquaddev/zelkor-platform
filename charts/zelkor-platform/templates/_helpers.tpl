@@ -183,7 +183,8 @@ Only emitted when otelTargets or init keys are set.
 {{- if and (eq $mode "external") $ext.username -}}
 {{- $user = $ext.username -}}
 {{- end -}}
-{{- printf "postgresql://%s:%s@%s:%v/%s" $user (include "zelkor-platform.postgresPassword" $root) (include "zelkor-platform.postgresHost" $root) (include "zelkor-platform.postgresPort" $root) $db -}}
+{{- $pass := include "zelkor-platform.postgresPassword" $root | urlquery -}}
+{{- printf "postgresql://%s:%s@%s:%v/%s" $user $pass (include "zelkor-platform.postgresHost" $root) (include "zelkor-platform.postgresPort" $root) $db -}}
 {{- end }}
 
 {{- define "zelkor-platform.clickhousePassword" -}}
@@ -463,6 +464,30 @@ true
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.gatewayClassName" -}}
+{{- .Values.gateway.gatewayClassName | default "eg" -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyDataplaneServiceName" -}}
+{{- $ep := .Values.gateway.envoyProxy | default dict -}}
+{{- $svc := $ep.service | default dict -}}
+{{- $explicit := $svc.name | default "" -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else -}}
+{{- printf "%s-%s-dataplane" .Release.Namespace (include "zelkor-platform.fullname" .) -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyDataplaneHost" -}}
+{{- $override := ((.Values.aiGateway.inClusterService).targetHost) | default "" -}}
+{{- if $override -}}
+{{- $override -}}
+{{- else if eq (include "zelkor-platform.envoyProxyEmit" . | trim) "true" -}}
+{{- printf "%s.envoy-gateway-system.svc.cluster.local" (include "zelkor-platform.envoyDataplaneServiceName" .) -}}
+{{- end -}}
+{{- end }}
+
 {{/*
 parentRefs target: overlay gateway.parentRef or this release's Gateway.
 */}}
@@ -535,18 +560,7 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- if $override -}}
 {{- $override -}}
 {{- else -}}
-{{- $ns := "envoy-gateway-system" -}}
-{{- $found := "" -}}
-{{- range (lookup "v1" "Service" $ns "").items -}}
-{{- if and (not $found) (hasPrefix "envoy-default-" .metadata.name) (contains "gateway-" .metadata.name) -}}
-{{- $found = printf "http://%s.%s.svc.cluster.local:80/v1" .metadata.name $ns -}}
-{{- end -}}
-{{- end -}}
-{{- if $found -}}
-{{- $found -}}
-{{- else -}}
-{{- printf "http://envoy-default-%s-gateway.%s.svc.cluster.local:80/v1" (include "zelkor-platform.fullname" .) $ns -}}
-{{- end -}}
+{{- printf "http://%s:80/v1" (include "zelkor-platform.envoyDataplaneHost" .) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -602,6 +616,34 @@ Usage: {{ include "zelkor-platform.image" .Values.aegra.image }}
 {{- printf "%s@%s" $img.repository $img.digest -}}
 {{- else -}}
 {{- printf "%s:%s" $img.repository ($img.tag | default "1.0.0") -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseInitKeysConfigured" -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- if and .Values.langfuse.enabled $init.enabled $init.projectPublicKey $init.projectSecretKey -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseBootstrapWaitInitContainer" -}}
+{{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" }}
+- name: wait-langfuse-bootstrap
+  image: {{ .Values.global.kubectlImage | default "bitnami/kubectl:1.32.3" | quote }}
+  command:
+    - kubectl
+    - wait
+    - job/{{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+    - --for=condition=complete
+    - --timeout=20m
+    - -n
+    - {{ .Release.Namespace }}
+{{- end }}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseBootstrapWaitServiceAccount" -}}
+{{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" -}}
+serviceAccountName: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-wait
 {{- end -}}
 {{- end }}
 

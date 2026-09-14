@@ -1,0 +1,19 @@
+# Gateway overlay — existing non-Envoy ingress (NGINX, Traefik, ALB, etc.).
+# Compose with values-production.yaml or values-quickstart.yaml.
+#
+#   ./scripts/bootstrap-gateway.sh
+#   helm upgrade --install zelkor-platform charts/zelkor-platform \
+#     -f profiles/values-production.yaml \
+#     -f profiles/values-gateway-layered.yaml \
+#     --set gateway.hosts.agents=agents.example.com \
+#     --set gateway.hosts.langfuse=langfuse.example.com
+#
+# Point your ingress at the Envoy dataplane ClusterIP Service. Preserve Host headers.
+
+gateway:
+  createGatewayClass: true
+  createGateway: true
+  envoyProxy:
+    enabled: true
+    service:
+      type: ClusterIP

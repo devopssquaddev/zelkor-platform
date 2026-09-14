@@ -140,7 +140,7 @@ langfuse:
                 "-f",
                 extra_path,
                 "-s",
-                "templates/langfuse/job-surfaces-seed.yaml",
+                "templates/langfuse/job-bootstrap.yaml",
             ],
             capture_output=True,
             text=True,
@@ -211,9 +211,147 @@ def test_seed_admin_requires_creds():
         seed_mod.seed_admin_user("", "")
 
 
+def test_wait_project_api_waits_for_db_then_succeeds(monkeypatch):
+    hits = {"db": 0, "api": 0}
+
+    def db(_pk: str, _pid: str) -> bool:
+        hits["db"] += 1
+        return hits["db"] >= 2
+
+    def req(*_a, **_k):
+        hits["api"] += 1
+        return {"data": []}
+
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgres://x")
+    monkeypatch.setattr(seed_mod, "project_key_bound", db)
+    monkeypatch.setattr(seed_mod, "INIT_SETTLE_SEC", 0)
+    monkeypatch.setattr(seed_mod, "_request", req)
+    monkeypatch.setattr(seed_mod.time, "sleep", lambda *_a, **_k: None)
+    seed_mod.wait_project_api(
+        {"id": "p", "publicKey": "pk", "secretKey": "sk"},
+        attempts=5,
+    )
+    assert hits["db"] >= 2
+    assert hits["api"] == 1
+
+
+def test_wait_project_api_flushes_valkey_on_401(monkeypatch):
+    flushed: list[str] = []
+
+    def req(*_a, **_k):
+        if not flushed:
+            raise RuntimeError("GET /api/public/llm-connections -> 401: invalid")
+        return {"data": []}
+
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgres://x")
+    monkeypatch.setattr(seed_mod, "project_key_bound", lambda *_a, **_k: True)
+    monkeypatch.setattr(seed_mod, "INIT_SETTLE_SEC", 0)
+    monkeypatch.setattr(seed_mod, "invalidate_api_key_cache", lambda sk: flushed.append(sk) or True)
+    monkeypatch.setattr(seed_mod, "_request", req)
+    monkeypatch.setattr(seed_mod.time, "sleep", lambda *_a, **_k: None)
+    seed_mod.wait_project_api(
+        {"id": "p", "publicKey": "pk", "secretKey": "sk-lf-x"},
+        attempts=5,
+    )
+    assert flushed == ["sk-lf-x"]
+
+
+def test_invalidate_api_key_cache_uses_fast_hash(monkeypatch):
+    deleted: list[str] = []
+    monkeypatch.setattr(seed_mod, "VALKEY_HOST", "valkey")
+    monkeypatch.setattr(seed_mod, "LANGFUSE_SALT", "salt")
+    monkeypatch.setattr(seed_mod, "valkey_del", lambda key: deleted.append(key) or True)
+    monkeypatch.setattr(seed_mod, "flush_all_api_key_cache", lambda: 0)
+    assert seed_mod.invalidate_api_key_cache("sk-lf-x")
+    assert deleted == [f"api-key:{fast_hashed_secret_key('sk-lf-x', 'salt')}"]
+
+
+def test_invalidate_api_key_cache_falls_back_to_flush_all(monkeypatch):
+    monkeypatch.setattr(seed_mod, "VALKEY_HOST", "valkey")
+    monkeypatch.setattr(seed_mod, "LANGFUSE_SALT", "salt")
+    monkeypatch.setattr(seed_mod, "valkey_del", lambda _key: False)
+    monkeypatch.setattr(seed_mod, "flush_all_api_key_cache", lambda: 2)
+    assert seed_mod.invalidate_api_key_cache("sk-lf-x")
+
+
+def test_project_key_bound_delegates_without_project_id(monkeypatch):
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "")
+    assert not seed_mod.project_key_bound("pk", "")
+    assert not seed_mod.project_key_bound("pk", "proj")
+
+
+def test_valkey_keys_parses_api_key_hashes(monkeypatch):
+    reply = b"*1\r\n$74\r\napi-key:e881d47e204e5c7d88b09908d2ee3b62f6f1a5c6cd219bdb03291fa33d5af776\r\n"
+    monkeypatch.setattr(seed_mod, "VALKEY_HOST", "valkey")
+    monkeypatch.setattr(seed_mod, "_valkey_roundtrip", lambda _parts: reply)
+    keys = seed_mod.valkey_keys("api-key:*")
+    assert keys == ["api-key:e881d47e204e5c7d88b09908d2ee3b62f6f1a5c6cd219bdb03291fa33d5af776"]
+
+
 def test_fast_hashed_secret_key_is_stable():
     first = fast_hashed_secret_key("sk-lf-x", "salt")
     second = fast_hashed_secret_key("sk-lf-x", "salt")
     assert first == second
     assert first != fast_hashed_secret_key("sk-lf-x", "other")
     assert display_secret_key("sk-lf-abcdef1234") == "sk-lf-...1234"
+
+
+def test_run_bootstrap_order(monkeypatch):
+    order: list[str] = []
+
+    monkeypatch.setattr(seed_mod, "wait_healthy", lambda: order.append("health"))
+    monkeypatch.setattr(seed_mod, "SEED_ADMIN", True)
+    monkeypatch.setattr(seed_mod, "seed_admin_user", lambda: order.append("admin"))
+    monkeypatch.setattr(seed_mod, "SEED_INIT", True)
+    monkeypatch.setattr(seed_mod, "seed_init_project_sql", lambda: order.append("init"))
+    monkeypatch.setattr(
+        seed_mod,
+        "parse_extra_projects",
+        lambda _raw: [{"id": "x", "name": "x", "publicKey": "pk-x", "secretKey": "sk-x"}],
+    )
+    monkeypatch.setattr(seed_mod, "seed_extra_projects", lambda: order.append("extras"))
+    monkeypatch.setattr(seed_mod, "_armor_enabled", lambda: True)
+    monkeypatch.setattr(seed_mod, "seed_armor", lambda _p: order.append("armor"))
+    monkeypatch.setattr(seed_mod, "managed_projects", lambda: [{"id": "init"}])
+    seed_mod.run_bootstrap()
+    assert order == ["health", "admin", "init", "extras", "armor"]
+
+
+def test_seed_init_project_sql_requires_keys(monkeypatch):
+    monkeypatch.setattr(seed_mod, "SEED_INIT", True)
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgres://x")
+    monkeypatch.setattr(seed_mod, "ORG_ID", "org")
+    monkeypatch.setattr(seed_mod, "LANGFUSE_SALT", "salt")
+    monkeypatch.setattr(seed_mod, "PROJECT_ID", "")
+    with pytest.raises(RuntimeError, match="LANGFUSE_PROJECT_ID"):
+        seed_mod.seed_init_project_sql()
+
+
+def test_helm_bootstrap_wait_init_on_aegra_when_init_enabled():
+    import subprocess
+    import tempfile
+
+    root = Path(__file__).resolve().parents[1]
+    chart = root / "charts/zelkor-platform"
+    local = root / "profiles/values-local.yaml"
+    try:
+        proc = subprocess.run(
+            [
+                "helm",
+                "template",
+                "zelkor",
+                str(chart),
+                "-f",
+                str(local),
+                "-s",
+                "templates/aegra/deployment.yaml",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.skip("helm not installed")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "wait-langfuse-bootstrap" in proc.stdout
+    assert "langfuse-bootstrap-wait" in proc.stdout

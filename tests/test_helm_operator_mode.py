@@ -174,6 +174,7 @@ def test_envoyproxy_clusterip_has_no_kind_nodeselector():
     assert "ingress-ready" not in rendered
     k8s = proxies[0]["spec"]["provider"]["kubernetes"]
     assert k8s["envoyService"]["type"] == "ClusterIP"
+    assert k8s["envoyService"]["name"] == "zelkor-zelkor-platform-dataplane"
     patch = k8s["envoyDeployment"]["patch"]["value"]
     spec = ((patch.get("spec") or {}).get("template") or {}).get("spec") or {}
     assert "ingress-ready" not in str(spec.get("nodeSelector") or {})
@@ -227,6 +228,50 @@ def test_attach_skips_gatewayclass_and_uses_parent_ref():
     assert all(p[0] != "zelkor-platform-gateway" for p in parents)
 
 
+def test_gateway_layered_profile_emits_clusterip():
+    proc = _helm("-f", str(ROOT / "profiles" / "values-gateway-layered.yaml"))
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    proxies = _kinds(docs, "EnvoyProxy")
+    assert proxies
+    k8s = proxies[0]["spec"]["provider"]["kubernetes"]
+    assert k8s["envoyService"]["type"] == "ClusterIP"
+    assert k8s["envoyService"]["name"] == "zelkor-zelkor-platform-dataplane"
+    ai_svc = next(
+        d
+        for d in _kinds(docs, "Service")
+        if d["metadata"]["name"] == "zelkor-platform-ai-gateway"
+    )
+    assert ai_svc["spec"]["externalName"] == (
+        "zelkor-zelkor-platform-dataplane.envoy-gateway-system.svc.cluster.local"
+    )
+
+
+def test_gateway_shared_profile_attaches_to_parent_ref():
+    proc = _helm(
+        "-f",
+        str(ROOT / "profiles" / "values-gateway-shared.yaml"),
+        "--set",
+        "gateway.parentRef.name=their-gw",
+        "--set",
+        "gateway.parentRef.namespace=envoy-system",
+        "--set",
+        "gateway.hosts.agents=agents.example.com",
+        "--set",
+        "gateway.hosts.langfuse=langfuse.example.com",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert not _kinds(docs, "GatewayClass")
+    assert not _kinds(docs, "Gateway")
+    assert not _kinds(docs, "EnvoyProxy")
+    parents = []
+    for route in _kinds(docs, "HTTPRoute"):
+        for ref in route["spec"]["parentRefs"]:
+            parents.append((ref["name"], ref.get("namespace")))
+    assert ("their-gw", "envoy-system") in parents
+
+
 def test_empty_optional_hosts_emit_no_public_mcp_nemo_v1():
     proc = _helm(
         "--set",
@@ -245,7 +290,7 @@ def test_empty_optional_hosts_emit_no_public_mcp_nemo_v1():
         assert not any("ai-gateway." in h and "svc.cluster.local" not in h and h != "zelkor-platform-ai-gateway" for h in hosts)
 
 
-def test_langfuse_admin_secret_and_job():
+def test_langfuse_admin_secret_and_bootstrap_job():
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
@@ -259,15 +304,16 @@ def test_langfuse_admin_secret_and_job():
     assert data["email"] == "admin@langfuse.example.com"
     assert data["name"] == "Admin"
     assert data["password"]
-    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-admin"]
+    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-bootstrap"]
     assert jobs
-    admin_ann = (jobs[0].get("metadata") or {}).get("annotations") or {}
-    assert "helm.sh/hook" not in admin_ann
+    bootstrap_ann = (jobs[0].get("metadata") or {}).get("annotations") or {}
+    assert "helm.sh/hook" not in bootstrap_ann
     env = {
         e["name"]: e
         for e in jobs[0]["spec"]["template"]["spec"]["containers"][0]["env"]
     }
     assert env["SEED_ADMIN"]["value"] == "true"
+    assert env["SEED_INIT"]["value"] == "false"
     ref = env["LANGFUSE_ADMIN_PASSWORD"]["valueFrom"]["secretKeyRef"]
     assert ref["name"] == "zelkor-platform-langfuse-admin"
     assert ref["key"] == "password"
@@ -276,12 +322,18 @@ def test_langfuse_admin_secret_and_job():
     assert "admin@zelkor.local" not in values
 
 
-def test_langfuse_admin_disabled_emits_nothing():
+def test_langfuse_admin_disabled_still_emits_bootstrap_job():
     proc = _helm("--set", "langfuse.admin.enabled=false")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     assert "zelkor-platform-langfuse-admin" not in _names(docs, "Secret")
-    assert "zelkor-platform-langfuse-admin" not in _names(docs, "Job")
+    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-bootstrap"]
+    assert jobs
+    env = {
+        e["name"]: e
+        for e in jobs[0]["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env["SEED_ADMIN"]["value"] == "false"
 
 
 def test_langfuse_admin_existing_secret_skips_generated_secret():
@@ -289,7 +341,7 @@ def test_langfuse_admin_existing_secret_skips_generated_secret():
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     assert "zelkor-platform-langfuse-admin" not in _names(docs, "Secret")
-    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-admin"]
+    jobs = [d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-langfuse-bootstrap"]
     assert jobs
     env = {
         e["name"]: e

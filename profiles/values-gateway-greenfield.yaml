@@ -1,0 +1,19 @@
+# Gateway overlay — greenfield cluster (no existing ingress).
+# Compose with values-production.yaml or values-quickstart.yaml.
+#
+#   ./scripts/bootstrap-gateway.sh
+#   helm upgrade --install zelkor-platform charts/zelkor-platform \
+#     -f profiles/values-production.yaml \
+#     -f profiles/values-gateway-greenfield.yaml \
+#     --set gateway.hosts.agents=agents.example.com \
+#     --set gateway.hosts.langfuse=langfuse.example.com
+#
+# Envoy dataplane uses a LoadBalancer unless gateway.envoyProxy.service.type is set.
+
+gateway:
+  createGatewayClass: true
+  createGateway: true
+  envoyProxy:
+    enabled: true
+    service:
+      type: ""

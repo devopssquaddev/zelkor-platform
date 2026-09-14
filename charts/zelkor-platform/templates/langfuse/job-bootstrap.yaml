@@ -1,0 +1,115 @@
+{{- if .Values.langfuse.enabled }}
+{{- $admin := .Values.langfuse.admin | default dict -}}
+{{- $surfaces := .Values.langfuse.surfaces | default dict -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- $llm := $surfaces.llmConnection | default dict -}}
+{{- $tools := $surfaces.tools | default dict -}}
+{{- $evals := $surfaces.evaluators | default dict -}}
+{{- $extraProjects := .Values.langfuse.extraProjects | default list -}}
+{{- $armorOn := and $init.enabled (or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0)) -}}
+{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.projectPublicKey | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) | sha256sum | trim -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse-bootstrap
+  annotations:
+    zelkor.io/bootstrap-checksum: {{ $bootstrapChecksum | quote }}
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: langfuse-bootstrap
+      annotations:
+        zelkor.io/bootstrap-checksum: {{ $bootstrapChecksum | quote }}
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: seed
+          image: {{ include "zelkor-platform.image" $surfaces.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" $surfaces.image) }}
+          env:
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" $surfaces "name" "zelkor-langfuse-seed") | nindent 12 }}
+            - name: LANGFUSE_HOST
+              value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
+            - name: DATABASE_URL
+              value: {{ include "zelkor-platform.postgresUrl" (list . "langfuse") | quote }}
+            - name: SEED_ADMIN
+              value: {{ $admin.enabled | quote }}
+            {{- if $admin.enabled }}
+            - name: LANGFUSE_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.langfuseAdminSecretName" . }}
+                  key: email
+            - name: LANGFUSE_ADMIN_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.langfuseAdminSecretName" . }}
+                  key: name
+            - name: LANGFUSE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.langfuseAdminSecretName" . }}
+                  key: password
+            {{- end }}
+            - name: SEED_INIT
+              value: {{ $init.enabled | quote }}
+            {{- if $init.enabled }}
+            - name: LANGFUSE_ORG_ID
+              value: {{ required "langfuse.init.orgId is required when langfuse.init.enabled" $init.orgId | quote }}
+            - name: LANGFUSE_ORG_NAME
+              value: {{ required "langfuse.init.orgName is required when langfuse.init.enabled" $init.orgName | quote }}
+            - name: LANGFUSE_PROJECT_ID
+              value: {{ required "langfuse.init.projectId is required when langfuse.init.enabled" $init.projectId | quote }}
+            - name: LANGFUSE_PROJECT_NAME
+              value: {{ required "langfuse.init.projectName is required when langfuse.init.enabled" $init.projectName | quote }}
+            - name: LANGFUSE_PUBLIC_KEY
+              value: {{ required "langfuse.init.projectPublicKey is required when langfuse.init.enabled" $init.projectPublicKey | quote }}
+            - name: LANGFUSE_SECRET_KEY
+              value: {{ required "langfuse.init.projectSecretKey is required when langfuse.init.enabled" $init.projectSecretKey | quote }}
+            - name: LANGFUSE_INIT_USER_EMAIL
+              value: {{ $init.userEmail | default "" | quote }}
+            - name: LANGFUSE_SALT
+              value: {{ .Values.langfuse.salt | quote }}
+            {{- end }}
+            {{- if $armorOn }}
+            - name: LANGFUSE_CONNECTION_NAME
+              value: {{ $llm.name | default "zelkor-ai-gateway" | quote }}
+            - name: AI_GATEWAY_BASE_URL
+              value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
+            - name: AI_GATEWAY_CONSUMER_KEY
+              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            - name: LANGFUSE_CUSTOM_MODELS
+              value: {{ join "," ($llm.models | default list) | quote }}
+            - name: SEED_LLM_CONNECTION
+              value: {{ $llm.enabled | quote }}
+            - name: SEED_MCP_TOOLS
+              value: {{ $tools.seedFromMcp | quote }}
+            - name: SEED_CODE_EVALUATORS
+              value: {{ $evals.seedCode | quote }}
+            - name: MCP_URL
+              value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+            - name: MCP_SEED_TENANT
+              value: {{ $tools.seedTenant | default "seed" | quote }}
+            - name: MCP_AUTH_TOKEN
+              value: {{ $tools.authToken | default "" | quote }}
+            - name: MCP_EXTRA_BACKENDS
+              value: {{ .Values.mcp.extraBackends | default list | toJson | quote }}
+            - name: LANGFUSE_EXTRA_PROJECTS
+              value: {{ $extraProjects | toJson | quote }}
+            - name: VALKEY_HOST
+              value: {{ include "zelkor-platform.valkeyHost" . | quote }}
+            - name: VALKEY_PORT
+              value: {{ include "zelkor-platform.valkeyPort" . | quote }}
+            - name: VALKEY_PASSWORD
+              value: {{ include "zelkor-platform.valkeyPassword" . | quote }}
+            {{- end }}
+{{- end }}

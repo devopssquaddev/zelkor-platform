@@ -31,7 +31,7 @@ if [[ "${BUILD_IMAGES:-false}" == true ]]; then
 fi
 
 log "platform helm patch (Ollama Cloud, model=${MODEL})..."
-kubectl --context "$KCTX" delete job zelkor-platform-langfuse-surfaces --ignore-not-found=true
+kubectl --context "$KCTX" delete job zelkor-platform-langfuse-bootstrap --ignore-not-found=true
 helm upgrade zelkor-platform "$CHART_PATH" \
   --kube-context "$KCTX" \
   -f "$VALUES_FILE" \

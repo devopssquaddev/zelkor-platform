@@ -1,0 +1,12 @@
+---
+description: Before installing or uninstalling Zelkor CE, read docs/agent-install.md; for customer agents read docs/agent-deploy.md.
+alwaysApply: false
+---
+
+# Zelkor install (coding agents)
+
+Read [docs/agent-install.md](../docs/agent-install.md) before any platform install or uninstall.
+
+Read [docs/agent-deploy.md](../docs/agent-deploy.md) before `zelkor deploy` or Helm `charts/zelkor-agent`.
+
+Do not use `./install.sh` / `values-local.yaml` on non-kind production clusters. On brownfield clusters with existing Envoy Gateway, use `--topology layered` or `shared`, not greenfield.

@@ -6,9 +6,9 @@
 # Set secrets and hostnames in a customer overlay or existing Secret.
 #
 # First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
-# GHCR as ghcr.io/devopssquaddev/zelkor-*:1.0.0. Override repository, tag, or
-# digest per environment. Pin digest in profiles/values-production.yaml.
-# Kind keeps tag: "dev" in profiles/values-local*.yaml.
+# GHCR as public ghcr.io/devopssquaddev/zelkor-*:1.0.0. No imagePullSecret in CE.
+# Override repository, tag, or digest per environment. Pin digest in
+# profiles/values-production.yaml. Kind keeps tag: "dev" in profiles/values-local*.yaml.
 
 global:
   tier: oss
@@ -133,8 +133,10 @@ gateway:
     nodeSelector: {}
     # Empty type = Envoy Gateway default (LoadBalancer). Set ClusterIP when an
     # existing Ingress fronts the dataplane and preserves Host.
+    # Empty name = {namespace}-{release}-dataplane in envoy-gateway-system.
     service:
       type: ""
+      name: ""
     resources:
       requests:
         cpu: 100m
@@ -288,8 +290,8 @@ aiGateway:
   enabled: true
   # Consumer key for in-cluster callers (MCP, agents). Upstream provider keys stay in gateway secrets.
   consumerKey: ""
-  # In-cluster OpenAI-compatible base URL (…/v1). install.sh sets this from the
-  # live Envoy Service (name includes a hash). Do not guess envoy-default-*-gateway.
+  # In-cluster OpenAI-compatible base URL (…/v1). Defaults to the stable
+  # {namespace}-{release}-dataplane Service when inClusterService.targetHost is empty.
   internalUrl: ""
   # ClusterIP/ExternalName service for in-cluster /v1 without Host: *.localhost
   inClusterService:
@@ -336,6 +338,9 @@ aiGateway:
 langfuse:
   enabled: true
   replicaCount: 1
+  # Prisma migrate is not concurrent-safe. Web HPA stays at 1 unless raised.
+  highAvailability:
+    minReplicas: 1
   image:
     repository: langfuse/langfuse
     tag: "4.24.0"
@@ -707,6 +712,8 @@ mcp:
       - python-base
     warmPool:
       replicas: 3
+    # Empty: installer generates; chart keeps Secret {release}-sandbox-worker.
+    # Override with mcp.sandboxMCP.workerToken or WORKER_TOKEN on install-*.sh.
     workerToken: ""
     strictIsolation: false
     workerImage:

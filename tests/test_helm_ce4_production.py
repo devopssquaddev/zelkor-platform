@@ -91,6 +91,17 @@ def _env(deploy: dict, name: str) -> str | None:
     return None
 
 
+def test_postgres_url_percent_encodes_password():
+    proc = _helm("--set", "postgresql.auth.password=p@ss&word")
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    langfuse = _named(docs, "Deployment", "zelkor-platform-langfuse")
+    db_url = _env(langfuse, "DATABASE_URL")
+    assert db_url is not None
+    assert "p%40ss%26word" in db_url
+    assert "p@ss&word" not in db_url
+
+
 def test_default_chart_has_no_hpa_https_or_servicemonitor():
     proc = _helm()
     assert proc.returncode == 0, proc.stderr
@@ -142,6 +153,20 @@ def test_production_overlay_emits_hpa_and_envoy_hpa():
     hpa = proxies[0]["spec"]["provider"]["kubernetes"]["envoyHpa"]
     assert hpa["minReplicas"] == 2
     assert hpa["maxReplicas"] == 8
+    assert proxies[0]["spec"]["provider"]["kubernetes"]["envoyService"]["name"] == (
+        "zelkor-zelkor-platform-dataplane"
+    )
+    lf_hpa = _named(docs, "HorizontalPodAutoscaler", "zelkor-platform-langfuse")
+    assert lf_hpa["spec"]["minReplicas"] == 1
+    aegra_hpa = _named(docs, "HorizontalPodAutoscaler", "zelkor-platform-aegra")
+    assert aegra_hpa["spec"]["minReplicas"] == 2
+    worker_hpa = _named(docs, "HorizontalPodAutoscaler", "zelkor-platform-langfuse-worker")
+    assert worker_hpa["spec"]["minReplicas"] == 2
+    ai_svc = _named(docs, "Service", "zelkor-platform-ai-gateway")
+    assert ai_svc["spec"]["type"] == "ExternalName"
+    assert ai_svc["spec"]["externalName"] == (
+        "zelkor-zelkor-platform-dataplane.envoy-gateway-system.svc.cluster.local"
+    )
     assert not _kinds(docs, "ServiceMonitor")
 
 
@@ -236,3 +261,24 @@ def test_metrics_deps_in_images():
     assert "prometheus-fastapi-instrumentator" in guardrails
     mcp = (ROOT / "mcp" / "common" / "mcp_server.py").read_text()
     assert "/metrics" in mcp
+
+
+def test_production_profile_renders_langfuse_seed_network_policy():
+    proc = _helm("-f", str(PRODUCTION))
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    np = _named(docs, "NetworkPolicy", "zelkor-platform-langfuse-bootstrap-egress")
+    peers = []
+    for rule in (np.get("spec") or {}).get("egress") or []:
+        for peer in rule.get("to") or []:
+            labels = (peer.get("podSelector") or {}).get("matchLabels") or {}
+            peers.append(labels)
+    assert any(p.get("app.kubernetes.io/component") == "valkey" for p in peers), peers
+    match_labels = (
+        ((np.get("spec") or {}).get("podSelector") or {}).get("matchExpressions") or []
+    )
+    components = next(
+        (expr.get("values") or [] for expr in match_labels if expr.get("key") == "app.kubernetes.io/component"),
+        [],
+    )
+    assert components == ["langfuse-bootstrap"]

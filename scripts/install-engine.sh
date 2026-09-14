@@ -293,11 +293,17 @@ wait_jobs_selector() {
   handle_wait_failure "$criticality" "jobs -l ${selector}" jobs_selector_healthy "$selector"
 }
 
-refresh_langfuse_surfaces_job() {
-  bash "$ZELKOR_REPO_ROOT/scripts/refresh-langfuse-surfaces.sh" \
-    --kube-context "$KCTX" \
-    --namespace "${ZELKOR_NAMESPACE:-default}" \
-    --release "$HELM_RELEASE_NAME" || return 0
+wait_langfuse_bootstrap_job() {
+  local job="${HELM_RELEASE_NAME}-langfuse-bootstrap"
+  if ! kubectl --context "$KCTX" get job "$job" >/dev/null 2>&1; then
+    return 0
+  fi
+  log "  waiting: job/${job}"
+  if kubectl --context "$KCTX" wait --for=condition=complete "job/${job}" \
+    --timeout="$JOB_WAIT_TIMEOUT"; then
+    return 0
+  fi
+  handle_wait_failure optional "job/${job}" resource_healthy "job/${job}"
 }
 
 helm_user_value() {
@@ -669,122 +675,19 @@ fi
 KCTX="kind-${CLUSTER_NAME}"
 require_full_profile_prereqs
 
-EG_CM_BODY=$(cat <<'EOF'
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: EnvoyGateway
-extensionApis:
-  enableBackend: true
-  enableEnvoyPatchPolicy: true
-extensionManager:
-  hooks:
-    xdsTranslator:
-      translation:
-        listener:
-          includeAll: true
-        route:
-          includeAll: true
-        cluster:
-          includeAll: true
-        secret:
-          includeAll: true
-      post:
-        - Translation
-        - Cluster
-        - Route
-  service:
-    fqdn:
-      hostname: ai-gateway-controller.envoy-ai-gateway-system.svc.cluster.local
-      port: 1063
-gateway:
-  controllerName: gateway.envoyproxy.io/gatewayclass-controller
-logging:
-  level:
-    default: info
-provider:
-  kubernetes:
-    rateLimitDeployment:
-      container:
-        image: docker.io/envoyproxy/ratelimit:17b1956c
-      patch:
-        type: StrategicMerge
-        value:
-          spec:
-            template:
-              spec:
-                containers:
-                - imagePullPolicy: IfNotPresent
-                  name: envoy-ratelimit
-    shutdownManager:
-      image: envoyproxy/gateway:v1.9.1
-  type: Kubernetes
-EOF
-)
-
-eg_cm_current=$(kubectl --context "$KCTX" get configmap envoy-gateway-config -n envoy-gateway-system \
-  -o jsonpath='{.data.envoy-gateway\.yaml}' 2>/dev/null || true)
-eg_ready=false
-if deployment_available envoy-gateway-system envoy-gateway; then
-  eg_ready=true
-fi
-
 step_begin envoy_gateway
-if [[ "$eg_ready" != "true" ]]; then
-  log "Deploying Envoy Gateway & Gateway API CRDs..."
-  kubectl apply --context "$KCTX" --server-side -f https://github.com/envoyproxy/gateway/releases/download/v1.9.1/install.yaml
-else
-  log "Envoy Gateway already ready; skipping CRD/chart apply"
-fi
-
-if [[ "${eg_cm_current%$'\n'}" != "${EG_CM_BODY%$'\n'}" ]]; then
-  log "Applying Envoy Gateway Backend extension config..."
-  kubectl --context "$KCTX" apply -f - <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: envoy-gateway-config
-  namespace: envoy-gateway-system
-data:
-  envoy-gateway.yaml: |
-$(printf '%s\n' "$EG_CM_BODY" | sed 's/^/    /')
-EOF
-  log "Restarting Envoy Gateway (config changed)..."
-  kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
-  log "Waiting for Envoy Gateway controller readiness..."
-  wait_one critical deployment/envoy-gateway envoy-gateway-system
-elif [[ "$eg_ready" != "true" ]]; then
-  log "Restarting Envoy Gateway (not ready)..."
-  kubectl --context "$KCTX" rollout restart deployment/envoy-gateway -n envoy-gateway-system
-  log "Waiting for Envoy Gateway controller readiness..."
-  wait_one critical deployment/envoy-gateway envoy-gateway-system
-else
-  log "Envoy Gateway config unchanged and ready; skipping restart"
+log "Bootstrapping Envoy Gateway and Envoy AI Gateway..."
+if ! bash "$ZELKOR_REPO_ROOT/scripts/bootstrap-gateway.sh" --kube-context "$KCTX"; then
+  die "Gateway bootstrap failed (Envoy Gateway / Envoy AI Gateway)"
 fi
 step_end envoy_gateway
 
 step_begin ai_gateway
-if deployment_available envoy-ai-gateway-system ai-gateway-controller; then
-  log "Envoy AI Gateway already ready; skipping Helm bootstrap"
-else
-  log "Deploying Envoy AI Gateway CRDs & Controller..."
-  helm upgrade -i aieg-crd oci://docker.io/envoyproxy/ai-gateway-crds-helm \
-    --kube-context "$KCTX" \
-    --version v1.1.0 \
-    --namespace envoy-ai-gateway-system \
-    --create-namespace
-
-  helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
-    --kube-context "$KCTX" \
-    --version v1.1.0 \
-    --namespace envoy-ai-gateway-system \
-    --create-namespace
-
-  log "Waiting for Envoy AI Gateway controller readiness..."
-  wait_one critical deployment/ai-gateway-controller envoy-ai-gateway-system
-fi
+log "Envoy AI Gateway included in gateway bootstrap"
 step_end ai_gateway
 
 if [[ "$FIRST_KIND_CREATE" != "true" ]]; then
-  for job in langfuse-surfaces langfuse-admin gvisor-verify; do
+  for job in langfuse-bootstrap gvisor-verify; do
     if kubectl --context "$KCTX" get job "${HELM_RELEASE_NAME}-${job}" >/dev/null 2>&1; then
       log "Deleting stale ${job} Job (re-run; Job spec is immutable)..."
       kubectl --context "$KCTX" delete job "${HELM_RELEASE_NAME}-${job}" --ignore-not-found
@@ -835,9 +738,16 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
 fi
 
 peek_internal_gateway_svc() {
+  local ns="${ZELKOR_NAMESPACE:-zelkor}"
+  local release="${HELM_RELEASE_NAME:-zelkor-platform}"
+  local stable="${ns}-${release}-dataplane"
+  if kubectl --context "$KCTX" get svc "$stable" -n envoy-gateway-system >/dev/null 2>&1; then
+    echo "$stable"
+    return 0
+  fi
   kubectl --context "$KCTX" get svc -n envoy-gateway-system \
-    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
-    | grep -E '^envoy-default-.*gateway-' | head -1 || true
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels.gateway\.envoyproxy\.io/owning-gateway-name}{"\n"}{end}' 2>/dev/null \
+    | awk -F'\t' '$2 != "" { print $1; exit }' || true
 }
 
 append_gateway_url_helm() {
@@ -956,9 +866,9 @@ if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
   step_end rollout_mcp_nemo
 fi
 
-step_begin job_langfuse_surfaces
-refresh_langfuse_surfaces_job
-step_end job_langfuse_surfaces
+step_begin job_langfuse_bootstrap
+wait_langfuse_bootstrap_job
+step_end job_langfuse_bootstrap
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   step_begin finserve_helm

@@ -1,12 +1,5 @@
 {{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled }}
-{{- $targetHost := .Values.aiGateway.inClusterService.targetHost | default "" -}}
-{{- if not $targetHost }}
-{{- range (lookup "v1" "Service" "envoy-gateway-system" "").items }}
-{{- if and (not $targetHost) (hasPrefix "envoy-default-" .metadata.name) (contains "gateway-" .metadata.name) }}
-{{- $targetHost = printf "%s.envoy-gateway-system.svc.cluster.local" .metadata.name }}
-{{- end }}
-{{- end }}
-{{- end }}
+{{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
 {{- if $targetHost }}
 apiVersion: v1
 kind: Service

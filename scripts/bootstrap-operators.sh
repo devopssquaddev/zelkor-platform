@@ -4,6 +4,10 @@
 # --kubeconfig / --kube-context are optional (non-default kube context).
 set -euo pipefail
 
+ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=lib/bootstrap-ownership.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
+
 CNPG_CHART_VERSION="${CNPG_CHART_VERSION:-0.29.0}"
 CLICKHOUSE_OPERATOR_VERSION="${CLICKHOUSE_OPERATOR_VERSION:-0.27.3}"
 CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.21.1}"
@@ -93,6 +97,8 @@ if [[ "$SKIP_CNPG" -eq 0 ]]; then
     --namespace cnpg-system --create-namespace \
     --version "$CNPG_CHART_VERSION" \
     --wait --timeout 5m
+  zelkor_ownership_annotate_ns cnpg-system
+  zelkor_ownership_record cnpg
 fi
 
 if [[ "$SKIP_CLICKHOUSE" -eq 0 ]]; then
@@ -103,6 +109,8 @@ if [[ "$SKIP_CLICKHOUSE" -eq 0 ]]; then
     --version "$CLICKHOUSE_OPERATOR_VERSION" \
     --set 'watchNamespaces[0]=.*' \
     --wait --timeout 5m
+  zelkor_ownership_annotate_ns clickhouse-operator
+  zelkor_ownership_record clickhouse-operator
 fi
 
 if [[ "$SKIP_CERT_MANAGER" -eq 0 ]]; then
@@ -113,6 +121,8 @@ if [[ "$SKIP_CERT_MANAGER" -eq 0 ]]; then
     --set crds.enabled=true \
     --set config.enableGatewayAPI=true \
     --wait --timeout 5m
+  zelkor_ownership_annotate_ns cert-manager
+  zelkor_ownership_record cert-manager
 fi
 
 if [[ "$SKIP_BARMAN" -eq 0 ]]; then
@@ -122,6 +132,7 @@ if [[ "$SKIP_BARMAN" -eq 0 ]]; then
     echo "skip Barman plugin: CRD objectstores.barmancloud.cnpg.io already exists"
   else
     kubectl "${KUBECTL_ARGS[@]}" apply -f "https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v${BARMAN_PLUGIN_VERSION#v}/manifest.yaml"
+    zelkor_ownership_record barman
   fi
 fi
 

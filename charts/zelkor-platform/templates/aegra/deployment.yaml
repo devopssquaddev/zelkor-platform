@@ -37,9 +37,11 @@ spec:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: aegra
     spec:
+      {{- include "zelkor-platform.langfuseBootstrapWaitServiceAccount" . | nindent 6 }}
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       terminationGracePeriodSeconds: {{ .Values.aegra.terminationGracePeriodSeconds | default 35 }}
       initContainers:
+        {{- include "zelkor-platform.langfuseBootstrapWaitInitContainer" . | nindent 8 }}
         - name: wait-for-deps
           image: {{ .Values.global.initContainerImage | default "busybox:1.37" }}
           command:
