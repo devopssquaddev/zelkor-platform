@@ -14,5 +14,6 @@ Each demo is a standalone Helm release under `examples/<name>/chart/`.
 - Do not add this demo as a toggle inside the platform chart.
 - `install.sh` may deploy this release when `INSTALL_EXAMPLES=true`; that is orchestration, not a reason to change platform defaults.
 - Serve the demo graph from **this** release’s **ClusterIP** Deployment (`FROM zelkor-aegra`). Do not mount `aegra.json` onto platform Aegra or set `aegra.graphs` on the platform chart. Prefer clients hitting platform Aegra (`graph_id`); a demo HTTPRoute is TTFV-only, not the production exposure pattern.
+- Shipped `values.yaml` must be target-agnostic: no `zelkor-platform-*` Service DNS, Gateway namespace `default`, `gpt-oss:20b`, lab passwords, `dev-key`, or `| default "zelkor-platform-*"`. Connect via `platform.releaseName` or explicit URLs. Kind/test literals stay in `values-local.yaml` / `values-platform-overlay-local.yaml`. Platform overlay is demo-domain only (no DSN).
 
 Tenant isolation handlers stay in platform `agents/`, not in the demo.

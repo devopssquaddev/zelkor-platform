@@ -1,8 +1,8 @@
 """Mode B: bind MCP gateway tools onto compiled LangGraph / LangChain agents at load.
 
 Enabled when MCP_INJECT_ENABLED is true. tools/list does not require tenant;
-each tools/call uses wrap identity from the current LangGraph run config
-(Authorization + X-Tenant-ID), not process env.
+each tools/call uses wrap identity from Aegra langgraph_auth_user
+(Authorization + X-Tenant-ID), not process env, client user_id, or traces.
 
 langchain-mcp-adapters is a required pin (images/aegra/requirements.txt).
 """
@@ -16,6 +16,14 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import httpx
+
+from wrap_identity import (
+    auth_user_from_config,
+    authorization_from_auth_user,
+    current_auth_authorization,
+    current_auth_identity,
+    identity_from_auth_user,
+)
 
 logger = logging.getLogger("zelkor-mcp-inject")
 
@@ -48,14 +56,7 @@ def _mcp_url() -> str:
 
 
 def _config_has_identity(cfg: dict) -> bool:
-    configurable = cfg.get("configurable") if isinstance(cfg.get("configurable"), dict) else {}
-    return bool(
-        configurable.get("langgraph_auth_user")
-        or configurable.get("user")
-        or configurable.get("user_id")
-        or configurable.get("tenant_id")
-        or configurable.get("identity")
-    )
+    return auth_user_from_config(cfg) is not None
 
 
 def _current_run_config() -> dict:
@@ -82,42 +83,35 @@ def _current_run_config() -> dict:
     return candidates[0] if candidates else {}
 
 
-def _identity_from_user(user) -> str:
-    if user is None:
-        return ""
-    if isinstance(user, dict):
-        for key in ("tenant_id", "identity"):
-            value = user.get(key)
-            if value:
-                return str(value)
-        return ""
-    for key in ("tenant_id", "identity"):
-        value = getattr(user, key, None)
-        if value:
-            return str(value)
-    try:
-        for key in ("tenant_id", "identity"):
-            value = user[key]  # type: ignore[index]
-            if value:
-                return str(value)
-    except Exception:
-        pass
+def tenant_from_run_config(config: Optional[dict] = None) -> str:
+    """Tenant identity for this tools/call.
+
+    Only Aegra langgraph_auth_user (passed config, Pregel ContextVar, or
+    get_config()). Never ZELKOR_TENANT_ID, client user_id, or tool args.
+    """
+    if isinstance(config, dict):
+        from_cfg = identity_from_auth_user(auth_user_from_config(config))
+        if from_cfg:
+            return from_cfg
+    bound = current_auth_identity()
+    if bound:
+        return bound
+    if config is None:
+        return identity_from_auth_user(auth_user_from_config(_current_run_config()))
     return ""
 
 
-def tenant_from_run_config(config: Optional[dict] = None) -> str:
-    """Tenant identity for this tools/call. Never reads ZELKOR_TENANT_ID env."""
-    cfg = config if isinstance(config, dict) else _current_run_config()
-    configurable = cfg.get("configurable") if isinstance(cfg.get("configurable"), dict) else {}
-    from_user = _identity_from_user(
-        configurable.get("langgraph_auth_user") or configurable.get("user")
-    )
-    if from_user:
-        return from_user
-    for key in ("tenant_id", "identity", "user_id"):
-        value = configurable.get(key)
-        if value and not isinstance(value, dict):
-            return str(value)
+def inbound_authorization(config: Optional[dict] = None) -> str:
+    """Inbound client Bearer from langgraph_auth_user.authorization (no mint)."""
+    if isinstance(config, dict):
+        from_cfg = authorization_from_auth_user(auth_user_from_config(config))
+        if from_cfg:
+            return from_cfg
+    bound = current_auth_authorization()
+    if bound:
+        return bound
+    if config is None:
+        return authorization_from_auth_user(auth_user_from_config(_current_run_config()))
     return ""
 
 
@@ -125,9 +119,12 @@ def identity_headers(config: Optional[dict] = None) -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
     tenant = tenant_from_run_config(config)
     prefix = os.getenv("AUTH_DEV_TOKEN_PREFIX", "").strip()
+    inbound = inbound_authorization(config)
     if tenant:
         headers["X-Tenant-ID"] = tenant
-        if prefix:
+        if inbound:
+            headers["Authorization"] = inbound
+        elif prefix:
             headers["Authorization"] = f"Bearer {prefix}{tenant}"
         else:
             token = os.getenv("OPENAI_API_KEY") or os.getenv("AI_GATEWAY_API_KEY") or ""

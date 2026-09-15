@@ -118,6 +118,8 @@ Identity env for Aegra and MCP. Dev token shortcuts are off unless a local overl
   value: {{ (.Values.auth.trustTenantHeader | default false) | quote }}
 - name: AUTH_JWT_SECRET
   value: {{ (.Values.auth.jwtSecret | default "") | quote }}
+- name: TENANT_ORG_MAPPINGS
+  value: {{ .Values.aegra.tenantOrgMappings | default dict | toJson | quote }}
 {{- end }}
 
 {{/*

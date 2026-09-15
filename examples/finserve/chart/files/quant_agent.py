@@ -13,7 +13,7 @@ from langchain_openai import ChatOpenAI
 
 from mcp_tools import MCP_INJECT_PREFIXES, single_mcp_tool
 
-MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
+MODEL = os.getenv("DEFAULT_LLM_MODEL", "")
 
 SYSTEM = """FinServe Quant. Use sandbox__execute_python only."""
 

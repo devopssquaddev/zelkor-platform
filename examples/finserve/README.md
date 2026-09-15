@@ -9,23 +9,92 @@ FinServe AI is the reference **drop-in** demo for the Zelkor Platform: three Mod
 | `finserve-quant` | `finserve-quant` | Sandbox projections |
 | `finserve-coder` | `finserve-coder` | Custom Python on portfolio data (`execute()`) |
 
----
----
+## What to copy
 
-## 1. Capabilities & Platform Pillars
+This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent) plus demo seed jobs. Customer agents should copy the **worker** pattern (image + `sharedRoute` + platform connection), not the demo extras.
 
-| Pillar | Implementation in FinServe AI | Platform Subsystem |
-| :--- | :--- | :--- |
-| **Conversational Guardrails** | Off-topic and jailbreak text refused on default `/v1` | **NeMo intercept** (not a graph node) |
-| **Multi-Tenant Isolation** | MCP wrappers scope SQL and Qdrant by caller identity | **PostgreSQL** + **Qdrant** via MCP gateway |
-| **Untrusted Code Execution** | Quant: `sandbox__execute_python`. Coder: Deep Agents `execute()` (gVisor) | **gVisor** warm pool |
-| **Policy-Governed LLM Routing** | `ChatOpenAI` via wrap `OPENAI_BASE_URL` | **Envoy AI Gateway** |
-| **Full-Stack Observability** | Gateway OTel GenAI spans | **Langfuse** |
-| **Stateful Orchestration** | Three ClusterIP workers; four graph ids | **Envoy** `X-Graph-ID` → worker; platform Aegra is the default |
+| Copy | Do not copy onto `zelkor-agent` |
+| :--- | :--- |
+| Mode B wrap (`OPENAI_BASE_URL`, `MCP_URL`) | `job-db-init`, `job-langfuse-seed` |
+| `sharedRoute` on `gateway.hosts.agents` | CNPG `Database` / `cnpgClusterName` (MCP/app schema only) |
+| Unique `redis.prefix` per Deployment | `values-platform-overlay.yaml` tenant/NeMo blocks |
+| [`values-tenants.yaml`](chart/values-tenants.yaml) (`auth.jwtSecret`, unsigned auth off) | `values-local.yaml` (kind secrets, `*.localhost`, `devTokens`) |
 
----
+Minimal customer path: [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
 
-## 2. Architecture Diagram
+## Connect to your platform
+
+`chart/values.yaml` ships **empty** connection fields. Point the release at an existing Zelkor install — do not assume release `zelkor-platform`, namespace `default`, or a kind Service name.
+
+**Option A — Helm release name** (in-cluster naming `{release}-{suffix}`):
+
+```yaml
+platform:
+  releaseName: <your-platform-release>   # parent: seed jobs + optional vanity HTTPRoute
+desk:
+  platform:
+    releaseName: <your-platform-release> # constructs AI gateway + MCP URLs
+  sharedRoute:
+    host: <gateway.hosts.agents>
+quant:
+  platform:
+    releaseName: <your-platform-release>
+  sharedRoute:
+    host: <gateway.hosts.agents>
+coder:
+  platform:
+    releaseName: <your-platform-release>
+  sharedRoute:
+    host: <gateway.hosts.agents>
+```
+
+Postgres host is `{release}-postgresql`, or `{cnpgClusterName}-rw` when `platform.cnpgClusterName` is set. Override `platform.postgresHost` / worker `openaiBaseUrl` / `mcpUrl` when names differ.
+
+**Option B — copy from the live platform Aegra Deployment** (same sources as `zelkor deploy`):
+
+```bash
+kubectl -n <ns> get deploy <platform-release>-aegra -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}'
+```
+
+Set worker `platform.databaseUrl`, `valkeyUrl`, `mcpUrl`, `openaiBaseUrl`, and Langfuse keys from that env. Set `sharedRoute.host` from the platform value `gateway.hosts.agents`.
+
+```bash
+helm dependency update examples/finserve/chart
+helm upgrade --install finserve examples/finserve/chart \
+  --namespace <platform-namespace> \
+  -f your-finserve-overlay.yaml
+```
+
+On the **platform** chart, apply [values-platform-overlay.yaml](chart/values-platform-overlay.yaml) (collection, tenant mappings, NeMo rails) and set `mcp.postgresMCP.databaseUrl` to **your** FinServe DB DSN. For JWT tenants (customer blueprint), also apply [values-platform-overlay-tenants.yaml](chart/values-platform-overlay-tenants.yaml) and [values-tenants.yaml](chart/values-tenants.yaml) with the **same** `auth.jwtSecret`. Do not apply `values-platform-overlay-local.yaml` or `values-local.yaml` outside kind.
+
+## Kind eval
+
+`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlays and this chart with `values-local.yaml`. Manual:
+
+```bash
+helm dependency update examples/finserve/chart
+helm upgrade --install finserve examples/finserve/chart \
+  -f examples/finserve/chart/values-local.yaml \
+  --wait --timeout 10m
+```
+
+```bash
+curl -X POST http://127.0.0.1:8088/runs/wait \
+  -H "Host: agents.localhost" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer dev:Bank_Alpha" \
+  -H "X-Graph-ID: finserve-advisor" \
+  -d '{
+    "graph_id": "finserve-advisor",
+    "input": {
+      "messages": [{"role": "human", "content": "What is my portfolio valuation?"}]
+    }
+  }'
+```
+
+There is no `finserve.localhost` HTTPRoute by default. Langfuse on kind: `http://langfuse.localhost:8088`.
+
+## Architecture
 
 ```mermaid
 flowchart TD
@@ -65,55 +134,12 @@ flowchart TD
     AIGateway -.->|"OTel"| Langfuse
 ```
 
----
-
-## 3. Quickstart & Usage
-
-### A. Deploy via Helm
-
-`./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlay (MCP DSN / Langfuse / NeMo topic rails) and this chart. Desk, quant, and coder self-register on `gateway.hosts.agents` via `sharedRoute` (host + gateway in `values-local.yaml`). Do not edit platform `aegra.workers`. Manual:
+## Validation
 
 ```bash
-helm dependency update examples/finserve/chart
-helm upgrade --install finserve examples/finserve/chart \
-  -f examples/finserve/chart/values-local.yaml \
-  --wait --timeout 10m
-```
-
-### B. Query via platform Aegra
-
-```bash
-curl -X POST http://127.0.0.1:8088/runs/wait \
-  -H "Host: agents.localhost" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev:Bank_Alpha" \
-  -H "X-Graph-ID: finserve-advisor" \
-  -d '{
-    "graph_id": "finserve-advisor",
-    "input": {
-      "messages": [{"role": "human", "content": "What is my portfolio valuation?"}]
-    }
-  }'
-```
-
-There is no `finserve.localhost` HTTPRoute by default.
-
----
-
-## 4. Observability & Tracing
-
-Open Langfuse at [http://langfuse.localhost:8088](http://langfuse.localhost:8088). LLM spans come from Envoy AI Gateway OTel, not an agent-side Langfuse SDK.
-
----
-
-## 5. Automated Validation Matrix
-
-```bash
-# Platform conformance (no examples required)
 INSTALL_EXAMPLES=false ./install.sh
 pytest tests/ -v
 
-# FinServe E2E smokes (platform Aegra, four graph ids)
 pytest examples/finserve/tests/ -v
 ```
 
@@ -122,9 +148,7 @@ pytest examples/finserve/tests/ -v
 | Platform Gate | `tests/` | MCP, NeMo intercept, gVisor, extraBackends unit tests |
 | FinServe E2E | `examples/finserve/tests/` | Agent Protocol smokes on the front door |
 
----
-
-## 6. Mode B MCP
+## Mode B MCP
 
 The graph source does not embed an MCP client. At worker process start, Zelkor lists tools from `MCP_URL` and binds them onto `langchain.agents.create_agent`. Each `tools/call` uses the run's tenant (`Authorization` + `X-Tenant-ID`).
 

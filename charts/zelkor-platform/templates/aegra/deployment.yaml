@@ -100,8 +100,6 @@ spec:
               value: {{ (.Values.aegra.workerDrainTimeout | default 30) | quote }}
             - name: AEGRA_CONFIG
               value: "/app/aegra.json"
-            - name: TENANT_ORG_MAPPINGS
-              value: {{ .Values.aegra.tenantOrgMappings | default dict | toJson | quote }}
             - name: OPENAI_BASE_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
             - name: OPENAI_API_KEY

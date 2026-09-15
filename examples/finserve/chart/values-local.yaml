@@ -1,4 +1,27 @@
-# FinServe Demo Local Overrides (kind)
+# FinServe Demo Local Overrides (kind / ./install.sh only)
+_rel: &rel zelkor-platform
+
+_workerPlatform: &workerPlatform
+  releaseName: *rel
+  consumerKey: "dev-key"
+  databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
+  valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
+  defaultLlmModel: "gpt-oss:20b"
+  langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
+  langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
+  langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
+  otelTargets: "LANGFUSE"
+
+_auth: &auth
+  jwtSecret: "zelkor-local-jwt-secret"
+  devTokens:
+    enabled: true
+    prefix: "dev:"
+  trustTenantHeader: true
+
+_sharedRoute: &sharedRoute
+  host: agents.localhost
+
 global:
   tier: oss
 
@@ -12,22 +35,11 @@ desk:
   image:
     tag: "dev"
   sharedRoute:
-    host: agents.localhost
+    <<: *sharedRoute
   auth:
-    jwtSecret: "zelkor-local-jwt-secret"
-    devTokens:
-      enabled: true
-      prefix: "dev:"
-    trustTenantHeader: true
+    <<: *auth
   platform:
-    consumerKey: "dev-key"
-    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
-    valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
-    defaultLlmModel: "gpt-oss:20b"
-    langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
-    otelTargets: "LANGFUSE"
+    <<: *workerPlatform
   extraEnv:
     - name: QDRANT_COLLECTION
       value: "finserve_policies"
@@ -39,22 +51,11 @@ quant:
   image:
     tag: "dev"
   sharedRoute:
-    host: agents.localhost
+    <<: *sharedRoute
   auth:
-    jwtSecret: "zelkor-local-jwt-secret"
-    devTokens:
-      enabled: true
-      prefix: "dev:"
-    trustTenantHeader: true
+    <<: *auth
   platform:
-    consumerKey: "dev-key"
-    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
-    valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
-    defaultLlmModel: "gpt-oss:20b"
-    langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
-    otelTargets: "LANGFUSE"
+    <<: *workerPlatform
   extraEnv:
     - name: QDRANT_COLLECTION
       value: "finserve_policies"
@@ -66,33 +67,17 @@ coder:
   image:
     tag: "dev"
   sharedRoute:
-    host: agents.localhost
+    <<: *sharedRoute
   auth:
-    jwtSecret: "zelkor-local-jwt-secret"
-    devTokens:
-      enabled: true
-      prefix: "dev:"
-    trustTenantHeader: true
+    <<: *auth
   platform:
-    consumerKey: "dev-key"
-    databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
-    valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
-    defaultLlmModel: "gpt-oss:20b"
-    langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-    langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
-    otelTargets: "LANGFUSE"
+    <<: *workerPlatform
 
 platform:
-  postgresHost: "zelkor-platform-postgresql"
-  postgresPort: 5432
+  releaseName: *rel
   postgresUser: "zelkor"
   postgresPassword: "zelkor-dev-password"
   postgresDatabase: "finserve"
-  qdrantHost: "zelkor-platform-qdrant"
-  qdrantPort: 6333
-  qdrantUrl: "http://zelkor-platform-qdrant:6333"
   qdrantCollection: "finserve_policies"
-  langfuseHost: "http://zelkor-platform-langfuse:3000"
   langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
   langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"

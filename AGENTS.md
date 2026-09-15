@@ -35,7 +35,7 @@ Demo workloads validate the platform but are **not** bundled into the production
 
 - Each demo lives under `examples/<name>/` with its own chart at `examples/<name>/chart/`.
 - Platform chart + `tests/` must work with `INSTALL_EXAMPLES=false` then `pytest tests/`.
-- No demo-shaped defaults in `charts/zelkor-platform/values.yaml`. Local kind secrets/hosts live in `profiles/values-local.yaml`. Demos overlay from `examples/<name>/chart/`.
+- No demo-shaped defaults in `charts/zelkor-platform/values.yaml`. Local kind secrets/hosts live in `profiles/values-local.yaml`. Demos overlay from `examples/<name>/chart/`. Example `values.yaml` is target-agnostic (`platform.releaseName` or explicit URLs); do not copy `values-local.yaml` as a customer recipe.
 - Do not reference `examples/` from `charts/zelkor-platform/`.
 - Production deploys: platform chart only. Local/test: `install.sh` runs platform + example charts (two Helm releases).
 - Combined platform+demo tasks: implement platform first and stop; then overlay the demo. See `.cursor/rules/platform-demo-boundary.mdc`.

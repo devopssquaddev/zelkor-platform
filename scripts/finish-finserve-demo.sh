@@ -17,6 +17,7 @@ VALUES_FILE="${VALUES_FILE:-profiles/values-local-fast.yaml}"
 FINSERVE_CHART="${FINSERVE_CHART_PATH:-examples/finserve/chart}"
 FINSERVE_VALUES="${FINSERVE_VALUES_FILE:-${FINSERVE_CHART}/values-local.yaml}"
 FINSERVE_OVERLAY="${FINSERVE_PLATFORM_OVERLAY:-${FINSERVE_CHART}/values-platform-overlay.yaml}"
+FINSERVE_OVERLAY_LOCAL="${FINSERVE_PLATFORM_OVERLAY_LOCAL:-${FINSERVE_CHART}/values-platform-overlay-local.yaml}"
 MODEL="${DEFAULT_LLM_MODEL:-gpt-oss:20b}"
 ROLLOUT_WAIT="${ROLLOUT_WAIT_TIMEOUT:-5m}"
 
@@ -36,6 +37,7 @@ helm upgrade zelkor-platform "$CHART_PATH" \
   --kube-context "$KCTX" \
   -f "$VALUES_FILE" \
   -f "$FINSERVE_OVERLAY" \
+  -f "$FINSERVE_OVERLAY_LOCAL" \
   --set "aiGateway.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}" \
   --set "guardrails.nemo.model=${MODEL}" \
   --set-string "langfuse.surfaces.llmConnection.models[0]=${MODEL}"

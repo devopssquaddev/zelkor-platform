@@ -17,7 +17,8 @@ graphIds: []
 # Path to aegra.json inside the image. Override for multi-config images.
 aegraConfig: "/app/aegra.json"
 
-# Shared-host registration. Empty host or gatewayName = no HTTPRoute from this chart.
+# Shared-host registration. Empty host or gatewayName = no HTTPRoute from this chart
+# unless platform.releaseName is set (then gatewayName defaults to {release}-gateway).
 # asDefault: path `/` catch-all (topology 1). false = X-Graph-ID / ?graph_id= matches.
 sharedRoute:
   enabled: true
@@ -26,7 +27,8 @@ sharedRoute:
   host: ""
   asDefault: false
 
-# REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY. Empty prefix → aegra:<release>.
+# REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY on the shared platform Valkey.
+# Empty prefix → aegra:<release>. Do not deploy a second Valkey.
 redis:
   prefix: ""
   channelPrefix: ""
@@ -58,10 +60,15 @@ workerDrainTimeout: 30
 terminationGracePeriodSeconds: 35
 
 platform:
-  openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
+  # Platform Helm release name. When set and URLs below are empty, constructs
+  # {release}-ai-gateway / {release}-mcp-gateway and sharedRoute {release}-gateway.
+  releaseName: ""
+  openaiBaseUrl: ""
   consumerKey: ""
-  mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
+  mcpUrl: ""
+  # Existing platform Aegra checkpointer (typically .../aegra). Do not create a new DB.
   databaseUrl: ""
+  # Existing platform Valkey Service. Isolate agents with redis.prefix.
   valkeyUrl: ""
   mcpInject: true
   # Optional comma-separated MCP tool prefixes when graph modules omit MCP_INJECT_PREFIXES.

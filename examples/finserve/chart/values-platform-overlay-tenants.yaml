@@ -1,0 +1,10 @@
+# Platform companion to values-tenants.yaml. Apply with values-platform-overlay.yaml.
+# Not used by install.sh. Set jwtSecret to the same secret as FinServe workers.
+# Unsigned identity stays off — kind uses profiles/values-local.yaml.
+
+auth:
+  jwtSecret: ""
+  devTokens:
+    enabled: false
+    prefix: ""
+  trustTenantHeader: false

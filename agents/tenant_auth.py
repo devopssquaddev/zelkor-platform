@@ -51,7 +51,8 @@ class TenantAuth:
                         "identity": tenant_id,
                         "tenant_id": tenant_id,
                         "is_authenticated": True,
-                        "mode": "dev"
+                        "mode": "dev",
+                        "authorization": auth_header,
                     }
 
         if self.trust_tenant_header and x_tenant and not auth_header:
@@ -105,7 +106,8 @@ class TenantAuth:
                     "tenant_id": tenant_id,
                     "is_authenticated": True,
                     "claims": payload,
-                    "mode": "jwt"
+                    "mode": "jwt",
+                    "authorization": auth_header,
                 }
             except Exception as e:
                 logger.warning("JWT verify failed: %s", type(e).__name__)
@@ -145,13 +147,17 @@ else:
         if not result.get("is_authenticated"):
             raise Exception(result.get("error") or "Authentication required")
         identity = result.get("identity") or result.get("tenant_id")
-        return {
+        out = {
             "identity": identity,
             "tenant_id": result.get("tenant_id") or identity,
             "display_name": identity,
             "permissions": ["read", "write"],
             "is_authenticated": True,
         }
+        inbound = result.get("authorization")
+        if inbound:
+            out["authorization"] = inbound
+        return out
 
     @auth.on.threads.create
     async def on_thread_create(ctx, value):

@@ -35,6 +35,12 @@ class MCPGatewayClient:
             return resp.json()
         except httpx.ConnectError as exc:
             raise ConnectionError(f"MCP gateway not reachable at {self.mcp_url}") from exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                raise ConnectionError(
+                    f"MCP gateway not published at {self.mcp_url}"
+                ) from exc
+            raise
 
     def list_tools(self) -> List[Dict[str, Any]]:
         data = self._post({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})

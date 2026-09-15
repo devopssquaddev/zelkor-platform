@@ -28,6 +28,7 @@ def test_dev_token_authentication(local_auth_env):
     assert result["identity"] == "tenant_a"
     assert result["tenant_id"] == "tenant_a"
     assert result["mode"] == "dev"
+    assert result["authorization"] == "Bearer dev:tenant_a"
 
 
 def test_dev_token_disabled_by_default(monkeypatch):
@@ -65,6 +66,7 @@ def test_jwt_b2c_tenant_claim():
     result = asyncio.run(auth.authenticate(headers))
     assert result["is_authenticated"] is True
     assert result["identity"] == "tenant_a"
+    assert result["authorization"] == f"Bearer {token}"
 
 
 def test_jwt_b2b_org_mapping(monkeypatch):

@@ -7,8 +7,8 @@ metadata:
     {{- include "finserve.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - name: {{ .Values.gateway.gatewayName | default "zelkor-platform-gateway" }}
-      namespace: {{ .Values.gateway.namespace | default "default" }}
+    - name: {{ include "finserve.gatewayName" . | quote }}
+      namespace: {{ include "finserve.gatewayNamespace" . | quote }}
   hostnames:
     - {{ required "gateway.host must be set when gateway.enabled is true" .Values.gateway.host | quote }}
   rules:

@@ -25,7 +25,7 @@ spec:
             - sh
             - -c
             - |
-              until nc -z -w 2 {{ .Values.platform.langfuseHost | replace "http://" "" | replace "https://" "" | splitList ":" | first }} 3000; do
+              until nc -z -w 2 {{ include "finserve.langfuseHost" . | replace "http://" "" | replace "https://" "" | splitList ":" | first }} 3000; do
                 echo "Waiting for Langfuse API..."
                 sleep 2
               done
@@ -49,9 +49,9 @@ spec:
               import requests
               from requests.auth import HTTPBasicAuth
 
-              BASE_URL = os.getenv("LANGFUSE_HOST", "http://zelkor-platform-langfuse:3000")
-              PK = os.getenv("LANGFUSE_PUBLIC_KEY", "pk-lf-zelkor-dev-00000000000000000000")
-              SK = os.getenv("LANGFUSE_SECRET_KEY", "sk-lf-zelkor-dev-00000000000000000000")
+              BASE_URL = os.environ["LANGFUSE_HOST"]
+              PK = os.environ["LANGFUSE_PUBLIC_KEY"]
+              SK = os.environ["LANGFUSE_SECRET_KEY"]
               auth = HTTPBasicAuth(PK, SK)
 
               print(f"Connecting to Langfuse at {BASE_URL}...")
@@ -107,7 +107,7 @@ spec:
               python3 /tmp/seed.py
           env:
             - name: LANGFUSE_HOST
-              value: {{ .Values.platform.langfuseHost | quote }}
+              value: {{ include "finserve.langfuseHost" . | quote }}
             - name: LANGFUSE_PUBLIC_KEY
               value: {{ .Values.platform.langfusePublicKey | quote }}
             - name: LANGFUSE_SECRET_KEY

@@ -108,6 +108,8 @@ def test_finserve_overlay_does_not_steal_init():
     raw = overlay.read_text()
     assert "projectId:" not in raw
     assert "langfuse.init" not in raw
+    assert "zelkor-dev-password" not in raw
+    assert "databaseUrl:" not in raw
 
 
 def test_helm_extra_projects_on_seed_job_and_nemo():

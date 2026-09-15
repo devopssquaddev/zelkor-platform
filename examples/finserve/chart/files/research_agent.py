@@ -14,7 +14,7 @@ from langchain_openai import ChatOpenAI
 from mcp_tools import MCP_INJECT_PREFIXES, single_mcp_tool
 
 COLLECTION = os.getenv("QDRANT_COLLECTION", "finserve_policies")
-MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
+MODEL = os.getenv("DEFAULT_LLM_MODEL", "")
 
 SYSTEM = f"""FinServe Research. qdrant__search_documents on `{COLLECTION}` only."""
 
