@@ -6,6 +6,8 @@ alwaysApply: true
 
 # Component Version Policy
 
+First-party Zelkor `X.Y.Z` (git tag, chart, GHCR): [ce-versioning.mdc](./ce-versioning.mdc) (multi-root spec `internal/plan/requirements_ce_versioning.md`). This file is **third-party** pins only.
+
 ## Default
 
 1. **Latest stable at release time:** Pick the current **stable** release of each third-party component (no beta, RC, or `-latest` tags). Verify it is actively maintained and not EOL.

@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# Resolve GHCR digests for first-party 1.0.0 images and write them into
-# profiles/values-production.yaml. Run after IMAGE_TAG=1.0.0 push.
+# Resolve GHCR digests for first-party images and write them into
+# profiles/values-production.yaml. Run after IMAGE_TAG push.
 #
 # Usage (from repo root):
-#   ./scripts/pin-production-digests.sh
+#   IMAGE_TAG=1.1.1 ./scripts/pin-production-digests.sh
 #
 # Env:
 #   IMAGE_REGISTRY  default ghcr.io/devopssquaddev
-#   IMAGE_TAG       default 1.0.0
+#   IMAGE_TAG       default 1.1.1
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
-IMAGE_TAG="${IMAGE_TAG:-1.0.0}"
+IMAGE_TAG="${IMAGE_TAG:-1.1.1}"
 OVERLAY="${OVERLAY:-$ROOT/profiles/values-production.yaml}"
 
 digest_of() {
@@ -38,20 +38,21 @@ MCP="$(need zelkor-mcp)"
 WORKER="$(need zelkor-sandbox-worker)"
 SEED="$(need zelkor-langfuse-seed)"
 
-python3 - "$OVERLAY" "$AEGRA" "$AEGRA_CLI" "$GUARDRAILS" "$MCP" "$WORKER" "$SEED" <<'PY'
+python3 - "$OVERLAY" "$IMAGE_TAG" "$AEGRA" "$AEGRA_CLI" "$GUARDRAILS" "$MCP" "$WORKER" "$SEED" <<'PY'
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-aegra, aegra_cli, guardrails, mcp, worker, seed = sys.argv[2:8]
+tag = sys.argv[2]
+aegra, aegra_cli, guardrails, mcp, worker, seed = sys.argv[3:9]
 text = path.read_text(encoding="utf-8")
 needles = [
-    ("aegra:\n  image:\n    tag: \"1.0.0\"\n    digest: \"", aegra),
-    ("  cli:\n    image:\n      tag: \"1.0.0\"\n      digest: \"", aegra_cli),
-    ("guardrails:\n  nemo:\n    image:\n      tag: \"1.0.0\"\n      digest: \"", guardrails),
-    ("mcp:\n  image:\n    tag: \"1.0.0\"\n    digest: \"", mcp),
-    ("    workerImage:\n      tag: \"1.0.0\"\n      digest: \"", worker),
-    ("  surfaces:\n    image:\n      tag: \"1.0.0\"\n      digest: \"", seed),
+    (f"aegra:\n  image:\n    tag: \"{tag}\"\n    digest: \"", aegra),
+    (f"  cli:\n    image:\n      tag: \"{tag}\"\n      digest: \"", aegra_cli),
+    (f"guardrails:\n  nemo:\n    image:\n      tag: \"{tag}\"\n      digest: \"", guardrails),
+    (f"mcp:\n  image:\n    tag: \"{tag}\"\n    digest: \"", mcp),
+    (f"    workerImage:\n      tag: \"{tag}\"\n      digest: \"", worker),
+    (f"  surfaces:\n    image:\n      tag: \"{tag}\"\n      digest: \"", seed),
 ]
 out = text
 for prefix, digest in needles:

@@ -1,0 +1,21 @@
+---
+description: CE git tag, Helm chart, and first-party image tags are one X.Y.Z; default PATCH after v1.0.0-ce; do not release on :dev
+alwaysApply: true
+---
+
+# CE versioning
+
+Living spec (multi-root): `internal/plan/requirements_ce_versioning.md`. Third-party pins stay in `component-versions.mdc`.
+
+## Contract
+
+- One triple `X.Y.Z` = git tag `vX.Y.Z-ce` = `Chart.yaml` version/appVersion = first-party GHCR `tag` (platform, agent, in-scope examples, Dockerfile `FROM`/`ARG` Zelkor bases).
+- After `v1.0.0-ce`, **default PATCH**. MINOR only for a new customer-facing Helm/API contract. MAJOR only if the user asks.
+- Increment from the last published `vX.Y.Z-ce` (today `v1.1.1-ce` once tagged). Do not retag `v1.1.0-ce`. Do not overwrite a published semver image tag.
+- Kind `:dev` is overlay-only. Rebuild + Path B digest pin is not a release.
+- Bump pins in the same change as the product. Build/push `IMAGE_TAG=X.Y.Z`. Tag git **after** merge, not before images exist.
+
+```yaml
+# BAD — tag v1.1.0-ce, leave chart/images at 1.0.0, push :dev
+# GOOD — choose 1.1.1, set Chart.yaml + image.tag to 1.1.1, push :1.1.1, then tag v1.1.1-ce
+```
