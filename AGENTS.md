@@ -104,7 +104,7 @@ Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
    - [ ] Phase requirements checked when the change maps to a roadmap phase
    - [ ] Tests added/updated for behavior changes; tests did not shape chart defaults (see `tests-do-not-shape-platform`)
    - [ ] Platform logging: new/changed processes honor `ZELKOR_LOG_LEVEL`; no secrets or probe INFO; DEBUG not in chart defaults (see `platform-logging`)
-   - [ ] CI green (adversarial eval when `gateway/`, `agents/`, or `guardrails/` changed)
+   - [ ] CI green (GitHub Actions evals are parked; skipped `ai-red-team-eval` is not a merge gate)
    - [ ] Test-server validation via `internal/dev/` after merge
 3. Squash merge after CI passes and review
 4. Keep PRs focused — one feature or fix per PR
