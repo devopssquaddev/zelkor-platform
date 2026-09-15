@@ -87,6 +87,44 @@ app.kubernetes.io/component: aegra
 {{- $c.format | default "json" | lower -}}
 {{- end }}
 
+{{- define "zelkor-agent.platformReleaseName" -}}
+{{- ((.Values.platform).releaseName | default "") | toString -}}
+{{- end }}
+
+{{- define "zelkor-agent.openaiBaseUrl" -}}
+{{- $explicit := ((.Values.platform).openaiBaseUrl | default "") | toString -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else if (include "zelkor-agent.platformReleaseName" .) -}}
+{{- printf "http://%s-ai-gateway:80/v1" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.mcpUrl" -}}
+{{- $explicit := ((.Values.platform).mcpUrl | default "") | toString -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else if (include "zelkor-agent.platformReleaseName" .) -}}
+{{- printf "http://%s-mcp-gateway:8080" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.sharedRouteGatewayName" -}}
+{{- $sr := .Values.sharedRoute | default dict -}}
+{{- $explicit := ($sr.gatewayName | default "") | toString -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else if (include "zelkor-agent.platformReleaseName" .) -}}
+{{- printf "%s-gateway" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-agent.logEnv" -}}
 - name: ZELKOR_LOG_LEVEL
   value: {{ include "zelkor-agent.logLevel" . | quote }}

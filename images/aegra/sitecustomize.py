@@ -45,6 +45,14 @@ except Exception:
     _log.exception("ChatOpenAI non-stream patch failed")
 
 try:
+    from wrap_identity import patch_pregel
+
+    patch_pregel()
+    _log.info("wrap identity ready")
+except Exception:
+    _log.exception("wrap identity (Pregel langgraph_auth_user) failed")
+
+try:
     from trace_wrap import attach_langfuse_project_baggage, patch_http_clients, patch_otel_setup
 
     attach_langfuse_project_baggage()

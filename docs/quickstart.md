@@ -98,6 +98,8 @@ zelkor logs --no-follow --tail 50
 zelkor undeploy
 ```
 
+`zelkor deploy` copies the platform Postgres and Valkey URLs. Do not provision a new database for the agent. Isolation between agents is `redis.prefix` on the shared Valkey. Details: [agent-deploy.md](agent-deploy.md#persistence-do-not-provision-a-database).
+
 ## Uninstalling
 
 On an existing (non-kind) cluster use `./scripts/uninstall.sh` — see [Existing Cluster Deployment](helm-install.md). To remove a local kind cluster and all data:

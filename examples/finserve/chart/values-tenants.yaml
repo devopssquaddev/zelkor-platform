@@ -1,0 +1,22 @@
+# Customer-agent blueprint: HS256 JWT, no unsigned identity.
+# Set jwtSecret to the SAME value as the platform chart auth.jwtSecret
+# (values-platform-overlay-tenants.yaml). Kind/dev tokens: values-local.yaml only.
+
+_auth: &auth
+  jwtSecret: ""
+  devTokens:
+    enabled: false
+    prefix: ""
+  trustTenantHeader: false
+
+desk:
+  auth:
+    <<: *auth
+
+quant:
+  auth:
+    <<: *auth
+
+coder:
+  auth:
+    <<: *auth

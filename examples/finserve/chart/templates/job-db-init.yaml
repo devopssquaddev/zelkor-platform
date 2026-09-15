@@ -27,7 +27,7 @@ spec:
               set -euo pipefail
               apk add --no-cache postgresql-client curl netcat-openbsd >/dev/null
               export PGPASSWORD="{{ .Values.platform.postgresPassword }}"
-              PGHOST="{{ .Values.platform.postgresHost }}"
+              PGHOST="{{ include "finserve.postgresHost" . }}"
               PGPORT="{{ .Values.platform.postgresPort }}"
               PGUSER="{{ .Values.platform.postgresUser }}"
               PGDATABASE="{{ .Values.platform.postgresDatabase }}"
@@ -78,7 +78,7 @@ spec:
               echo "Database seeded successfully."
 
               echo "Seeding Qdrant vector collection 'finserve_policies'..."
-              QDRANT_HOST="{{ .Values.platform.qdrantHost | default "zelkor-platform-qdrant" }}"
+              QDRANT_HOST="{{ include "finserve.qdrantHost" . }}"
               QDRANT_PORT="{{ .Values.platform.qdrantPort | default 6333 }}"
               QDRANT_BASE="http://${QDRANT_HOST}:${QDRANT_PORT}"
 

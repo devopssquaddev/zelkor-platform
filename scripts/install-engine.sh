@@ -28,6 +28,7 @@ KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-}"
 FINSERVE_CHART_PATH="${FINSERVE_CHART_PATH:-examples/finserve/chart}"
 FINSERVE_VALUES_FILE="${FINSERVE_VALUES_FILE:-${FINSERVE_CHART_PATH}/values-local.yaml}"
 FINSERVE_PLATFORM_OVERLAY="${FINSERVE_PLATFORM_OVERLAY:-${FINSERVE_CHART_PATH}/values-platform-overlay.yaml}"
+FINSERVE_PLATFORM_OVERLAY_LOCAL="${FINSERVE_PLATFORM_OVERLAY_LOCAL:-${FINSERVE_CHART_PATH}/values-platform-overlay-local.yaml}"
 BUILD_IMAGES="${BUILD_IMAGES:-false}"
 KIND_LOAD_IMAGES="${KIND_LOAD_IMAGES:-false}"
 PREFETCH_IMAGES="${PREFETCH_IMAGES:-true}"
@@ -775,7 +776,11 @@ fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
   HELM_EXTRA_ARGS+=(-f "$FINSERVE_PLATFORM_OVERLAY")
-  log "Platform overlay: $FINSERVE_PLATFORM_OVERLAY (MCP/Langfuse/NeMo; workers via FinServe sharedRoute)"
+  log "Platform overlay: $FINSERVE_PLATFORM_OVERLAY (demo-domain MCP/NeMo; workers via FinServe sharedRoute)"
+fi
+if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY_LOCAL" ]]; then
+  HELM_EXTRA_ARGS+=(-f "$FINSERVE_PLATFORM_OVERLAY_LOCAL")
+  log "Platform overlay (kind): $FINSERVE_PLATFORM_OVERLAY_LOCAL (MCP DSN)"
 fi
 
 peek_internal_gateway_svc() {

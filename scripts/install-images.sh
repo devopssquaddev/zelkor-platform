@@ -29,6 +29,7 @@ KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-}"
 BOOTSTRAP_FILE="${BOOTSTRAP_FILE:-images/install/bootstrap-images.txt}"
 FINSERVE_CHART="${FINSERVE_CHART:-examples/finserve/chart}"
 FINSERVE_OVERLAY="${FINSERVE_OVERLAY:-examples/finserve/chart/values-platform-overlay.yaml}"
+FINSERVE_OVERLAY_LOCAL="${FINSERVE_OVERLAY_LOCAL:-examples/finserve/chart/values-platform-overlay-local.yaml}"
 
 MODE=list
 for arg in "$@"; do
@@ -104,6 +105,9 @@ chart_refs() {
   local platform_args=(-f "$VALUES_FILE")
   if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_OVERLAY" ]]; then
     platform_args+=(-f "$FINSERVE_OVERLAY")
+  fi
+  if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_OVERLAY_LOCAL" ]]; then
+    platform_args+=(-f "$FINSERVE_OVERLAY_LOCAL")
   fi
   local line
   while IFS= read -r line; do

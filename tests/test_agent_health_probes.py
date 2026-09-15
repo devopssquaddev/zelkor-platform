@@ -30,10 +30,14 @@ AGENT_SETS = [
 ]
 
 FINSERVE_PLATFORM_SETS = [
+    "platform.releaseName=zelkor-platform",
+    "desk.platform.releaseName=zelkor-platform",
     "desk.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "desk.platform.valkeyUrl=redis://vk:6379/0",
+    "quant.platform.releaseName=zelkor-platform",
     "quant.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "quant.platform.valkeyUrl=redis://vk:6379/0",
+    "coder.platform.releaseName=zelkor-platform",
     "coder.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "coder.platform.valkeyUrl=redis://vk:6379/0",
 ]
@@ -114,7 +118,7 @@ def test_zelkor_agent_null_startup_omits_startup_only():
 @pytest.fixture(scope="module")
 def finserve_rendered() -> str:
     build = subprocess.run(
-        ["helm", "dependency", "build", str(FINSERVE_CHART)],
+        ["helm", "dependency", "update", str(FINSERVE_CHART)],
         check=False,
         capture_output=True,
         text=True,

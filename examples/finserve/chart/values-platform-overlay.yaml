@@ -1,9 +1,8 @@
 # Overlay applied to the platform chart when installing the FinServe example.
-# Not used for production / INSTALL_EXAMPLES=false.
+# Demo-domain knobs only — no hosts, passwords, or kind Service DNS.
+# Kind MCP DSN: values-platform-overlay-local.yaml (install.sh only).
 # Graph routing is self-register (zelkor-agent sharedRoute), not aegra.workers.
 mcp:
-  postgresMCP:
-    databaseUrl: "postgresql://finserve_mcp:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve"
   qdrantMCP:
     collection: "finserve_policies"
 

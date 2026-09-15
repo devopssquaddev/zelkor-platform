@@ -1,0 +1,5 @@
+# Kind / ./install.sh only. Do not apply on customer or Path B clusters.
+# Sets platform MCP Postgres DSN to the FinServe demo database.
+mcp:
+  postgresMCP:
+    databaseUrl: "postgresql://finserve_mcp:zelkor-dev-password@zelkor-platform-postgresql:5432/finserve"

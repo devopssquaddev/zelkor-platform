@@ -79,13 +79,13 @@ spec:
               value: {{ .Values.aegraConfig | quote }}
             {{- end }}
             - name: OPENAI_BASE_URL
-              value: {{ .Values.platform.openaiBaseUrl | quote }}
+              value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
             - name: OPENAI_API_KEY
               value: {{ .Values.platform.consumerKey | quote }}
             - name: AI_GATEWAY_URL
-              value: {{ .Values.platform.openaiBaseUrl | quote }}
+              value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
             - name: MCP_URL
-              value: {{ .Values.platform.mcpUrl | quote }}
+              value: {{ include "zelkor-agent.mcpUrl" . | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ .Values.platform.mcpInject | quote }}
             {{- if .Values.platform.mcpInjectToolPrefixes }}

@@ -1,6 +1,7 @@
 # Zelkor Community Edition — production chart defaults.
 # Local kind: ./install.sh applies profiles/values-local.yaml (outside this chart).
-# Demo overlays: examples/<name>/chart/values-platform-overlay.yaml when INSTALL_EXAMPLES=true.
+# Demo overlays: examples/<name>/chart/values-platform-overlay.yaml (domain knobs)
+# plus values-platform-overlay-local.yaml (kind MCP DSN) when INSTALL_EXAMPLES=true.
 #
 # This file ships no passwords, API keys, localhost hosts, or Docker Desktop endpoints.
 # Set secrets and hostnames in a customer overlay or existing Secret.

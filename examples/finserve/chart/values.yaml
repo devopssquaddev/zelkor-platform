@@ -1,5 +1,6 @@
-# FinServe Demo Helm Values
-# Three ClusterIP workers (desk = advisor+research; quant = projections; coder = Deep Agent).
+# FinServe demo — target-agnostic defaults.
+# Set platform.releaseName (and the same on desk/quant/coder) or explicit URLs
+# to match YOUR Zelkor platform install. Kind/test literals: values-local.yaml only.
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
@@ -7,8 +8,24 @@ global:
 
 gateway:
   enabled: false
-  gatewayName: "zelkor-platform-gateway"
-  namespace: "default"
+  gatewayName: ""
+  namespace: ""
+  host: ""
+
+# Shared worker connection. YAML anchors keep desk/quant/coder in sync.
+_workerPlatform: &workerPlatform
+  releaseName: ""
+  openaiBaseUrl: ""
+  consumerKey: ""
+  mcpUrl: ""
+  databaseUrl: ""
+  valkeyUrl: ""
+  mcpInject: true
+  defaultLlmModel: ""
+
+_sharedRoute: &sharedRoute
+  gatewayName: ""
+  gatewayNamespace: ""
   host: ""
 
 desk:
@@ -21,9 +38,7 @@ desk:
   autoscaling:
     enabled: false
   sharedRoute:
-    gatewayName: zelkor-platform-gateway
-    gatewayNamespace: default
-    host: ""
+    <<: *sharedRoute
   redis:
     prefix: aegra:finserve-desk
   image:
@@ -31,13 +46,7 @@ desk:
     tag: "1.0.0"
     digest: ""
   platform:
-    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
-    consumerKey: ""
-    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
-    databaseUrl: ""
-    valkeyUrl: ""
-    mcpInject: true
-    defaultLlmModel: "gpt-oss:20b"
+    <<: *workerPlatform
   extraEnv:
     - name: QDRANT_COLLECTION
       value: "finserve_policies"
@@ -51,9 +60,7 @@ quant:
   autoscaling:
     enabled: false
   sharedRoute:
-    gatewayName: zelkor-platform-gateway
-    gatewayNamespace: default
-    host: ""
+    <<: *sharedRoute
   redis:
     prefix: aegra:finserve-quant
   image:
@@ -61,13 +68,7 @@ quant:
     tag: "1.0.0"
     digest: ""
   platform:
-    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
-    consumerKey: ""
-    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
-    databaseUrl: ""
-    valkeyUrl: ""
-    mcpInject: true
-    defaultLlmModel: "gpt-oss:20b"
+    <<: *workerPlatform
   extraEnv:
     - name: QDRANT_COLLECTION
       value: "finserve_policies"
@@ -80,9 +81,7 @@ coder:
   autoscaling:
     enabled: false
   sharedRoute:
-    gatewayName: zelkor-platform-gateway
-    gatewayNamespace: default
-    host: ""
+    <<: *sharedRoute
   redis:
     prefix: aegra:finserve-coder
   image:
@@ -90,27 +89,23 @@ coder:
     tag: "1.0.0"
     digest: ""
   platform:
-    openaiBaseUrl: "http://zelkor-platform-ai-gateway:80/v1"
-    consumerKey: ""
-    mcpUrl: "http://zelkor-platform-mcp-gateway:8080"
-    databaseUrl: ""
-    valkeyUrl: ""
-    mcpInject: true
-    defaultLlmModel: "gpt-oss:20b"
+    <<: *workerPlatform
 
 platform:
-  # Set when the platform Postgres is CloudNativePG (operator-cr); empty on kind in-cluster-basic.
+  # Set to the Zelkor platform Helm release name to construct Service DNS.
+  releaseName: ""
+  # Set when the platform Postgres is CloudNativePG (operator-cr); empty on in-cluster-basic.
   cnpgClusterName: ""
-  postgresHost: "zelkor-platform-postgresql"
+  postgresHost: ""
   postgresPort: 5432
-  postgresUser: "zelkor"
+  postgresUser: ""
   postgresPassword: ""
   postgresDatabase: "finserve"
-  qdrantHost: "zelkor-platform-qdrant"
+  qdrantHost: ""
   qdrantPort: 6333
-  qdrantUrl: "http://zelkor-platform-qdrant:6333"
+  qdrantUrl: ""
   qdrantCollection: "finserve_policies"
-  langfuseHost: "http://zelkor-platform-langfuse:3000"
+  langfuseHost: ""
   langfusePublicKey: ""
   langfuseSecretKey: ""
 

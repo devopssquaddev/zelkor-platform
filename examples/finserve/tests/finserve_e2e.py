@@ -45,11 +45,23 @@ PROMPTS_BY_GRAPH = {
 }
 
 
+def _bearer(tenant_id: str) -> str:
+    secret = (os.environ.get("FINSERVE_JWT_SECRET") or os.environ.get("AUTH_JWT_SECRET") or "").strip()
+    if secret:
+        import jwt
+
+        token = jwt.encode({"tenant_id": tenant_id, "sub": tenant_id}, secret, algorithm="HS256")
+        if isinstance(token, bytes):
+            token = token.decode("ascii")
+        return f"Bearer {token}"
+    return f"Bearer dev:{tenant_id}"
+
+
 def _headers(tenant_id: str, graph_id: str) -> Dict[str, str]:
     return {
         "Host": AEGRA_HOST_HEADER,
         "Content-Type": "application/json",
-        "Authorization": f"Bearer dev:{tenant_id}",
+        "Authorization": _bearer(tenant_id),
         "X-Tenant-ID": tenant_id,
         "X-Graph-ID": graph_id,
     }
