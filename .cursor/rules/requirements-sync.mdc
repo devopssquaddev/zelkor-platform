@@ -50,6 +50,7 @@ Update governing requirement and specification documents whenever:
 - **Native Postgres / Qdrant MCP implementation:** `internal/plan/architecture_native_mcp_oss_wrap.md` (thin Postgres; Qdrant pip-wrap)
 - **North–south exposure (what to publish on ingress):** `internal/plan/architecture_ingress_exposure.md`
 - **Component pins & compatibility matrix:** `internal/plan/component_compatibility_matrix.md`
+- **CE versioning (git tag + chart + first-party images):** `internal/plan/requirements_ce_versioning.md` (always-apply rule: `.cursor/rules/ce-versioning.mdc`)
 - **Multi-Tier Roadmap:** `internal/plan/roadmap.md`
 - **FinServe Demo & Workload Scenarios:** `internal/requirements/demo/finserve_ai_demo.md`, `internal/requirements/dev/examples_and_demos.md`
 - **Developer & CI Gates:** `internal/requirements/dev/agent_code_review.md`, `internal/requirements/dev/agent_sdlc_and_tools.md`

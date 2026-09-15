@@ -64,6 +64,7 @@ Follow the Conventional Commits format matching repository history:
 ## 5. Tagging Strategy for Important Milestones
 
 ### When to Tag
+- **CE releases:** Annotated `vX.Y.Z-ce` only after chart + first-party image tags match `X.Y.Z`. Digit rules and lockstep: `ce-versioning.mdc` (multi-root spec `internal/plan/requirements_ce_versioning.md`). Default PATCH after `v1.0.0-ce`.
 - **Phase / Roadmap Releases:** Completing roadmap deliverables (e.g., `v0.1.0-alpha`, `v0.2.0-alpha`, `v0.3.0`, `v1.0.0-ce`).
 - **Major Architectural Cut-Overs:** Completing cross-cutting infrastructure migrations (`milestone/<scope>-<desc>`).
 - **Verified Stable Checkpoints:** Following successful full test-server validation runs (`checkpoint/<phase>-<desc>`).

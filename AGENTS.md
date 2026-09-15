@@ -93,7 +93,7 @@ Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
 
 **Phases** (1–4 in `internal/plan/`) are planning milestones and semver tags — not git branches.
 
-**CE release tags on `main`:** `v0.1.0-alpha` (local kind install), `v0.2.0-alpha` (production chart), `v0.3.0` (tenant isolation + FinServe), `v1.0.0-ce` (Phase 1 complete).
+**CE release tags on `main`:** annotated `vX.Y.Z-ce`. Git tag, Helm chart, and first-party image tags are the same triple (multi-root: `internal/plan/requirements_ce_versioning.md`; rule: `.cursor/rules/ce-versioning.mdc`). After `v1.0.0-ce`, default PATCH. Do not tag while images stay on the previous triple. Historical: `v0.1.0-alpha`, `v0.2.0-alpha`, `v0.3.0`, `v1.0.0-ce`, `v1.0.1-ce`, `v1.1.0-ce`, `v1.1.1-ce`.
 
 ## Pull Requests
 
@@ -103,8 +103,9 @@ Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
    - [ ] Security Review if Helm, Terraform, auth, or security paths changed
    - [ ] Phase requirements checked when the change maps to a roadmap phase
    - [ ] Tests added/updated for behavior changes; tests did not shape chart defaults (see `tests-do-not-shape-platform`)
+   - [ ] CE tag/chart/first-party image pins lockstep when cutting a release (see `ce-versioning`)
    - [ ] Platform logging: new/changed processes honor `ZELKOR_LOG_LEVEL`; no secrets or probe INFO; DEBUG not in chart defaults (see `platform-logging`)
-   - [ ] CI green (adversarial eval when `gateway/`, `agents/`, or `guardrails/` changed)
+   - [ ] CI green (GitHub Actions evals are parked; skipped `ai-red-team-eval` is not a merge gate)
    - [ ] Test-server validation via `internal/dev/` after merge
 3. Squash merge after CI passes and review
 4. Keep PRs focused — one feature or fix per PR
