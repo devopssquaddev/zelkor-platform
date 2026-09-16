@@ -37,7 +37,7 @@ flowchart LR
 | **Existing cluster** eval | `./scripts/install-quickstart.sh` | `values-quickstart.yaml` + gateway overlay | `values-local.yaml` |
 | **Existing cluster** production HA | `./scripts/install-production.sh` | `values-production.yaml` + gateway overlay | `./install.sh`, `values-local.yaml` |
 
-**Prerequisites:** Kubernetes v1.28+, `kubectl`, Helm v3.10+. At least one LLM env var (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_API_KEY`, `OLLAMA_LOCAL_HOST`, `VLLM_BACKEND_URL`). Production requires real DNS: `--hosts-agents` and `--hosts-langfuse` (no `*.localhost` / `*.zelkor.local`).
+**Prerequisites:** Kubernetes v1.28+, `kubectl`, Helm v3.10+. At least one LLM env var (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_API_KEY`, `OLLAMA_LOCAL_HOST`, `VLLM_BACKEND_URL`, `AZURE_OPENAI_API_KEY`+`AZURE_OPENAI_ENDPOINT`, `AWS_ACCESS_KEY_ID`+`AWS_SECRET_ACCESS_KEY`, `VERTEX_PROJECT`+`VERTEX_REGION`, `COHERE_API_KEY`). Production requires real DNS: `--hosts-agents` and `--hosts-langfuse` (no `*.localhost` / `*.zelkor.local`).
 
 ---
 

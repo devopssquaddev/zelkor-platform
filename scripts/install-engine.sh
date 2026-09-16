@@ -395,18 +395,15 @@ register_llm_provider() {
 }
 
 resolve_llm_provider_prerequisites() {
-  if [[ -n "${AZURE_OPENAI_API_KEY:-}" || -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
-    die "Azure OpenAI env vars are not supported in the CE gateway chart yet. Use OPENAI_API_KEY, OLLAMA_API_KEY, or OLLAMA_LOCAL_HOST."
-  fi
-  if [[ -n "${AWS_REGION:-}" || -n "${AWS_ACCESS_KEY_ID:-}" || -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
-    die "AWS Bedrock env vars are not supported in the CE gateway chart yet. Use OPENAI_API_KEY, OLLAMA_API_KEY, or OLLAMA_LOCAL_HOST."
-  fi
-
   if [[ -n "${OPENAI_API_KEY:-}" ]]; then register_llm_provider "OpenAI"; fi
   if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then register_llm_provider "Anthropic"; fi
   if [[ -n "${GEMINI_API_KEY:-}" ]]; then register_llm_provider "Gemini"; fi
   if [[ -n "${OLLAMA_API_KEY:-}" ]]; then register_llm_provider "Ollama Cloud"; fi
   if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then register_llm_provider "vLLM"; fi
+  if [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then register_llm_provider "Azure OpenAI"; fi
+  if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then register_llm_provider "AWS Bedrock"; fi
+  if [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then register_llm_provider "Vertex AI"; fi
+  if [[ -n "${COHERE_API_KEY:-}" ]]; then register_llm_provider "Cohere"; fi
 
   if [[ -n "${OLLAMA_LOCAL_HOST:-}" ]]; then
     SELECTED_OLLAMA_LOCAL_HOST="$OLLAMA_LOCAL_HOST"
@@ -429,10 +426,14 @@ resolve_llm_provider_prerequisites() {
   Ollama Local (host Ollama — run `ollama serve` first):
     OLLAMA_LOCAL_HOST=http://host.docker.internal:11434 ./install.sh
 
-  Anthropic / Gemini / vLLM:
+  Anthropic / Gemini / vLLM / Azure / Bedrock / Vertex / Cohere:
     ANTHROPIC_API_KEY=... ./install.sh
     GEMINI_API_KEY=... ./install.sh
     VLLM_BACKEND_URL=http://host:8000/v1 ./install.sh
+    AZURE_OPENAI_API_KEY=... AZURE_OPENAI_ENDPOINT=https://res.openai.azure.com ./install.sh
+    AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 ./install.sh
+    VERTEX_PROJECT=... VERTEX_REGION=us-central1 ./install.sh
+    COHERE_API_KEY=... ./install.sh
 
 Clients use Bearer dev-key; upstream keys stay in the gateway secret (two-tier auth).
 EOF
@@ -452,6 +453,14 @@ EOF
       DEFAULT_LLM_MODEL="gemini/gemini-2.0-flash"
     elif [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
       DEFAULT_LLM_MODEL="vllm/default"
+    elif [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+      DEFAULT_LLM_MODEL="azure/gpt-4o-mini"
+    elif [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+      DEFAULT_LLM_MODEL="bedrock/amazon.titan-text-lite-v1"
+    elif [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
+      DEFAULT_LLM_MODEL="vertex/gemini-2.0-flash"
+    elif [[ -n "${COHERE_API_KEY:-}" ]]; then
+      DEFAULT_LLM_MODEL="cohere/command-r"
     fi
   fi
   export DEFAULT_LLM_MODEL
@@ -767,6 +776,28 @@ elif [[ -n "$SELECTED_OLLAMA_LOCAL_HOST" ]]; then
 fi
 if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
+fi
+if [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
+fi
+if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.region=${AWS_REGION:-us-east-1}")
+fi
+if [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vertex.project=${VERTEX_PROJECT}")
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vertex.region=${VERTEX_REGION}")
+  if [[ -n "${VERTEX_CREDENTIALS_JSON:-}" ]]; then
+    HELM_EXTRA_ARGS+=(--set-string "aiGateway.providers.vertex.credentialsJson=${VERTEX_CREDENTIALS_JSON}")
+  fi
+  if [[ "${VERTEX_ANTHROPIC:-}" == "true" ]]; then
+    HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vertex.anthropic=true")
+  fi
+fi
+if [[ -n "${COHERE_API_KEY:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.cohere.apiKey=${COHERE_API_KEY}")
 fi
 if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")

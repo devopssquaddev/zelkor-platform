@@ -35,6 +35,10 @@ OPENAI_API_KEY="sk-..." ./install.sh
 | **Ollama Cloud** | `OLLAMA_API_KEY="..." ./install.sh` | `gpt-oss:20b` |
 | **Ollama Local** | `OLLAMA_LOCAL_HOST="http://host.docker.internal:11434" ./install.sh` | `ollama/llama3.2` |
 | **vLLM** | `VLLM_BACKEND_URL="http://host:8000/v1" ./install.sh` | `vllm/default` |
+| **Azure OpenAI** | `AZURE_OPENAI_API_KEY="..." AZURE_OPENAI_ENDPOINT="https://res.openai.azure.com" ./install.sh` | `azure/gpt-4o-mini` |
+| **AWS Bedrock** | `AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="us-east-1" ./install.sh` | `bedrock/amazon.titan-text-lite-v1` |
+| **Vertex AI** | `VERTEX_PROJECT="..." VERTEX_REGION="us-central1" ./install.sh` | `vertex/gemini-2.0-flash` |
+| **Cohere** | `COHERE_API_KEY="..." ./install.sh` | `cohere/command-r` |
 
 *Note: The script will first download necessary container images before starting the installation timer.*
 

@@ -1,7 +1,8 @@
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
-{{- $hasProviders := or .Values.aiGateway.providers.openai.apiKey .Values.aiGateway.providers.anthropic.apiKey .Values.aiGateway.providers.gemini.apiKey .Values.aiGateway.providers.vllm.backendUrl .Values.aiGateway.providers.ollamaCloud.apiKey .Values.aiGateway.providers.ollamaLocal.host -}}
+{{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
 {{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
 {{- $legacyNemoPrefix := and .Values.guardrails.nemo.enabled .Values.guardrails.nemo.aiGatewayRoute.enabled -}}
+{{- $matches := include "zelkor-platform.aiGatewayProviderMatches" . | fromJsonArray -}}
 {{- if and .Values.aiGateway.enabled (gt (len $hostnames) 0) $hasProviders }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIGatewayRoute
@@ -21,8 +22,7 @@ spec:
   rules:
     {{- if $intercept }}
     {{- /* NeMo upstream: bypass header routes to providers (loop prevention). */}}
-    {{- /* gpt-[0-9] not gpt-.* — otherwise gpt-oss:* matches OpenAI when both providers are set. */}}
-    {{- if .Values.aiGateway.providers.openai.apiKey }}
+    {{- range $matches }}
     - matches:
         - headers:
             - type: Exact
@@ -30,69 +30,9 @@ spec:
               value: "1"
             - type: RegularExpression
               name: x-ai-eg-model
-              value: "^(openai/.*|gpt-[0-9].*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
+              value: {{ .match | quote }}
       backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
-    {{- end }}
-    {{- if .Values.aiGateway.providers.anthropic.apiKey }}
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-zelkor-guardrails-bypass
-              value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(anthropic/.*|claude-.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
-    {{- end }}
-    {{- if .Values.aiGateway.providers.gemini.apiKey }}
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-zelkor-guardrails-bypass
-              value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(gemini/.*|gemini-.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
-    {{- end }}
-    {{- if .Values.aiGateway.providers.vllm.backendUrl }}
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-zelkor-guardrails-bypass
-              value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(vllm/.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
-    {{- end }}
-    {{- if .Values.aiGateway.providers.ollamaCloud.apiKey }}
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-zelkor-guardrails-bypass
-              value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(gpt-oss.*|deepseek-r1.*|qwen3.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
-    {{- end }}
-    {{- if .Values.aiGateway.providers.ollamaLocal.host }}
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-zelkor-guardrails-bypass
-              value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(ollama/.*|llama.*|deepseek.*|qwen.*|mistral.*|phi.*|codellama.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+        - name: {{ .backend }}
     {{- end }}
     {{- /* Default intercept: all other /v1 chat traffic -> NeMo (fail-closed). */}}
     - backendRefs:
@@ -107,75 +47,18 @@ spec:
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
     {{- end }}
-    {{- if .Values.aiGateway.providers.openai.apiKey }}
+    {{- range $matches }}
     - matches:
         - headers:
             - type: RegularExpression
               name: x-ai-eg-model
-              value: "^(openai/.*|gpt-[0-9].*|o1.*|o3.*|text-embedding.*|chatgpt-.*)"
+              value: {{ .match | quote }}
       backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
-    {{- end }}
-    {{- if .Values.aiGateway.providers.anthropic.apiKey }}
-    - matches:
-        - headers:
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(anthropic/.*|claude-.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
-    {{- end }}
-    {{- if .Values.aiGateway.providers.gemini.apiKey }}
-    - matches:
-        - headers:
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(gemini/.*|gemini-.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
-    {{- end }}
-    {{- if .Values.aiGateway.providers.vllm.backendUrl }}
-    - matches:
-        - headers:
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(vllm/.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
-    {{- end }}
-    {{- if .Values.aiGateway.providers.ollamaCloud.apiKey }}
-    - matches:
-        - headers:
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(gpt-oss.*|deepseek-r1.*|qwen3.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
-    {{- end }}
-    {{- if .Values.aiGateway.providers.ollamaLocal.host }}
-    - matches:
-        - headers:
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: "^(ollama/.*|llama.*|deepseek.*|qwen.*|mistral.*|phi.*|codellama.*)"
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
+        - name: {{ .backend }}
     {{- end }}
     {{- if $hasProviders }}
     - backendRefs:
-        {{- if .Values.aiGateway.providers.openai.apiKey }}
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-openai
-        {{- else if .Values.aiGateway.providers.ollamaCloud.apiKey }}
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
-        {{- else if .Values.aiGateway.providers.ollamaLocal.host }}
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
-        {{- else if .Values.aiGateway.providers.anthropic.apiKey }}
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
-        {{- else if .Values.aiGateway.providers.gemini.apiKey }}
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
-        {{- else if .Values.aiGateway.providers.vllm.backendUrl }}
-        - name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
-        {{- end }}
+        - name: {{ include "zelkor-platform.aiGatewayDefaultBackend" . }}
     {{- end }}
     {{- end }}
 {{- end }}

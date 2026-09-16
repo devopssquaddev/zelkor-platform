@@ -119,6 +119,58 @@ def test_quickstart_requires_llm():
     assert "LLM provider" in proc.stderr or "llm provider" in proc.stderr.lower()
 
 
+def test_quickstart_dry_run_azure_not_fatal():
+    proc = _run(
+        QS,
+        "--dry-run",
+        "--namespace",
+        "zelkor-play",
+        env={
+            "OPENAI_API_KEY": "",
+            "AZURE_OPENAI_API_KEY": "az-test",
+            "AZURE_OPENAI_ENDPOINT": "https://res.openai.azure.com",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "aiGateway.providers.azure.apiKey=az-test" in proc.stdout
+    assert "aiGateway.providers.azure.endpoint=https://res.openai.azure.com" in proc.stdout
+
+
+def test_quickstart_dry_run_bedrock_not_fatal():
+    proc = _run(
+        QS,
+        "--dry-run",
+        "--namespace",
+        "zelkor-play",
+        env={
+            "OPENAI_API_KEY": "",
+            "AWS_ACCESS_KEY_ID": "AKIATEST",
+            "AWS_SECRET_ACCESS_KEY": "secret",
+            "AWS_REGION": "eu-west-1",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "aiGateway.providers.bedrock.accessKeyId=AKIATEST" in proc.stdout
+    assert "aiGateway.providers.bedrock.region=eu-west-1" in proc.stdout
+
+
+def test_quickstart_dry_run_vertex_not_fatal():
+    proc = _run(
+        QS,
+        "--dry-run",
+        "--namespace",
+        "zelkor-play",
+        env={
+            "OPENAI_API_KEY": "",
+            "VERTEX_PROJECT": "my-proj",
+            "VERTEX_REGION": "us-central1",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "aiGateway.providers.vertex.project=my-proj" in proc.stdout
+    assert "aiGateway.providers.vertex.region=us-central1" in proc.stdout
+
+
 def test_quickstart_shared_requires_parent_ref():
     proc = _run(QS, "--dry-run", "--topology", "shared")
     assert proc.returncode != 0
