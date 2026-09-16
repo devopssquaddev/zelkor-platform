@@ -55,7 +55,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set langfuse.encryptionKey="$(openssl rand -hex 32)"
 ```
 
-Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud). Do not put the upstream provider key in `aiGateway.consumerKey`.
+Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `aiGateway.providers.openaiCompat`. Model ids are prefix-namespaced (`azure/*`, `vertex/*`, `bedrock/*`, `cohere/*`). Do not put the upstream provider key in `aiGateway.consumerKey`.
 
 ## Next Steps
 

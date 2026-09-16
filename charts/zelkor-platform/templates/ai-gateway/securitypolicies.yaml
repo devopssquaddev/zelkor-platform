@@ -83,4 +83,131 @@ spec:
       namespace: {{ .Release.Namespace }}
 ---
 {{- end }}
+{{- if eq (include "zelkor-platform.aiGatewayAzureEnabled" .) "true" }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-azure-apikey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-azure
+  type: AzureAPIKey
+  azureAPIKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" . }}-azure-api-key
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+{{- if eq (include "zelkor-platform.aiGatewayBedrockEnabled" .) "true" }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-bedrock-aws
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-bedrock
+    {{- if .Values.aiGateway.providers.bedrock.anthropic }}
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-bedrock-anthropic
+    {{- end }}
+  type: AWSCredentials
+  awsCredentials:
+    region: {{ .Values.aiGateway.providers.bedrock.region | default "us-east-1" | quote }}
+    credentialsFile:
+      secretRef:
+        name: {{ include "zelkor-platform.fullname" . }}-bedrock-credentials
+        namespace: {{ .Release.Namespace }}
+      profile: default
+---
+{{- end }}
+{{- if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" }}
+{{- $vertexSecret := .Values.aiGateway.providers.vertex.existingSecret | default (printf "%s-vertex-sa" (include "zelkor-platform.fullname" .)) }}
+{{- $vertexHasFile := or .Values.aiGateway.providers.vertex.existingSecret .Values.aiGateway.providers.vertex.credentialsJson }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-vertex-gcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-vertex
+    {{- if .Values.aiGateway.providers.vertex.anthropic }}
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-vertex-anthropic
+    {{- end }}
+  type: GCPCredentials
+  gcpCredentials:
+    projectName: {{ .Values.aiGateway.providers.vertex.project | quote }}
+    region: {{ .Values.aiGateway.providers.vertex.region | quote }}
+    {{- if $vertexHasFile }}
+    credentialsFile:
+      secretRef:
+        name: {{ $vertexSecret | quote }}
+        namespace: {{ .Release.Namespace }}
+    {{- end }}
+---
+{{- end }}
+{{- if eq (include "zelkor-platform.aiGatewayCohereEnabled" .) "true" }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-cohere-apikey
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" . }}-backend-cohere
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" . }}-cohere-api-key
+      namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+{{- range .Values.aiGateway.providers.openaiCompat | default list }}
+{{- if and .name .host .modelMatch .apiKey }}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: BackendSecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" $ }}-compat-{{ .name }}-apikey
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: aigateway.envoyproxy.io
+      kind: AIServiceBackend
+      name: {{ include "zelkor-platform.fullname" $ }}-backend-compat-{{ .name }}
+  type: APIKey
+  apiKey:
+    secretRef:
+      name: {{ include "zelkor-platform.fullname" $ }}-compat-{{ .name }}-api-key
+      namespace: {{ $.Release.Namespace }}
+---
+{{- end }}
+{{- end }}
 {{- end }}

@@ -239,18 +239,15 @@ cluster_install_resolve_llm() {
   LLM_PROVIDER_SUMMARY=""
   SELECTED_OLLAMA_LOCAL_HOST=""
 
-  if [[ -n "${AZURE_OPENAI_API_KEY:-}" || -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
-    cluster_install_die "Azure OpenAI env vars are not supported in the CE gateway chart yet. Use OPENAI_API_KEY, OLLAMA_API_KEY, or OLLAMA_LOCAL_HOST."
-  fi
-  if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
-    cluster_install_die "AWS Bedrock env vars are not supported in the CE gateway chart yet. Use OPENAI_API_KEY, OLLAMA_API_KEY, or OLLAMA_LOCAL_HOST."
-  fi
-
   if [[ -n "${OPENAI_API_KEY:-}" ]]; then cluster_install_register_llm "OpenAI"; fi
   if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then cluster_install_register_llm "Anthropic"; fi
   if [[ -n "${GEMINI_API_KEY:-}" ]]; then cluster_install_register_llm "Gemini"; fi
   if [[ -n "${OLLAMA_API_KEY:-}" ]]; then cluster_install_register_llm "Ollama Cloud"; fi
   if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then cluster_install_register_llm "vLLM"; fi
+  if [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then cluster_install_register_llm "Azure OpenAI"; fi
+  if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then cluster_install_register_llm "AWS Bedrock"; fi
+  if [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then cluster_install_register_llm "Vertex AI"; fi
+  if [[ -n "${COHERE_API_KEY:-}" ]]; then cluster_install_register_llm "Cohere"; fi
 
   if [[ -n "${OLLAMA_LOCAL_HOST:-}" ]]; then
     SELECTED_OLLAMA_LOCAL_HOST="$OLLAMA_LOCAL_HOST"
@@ -270,6 +267,10 @@ error: choose at least one LLM provider.
   OLLAMA_API_KEY=... ./scripts/install-quickstart.sh
   OLLAMA_LOCAL_HOST=http://host.docker.internal:11434 ./scripts/install-quickstart.sh
   VLLM_BACKEND_URL=http://host:8000/v1 ./scripts/install-quickstart.sh
+  AZURE_OPENAI_API_KEY=... AZURE_OPENAI_ENDPOINT=https://res.openai.azure.com ./scripts/install-quickstart.sh
+  AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... ./scripts/install-quickstart.sh
+  VERTEX_PROJECT=... VERTEX_REGION=us-central1 ./scripts/install-quickstart.sh
+  COHERE_API_KEY=... ./scripts/install-quickstart.sh
 EOF
     exit 1
   fi
@@ -287,6 +288,14 @@ EOF
       DEFAULT_LLM_MODEL="gemini/gemini-2.0-flash"
     elif [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
       DEFAULT_LLM_MODEL="vllm/default"
+    elif [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+      DEFAULT_LLM_MODEL="azure/gpt-4o-mini"
+    elif [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+      DEFAULT_LLM_MODEL="bedrock/amazon.titan-text-lite-v1"
+    elif [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
+      DEFAULT_LLM_MODEL="vertex/gemini-2.0-flash"
+    elif [[ -n "${COHERE_API_KEY:-}" ]]; then
+      DEFAULT_LLM_MODEL="cohere/command-r"
     fi
   fi
 }
@@ -309,6 +318,28 @@ cluster_install_append_llm_helm_sets() {
   fi
   if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
     CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
+  fi
+  if [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
+  fi
+  if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.bedrock.region=${AWS_REGION:-us-east-1}")
+  fi
+  if [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vertex.project=${VERTEX_PROJECT}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vertex.region=${VERTEX_REGION}")
+    if [[ -n "${VERTEX_CREDENTIALS_JSON:-}" ]]; then
+      CLUSTER_INSTALL_HELM_SETS+=(--set-string "aiGateway.providers.vertex.credentialsJson=${VERTEX_CREDENTIALS_JSON}")
+    fi
+    if [[ "${VERTEX_ANTHROPIC:-}" == "true" ]]; then
+      CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vertex.anthropic=true")
+    fi
+  fi
+  if [[ -n "${COHERE_API_KEY:-}" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.cohere.apiKey=${COHERE_API_KEY}")
   fi
   if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
     CLUSTER_INSTALL_HELM_SETS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")

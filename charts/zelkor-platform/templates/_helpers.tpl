@@ -871,3 +871,141 @@ false
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.aiGatewayAzureEnabled" -}}
+{{- $a := .Values.aiGateway.providers.azure | default dict -}}
+{{- if and $a.apiKey $a.endpoint -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayBedrockEnabled" -}}
+{{- $b := .Values.aiGateway.providers.bedrock | default dict -}}
+{{- if and $b.accessKeyId $b.secretAccessKey -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayVertexEnabled" -}}
+{{- $v := .Values.aiGateway.providers.vertex | default dict -}}
+{{- if and $v.project $v.region -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayCohereEnabled" -}}
+{{- $c := .Values.aiGateway.providers.cohere | default dict -}}
+{{- if $c.apiKey -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.azureHostname" -}}
+{{- $ep := (.Values.aiGateway.providers.azure.endpoint | default "") -}}
+{{- if not (contains "://" $ep) -}}
+{{- $ep = printf "https://%s" $ep -}}
+{{- end -}}
+{{- (urlParse $ep).hostname | required "aiGateway.providers.azure.endpoint must include a hostname" -}}
+{{- end }}
+
+{{- define "zelkor-platform.vertexAnthropicRegion" -}}
+{{- $v := .Values.aiGateway.providers.vertex | default dict -}}
+{{- $v.anthropicRegion | default $v.region -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayHasProviders" -}}
+{{- $p := .Values.aiGateway.providers | default dict -}}
+{{- $compat := $p.openaiCompat | default list -}}
+{{- $n := 0 -}}
+{{- if $p.openai.apiKey }}{{ $n = add $n 1 }}{{ end -}}
+{{- if $p.anthropic.apiKey }}{{ $n = add $n 1 }}{{ end -}}
+{{- if $p.gemini.apiKey }}{{ $n = add $n 1 }}{{ end -}}
+{{- if $p.vllm.backendUrl }}{{ $n = add $n 1 }}{{ end -}}
+{{- if $p.ollamaCloud.apiKey }}{{ $n = add $n 1 }}{{ end -}}
+{{- if $p.ollamaLocal.host }}{{ $n = add $n 1 }}{{ end -}}
+{{- if eq (include "zelkor-platform.aiGatewayAzureEnabled" .) "true" }}{{ $n = add $n 1 }}{{ end -}}
+{{- if eq (include "zelkor-platform.aiGatewayBedrockEnabled" .) "true" }}{{ $n = add $n 1 }}{{ end -}}
+{{- if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" }}{{ $n = add $n 1 }}{{ end -}}
+{{- if eq (include "zelkor-platform.aiGatewayCohereEnabled" .) "true" }}{{ $n = add $n 1 }}{{ end -}}
+{{- range $compat -}}
+{{- if and .name .host .modelMatch }}{{ $n = add $n 1 }}{{ end -}}
+{{- end -}}
+{{- if gt $n 0 -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{/*
+JSON array of backend+match pairs for AIGatewayRoute. Prefix-namespaced ids avoid gemini/claude collisions.
+*/}}
+{{- define "zelkor-platform.aiGatewayProviderMatches" -}}
+{{- $p := .Values.aiGateway.providers | default dict -}}
+{{- $full := include "zelkor-platform.fullname" . -}}
+{{- $rules := list -}}
+{{- if $p.openai.apiKey -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-openai" $full) "match" "^(openai/.*|gpt-[0-9].*|o1.*|o3.*|text-embedding.*|chatgpt-.*)") -}}
+{{- end -}}
+{{- if $p.anthropic.apiKey -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-anthropic" $full) "match" "^(anthropic/.*|claude-.*)") -}}
+{{- end -}}
+{{- if $p.gemini.apiKey -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-gemini" $full) "match" "^(gemini/.*|gemini-.*)") -}}
+{{- end -}}
+{{- if $p.vllm.backendUrl -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-vllm" $full) "match" "^(vllm/.*)") -}}
+{{- end -}}
+{{- if $p.ollamaCloud.apiKey -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-ollama-cloud" $full) "match" "^(gpt-oss.*|deepseek-r1.*|qwen3.*)") -}}
+{{- end -}}
+{{- if $p.ollamaLocal.host -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-ollama-local" $full) "match" "^(ollama/.*|llama.*|deepseek.*|qwen.*|mistral.*|phi.*|codellama.*)") -}}
+{{- end -}}
+{{- if eq (include "zelkor-platform.aiGatewayAzureEnabled" .) "true" -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-azure" $full) "match" "^(azure/.*)") -}}
+{{- end -}}
+{{- if eq (include "zelkor-platform.aiGatewayBedrockEnabled" .) "true" -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-bedrock" $full) "match" "^(bedrock/.*)") -}}
+{{- if $p.bedrock.anthropic -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-bedrock-anthropic" $full) "match" "^(bedrock-anthropic/.*)") -}}
+{{- end -}}
+{{- end -}}
+{{- if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex" $full) "match" "^(vertex/.*)") -}}
+{{- if $p.vertex.anthropic -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex-anthropic" $full) "match" "^(vertex-anthropic/.*)") -}}
+{{- end -}}
+{{- end -}}
+{{- if eq (include "zelkor-platform.aiGatewayCohereEnabled" .) "true" -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-cohere" $full) "match" "^(cohere/.*)") -}}
+{{- end -}}
+{{- range $p.openaiCompat | default list -}}
+{{- if and .name .host .modelMatch -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-compat-%s" $full .name) "match" .modelMatch) -}}
+{{- end -}}
+{{- end -}}
+{{- $rules | toJson -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayDefaultBackend" -}}
+{{- $p := .Values.aiGateway.providers | default dict -}}
+{{- $full := include "zelkor-platform.fullname" . -}}
+{{- if $p.openai.apiKey -}}
+{{- printf "%s-backend-openai" $full -}}
+{{- else if $p.ollamaCloud.apiKey -}}
+{{- printf "%s-backend-ollama-cloud" $full -}}
+{{- else if $p.ollamaLocal.host -}}
+{{- printf "%s-backend-ollama-local" $full -}}
+{{- else if $p.anthropic.apiKey -}}
+{{- printf "%s-backend-anthropic" $full -}}
+{{- else if $p.gemini.apiKey -}}
+{{- printf "%s-backend-gemini" $full -}}
+{{- else if $p.vllm.backendUrl -}}
+{{- printf "%s-backend-vllm" $full -}}
+{{- else if eq (include "zelkor-platform.aiGatewayAzureEnabled" .) "true" -}}
+{{- printf "%s-backend-azure" $full -}}
+{{- else if eq (include "zelkor-platform.aiGatewayBedrockEnabled" .) "true" -}}
+{{- printf "%s-backend-bedrock" $full -}}
+{{- else if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" -}}
+{{- printf "%s-backend-vertex" $full -}}
+{{- else if eq (include "zelkor-platform.aiGatewayCohereEnabled" .) "true" -}}
+{{- printf "%s-backend-cohere" $full -}}
+{{- else -}}
+{{- $found := "" -}}
+{{- range $p.openaiCompat | default list -}}
+{{- if and (not $found) .name .host .modelMatch -}}
+{{- $found = printf "%s-backend-compat-%s" $full .name -}}
+{{- end -}}
+{{- end -}}
+{{- $found -}}
+{{- end -}}
+{{- end }}
+
