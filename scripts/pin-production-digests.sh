@@ -3,18 +3,18 @@
 # profiles/values-production.yaml. Run after IMAGE_TAG push.
 #
 # Usage (from repo root):
-#   IMAGE_TAG=1.2.0 ./scripts/pin-production-digests.sh
+#   IMAGE_TAG=1.2.1 ./scripts/pin-production-digests.sh
 #
 # Env:
 #   IMAGE_REGISTRY  default ghcr.io/devopssquaddev
-#   IMAGE_TAG       default 1.2.0
+#   IMAGE_TAG       default 1.2.1
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
-IMAGE_TAG="${IMAGE_TAG:-1.2.0}"
+IMAGE_TAG="${IMAGE_TAG:-1.2.1}"
 OVERLAY="${OVERLAY:-$ROOT/profiles/values-production.yaml}"
 
 digest_of() {
