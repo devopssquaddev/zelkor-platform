@@ -77,6 +77,8 @@ spec:
               name: http
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.aegra "name" "zelkor-aegra") | nindent 12 }}
+            - name: LOG_EXCLUDE_PATHS
+              value: "/health,/live,/ready"
             {{- include "zelkor-platform.authEnv" . | nindent 12 }}
             - name: DATABASE_URL
               value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}

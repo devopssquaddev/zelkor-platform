@@ -55,6 +55,8 @@ spec:
           {{- end }}
           env:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
+            - name: LOG_EXCLUDE_PATHS
+              value: "/health,/live,/ready"
             - name: AUTH_DEV_TOKENS_ENABLED
               value: {{ ((.Values.auth.devTokens).enabled | default false) | quote }}
             - name: AUTH_DEV_TOKEN_PREFIX

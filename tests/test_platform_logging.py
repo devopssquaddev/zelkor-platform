@@ -225,6 +225,46 @@ def test_helm_chart_default_is_info_not_debug():
     assert "DEBUG" not in block
 
 
+def _assert_aegra_probe_access_log_exclude(rendered: str) -> None:
+    assert "name: LOG_EXCLUDE_PATHS" in rendered
+    value = rendered.split("LOG_EXCLUDE_PATHS", 1)[1][:80]
+    assert "/health" in value
+    assert "/live" in value
+    assert "/ready" in value
+
+
+def test_helm_aegra_excludes_probe_paths_from_access_logs():
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(CHART),
+        "-f",
+        str(ROOT / "profiles" / "values-local.yaml"),
+        "-s",
+        "templates/aegra/deployment.yaml",
+    )
+    _assert_aegra_probe_access_log_exclude(rendered)
+    migrate = rendered.split("name: migrate", 1)[1].split("name: aegra", 1)[0]
+    assert "LOG_EXCLUDE_PATHS" not in migrate
+
+
+def test_helm_zelkor_agent_excludes_probe_paths_from_access_logs():
+    rendered = _helm(
+        "template",
+        "demo-agent",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=demo-graph",
+        "--set",
+        "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
+        "--set",
+        "platform.valkeyUrl=redis://vk:6379/0",
+        "-s",
+        "templates/deployment.yaml",
+    )
+    _assert_aegra_probe_access_log_exclude(rendered)
+
+
 def test_mcp_tools_list_and_call_log_info(caplog):
     sys.path.insert(0, str(ROOT / "mcp"))
     import threading
