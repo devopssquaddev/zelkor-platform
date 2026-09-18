@@ -45,6 +45,15 @@ First deployed agent can own catch-all (topology 1). Additional agents need topo
 
 ---
 
+## CLI vs GitOps
+
+| Path | When | Langfuse OTEL |
+| :--- | :--- | :--- |
+| **`zelkor deploy`** | Laptop or CI that builds from a local agent tree | Copies `LANGFUSE_*` / `OTEL_TARGETS` from platform Aegra |
+| **Helm overlay** (`charts/zelkor-agent` + your values) | Image already built and pushed (own Dockerfile, registry, extra MCP) | Set `platform.releaseName`. Chart envFrom `{release}-langfuse-otel` and constructs `http://{release}-langfuse:3000`. Do not paste keys. |
+
+Do not run `zelkor deploy` against a tree that already has a GitOps image pipeline — the CLI rebuilds, pushes `zelkor-agent-<release>`, and writes a generated overlay.
+
 ## CE CLI (happy path)
 
 ```bash
@@ -59,7 +68,7 @@ zelkor undeploy
 
 **Agent notes:**
 
-- `ZELKOR_SKIP_BUILD=1` — image already in registry (CI / remote build).
+- `ZELKOR_SKIP_BUILD=1` — image already in registry (CI / remote build). Still prefer a Helm overlay when CI owns the image tag.
 - `deploy` picks LangGraph (`aegra.json` / `langgraph.json`) vs Deep Agents (`agent.json` + `AGENTS.md` → `zelkor-aegra-deep` base).
 - `deploy` copies platform `imagePullSecrets`, Langfuse OTEL, and the **existing** Postgres/Valkey URLs from the namespace. It does not create a database.
 - `undeploy` — `helm uninstall` **this agent release only**; platform stays.
@@ -93,7 +102,7 @@ Required values (see `charts/zelkor-agent/values.yaml`):
 | `graphId` or `graphIds[]` | Routing key(s) |
 | `image.repository` / tag / digest | `FROM zelkor-aegra` or `zelkor-aegra-deep` |
 | `platform.databaseUrl`, `platform.valkeyUrl` | Existing platform Aegra DSN + Valkey (see Persistence) |
-| `platform.releaseName` or MCP / AI gateway URLs | `{release}-mcp-gateway` / `{release}-ai-gateway`, or copy from platform Aegra env |
+| `platform.releaseName` or MCP / AI gateway / Langfuse URLs | `{release}-mcp-gateway` / `{release}-ai-gateway` / `{release}-langfuse` + envFrom `{release}-langfuse-otel`, or copy from platform Aegra env |
 | `sharedRoute.host`, `gatewayName`, `gatewayNamespace`, `asDefault` | Register on shared agents host. Empty `gatewayName` + `releaseName` → `{release}-gateway`. |
 | `redis.prefix` | Isolate Valkey keys per Deployment (sets channel + job queue) |
 
@@ -127,7 +136,7 @@ helm upgrade --install my-agent charts/zelkor-agent \
   ...
 ```
 
-`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `-mcp-gateway` / `-gateway`. Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`).
+`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl`, `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `-mcp-gateway` / `-langfuse` / `-gateway`. Workers inject `{release}-langfuse-otel` (optional Secret the platform chart writes from `langfuse.init`). Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`). Do not put Langfuse keys in the customer overlay.
 
 ### Auth (JWT)
 
@@ -143,7 +152,7 @@ kubectl -n <ns> get deploy,svc,httproute -l app.kubernetes.io/instance=<release>
 curl -sS -H "Host: <gateway.hosts.agents>" -H "X-Graph-ID: <graphId>" https://<agents-host>/...
 ```
 
-Agent pods should emit Langfuse OTEL when CLI deploy copied keys from platform.
+Agent pods should emit Langfuse OTEL when `platform.releaseName` is set (GitOps inherit) or when `zelkor deploy` copied keys from platform.
 
 ---
 

@@ -671,6 +671,13 @@ true
 {{- end -}}
 {{- end }}
 
+{{/*
+OTEL ingest keys for GitOps zelkor-agent workers (envFrom). Same gate as aegraOtelEnv.
+*/}}
+{{- define "zelkor-platform.langfuseOtelSecretName" -}}
+{{- printf "%s-langfuse-otel" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
 {{- define "zelkor-platform.langfuseAdminEmailHost" -}}
 {{- $host := .Values.gateway.hosts.langfuse | default "" -}}
 {{- if not $host -}}

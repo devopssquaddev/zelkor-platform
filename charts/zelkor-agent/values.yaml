@@ -61,7 +61,8 @@ terminationGracePeriodSeconds: 35
 
 platform:
   # Platform Helm release name. When set and URLs below are empty, constructs
-  # {release}-ai-gateway / {release}-mcp-gateway and sharedRoute {release}-gateway.
+  # {release}-ai-gateway / {release}-mcp-gateway / {release}-langfuse and
+  # sharedRoute {release}-gateway. GitOps workers envFrom {release}-langfuse-otel.
   releaseName: ""
   openaiBaseUrl: ""
   consumerKey: ""
@@ -74,6 +75,7 @@ platform:
   # Optional comma-separated MCP tool prefixes when graph modules omit MCP_INJECT_PREFIXES.
   mcpInjectToolPrefixes: ""
   defaultLlmModel: ""
+  # Empty + releaseName → http://{release}-langfuse:3000 and envFrom {release}-langfuse-otel.
   langfuseBaseUrl: ""
   langfusePublicKey: ""
   langfuseSecretKey: ""

@@ -46,6 +46,13 @@ spec:
           ports:
             - containerPort: 8000
               name: http
+          {{- $otelSecret := include "zelkor-agent.langfuseOtelSecretName" . -}}
+          {{- if and $otelSecret (not .Values.platform.langfuseBaseUrl) }}
+          envFrom:
+            - secretRef:
+                name: {{ $otelSecret | quote }}
+                optional: true
+          {{- end }}
           env:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             - name: AUTH_DEV_TOKENS_ENABLED
@@ -96,18 +103,7 @@ spec:
             - name: DEFAULT_LLM_MODEL
               value: {{ .Values.platform.defaultLlmModel | quote }}
             {{- end }}
-            {{- if .Values.platform.langfuseBaseUrl }}
-            - name: OTEL_TARGETS
-              value: {{ .Values.platform.otelTargets | default "LANGFUSE" | quote }}
-            - name: LANGFUSE_BASE_URL
-              value: {{ .Values.platform.langfuseBaseUrl | quote }}
-            {{- if .Values.platform.langfusePublicKey }}
-            - name: LANGFUSE_PUBLIC_KEY
-              value: {{ .Values.platform.langfusePublicKey | quote }}
-            - name: LANGFUSE_SECRET_KEY
-              value: {{ .Values.platform.langfuseSecretKey | quote }}
-            {{- end }}
-            {{- end }}
+            {{- include "zelkor-agent.langfuseEnv" . | nindent 12 }}
             - name: ZELKOR_GRAPH_ID
               value: {{ $graphId | quote }}
             - name: ENABLE_PROMETHEUS_METRICS
