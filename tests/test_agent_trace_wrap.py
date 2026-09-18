@@ -64,6 +64,13 @@ def test_assistant_output_from_astream_values_tuple():
     assert assistant_output_text(chunk) == "ok"
 
 
+def test_assistant_output_from_deep_agent_node_update():
+    chunk = {"agent": {"messages": [{"role": "assistant", "content": "draft ready"}]}}
+    assert assistant_output_text(chunk) == "draft ready"
+    streamed = ("updates", {"model": {"messages": [{"role": "assistant", "content": "ok"}]}})
+    assert assistant_output_text(streamed) == "ok"
+
+
 def test_assistant_output_from_langgraph_checkpoint():
     ckpt = {
         "step": 3,

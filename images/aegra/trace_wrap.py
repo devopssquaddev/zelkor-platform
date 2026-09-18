@@ -129,7 +129,7 @@ def _messages(value: Any, *, _depth: int = 0) -> list[Any]:
         msgs = value.get("messages")
         if isinstance(msgs, list) and msgs:
             return msgs
-        for key in (
+        known = (
             "payload",
             "checkpoint",
             "channel_values",
@@ -138,8 +138,16 @@ def _messages(value: Any, *, _depth: int = 0) -> list[Any]:
             "state",
             "update",
             "output",
-        ):
+        )
+        for key in known:
             inner = value.get(key)
+            if inner is not None and inner is not value:
+                found = _messages(inner, _depth=_depth + 1)
+                if found:
+                    return found
+        if str(value.get("type") or "").lower() == "checkpoint":
+            return []
+        for inner in value.values():
             if inner is not None and inner is not value:
                 found = _messages(inner, _depth=_depth + 1)
                 if found:

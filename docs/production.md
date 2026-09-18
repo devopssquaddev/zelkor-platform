@@ -138,6 +138,8 @@ zelkor deploy
 
 The first worker is the catch-all (Topology 1). Later agents need `X-Graph-ID`. `zelkor logs` / `zelkor undeploy` target that agent release only.
 
+GitOps (already-built image): `helm upgrade --install` `charts/zelkor-agent` with `platform.releaseName` set. Langfuse OTEL is inherited from `{release}-langfuse-otel`. Do not paste keys. Do not run `zelkor deploy` — it rebuilds and pushes a CLI image. Details: [agent-deploy.md](agent-deploy.md#cli-vs-gitops).
+
 Do not provision a Postgres cluster or CloudNativePG `Database` for the agent. Point `platform.databaseUrl` / `platform.valkeyUrl` at the existing platform Aegra DB and Valkey (the CLI copies them). Isolate Deployments with `redis.prefix`. A dedicated checkpointer DSN is optional. See [agent-deploy.md](agent-deploy.md#persistence-do-not-provision-a-database).
 
 ## Uninstall

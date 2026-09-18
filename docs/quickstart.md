@@ -102,7 +102,7 @@ zelkor logs --no-follow --tail 50
 zelkor undeploy
 ```
 
-`zelkor deploy` copies the platform Postgres and Valkey URLs. Do not provision a new database for the agent. Isolation between agents is `redis.prefix` on the shared Valkey. Details: [agent-deploy.md](agent-deploy.md#persistence-do-not-provision-a-database).
+`zelkor deploy` copies the platform Postgres and Valkey URLs. Do not provision a new database for the agent. Isolation between agents is `redis.prefix` on the shared Valkey. If CI already builds the image, use a Helm overlay with `platform.releaseName` instead of `zelkor deploy` — [agent-deploy.md](agent-deploy.md#cli-vs-gitops). Persistence: [agent-deploy.md](agent-deploy.md#persistence-do-not-provision-a-database).
 
 ## Uninstalling
 

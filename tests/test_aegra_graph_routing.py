@@ -378,6 +378,61 @@ def test_agent_chart_redis_prefix_and_shared_route():
     assert route["spec"]["rules"][0]["backendRefs"][0]["name"] == "fraud-zelkor-agent"
 
 
+def test_agent_chart_inherits_langfuse_from_release_name():
+    rendered = _helm(
+        "template",
+        "brand",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=brand-content",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "platform.releaseName=zelkor-platform",
+    )
+    docs = _docs(rendered)
+    deploy = next(d for d in docs if d["kind"] == "Deployment")
+    container = deploy["spec"]["template"]["spec"]["containers"][0]
+    env = {e["name"]: e.get("value") for e in container["env"]}
+    assert env["OTEL_TARGETS"] == "LANGFUSE"
+    assert env["LANGFUSE_BASE_URL"] == "http://zelkor-platform-langfuse:3000"
+    assert "LANGFUSE_PUBLIC_KEY" not in env
+    refs = container.get("envFrom") or []
+    assert refs[0]["secretRef"]["name"] == "zelkor-platform-langfuse-otel"
+    assert refs[0]["secretRef"]["optional"] is True
+    dumped = yaml.dump(container)
+    assert "localhost" not in dumped
+    assert "dev-key" not in dumped
+
+
+def test_agent_chart_explicit_langfuse_skips_envfrom():
+    rendered = _helm(
+        "template",
+        "brand",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=brand-content",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "platform.releaseName=zelkor-platform",
+        "--set",
+        "platform.langfuseBaseUrl=http://custom-langfuse:3000",
+        "--set",
+        "platform.langfusePublicKey=pk-lf-custom",
+        "--set",
+        "platform.langfuseSecretKey=sk-lf-custom",
+    )
+    docs = _docs(rendered)
+    deploy = next(d for d in docs if d["kind"] == "Deployment")
+    container = deploy["spec"]["template"]["spec"]["containers"][0]
+    env = {e["name"]: e.get("value") for e in container["env"]}
+    assert env["LANGFUSE_BASE_URL"] == "http://custom-langfuse:3000"
+    assert env["LANGFUSE_PUBLIC_KEY"] == "pk-lf-custom"
+    assert env["LANGFUSE_SECRET_KEY"] == "sk-lf-custom"
+    assert not container.get("envFrom")
+
+
 def test_agent_chart_graph_ids_share_one_service():
     rendered = _helm(
         "template",

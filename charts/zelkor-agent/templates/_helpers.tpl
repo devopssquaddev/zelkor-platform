@@ -125,6 +125,45 @@ app.kubernetes.io/component: aegra
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-agent.langfuseBaseUrl" -}}
+{{- $explicit := ((.Values.platform).langfuseBaseUrl | default "") | toString -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else if (include "zelkor-agent.platformReleaseName" .) -}}
+{{- printf "http://%s-langfuse:3000" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.langfuseOtelSecretName" -}}
+{{- $release := include "zelkor-agent.platformReleaseName" . -}}
+{{- if $release -}}
+{{- printf "%s-langfuse-otel" $release -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+OTEL env. Explicit platform.langfuse* wins over envFrom of {release}-langfuse-otel.
+*/}}
+{{- define "zelkor-agent.langfuseEnv" -}}
+{{- $url := include "zelkor-agent.langfuseBaseUrl" . -}}
+{{- if $url }}
+- name: OTEL_TARGETS
+  value: {{ .Values.platform.otelTargets | default "LANGFUSE" | quote }}
+- name: LANGFUSE_BASE_URL
+  value: {{ $url | quote }}
+{{- if .Values.platform.langfusePublicKey }}
+- name: LANGFUSE_PUBLIC_KEY
+  value: {{ .Values.platform.langfusePublicKey | quote }}
+- name: LANGFUSE_SECRET_KEY
+  value: {{ .Values.platform.langfuseSecretKey | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{- define "zelkor-agent.logEnv" -}}
 - name: ZELKOR_LOG_LEVEL
   value: {{ include "zelkor-agent.logLevel" . | quote }}

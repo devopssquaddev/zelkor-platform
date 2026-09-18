@@ -112,6 +112,70 @@ def test_finserve_overlay_does_not_steal_init():
     assert "databaseUrl:" not in raw
 
 
+def test_helm_langfuse_otel_secret_from_init_keys():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    chart = root / "charts/zelkor-platform"
+    local = root / "profiles/values-local.yaml"
+    try:
+        proc = subprocess.run(
+            [
+                "helm",
+                "template",
+                "zelkor-platform",
+                str(chart),
+                "-f",
+                str(local),
+                "-s",
+                "templates/langfuse/secret-otel.yaml",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.skip("helm not installed")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "name: zelkor-platform-langfuse-otel" in proc.stdout
+    assert "OTEL_TARGETS: LANGFUSE" in proc.stdout
+    assert "http://zelkor-platform-langfuse:3000" in proc.stdout
+    assert "localhost" not in proc.stdout
+    assert "dev-key" not in proc.stdout
+
+
+def test_helm_langfuse_otel_secret_omitted_without_keys():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    chart = root / "charts/zelkor-platform"
+    local = root / "profiles/values-local.yaml"
+    try:
+        proc = subprocess.run(
+            [
+                "helm",
+                "template",
+                "zelkor-platform",
+                str(chart),
+                "-f",
+                str(local),
+                "--set",
+                "langfuse.init.projectPublicKey=",
+                "--set",
+                "langfuse.init.projectSecretKey=",
+                "-s",
+                "templates/langfuse/secret-otel.yaml",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.skip("helm not installed")
+    combined = (proc.stdout or "") + (proc.stderr or "")
+    assert "zelkor-platform-langfuse-otel" not in combined
+
+
 def test_helm_extra_projects_on_seed_job_and_nemo():
     import subprocess
     import tempfile
