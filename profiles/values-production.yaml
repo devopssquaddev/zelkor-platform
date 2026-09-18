@@ -84,26 +84,26 @@ aiGateway:
 aegra:
   image:
     tag: "1.2.0"
-    digest: "sha256:dd5e86a0a2b3fda401542583ad5c03e4dfda750e7e393e5c99f4b3a062f85a53"
+    digest: "sha256:fc9f47f9dcef805ca4755856c14ace6ef9517485192d18d8142235bcc5af2115"
   cli:
     image:
       tag: "1.2.0"
-      digest: "sha256:b6c4d154e50b24eba503ff82aae7676fb402f0c20b07c8d94e56a13eade69a1c"
+      digest: "sha256:f3292338f7bec3d42693aebf26be7a28fcf6bf064594212d92469559cd48a887"
 
 guardrails:
   nemo:
     image:
       tag: "1.2.0"
-      digest: "sha256:46b110165ac260e7d00c262a21f1e24da94307cb2feed0e2de48223135e4d68d"
+      digest: "sha256:2be58f6acb421755229c6987b3298cd3c53ac2cb2c81e62840a0014efcf94f49"
 
 mcp:
   image:
     tag: "1.2.0"
-    digest: "sha256:a0d25b3478d760b05cf584134f113b2611f057765a4c57897e399f19910c5c4d"
+    digest: "sha256:79ec9e01394ff386dad613bf12366edd92ad447fd3bc58945c5ccf6556919658"
   sandboxMCP:
     workerImage:
       tag: "1.2.0"
-      digest: "sha256:f5491310f0db8e6e17d5ce491fa8178f3522d11cd224ee658dd54ea79b5ea6cb"
+      digest: "sha256:d7421104591d8d571d72fcd9e2ec516fdd0c6205c26829535c2a40e6ea9553b0"
 
 langfuse:
   init:
@@ -111,6 +111,6 @@ langfuse:
   surfaces:
     image:
       tag: "1.2.0"
-      digest: "sha256:44010f18d180e8fb196d910976a5bbeaa1d5f631ad1cee1dea536c56851ade7d"
+      digest: "sha256:13709f3253140b6173bdf922e18ecfe4505da1d3e3bf9ca8830ff9fc15fa6227"
   # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
   # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo

@@ -11,7 +11,7 @@ Living spec (multi-root): `internal/plan/requirements_ce_versioning.md`. Third-p
 
 - One triple `X.Y.Z` = git tag `vX.Y.Z-ce` = `Chart.yaml` version/appVersion = first-party GHCR `tag` (platform, agent, in-scope examples, Dockerfile `FROM`/`ARG` Zelkor bases).
 - After `v1.0.0-ce`, **default PATCH**. MINOR only for a new customer-facing Helm/API contract. MAJOR only if the user asks.
-- Increment from the last published `vX.Y.Z-ce` (today `v1.1.1-ce`). Next MINOR in tree: `1.2.0` (AI Gateway schemas). Do not retag `v1.1.0-ce` / `v1.1.1-ce`. Do not overwrite a published semver image tag.
+- Increment from the last published `vX.Y.Z-ce` (today `v1.2.0-ce`). Default next is PATCH `1.2.1`. Do not retag `v1.1.1-ce` / `v1.2.0-ce`. Do not overwrite a published semver image tag.
 - Kind `:dev` is overlay-only. Rebuild + Path B digest pin is not a release.
 - Bump pins in the same change as the product. Build/push `IMAGE_TAG=X.Y.Z`. Tag git **after** merge, not before images exist.
 
