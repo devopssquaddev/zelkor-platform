@@ -927,6 +927,16 @@ false
 {{- $v.anthropicRegion | default $v.region -}}
 {{- end }}
 
+{{/* GCP global location uses aiplatform.googleapis.com, not global-aiplatform.googleapis.com */}}
+{{- define "zelkor-platform.vertexAIHostname" -}}
+{{- $region := . | required "vertexAIHostname: region is required" -}}
+{{- if eq $region "global" -}}
+aiplatform.googleapis.com
+{{- else -}}
+{{- printf "%s-aiplatform.googleapis.com" $region -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.aiGatewayHasProviders" -}}
 {{- $p := .Values.aiGateway.providers | default dict -}}
 {{- $compat := $p.openaiCompat | default list -}}
@@ -982,7 +992,12 @@ JSON array of backend+match pairs for AIGatewayRoute. Prefix-namespaced ids avoi
 {{- end -}}
 {{- end -}}
 {{- if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" -}}
-{{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex" $full) "match" "^(vertex/.*)") -}}
+{{- /* Envoy GCPVertexAI uses the request model id in the Vertex URL; vertex/ prefix is routing-only and must not be sent. */ -}}
+{{- $vertexMatch := "^(vertex/.*)" -}}
+{{- if not $p.gemini.apiKey -}}
+{{- $vertexMatch = "^(gemini-.*)" -}}
+{{- end -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex" $full) "match" $vertexMatch) -}}
 {{- if $p.vertex.anthropic -}}
 {{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex-anthropic" $full) "match" "^(vertex-anthropic/.*)") -}}
 {{- end -}}

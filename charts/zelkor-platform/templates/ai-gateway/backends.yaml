@@ -401,7 +401,7 @@ spec:
 # GCP Vertex AI
 {{- if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" }}
 {{- $vRegion := .Values.aiGateway.providers.vertex.region }}
-{{- $vHost := printf "%s-aiplatform.googleapis.com" $vRegion }}
+{{- $vHost := include "zelkor-platform.vertexAIHostname" $vRegion }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
@@ -451,7 +451,7 @@ spec:
 ---
 {{- if .Values.aiGateway.providers.vertex.anthropic }}
 {{- $vaRegion := include "zelkor-platform.vertexAnthropicRegion" . }}
-{{- $vaHost := printf "%s-aiplatform.googleapis.com" $vaRegion }}
+{{- $vaHost := include "zelkor-platform.vertexAIHostname" $vaRegion }}
 apiVersion: aigateway.envoyproxy.io/v1beta1
 kind: AIServiceBackend
 metadata:
