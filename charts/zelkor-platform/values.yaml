@@ -549,6 +549,7 @@ guardrails:
     safetyRefusal: "I can't help with that request."
     selfCheck:
       enabled: true  # LLM Yes/No I/O rails; false skips those extra completions (regex/extraColang still apply)
+      model: ""  # empty = guardrails.nemo.model (else openai/gpt-4o-mini); not the request model
     extraInputFlows: []
     extraColang: ""
     extraRailsConfig: {}

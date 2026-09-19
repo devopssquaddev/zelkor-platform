@@ -421,6 +421,22 @@ true
 {{- end }}
 
 {{/*
+Model id for self-check Yes/No rails. selfCheck.model, else nemo.model, else openai/gpt-4o-mini.
+Request model injects onto type=main only and must not change this.
+*/}}
+{{- define "zelkor-platform.nemoSelfCheckModel" -}}
+{{- $sc := .Values.guardrails.nemo.selfCheck | default dict -}}
+{{- $explicit := $sc.model | default "" -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else if .Values.guardrails.nemo.model -}}
+{{- .Values.guardrails.nemo.model -}}
+{{- else -}}
+openai/gpt-4o-mini
+{{- end -}}
+{{- end }}
+
+{{/*
 NeMo AIServiceBackend is required for intercept or legacy nemo/* prefix routing.
 */}}
 {{- define "zelkor-platform.nemoAiGatewayBackendEnabled" -}}

@@ -127,6 +127,24 @@ def test_intercept_refuses_harmful_prompt_on_default_model():
     ), content
 
 
+def test_bypass_unknown_model_is_not_nemo_loop():
+    """Bypass + unconfigured prefix must 4xx; must not hang in NeMo."""
+    url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
+    headers = {**_in_cluster_headers(), "X-Zelkor-Guardrails-Bypass": "1"}
+    try:
+        resp = httpx.post(
+            url,
+            headers=headers,
+            json=_chat_payload("ping", "vertex/not-configured"),
+            timeout=20.0,
+        )
+    except httpx.ConnectError:
+        pytest.skip(f"AI Gateway not reachable at {GATEWAY_BASE_URL}")
+    except httpx.TimeoutException:
+        pytest.fail("bypass + unknown model timed out (NeMo intercept loop)")
+    assert 400 <= resp.status_code < 500, resp.text
+
+
 def _wait_for_nemo_pods_gone(kubecontext: str, timeout_s: int = 90) -> bool:
     deadline = time.time() + timeout_s
     while time.time() < deadline:

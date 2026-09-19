@@ -183,3 +183,119 @@ def test_openai_compat_item():
     pol = _named(docs, "BackendSecurityPolicy", "zelkor-platform-compat-groq-apikey")
     assert pol["spec"]["type"] == "APIKey"
     assert "^(groq/.*)" in _route_matches(docs)
+
+
+def _nemo_config_models(docs: list[dict]) -> list[dict]:
+    cm = _named(docs, "ConfigMap", "zelkor-platform-nemo-config")
+    cfg = yaml.safe_load(cm["data"]["content_safety-config.yml"])
+    return cfg.get("models") or []
+
+
+def _unknown_model_route(docs: list[dict]) -> dict | None:
+    matches = [d for d in _kinds(docs, "HTTPRoute") if d["metadata"]["name"] == "zelkor-platform-unknown-model"]
+    return matches[0] if matches else None
+
+
+def _unknown_model_filter(docs: list[dict]) -> dict | None:
+    matches = [d for d in _kinds(docs, "HTTPRouteFilter") if d["metadata"]["name"] == "zelkor-platform-unknown-model"]
+    return matches[0] if matches else None
+
+
+def _aigateway_rules(docs: list[dict]) -> list[dict]:
+    return _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")["spec"].get("rules") or []
+
+
+def test_self_check_models_inherit_nemo_model():
+    docs = _docs(_helm("--set", "guardrails.nemo.model=qwen3:8b"))
+    by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
+    assert by_type["main"] == "qwen3:8b"
+    assert by_type["self_check_input"] == "qwen3:8b"
+    assert by_type["self_check_output"] == "qwen3:8b"
+
+
+def test_self_check_model_override_does_not_change_main():
+    docs = _docs(
+        _helm(
+            "--set",
+            "guardrails.nemo.model=qwen3:8b",
+            "--set",
+            "guardrails.nemo.selfCheck.model=gpt-oss:20b",
+        )
+    )
+    by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
+    assert by_type["main"] == "qwen3:8b"
+    assert by_type["self_check_input"] == "gpt-oss:20b"
+    assert by_type["self_check_output"] == "gpt-oss:20b"
+
+
+def test_self_check_models_omitted_when_disabled():
+    docs = _docs(_helm("--set", "guardrails.nemo.selfCheck.enabled=false"))
+    types = {row["type"] for row in _nemo_config_models(docs)}
+    assert "main" in types
+    assert "self_check_input" not in types
+    assert "self_check_output" not in types
+
+
+def test_unknown_bypass_reject_when_intercept_on():
+    docs = _docs(_helm("--set", "aiGateway.providers.ollamaCloud.apiKey=ollama-key"))
+    filt = _unknown_model_filter(docs)
+    route = _unknown_model_route(docs)
+    assert filt is not None
+    assert filt["spec"]["directResponse"]["statusCode"] == 400
+    assert "model_not_found" in filt["spec"]["directResponse"]["body"]["inline"]
+    assert route is not None
+    headers = route["spec"]["rules"][0]["matches"][0]["headers"]
+    assert headers == [{"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"}]
+    assert "backendRefs" not in route["spec"]["rules"][0]
+    rules = _aigateway_rules(docs)
+    assert any(
+        any(
+            h.get("name") == "x-ai-eg-model" and "gpt-oss" in (h.get("value") or "")
+            for h in (m.get("headers") or [])
+        )
+        for rule in rules
+        for m in rule.get("matches") or []
+    )
+    catch = rules[-1]
+    assert not catch.get("matches")
+    assert catch["backendRefs"][0]["name"] == "zelkor-platform-backend-nemo"
+
+
+def test_unknown_bypass_reject_absent_when_intercept_off():
+    docs = _docs(
+        _helm(
+            "--set",
+            "guardrails.nemo.intercept.enabled=false",
+            "--set",
+            "aiGateway.providers.ollamaCloud.apiKey=ollama-key",
+        )
+    )
+    assert _unknown_model_route(docs) is None
+    assert _unknown_model_filter(docs) is None
+
+
+def test_vertex_bypass_rule_stays_two_header_when_reject_present():
+    docs = _docs(
+        _helm(
+            "--set",
+            "aiGateway.providers.vertex.project=my-proj",
+            "--set",
+            "aiGateway.providers.vertex.region=us-central1",
+        )
+    )
+    assert "^(vertex/.*)" in _route_matches(docs)
+    route = _unknown_model_route(docs)
+    assert route is not None
+    headers = route["spec"]["rules"][0]["matches"][0]["headers"]
+    assert headers == [{"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"}]
+    vertex_rule = next(
+        rule
+        for rule in _aigateway_rules(docs)
+        if any(
+            h.get("name") == "x-ai-eg-model" and h.get("value") == "^(vertex/.*)"
+            for m in rule.get("matches") or []
+            for h in m.get("headers") or []
+        )
+    )
+    names = {h.get("name") for h in vertex_rule["matches"][0]["headers"]}
+    assert names == {"x-zelkor-guardrails-bypass", "x-ai-eg-model"}

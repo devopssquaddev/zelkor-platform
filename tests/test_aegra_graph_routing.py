@@ -69,6 +69,8 @@ def test_nemo_self_check_can_be_disabled():
     assert "passthrough: true" in no_self
     assert "- self check input" not in no_self
     assert "- self check output" not in no_self
+    assert "type: self_check_input" not in no_self
+    assert "type: self_check_output" not in no_self
     assert "define flow self check input" not in no_self
     assert "define flow self check output" not in no_self
     assert "flows: []" in no_self

@@ -1,4 +1,5 @@
 {{- $selfCheck := eq (include "zelkor-platform.nemoSelfCheckEnabled" .) "true" }}
+{{- $selfCheckModel := include "zelkor-platform.nemoSelfCheckModel" . }}
 models:
   - type: main
     engine: openai
@@ -10,6 +11,28 @@ models:
         {{- if .Values.gateway.hosts.aiGateway }}
         Host: {{ .Values.gateway.hosts.aiGateway | quote }}
         {{- end }}
+{{- if $selfCheck }}
+  - type: self_check_input
+    engine: openai
+    model: {{ $selfCheckModel | quote }}
+    parameters:
+      base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+      default_headers:
+        X-Zelkor-Guardrails-Bypass: "1"
+        {{- if .Values.gateway.hosts.aiGateway }}
+        Host: {{ .Values.gateway.hosts.aiGateway | quote }}
+        {{- end }}
+  - type: self_check_output
+    engine: openai
+    model: {{ $selfCheckModel | quote }}
+    parameters:
+      base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+      default_headers:
+        X-Zelkor-Guardrails-Bypass: "1"
+        {{- if .Values.gateway.hosts.aiGateway }}
+        Host: {{ .Values.gateway.hosts.aiGateway | quote }}
+        {{- end }}
+{{- end }}
 
 # Required for OpenAI-style tools on NeMo's /v1 (I/O rails when selfCheck.enabled).
 passthrough: true

@@ -1,0 +1,48 @@
+{{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
+{{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
+{{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
+{{- if and .Values.aiGateway.enabled (gt (len $hostnames) 0) $hasProviders $intercept }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-unknown-model
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  directResponse:
+    contentType: application/json
+    statusCode: 400
+    body:
+      type: Inline
+      inline: '{"error":{"message":"model is not configured on this gateway","type":"invalid_request_error","code":"model_not_found"}}'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-unknown-model
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  parentRefs:
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
+  hostnames:
+    {{- range $hostnames }}
+    - {{ . | quote }}
+    {{- end }}
+  rules:
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-zelkor-guardrails-bypass
+              value: "1"
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: {{ include "zelkor-platform.fullname" . }}-unknown-model
+{{- end }}
