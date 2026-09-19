@@ -59,6 +59,93 @@ class _ComponentFilter(logging.Filter):
         return True
 
 
+PROBE_ACCESS_PREFIXES = ("/health", "/healthz", "/live", "/ready", "/v1/health")
+
+
+def _is_probe_path(path: str) -> bool:
+    route = (path or "").split("?", 1)[0]
+    return any(route == prefix or route.startswith(prefix + "/") for prefix in PROBE_ACCESS_PREFIXES)
+
+
+def _access_path_status(record: logging.LogRecord) -> tuple[str | None, int | None]:
+    args = record.args
+    if isinstance(args, dict):
+        status = args.get("status_code")
+        line = str(args.get("request_line") or args.get("request") or "")
+        parts = line.split()
+        path = parts[1] if len(parts) >= 2 else None
+        try:
+            return path, int(status) if status is not None else None
+        except (TypeError, ValueError):
+            return path, None
+    if isinstance(args, tuple) and args:
+        if len(args) >= 5:
+            path = str(args[2])
+            try:
+                return path, int(args[4])
+            except (TypeError, ValueError):
+                return path, None
+        if len(args) >= 3:
+            line = str(args[1])
+            parts = line.split()
+            path = parts[1] if len(parts) >= 2 else line
+            try:
+                return path, int(args[-1])
+            except (TypeError, ValueError):
+                return path, None
+    try:
+        msg = record.getMessage()
+    except Exception:
+        return None, None
+    quote = msg.find('"')
+    if quote == -1:
+        return None, None
+    end = msg.find('"', quote + 1)
+    if end == -1:
+        return None, None
+    parts = msg[quote + 1 : end].split()
+    path = parts[1] if len(parts) >= 2 else None
+    tail = msg[end + 1 :].strip().split()
+    try:
+        return path, int(tail[0]) if tail else None
+    except (TypeError, ValueError):
+        return path, None
+
+
+class ProbeAccessLogFilter(logging.Filter):
+    """Drop successful kubelet-style probe access lines. 4xx/5xx still pass."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        path, status = _access_path_status(record)
+        if path and status is not None and status < 400 and _is_probe_path(path):
+            return False
+        return True
+
+
+def install_probe_access_filter() -> None:
+    log = logging.getLogger("uvicorn.access")
+    if any(isinstance(item, ProbeAccessLogFilter) for item in log.filters):
+        return
+    log.addFilter(ProbeAccessLogFilter())
+
+
+def wrap_uvicorn_run(uvicorn_module: object | None = None) -> None:
+    """Keep Zelkor format after vendor uvicorn.run; skip successful probe access lines."""
+    if uvicorn_module is None:
+        import uvicorn as uvicorn_module  # type: ignore[assignment]
+    run = getattr(uvicorn_module, "run", None)
+    if run is None or getattr(run, "_zelkor_wrapped", False):
+        return
+
+    def _run(app: object, *args: object, **kwargs: object) -> object:
+        kwargs["log_config"] = None
+        install_probe_access_filter()
+        return run(app, *args, **kwargs)
+
+    _run._zelkor_wrapped = True  # type: ignore[attr-defined]
+    uvicorn_module.run = _run  # type: ignore[attr-defined]
+
+
 def parse_level(raw: Optional[str] = None) -> int:
     name = (raw if raw is not None else os.getenv("ZELKOR_LOG_LEVEL", "INFO")).strip().upper()
     return _LEVELS.get(name, logging.INFO)

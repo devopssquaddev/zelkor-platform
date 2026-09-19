@@ -10,7 +10,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "images" / "common"))
 
-from zelkor_logging import JsonFormatter, configure_logging, log_shutdown, parse_format, parse_level  # noqa: E402
+from zelkor_logging import (  # noqa: E402
+    JsonFormatter,
+    ProbeAccessLogFilter,
+    configure_logging,
+    install_probe_access_filter,
+    log_shutdown,
+    parse_format,
+    parse_level,
+    wrap_uvicorn_run,
+)
 
 CHART = ROOT / "charts" / "zelkor-platform"
 AGENT_CHART = ROOT / "charts" / "zelkor-agent"
@@ -96,6 +105,80 @@ def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
     assert "Authorization" not in json.dumps(rows)
 
 
+def _access_record(msg: str, args: object, name: str = "uvicorn.access") -> logging.LogRecord:
+    record = logging.LogRecord(
+        name=name,
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg=msg,
+        args=args,
+        exc_info=None,
+    )
+    return record
+
+
+def test_probe_access_filter_drops_successful_health_keeps_errors_and_chat():
+    filt = ProbeAccessLogFilter()
+    assert not filt.filter(
+        _access_record(
+            '%s - "%s %s HTTP/%s" %d',
+            ("10.0.0.1:1", "GET", "/v1/health", "1.1", 200),
+        )
+    )
+    assert not filt.filter(
+        _access_record(
+            '%s - "%s %s HTTP/%s" %d',
+            ("10.0.0.1:1", "GET", "/healthz", "1.1", 200),
+        )
+    )
+    assert filt.filter(
+        _access_record(
+            '%s - "%s %s HTTP/%s" %d',
+            ("10.0.0.1:1", "GET", "/v1/health", "1.1", 500),
+        )
+    )
+    assert filt.filter(
+        _access_record(
+            '%s - "%s %s HTTP/%s" %d',
+            ("10.0.0.1:1", "POST", "/v1/chat/completions", "1.1", 200),
+        )
+    )
+
+
+def test_uvicorn_access_probe_omitted_from_json_stdout(monkeypatch, capsys):
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
+    configure_logging("zelkor-nemo", force=True)
+    install_probe_access_filter()
+    access = logging.getLogger("uvicorn.access")
+    access.setLevel(logging.INFO)
+    access.propagate = True
+    access.info('%s - "%s %s HTTP/%s" %d', "10.0.0.1:1", "GET", "/v1/health", "1.1", 200)
+    access.info('%s - "%s %s HTTP/%s" %d', "10.0.0.1:1", "POST", "/v1/chat/completions", "1.1", 200)
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines() if line]
+    messages = [row["message"] for row in rows]
+    assert not any("/v1/health" in msg for msg in messages)
+    assert any("/v1/chat/completions" in msg for msg in messages)
+    assert all(row.get("component") for row in rows)
+
+
+def test_wrap_uvicorn_run_clears_log_config_and_installs_filter():
+    seen: list[dict] = []
+
+    class FakeUvicorn:
+        @staticmethod
+        def run(app, *args, **kwargs):
+            seen.append(kwargs)
+            return app
+
+    wrap_uvicorn_run(FakeUvicorn)
+    wrap_uvicorn_run(FakeUvicorn)
+    assert FakeUvicorn.run("app") == "app"
+    assert seen == [{"log_config": None}]
+    assert any(isinstance(item, ProbeAccessLogFilter) for item in logging.getLogger("uvicorn.access").filters)
+
+
 def test_first_party_entrypoints_configure_logging():
     files = [
         ROOT / "images/aegra/sitecustomize.py",
@@ -108,6 +191,8 @@ def test_first_party_entrypoints_configure_logging():
     for path in files:
         text = path.read_text()
         assert "configure_logging" in text, path.name
+    boot = (ROOT / "images/guardrails/boot.py").read_text()
+    assert "wrap_uvicorn_run" in boot
 
 
 def test_chart_default_is_info_json_not_debug():
@@ -223,6 +308,46 @@ def test_helm_chart_default_is_info_not_debug():
     block = rendered.split("ZELKOR_LOG_LEVEL", 1)[1][:120]
     assert "value: \"INFO\"" in block
     assert "DEBUG" not in block
+
+
+def _assert_aegra_probe_access_log_exclude(rendered: str) -> None:
+    assert "name: LOG_EXCLUDE_PATHS" in rendered
+    value = rendered.split("LOG_EXCLUDE_PATHS", 1)[1][:80]
+    assert "/health" in value
+    assert "/live" in value
+    assert "/ready" in value
+
+
+def test_helm_aegra_excludes_probe_paths_from_access_logs():
+    rendered = _helm(
+        "template",
+        "zelkor",
+        str(CHART),
+        "-f",
+        str(ROOT / "profiles" / "values-local.yaml"),
+        "-s",
+        "templates/aegra/deployment.yaml",
+    )
+    _assert_aegra_probe_access_log_exclude(rendered)
+    migrate = rendered.split("name: migrate", 1)[1].split("name: aegra", 1)[0]
+    assert "LOG_EXCLUDE_PATHS" not in migrate
+
+
+def test_helm_zelkor_agent_excludes_probe_paths_from_access_logs():
+    rendered = _helm(
+        "template",
+        "demo-agent",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=demo-graph",
+        "--set",
+        "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
+        "--set",
+        "platform.valkeyUrl=redis://vk:6379/0",
+        "-s",
+        "templates/deployment.yaml",
+    )
+    _assert_aegra_probe_access_log_exclude(rendered)
 
 
 def test_mcp_tools_list_and_call_log_info(caplog):
