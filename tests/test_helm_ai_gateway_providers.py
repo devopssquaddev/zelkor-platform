@@ -146,10 +146,46 @@ def test_vertex_and_gcp_anthropic():
     pol = _named(docs, "BackendSecurityPolicy", "zelkor-platform-vertex-gcp")
     assert pol["spec"]["type"] == "GCPCredentials"
     matches = _route_matches(docs)
-    assert "^(vertex/.*)" in matches
+    assert "^(gemini-.*)" in matches
     assert "^(vertex-anthropic/.*)" in matches
-    assert not any("gemini-.*" in m and "vertex" in (m or "") for m in matches)
-    assert all("gemini-.*" not in m for m in matches if "vertex" in m)
+    assert "^(vertex/.*)" not in matches
+
+
+def test_vertex_with_gemini_api_key_uses_vertex_prefix_route():
+    docs = _docs(
+        _helm(
+            "--set",
+            "aiGateway.providers.vertex.project=my-proj",
+            "--set",
+            "aiGateway.providers.vertex.region=us-central1",
+            "--set",
+            "aiGateway.providers.gemini.apiKey=AIza-test",
+        )
+    )
+    matches = _route_matches(docs)
+    assert "^(vertex/.*)" in matches
+    assert "^(gemini/.*|gemini-.*)" in matches
+    vertex_gemini = [m for m in matches if m == "^(gemini-.*)"]
+    assert not vertex_gemini
+
+
+def test_vertex_global_hostname_and_gemini_route_without_google_gemini_key():
+    docs = _docs(
+        _helm(
+            "--set",
+            "aiGateway.providers.vertex.project=my-proj",
+            "--set",
+            "aiGateway.providers.vertex.region=global",
+            "--set-string",
+            'aiGateway.providers.vertex.credentialsJson={"type":"service_account"}',
+        )
+    )
+    host = _named(docs, "Backend", "zelkor-platform-backend-vertex")
+    assert host["spec"]["endpoints"][0]["fqdn"]["hostname"] == "aiplatform.googleapis.com"
+    tls = _named(docs, "BackendTLSPolicy", "zelkor-platform-backend-vertex-tls")
+    assert tls["spec"]["validation"]["hostname"] == "aiplatform.googleapis.com"
+    matches = _route_matches(docs)
+    assert "^(gemini-.*)" in matches
 
 
 def test_cohere_schema():
@@ -283,7 +319,7 @@ def test_vertex_bypass_rule_stays_two_header_when_reject_present():
             "aiGateway.providers.vertex.region=us-central1",
         )
     )
-    assert "^(vertex/.*)" in _route_matches(docs)
+    assert "^(gemini-.*)" in _route_matches(docs)
     route = _unknown_model_route(docs)
     assert route is not None
     headers = route["spec"]["rules"][0]["matches"][0]["headers"]
@@ -292,7 +328,7 @@ def test_vertex_bypass_rule_stays_two_header_when_reject_present():
         rule
         for rule in _aigateway_rules(docs)
         if any(
-            h.get("name") == "x-ai-eg-model" and h.get("value") == "^(vertex/.*)"
+            h.get("name") == "x-ai-eg-model" and h.get("value") == "^(gemini-.*)"
             for m in rule.get("matches") or []
             for h in m.get("headers") or []
         )
