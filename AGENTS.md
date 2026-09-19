@@ -93,7 +93,7 @@ Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
 
 **Phases** (1–4 in `internal/plan/`) are planning milestones and semver tags — not git branches.
 
-**CE release tags on `main`:** annotated `vX.Y.Z-ce`. Git tag, Helm chart, and first-party image tags are the same triple (multi-root: `internal/plan/requirements_ce_versioning.md`; rule: `.cursor/rules/ce-versioning.mdc`). After `v1.0.0-ce`, default PATCH. Do not tag while images stay on the previous triple. Historical: `v0.1.0-alpha`, `v0.2.0-alpha`, `v0.3.0`, `v1.0.0-ce`, `v1.0.1-ce`, `v1.1.0-ce`, `v1.1.1-ce`, `v1.2.0-ce`, `v1.2.1-ce`. Default next is PATCH `1.2.2`.
+**CE release tags on `main`:** annotated `vX.Y.Z-ce`. Git tag, Helm chart, and first-party image tags are the same triple (multi-root: `internal/plan/requirements_ce_versioning.md`; rule: `.cursor/rules/ce-versioning.mdc`). After `v1.0.0-ce`, default PATCH. Do not tag while images stay on the previous triple. Historical: `v0.1.0-alpha`, `v0.2.0-alpha`, `v0.3.0`, `v1.0.0-ce`, `v1.0.1-ce`, `v1.1.0-ce`, `v1.1.1-ce`, `v1.2.0-ce`, `v1.2.1-ce`, `v1.2.2-ce`. Default next is PATCH `1.2.3`.
 
 ## Pull Requests
 

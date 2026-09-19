@@ -79,38 +79,38 @@ gateway:
 aiGateway:
   consumerKey: ""
 
-# First-party images: tag 1.2.1 (chart default). Digests filled by
+# First-party images: tag 1.2.2 (chart default). Digests filled by
 # scripts/pin-production-digests.sh after GHCR push.
 aegra:
   image:
-    tag: "1.2.1"
-    digest: "sha256:76b8a5146d508817b9885dff0961d6eaa51fd3977cedc70d8a4cb8ba1ca25165"
+    tag: "1.2.2"
+    digest: "sha256:53ff0914dace88894a07dfee996825048fef44d2855e54bbbce09d0365e7d94c"
   cli:
     image:
-      tag: "1.2.1"
-      digest: "sha256:0e449215994e012480de2f5e328c4b12beef28d94c539aa6a03082c55072448a"
+      tag: "1.2.2"
+      digest: "sha256:e4ede829b7ebe3a0282d5c48f7d7797767951844313729aa270620d354c21826"
 
 guardrails:
   nemo:
     image:
-      tag: "1.2.1"
-      digest: "sha256:33fdea28ec172244f3086d85107172cef674c79896dee1a1598c0aff21c43ff2"
+      tag: "1.2.2"
+      digest: "sha256:64c7a37af730c24be5a4920749d8974af5066058721626ec46b61434def84966"
 
 mcp:
   image:
-    tag: "1.2.1"
-    digest: "sha256:ea23d8d02ec9db994495c5cd58df8891e9ee11560f3e1a19ccb0445011e04835"
+    tag: "1.2.2"
+    digest: "sha256:4c02c9835544de86581f9a42d2f3861b6609dcdc60e4321e52c39ffff78fc733"
   sandboxMCP:
     workerImage:
-      tag: "1.2.1"
-      digest: "sha256:e6ca5464de99e981fcc9e3fc2cfb2067b466339a791af4edcace47ef241a3e04"
+      tag: "1.2.2"
+      digest: "sha256:f9295deab625e96d0dfbaa1fd85f4417daf289cb62ed8605d9b5ff329fc43f7a"
 
 langfuse:
   init:
     enabled: false
   surfaces:
     image:
-      tag: "1.2.1"
-      digest: "sha256:b18717f0ddb2b977f077dbc3eb651d1bb80e6f3d317f9cbdc5b4a365a659e721"
+      tag: "1.2.2"
+      digest: "sha256:d5c7f936067d9e887aabe03ee2756c7ce5cd662dfd433ee8945cac80ebc1d407"
   # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
   # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo
