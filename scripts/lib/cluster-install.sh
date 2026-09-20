@@ -293,7 +293,7 @@ EOF
     elif [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
       DEFAULT_LLM_MODEL="bedrock/amazon.titan-text-lite-v1"
     elif [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
-      DEFAULT_LLM_MODEL="vertex/gemini-2.0-flash"
+      DEFAULT_LLM_MODEL="gemini-2.0-flash"
     elif [[ -n "${COHERE_API_KEY:-}" ]]; then
       DEFAULT_LLM_MODEL="cohere/command-r"
     fi

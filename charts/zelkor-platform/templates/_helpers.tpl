@@ -975,6 +975,16 @@ false
 {{- $v.anthropicRegion | default $v.region -}}
 {{- end }}
 
+{{/* GCP global location uses aiplatform.googleapis.com, not global-aiplatform.googleapis.com */}}
+{{- define "zelkor-platform.vertexAIHostname" -}}
+{{- $region := . | required "vertexAIHostname: region is required" -}}
+{{- if eq $region "global" -}}
+aiplatform.googleapis.com
+{{- else -}}
+{{- printf "%s-aiplatform.googleapis.com" $region -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.aiGatewayHasProviders" -}}
 {{- $p := .Values.aiGateway.providers | default dict -}}
 {{- $compat := $p.openaiCompat | default list -}}
