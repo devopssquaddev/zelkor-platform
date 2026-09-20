@@ -205,6 +205,40 @@ def _aigateway_rules(docs: list[dict]) -> list[dict]:
     return _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")["spec"].get("rules") or []
 
 
+def test_nemo_derives_model_from_single_provider():
+    docs = _docs(_helm("--set", "aiGateway.providers.ollamaCloud.apiKey=ollama-key"))
+    by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
+    assert by_type["main"] == "gpt-oss:20b"
+    assert by_type["self_check_input"] == "gpt-oss:20b"
+    assert by_type["self_check_output"] == "gpt-oss:20b"
+
+
+def test_ai_gateway_default_model_overrides_provider_derivation():
+    docs = _docs(
+        _helm(
+            "--set",
+            "aiGateway.providers.ollamaCloud.apiKey=ollama-key",
+            "--set",
+            "aiGateway.defaultModel=qwen3:8b",
+        )
+    )
+    by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
+    assert by_type["main"] == "qwen3:8b"
+
+
+def test_guardrails_nemo_model_wins_over_default_model():
+    docs = _docs(
+        _helm(
+            "--set",
+            "aiGateway.defaultModel=qwen3:8b",
+            "--set",
+            "guardrails.nemo.model=openai/gpt-4o",
+        )
+    )
+    by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
+    assert by_type["main"] == "openai/gpt-4o"
+
+
 def test_self_check_models_inherit_nemo_model():
     docs = _docs(_helm("--set", "guardrails.nemo.model=qwen3:8b"))
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}

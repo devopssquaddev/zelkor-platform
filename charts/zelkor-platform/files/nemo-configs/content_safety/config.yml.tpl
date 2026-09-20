@@ -1,13 +1,15 @@
 {{- $selfCheck := eq (include "zelkor-platform.nemoSelfCheckEnabled" .) "true" }}
 {{- $selfCheckModel := include "zelkor-platform.nemoSelfCheckModel" . }}
+{{- $mainModel := include "zelkor-platform.nemoEffectiveModel" . }}
 models:
   - type: main
     engine: openai
-    model: {{ .Values.guardrails.nemo.model | default "openai/gpt-4o-mini" | quote }}
+    model: {{ $mainModel | quote }}
     parameters:
       base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
+        X-Ai-Eg-Model: {{ $mainModel | quote }}
         {{- if .Values.gateway.hosts.aiGateway }}
         Host: {{ .Values.gateway.hosts.aiGateway | quote }}
         {{- end }}
@@ -19,6 +21,7 @@ models:
       base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
+        X-Ai-Eg-Model: {{ $selfCheckModel | quote }}
         {{- if .Values.gateway.hosts.aiGateway }}
         Host: {{ .Values.gateway.hosts.aiGateway | quote }}
         {{- end }}
@@ -29,6 +32,7 @@ models:
       base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
+        X-Ai-Eg-Model: {{ $selfCheckModel | quote }}
         {{- if .Values.gateway.hosts.aiGateway }}
         Host: {{ .Values.gateway.hosts.aiGateway | quote }}
         {{- end }}

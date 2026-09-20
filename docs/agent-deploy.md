@@ -16,6 +16,8 @@ Human docs: [quickstart.md](quickstart.md) (Deploying an Agent), [production.md]
 
 Production agents use in-cluster `*-ai-gateway` and optional `MCP_URL` — not raw provider API keys on the pod.
 
+**Adding a model or provider** is a **platform overlay** (`aiGateway.providers`, `openaiCompat`, `defaultModel`), not a change to agent chart core or `charts/zelkor-platform` templates. Per-agent default: `platform.defaultLlmModel` on `zelkor-agent`. See [adding-llm-providers-and-models.md](adding-llm-providers-and-models.md).
+
 ---
 
 ## Platform vs agent release

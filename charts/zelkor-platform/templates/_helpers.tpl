@@ -421,18 +421,66 @@ true
 {{- end }}
 
 {{/*
-Model id for self-check Yes/No rails. selfCheck.model, else nemo.model, else openai/gpt-4o-mini.
-Request model injects onto type=main only and must not change this.
+Default model id from enabled providers. Matches scripts/lib/cluster-install.sh DEFAULT_LLM_MODEL precedence.
+*/}}
+{{- define "zelkor-platform.aiGatewayDerivedDefaultModel" -}}
+{{- $p := .Values.aiGateway.providers | default dict -}}
+{{- if $p.openai.apiKey -}}
+openai/gpt-4o-mini
+{{- else if $p.ollamaCloud.apiKey -}}
+gpt-oss:20b
+{{- else if $p.ollamaLocal.host -}}
+ollama/llama3.2
+{{- else if $p.anthropic.apiKey -}}
+anthropic/claude-3-5-sonnet
+{{- else if $p.gemini.apiKey -}}
+gemini/gemini-2.0-flash
+{{- else if $p.vllm.backendUrl -}}
+vllm/default
+{{- else if eq (include "zelkor-platform.aiGatewayAzureEnabled" .) "true" -}}
+azure/gpt-4o-mini
+{{- else if eq (include "zelkor-platform.aiGatewayBedrockEnabled" .) "true" -}}
+bedrock/amazon.titan-text-lite-v1
+{{- else if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" -}}
+vertex/gemini-2.0-flash
+{{- else if eq (include "zelkor-platform.aiGatewayCohereEnabled" .) "true" -}}
+cohere/command-r
+{{- end -}}
+{{- end }}
+
+{{/*
+Pinned NeMo main/self-check model: nemo.model, aiGateway.defaultModel, provider-derived, else openai/gpt-4o-mini.
+Request model injects onto type=main only at runtime and must not change this.
+*/}}
+{{- define "zelkor-platform.nemoEffectiveModel" -}}
+{{- $explicit := .Values.guardrails.nemo.model | default "" -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else -}}
+{{- $default := .Values.aiGateway.defaultModel | default "" -}}
+{{- if $default -}}
+{{- $default -}}
+{{- else -}}
+{{- $derived := include "zelkor-platform.aiGatewayDerivedDefaultModel" . -}}
+{{- if $derived -}}
+{{- $derived -}}
+{{- else -}}
+openai/gpt-4o-mini
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Model id for self-check Yes/No rails. selfCheck.model, else nemoEffectiveModel.
 */}}
 {{- define "zelkor-platform.nemoSelfCheckModel" -}}
 {{- $sc := .Values.guardrails.nemo.selfCheck | default dict -}}
 {{- $explicit := $sc.model | default "" -}}
 {{- if $explicit -}}
 {{- $explicit -}}
-{{- else if .Values.guardrails.nemo.model -}}
-{{- .Values.guardrails.nemo.model -}}
 {{- else -}}
-openai/gpt-4o-mini
+{{- include "zelkor-platform.nemoEffectiveModel" . -}}
 {{- end -}}
 {{- end }}
 
@@ -967,7 +1015,7 @@ JSON array of backend+match pairs for AIGatewayRoute. Prefix-namespaced ids avoi
 {{- $rules = append $rules (dict "backend" (printf "%s-backend-vllm" $full) "match" "^(vllm/.*)") -}}
 {{- end -}}
 {{- if $p.ollamaCloud.apiKey -}}
-{{- $rules = append $rules (dict "backend" (printf "%s-backend-ollama-cloud" $full) "match" "^(gpt-oss.*|deepseek-r1.*|qwen3.*)") -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-ollama-cloud" $full) "match" "^(gpt-oss.*|deepseek-r1.*|qwen3.*|gemma4.*|gemma.*)") -}}
 {{- end -}}
 {{- if $p.ollamaLocal.host -}}
 {{- $rules = append $rules (dict "backend" (printf "%s-backend-ollama-local" $full) "match" "^(ollama/.*|llama.*|deepseek.*|qwen.*|mistral.*|phi.*|codellama.*)") -}}
@@ -982,7 +1030,12 @@ JSON array of backend+match pairs for AIGatewayRoute. Prefix-namespaced ids avoi
 {{- end -}}
 {{- end -}}
 {{- if eq (include "zelkor-platform.aiGatewayVertexEnabled" .) "true" -}}
-{{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex" $full) "match" "^(vertex/.*)") -}}
+{{- /* Envoy GCPVertexAI uses the request model id in the Vertex URL; vertex/ prefix is routing-only and must not be sent. */ -}}
+{{- $vertexMatch := "^(vertex/.*)" -}}
+{{- if not $p.gemini.apiKey -}}
+{{- $vertexMatch = "^(gemini-.*)" -}}
+{{- end -}}
+{{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex" $full) "match" $vertexMatch) -}}
 {{- if $p.vertex.anthropic -}}
 {{- $rules = append $rules (dict "backend" (printf "%s-backend-vertex-anthropic" $full) "match" "^(vertex-anthropic/.*)") -}}
 {{- end -}}

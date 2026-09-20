@@ -216,6 +216,9 @@ def default_llm_model_from(env_map: dict[str, str], values: dict[str, Any]) -> s
     nemo = str(((values.get("guardrails") or {}).get("nemo") or {}).get("model") or "").strip()
     if nemo:
         return nemo
+    gateway_default = str((values.get("aiGateway") or {}).get("defaultModel") or "").strip()
+    if gateway_default:
+        return gateway_default
     models = (((values.get("langfuse") or {}).get("surfaces") or {}).get("llmConnection") or {}).get("models") or []
     if isinstance(models, list) and models:
         return str(models[0] or "").strip()

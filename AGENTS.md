@@ -49,6 +49,7 @@ Demo workloads validate the platform but are **not** bundled into the production
 | :--- | :--- |
 | Platform install / uninstall (kind, existing cluster, greenfield/brownfield) | [docs/agent-install.md](docs/agent-install.md) |
 | Deploy customer agents (`zelkor deploy`, `charts/zelkor-agent`) | [docs/agent-deploy.md](docs/agent-deploy.md) |
+| Add LLM provider or default model (GitOps, demo, agent) | [docs/adding-llm-providers-and-models.md](docs/adding-llm-providers-and-models.md) |
 
 Read the relevant doc before running install scripts or Helm. Multi-root workspace: also read `internal/requirements/dev/agent_zelkor_install.md`.
 
@@ -62,7 +63,7 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 
 ## Engineering Rules
 
-- All LLM calls route through **Envoy AI Gateway** — never connect agents directly to providers
+- All LLM calls route through **Envoy AI Gateway** — never connect agents directly to providers. New providers/models: **Helm overlays** (`aiGateway.providers`, `openaiCompat`, `defaultModel`) — do not rewrite `charts/zelkor-platform` ai-gateway or NeMo templates for one project ([adding-llm-providers-and-models.md](docs/adding-llm-providers-and-models.md), `.cursor/rules/add-llm-via-overlays.mdc`).
 - **Gateway API Standard (No Ingress-NGINX):** Never use `ingress-nginx` (retired in 2026). Ingress and external routing must use **Kubernetes Gateway API (`gateway.networking.k8s.io/v1`)** with **Envoy Gateway**
 - **Requirements & Living Spec Synchronization:** Any functional, architectural, configuration, or test change must be synchronized with governing requirements in `internal/plan/` or `internal/requirements/` with an updated `## Revision History`.
 - **Deprecation & Lifecycle Policy:** Always verify all third-party components, base images, and libraries are actively maintained and not deprecated or EOL

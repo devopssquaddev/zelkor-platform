@@ -17,3 +17,5 @@ This tree is Community Edition platform only.
 - Do not inline Python in templates. Prefer images; otherwise `files/` + `.Files.Get` (see `helm-python-packaging.mdc`).
 
 Customer production installs this chart with no `examples/` release.
+
+LLM providers and models: generic knobs only (`aiGateway.providers`, `openaiCompat`, `defaultModel`). Customers set credentials and model ids in overlays — not new templates under `templates/ai-gateway/` or NeMo config for one tenant. See [adding-llm-via-overlays.mdc](./add-llm-via-overlays.mdc).
