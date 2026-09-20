@@ -216,6 +216,9 @@ def default_llm_model_from(env_map: dict[str, str], values: dict[str, Any]) -> s
     nemo = str(((values.get("guardrails") or {}).get("nemo") or {}).get("model") or "").strip()
     if nemo:
         return nemo
+    gateway_default = str((values.get("aiGateway") or {}).get("defaultModel") or "").strip()
+    if gateway_default:
+        return gateway_default
     models = (((values.get("langfuse") or {}).get("surfaces") or {}).get("llmConnection") or {}).get("models") or []
     if isinstance(models, list) and models:
         return str(models[0] or "").strip()
@@ -259,7 +262,7 @@ def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) 
         else:
             shutil.copy2(item, target)
     (dest / "Dockerfile").write_text(
-        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:1.2.2")),
+        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:1.2.3")),
         encoding="utf-8",
     )
     if shape_kind == "deploy-first":

@@ -43,7 +43,7 @@ desk:
     prefix: aegra:finserve-desk
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
-    tag: "1.2.2"
+    tag: "1.2.3"
     digest: ""
   platform:
     <<: *workerPlatform
@@ -65,7 +65,7 @@ quant:
     prefix: aegra:finserve-quant
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
-    tag: "1.2.2"
+    tag: "1.2.3"
     digest: ""
   platform:
     <<: *workerPlatform
@@ -86,7 +86,7 @@ coder:
     prefix: aegra:finserve-coder
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve-coder
-    tag: "1.2.2"
+    tag: "1.2.3"
     digest: ""
   platform:
     <<: *workerPlatform

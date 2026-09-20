@@ -2,18 +2,18 @@ apiVersion: v2
 name: finserve
 description: Standalone Helm chart for the FinServe AI Wealth Management Demo
 type: application
-version: 1.2.2
-appVersion: "1.2.2"
+version: 1.2.3
+appVersion: "1.2.3"
 dependencies:
   - name: zelkor-agent
-    version: "1.2.2"
+    version: "1.2.3"
     repository: "file://../../../charts/zelkor-agent"
     alias: desk
   - name: zelkor-agent
-    version: "1.2.2"
+    version: "1.2.3"
     repository: "file://../../../charts/zelkor-agent"
     alias: quant
   - name: zelkor-agent
-    version: "1.2.2"
+    version: "1.2.3"
     repository: "file://../../../charts/zelkor-agent"
     alias: coder

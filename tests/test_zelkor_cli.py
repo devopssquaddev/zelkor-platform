@@ -300,6 +300,8 @@ def test_doctor_status_mocked_kube(tmp_path, capsys):
 def test_default_llm_model_from_nemo_when_aegra_env_empty():
     assert default_llm_model_from({}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}}) == "gpt-oss:20b"
     assert default_llm_model_from({"DEFAULT_LLM_MODEL": "openai/gpt-4o-mini"}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}}) == "openai/gpt-4o-mini"
+    assert default_llm_model_from({}, {"aiGateway": {"defaultModel": "qwen3:8b"}}) == "qwen3:8b"
+    assert default_llm_model_from({}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}, "aiGateway": {"defaultModel": "qwen3:8b"}}) == "gpt-oss:20b"
     assert default_llm_model_from({}, {"langfuse": {"surfaces": {"llmConnection": {"models": ["gpt-oss:20b"]}}}}) == "gpt-oss:20b"
 
 

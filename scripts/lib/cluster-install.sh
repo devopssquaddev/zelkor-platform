@@ -342,6 +342,7 @@ cluster_install_append_llm_helm_sets() {
     CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.cohere.apiKey=${COHERE_API_KEY}")
   fi
   if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.defaultModel=${DEFAULT_LLM_MODEL}")
     CLUSTER_INSTALL_HELM_SETS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")
     CLUSTER_INSTALL_HELM_SETS+=(--set-string "langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
   fi

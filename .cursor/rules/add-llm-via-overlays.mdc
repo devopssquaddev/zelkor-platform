@@ -1,0 +1,34 @@
+---
+description: Adding LLM providers or models — use Helm overlays and agent values; do not rewrite platform ai-gateway or NeMo core
+alwaysApply: false
+---
+
+# Add LLM providers and models via overlays
+
+Read [docs/adding-llm-providers-and-models.md](../../docs/adding-llm-providers-and-models.md) before changing gateway or NeMo behavior.
+
+## Configure (do not fork core)
+
+| Need | Where |
+| :--- | :--- |
+| Provider credentials / backends | Platform **overlay**: `aiGateway.providers.*` or `aiGateway.providers.openaiCompat[]` |
+| Install/GitOps default model id | `aiGateway.defaultModel` (+ install env `DEFAULT_LLM_MODEL`) |
+| NeMo pinned rail override | `guardrails.nemo.model` / `guardrails.nemo.selfCheck.model` on overlay |
+| Agent default model | `charts/zelkor-agent` `platform.defaultLlmModel` or `DEFAULT_LLM_MODEL` env |
+| Per-call model | Client request `model` (passthrough); not for NeMo self-check |
+
+Single-provider GitOps may omit `defaultModel` (chart derives from enabled provider). Multiple providers → set `aiGateway.defaultModel` explicitly.
+
+## Forbidden for demos, customers, and one-off tasks
+
+- Editing `charts/zelkor-platform/templates/ai-gateway/` to add a backend or route for one project
+- Hardcoding model ids in `files/nemo-configs/` or `values.yaml` shipped defaults
+- Changing `nemoEffectiveModel` / intercept templates so one fixture model passes tests
+- Putting upstream API keys on agent Deployments instead of `aiGateway.providers`
+- Routing agents directly to vendor APIs (bypass `*-ai-gateway`)
+
+## Platform PR only (generic knob)
+
+If the chart lacks a **generic** capability (new Envoy schema already supported upstream, new empty-default list entry), add the knob in `charts/zelkor-platform/` with production-safe defaults, then set the literal in `profiles/values-local.yaml` or the customer/demo overlay. Spec: `internal/plan/requirements_ai_gateway_providers.md` (multi-root).
+
+Demos: platform overlay under `examples/<name>/chart/values-platform-overlay.yaml` — not commits that only make one demo boot. See `platform-demo-boundary.mdc` and `example-charts.mdc`.

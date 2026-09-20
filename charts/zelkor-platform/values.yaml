@@ -7,7 +7,7 @@
 # Set secrets and hostnames in a customer overlay or existing Secret.
 #
 # First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
-# GHCR as public ghcr.io/devopssquaddev/zelkor-*:1.2.2. No imagePullSecret in CE.
+# GHCR as public ghcr.io/devopssquaddev/zelkor-*:1.2.3. No imagePullSecret in CE.
 # Override repository, tag, or digest per environment. Pin digest in
 # profiles/values-production.yaml. Kind keeps tag: "dev" in profiles/values-local*.yaml.
 
@@ -291,6 +291,9 @@ aiGateway:
   enabled: true
   # Consumer key for in-cluster callers (MCP, agents). Upstream provider keys stay in gateway secrets.
   consumerKey: ""
+  # Default gateway model id for NeMo pinned rails, Langfuse seed, and agents when not overridden.
+  # Empty: derive from the first enabled aiGateway.providers.* (same ids as install scripts).
+  defaultModel: ""
   # In-cluster OpenAI-compatible base URL (…/v1). Defaults to the stable
   # {namespace}-{release}-dataplane Service when inClusterService.targetHost is empty.
   internalUrl: ""
@@ -393,7 +396,7 @@ langfuse:
       seedCode: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-      tag: "1.2.2"
+      tag: "1.2.3"
       digest: ""
   # Additional Langfuse projects + API keys (empty in the chart). Overlay, not init.projectId.
   extraProjects: []
@@ -490,12 +493,12 @@ aegra:
     enabled: false
   image:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
-    tag: "1.2.2"
+    tag: "1.2.3"
     digest: ""
   cli:
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-      tag: "1.2.2"
+      tag: "1.2.3"
       digest: ""
   resources:
     requests:
@@ -533,11 +536,11 @@ guardrails:
     replicaCount: 1
     image:
       repository: ghcr.io/devopssquaddev/zelkor-guardrails
-      tag: "1.2.2"
+      tag: "1.2.3"
       digest: ""
     configsDir: /etc/nemoguardrails/configs
     defaultConfigId: content_safety
-    model: ""
+    model: ""  # override; empty uses aiGateway.defaultModel or provider-derived nemoEffectiveModel
     intercept:
       enabled: true
     aiGatewayRoute:
@@ -549,7 +552,7 @@ guardrails:
     safetyRefusal: "I can't help with that request."
     selfCheck:
       enabled: true  # LLM Yes/No I/O rails; false skips those extra completions (regex/extraColang still apply)
-      model: ""  # empty = guardrails.nemo.model (else openai/gpt-4o-mini); not the request model
+      model: ""  # empty = nemoEffectiveModel chain; not the request model (see aiGateway.defaultModel)
     extraInputFlows: []
     extraColang: ""
     extraRailsConfig: {}
@@ -591,7 +594,7 @@ mcp:
   extraBackends: []    # [{ name, url }] — customer ClusterIP MCP; empty in the platform chart
   image:
     repository: ghcr.io/devopssquaddev/zelkor-mcp
-    tag: "1.2.2"
+    tag: "1.2.3"
     digest: ""
   gateway:
     replicaCount: 1
@@ -741,7 +744,7 @@ mcp:
     strictIsolation: false
     workerImage:
       repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-      tag: "1.2.2"
+      tag: "1.2.3"
       digest: ""
     resources:
       requests:

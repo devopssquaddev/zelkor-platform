@@ -57,6 +57,10 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `aiGateway.providers.openaiCompat`. Model ids are prefix-namespaced where providers share a pattern (`azure/*`, `bedrock/*`, `cohere/*`). Vertex-only installs use bare `gemini-*` (Envoy `GCPVertexAI`); use `vertex/*` when both `providers.gemini.apiKey` and `providers.vertex` are set. Do not put the upstream provider key in `aiGateway.consumerKey`.
 
+NeMo pinned rails (`guardrails.nemo.model` / self-check) default from the first enabled provider when `aiGateway.defaultModel` is empty (same model ids as `install-quickstart.sh`). With **multiple** providers, set `aiGateway.defaultModel` explicitly (install scripts set it from `DEFAULT_LLM_MODEL`).
+
+Full matrix (providers, demos, agents, forbidden core edits): [adding-llm-providers-and-models.md](adding-llm-providers-and-models.md).
+
 ## Next Steps
 
 ```bash

@@ -800,6 +800,7 @@ if [[ -n "${COHERE_API_KEY:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "aiGateway.providers.cohere.apiKey=${COHERE_API_KEY}")
 fi
 if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
+  HELM_EXTRA_ARGS+=(--set "aiGateway.defaultModel=${DEFAULT_LLM_MODEL}")
   HELM_EXTRA_ARGS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")
   # Playground needs a custom model id on the Zelkor connection (no baked gpt-4o list).
   HELM_EXTRA_ARGS+=(--set-string "langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
