@@ -21,7 +21,7 @@ cd zelkor-platform
 OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --namespace zelkor-play
 ```
 
-The script bootstraps Envoy (if needed), generates install secrets (datastores, sandbox worker token, Langfuse crypto) into cluster Secrets, and deploys `profiles/values-quickstart.yaml`. Override with `POSTGRES_PASSWORD`, `WORKER_TOKEN`, `LANGFUSE_*`, and the other env names listed in `install-production.sh`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`. CE GHCR images are public; `--image-pull-secret` is optional.
+The script bootstraps Envoy (if needed), generates install secrets (datastores, sandbox worker token, AI Gateway consumer key, Langfuse crypto) into cluster Secrets, and deploys `profiles/values-quickstart.yaml`. That profile creates the default Langfuse project **Zelkor Platform** and stores ingest keys in `{release}-langfuse-otel`. Override with `POSTGRES_PASSWORD`, `WORKER_TOKEN`, `AI_GATEWAY_CONSUMER_KEY`, `LANGFUSE_*`, and the other env names listed in `install-production.sh`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`. CE GHCR images are public; `--image-pull-secret` is optional.
 
 ```bash
 # Layered behind existing ingress (NGINX, Traefik, ALB)

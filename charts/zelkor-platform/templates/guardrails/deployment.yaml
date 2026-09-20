@@ -18,7 +18,7 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/guardrails/configmap.yaml") . | sha256sum }}
-        checksum/langfuse-otel: {{ printf "%s%s" (.Values.langfuse.init.projectPublicKey | default "") (.Values.langfuse.extraProjects | default list | toJson) | sha256sum }}
+        checksum/langfuse-otel: {{ printf "%t%s" (.Values.langfuse.init.enabled | default false) ((.Values.langfuse.extraProjects | default list) | toJson) | sha256sum }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: guardrails
@@ -69,6 +69,10 @@ spec:
             - name: ENABLE_PROMETHEUS_METRICS
               value: {{ ternary "true" "false" (eq (include "zelkor-platform.serviceMonitorEnabled" .) "true") | quote }}
             {{- include "zelkor-platform.nemoOtelEnv" . | nindent 12 }}
+          {{- with (include "zelkor-platform.nemoLangfuseOtelEnvFrom" . | trim) }}
+          envFrom:
+            {{ . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: nemo-config
               mountPath: {{ printf "%s/content_safety/config.yml" (.Values.guardrails.nemo.configsDir | default "/etc/nemoguardrails/configs") | quote }}

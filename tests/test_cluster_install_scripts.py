@@ -324,6 +324,7 @@ def test_production_dry_run_generates_secrets_without_flag():
     assert proc.returncode == 0, proc.stderr
     assert "postgresql.auth.password=" in proc.stdout
     assert "mcp.sandboxMCP.workerToken=" in proc.stdout
+    assert "aiGateway.consumerKey=" in proc.stdout
     assert "Generated install secrets" not in proc.stdout
 
 
