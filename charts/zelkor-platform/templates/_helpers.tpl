@@ -123,23 +123,22 @@ Identity env for Aegra and MCP. Dev token shortcuts are off unless a local overl
 {{- end }}
 
 {{/*
-Aegra OTel → Langfuse. Uses in-cluster Langfuse Service DNS, not *.localhost.
-Only emitted when otelTargets or init keys are set.
+Aegra OTel → Langfuse. When langfuse.init is enabled, envFrom {release}-langfuse-otel supplies OTEL_TARGETS and LANGFUSE_*.
+Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 */}}
 {{- define "zelkor-platform.aegraOtelEnv" -}}
 {{- $targets := (.Values.aegra.otelTargets | default "") | toString | trim -}}
-{{- $hasKeys := and .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey -}}
-{{- if or $targets $hasKeys }}
+{{- if $targets }}
 - name: OTEL_TARGETS
-  value: {{ if $targets }}{{ $targets | quote }}{{ else }}{{ "LANGFUSE" | quote }}{{ end }}
-- name: LANGFUSE_BASE_URL
-  value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
-{{- if $hasKeys }}
-- name: LANGFUSE_PUBLIC_KEY
-  value: {{ .Values.langfuse.init.projectPublicKey | quote }}
-- name: LANGFUSE_SECRET_KEY
-  value: {{ .Values.langfuse.init.projectSecretKey | quote }}
+  value: {{ $targets | quote }}
 {{- end }}
+{{- end }}
+
+{{- define "zelkor-platform.aegraLangfuseOtelEnvFrom" -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- if and .Values.langfuse.enabled $init.enabled }}
+- secretRef:
+    name: {{ include "zelkor-platform.langfuseOtelSecretName" . }}
 {{- end }}
 {{- end }}
 
@@ -632,7 +631,8 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- end }}
 
 {{- define "zelkor-platform.nemoOtelEnabled" -}}
-{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled $init.enabled -}}
 true
 {{- else -}}
 false
@@ -653,14 +653,17 @@ false
   value: http/protobuf
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
-- name: OTEL_EXPORTER_OTLP_HEADERS
-  value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" .Values.langfuse.init.projectPublicKey .Values.langfuse.init.projectSecretKey)) | quote }}
 - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
   value: "/v1/health"
-- name: LANGFUSE_PUBLIC_KEY
-  value: {{ .Values.langfuse.init.projectPublicKey | quote }}
 - name: LANGFUSE_EXTRA_OTLP
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
+{{- end }}
+{{- end }}
+
+{{- define "zelkor-platform.nemoLangfuseOtelEnvFrom" -}}
+{{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+- secretRef:
+    name: {{ include "zelkor-platform.langfuseOtelSecretName" . }}
 {{- end }}
 {{- end }}
 
@@ -687,24 +690,48 @@ Usage: {{ include "zelkor-platform.image" .Values.aegra.image }}
 
 {{- define "zelkor-platform.langfuseInitKeysConfigured" -}}
 {{- $init := .Values.langfuse.init | default dict -}}
-{{- if and .Values.langfuse.enabled $init.enabled $init.projectPublicKey $init.projectSecretKey -}}
+{{- if and .Values.langfuse.enabled $init.enabled -}}
 true
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseInitSecretName" -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- if $init.existingSecret -}}
+{{- $init.existingSecret -}}
+{{- else -}}
+{{- printf "%s-langfuse-init" (include "zelkor-platform.fullname" .) -}}
 {{- end -}}
 {{- end }}
 
 {{- define "zelkor-platform.langfuseBootstrapWaitInitContainer" -}}
 {{- if eq (include "zelkor-platform.langfuseInitKeysConfigured" .) "true" }}
 {{- $init := .Values.langfuse.init | default dict -}}
+{{- $pk := $init.projectPublicKey | default "" | toString | trim -}}
+{{- $sk := $init.projectSecretKey | default "" | toString | trim -}}
 {{- $lfHost := printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) -}}
 - name: wait-langfuse-bootstrap
   image: {{ .Values.global.initContainerImage | default "busybox:1.37" | quote }}
   env:
     - name: LANGFUSE_HOST
       value: {{ $lfHost | quote }}
+    {{- if and $pk $sk }}
     - name: LANGFUSE_PUBLIC_KEY
-      value: {{ $init.projectPublicKey | quote }}
+      value: {{ $pk | quote }}
     - name: LANGFUSE_SECRET_KEY
-      value: {{ $init.projectSecretKey | quote }}
+      value: {{ $sk | quote }}
+    {{- else }}
+    - name: LANGFUSE_PUBLIC_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "zelkor-platform.langfuseInitSecretName" . }}
+          key: publicKey
+    - name: LANGFUSE_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ include "zelkor-platform.langfuseInitSecretName" . }}
+          key: secretKey
+    {{- end }}
   command:
     - sh
     - -c

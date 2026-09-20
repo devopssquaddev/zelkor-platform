@@ -79,38 +79,49 @@ gateway:
 aiGateway:
   consumerKey: ""
 
-# First-party images: tag 1.2.3 (chart default). Digests filled by
+# First-party images: tag 1.2.4 (chart default). Digests filled by
 # scripts/pin-production-digests.sh after GHCR push.
 aegra:
   image:
-    tag: "1.2.3"
+    tag: "1.2.4"
     digest: "sha256:e122704ac0451ac7fb03717bb4dfe8ce0503882e25a74e18c5216b5dbd7644ab"
   cli:
     image:
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: "sha256:91c7c30bb465f1d8fb28da255b310ca0eded3edfb29979c567026b0e63e83370"
 
 guardrails:
   nemo:
     image:
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: "sha256:a9232166b106f5499cc92320f34feb62e61123b0baa7a632937163657b14ea84"
 
 mcp:
   image:
-    tag: "1.2.3"
+    tag: "1.2.4"
     digest: "sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
   sandboxMCP:
     workerImage:
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: "sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0"
 
 langfuse:
   init:
-    enabled: false
+    enabled: true
+    orgId: zelkor
+    orgName: Zelkor
+    projectId: zelkor-platform
+    projectName: Zelkor Platform
   surfaces:
+    llmConnection:
+      enabled: true
+    tools:
+      seedFromMcp: true
+    evaluators:
+      seedCode: true
     image:
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: "sha256:02fbb3e9c3a7d6d1208b1f91314777a8d460cb3974dd4dd466ea89c74419931f"
   # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
+  # Project API keys: Secret {release}-langfuse-init / {release}-langfuse-otel (generated when init keys empty).
   # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo

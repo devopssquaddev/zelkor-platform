@@ -48,7 +48,11 @@ aiGateway:
 
 langfuse:
   init:
-    enabled: false
+    enabled: true
+    orgId: zelkor
+    orgName: Zelkor
+    projectId: zelkor-platform
+    projectName: Zelkor Platform
   surfaces:
     llmConnection:
       enabled: true

@@ -397,12 +397,16 @@ cluster_install_platform_secrets() {
   if [[ -z "${WORKER_TOKEN:-}" ]]; then
     WORKER_TOKEN="$(cluster_install_rand_b64)"
   fi
+  if [[ -z "${AI_GATEWAY_CONSUMER_KEY:-}" ]]; then
+    AI_GATEWAY_CONSUMER_KEY="$(cluster_install_rand_b64)"
+  fi
   CLUSTER_INSTALL_HELM_SETS+=(
     --set "postgresql.auth.password=${POSTGRES_PASSWORD}"
     --set "clickhouse.auth.password=${CLICKHOUSE_PASSWORD}"
     --set "seaweedfs.auth.accessKey=${SEAWEEDFS_ACCESS_KEY}"
     --set "seaweedfs.auth.secretKey=${SEAWEEDFS_SECRET_KEY}"
     --set "mcp.sandboxMCP.workerToken=${WORKER_TOKEN}"
+    --set "aiGateway.consumerKey=${AI_GATEWAY_CONSUMER_KEY}"
   )
 }
 
@@ -411,12 +415,15 @@ cluster_install_print_secret_howto() {
   local rel="$CLUSTER_INSTALL_RELEASE"
   echo
   echo "Install secrets are in cluster Secrets (override with env before install):"
-  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN"
+  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN / AI_GATEWAY_CONSUMER_KEY"
   echo "  LANGFUSE_NEXTAUTH_SECRET / LANGFUSE_SALT / LANGFUSE_ENCRYPTION_KEY"
+  echo "  Langfuse project keys (when langfuse.init.enabled): ${rel}-langfuse-init / ${rel}-langfuse-otel"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-postgresql -o jsonpath='{.data.password}' | base64 -d; echo"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-clickhouse -o jsonpath='{.data.password}' | base64 -d; echo"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-seaweedfs -o jsonpath='{.data.access-key}' | base64 -d; echo"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-sandbox-worker -o jsonpath='{.data.token}' | base64 -d; echo"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-langfuse-otel -o jsonpath='{.data.LANGFUSE_PUBLIC_KEY}' | base64 -d; echo"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-langfuse-otel -o jsonpath='{.data.LANGFUSE_SECRET_KEY}' | base64 -d; echo"
 }
 
 cluster_install_append_host_helm_sets() {

@@ -313,7 +313,13 @@ def test_langfuse_admin_secret_and_bootstrap_job():
         for e in jobs[0]["spec"]["template"]["spec"]["containers"][0]["env"]
     }
     assert env["SEED_ADMIN"]["value"] == "true"
-    assert env["SEED_INIT"]["value"] == "false"
+    assert env["SEED_INIT"]["value"] == "true"
+    assert env["LANGFUSE_ORG_ID"]["value"] == "zelkor"
+    assert env["LANGFUSE_PROJECT_ID"]["value"] == "zelkor-platform"
+    pk_env = env["LANGFUSE_PUBLIC_KEY"]
+    assert "valueFrom" in pk_env
+    assert pk_env["valueFrom"]["secretKeyRef"]["name"] == "zelkor-platform-langfuse-init"
+    assert pk_env["valueFrom"]["secretKeyRef"]["key"] == "publicKey"
     ref = env["LANGFUSE_ADMIN_PASSWORD"]["valueFrom"]["secretKeyRef"]
     assert ref["name"] == "zelkor-platform-langfuse-admin"
     assert ref["key"] == "password"

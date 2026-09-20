@@ -128,7 +128,7 @@ def test_helm_langfuse_otel_secret_from_init_keys():
                 "-f",
                 str(local),
                 "-s",
-                "templates/langfuse/secret-otel.yaml",
+                "templates/langfuse/secret-langfuse-keys.yaml",
             ],
             capture_output=True,
             text=True,
@@ -144,12 +144,11 @@ def test_helm_langfuse_otel_secret_from_init_keys():
     assert "dev-key" not in proc.stdout
 
 
-def test_helm_langfuse_otel_secret_omitted_without_keys():
+def test_helm_langfuse_otel_secret_omitted_when_init_disabled():
     import subprocess
 
     root = Path(__file__).resolve().parents[1]
     chart = root / "charts/zelkor-platform"
-    local = root / "profiles/values-local.yaml"
     try:
         proc = subprocess.run(
             [
@@ -157,14 +156,14 @@ def test_helm_langfuse_otel_secret_omitted_without_keys():
                 "template",
                 "zelkor-platform",
                 str(chart),
-                "-f",
-                str(local),
                 "--set",
-                "langfuse.init.projectPublicKey=",
+                "langfuse.init.enabled=false",
                 "--set",
-                "langfuse.init.projectSecretKey=",
+                "postgresql.auth.password=test-pg-pass",
+                "--set",
+                "clickhouse.auth.password=test-ch-pass",
                 "-s",
-                "templates/langfuse/secret-otel.yaml",
+                "templates/langfuse/secret-langfuse-keys.yaml",
             ],
             capture_output=True,
             text=True,
@@ -174,6 +173,59 @@ def test_helm_langfuse_otel_secret_omitted_without_keys():
         pytest.skip("helm not installed")
     combined = (proc.stdout or "") + (proc.stderr or "")
     assert "zelkor-platform-langfuse-otel" not in combined
+
+
+def test_helm_langfuse_init_generates_otel_secret_when_enabled():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    chart = root / "charts/zelkor-platform"
+    qs = root / "profiles/values-quickstart.yaml"
+    try:
+        proc = subprocess.run(
+            [
+                "helm",
+                "template",
+                "zelkor-platform",
+                str(chart),
+                "-f",
+                str(qs),
+                "--set",
+                "postgresql.auth.password=test-pg-pass",
+                "--set",
+                "clickhouse.auth.password=test-ch-pass",
+                "--set",
+                "seaweedfs.auth.accessKey=testaccess",
+                "--set",
+                "seaweedfs.auth.secretKey=testsecretkey123456789012",
+                "--set",
+                "valkey.auth.password=test-valkey",
+                "--set",
+                "gateway.hosts.langfuse=langfuse.example.com",
+                "--set",
+                "gateway.hosts.agents=agents.example.com",
+                "--set",
+                "langfuse.nextauthUrl=https://langfuse.example.com",
+                "--set",
+                "langfuse.salt=salt",
+                "--set",
+                "langfuse.nextauthSecret=nextauth",
+                "--set",
+                "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "-s",
+                "templates/langfuse/secret-langfuse-keys.yaml",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        pytest.skip("helm not installed")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "name: zelkor-platform-langfuse-init" in proc.stdout
+    assert "name: zelkor-platform-langfuse-otel" in proc.stdout
+    assert "pk-lf-" in proc.stdout
+    assert "sk-lf-" in proc.stdout
 
 
 def test_helm_extra_projects_on_seed_job_and_nemo():
@@ -434,6 +486,8 @@ def test_helm_bootstrap_wait_init_on_aegra_when_init_enabled():
     assert "wait-langfuse-bootstrap" in out
     assert "LANGFUSE_HOST" in out
     assert "/api/public/llm-connections" in out
+    assert "envFrom:" in out
+    assert "zelkor-zelkor-platform-langfuse-otel" in out
     assert "busybox:1.37" in out
     assert "kubectl" not in out
     assert "bitnami" not in out.lower()

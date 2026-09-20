@@ -7,7 +7,7 @@
 {{- $evals := $surfaces.evaluators | default dict -}}
 {{- $extraProjects := .Values.langfuse.extraProjects | default list -}}
 {{- $armorOn := and $init.enabled (or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0)) -}}
-{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.projectPublicKey | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) | sha256sum | trim -}}
+{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.orgId | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) | sha256sum | trim -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -71,10 +71,25 @@ spec:
               value: {{ required "langfuse.init.projectId is required when langfuse.init.enabled" $init.projectId | quote }}
             - name: LANGFUSE_PROJECT_NAME
               value: {{ required "langfuse.init.projectName is required when langfuse.init.enabled" $init.projectName | quote }}
+            {{- $pk := $init.projectPublicKey | default "" | toString | trim -}}
+            {{- $sk := $init.projectSecretKey | default "" | toString | trim -}}
+            {{- if and $pk $sk }}
             - name: LANGFUSE_PUBLIC_KEY
-              value: {{ required "langfuse.init.projectPublicKey is required when langfuse.init.enabled" $init.projectPublicKey | quote }}
+              value: {{ $pk | quote }}
             - name: LANGFUSE_SECRET_KEY
-              value: {{ required "langfuse.init.projectSecretKey is required when langfuse.init.enabled" $init.projectSecretKey | quote }}
+              value: {{ $sk | quote }}
+            {{- else }}
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.langfuseInitSecretName" . }}
+                  key: publicKey
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.langfuseInitSecretName" . }}
+                  key: secretKey
+            {{- end }}
             - name: LANGFUSE_INIT_USER_EMAIL
               value: {{ $init.userEmail | default "" | quote }}
             - name: LANGFUSE_SALT

@@ -7,7 +7,7 @@
 # Set secrets and hostnames in a customer overlay or existing Secret.
 #
 # First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
-# GHCR as public ghcr.io/devopssquaddev/zelkor-*:1.2.3. No imagePullSecret in CE.
+# GHCR as public ghcr.io/devopssquaddev/zelkor-*:1.2.4. No imagePullSecret in CE.
 # Override repository, tag, or digest per environment. Pin digest in
 # profiles/values-production.yaml. Kind keeps tag: "dev" in profiles/values-local*.yaml.
 
@@ -396,7 +396,7 @@ langfuse:
       seedCode: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: ""
   # Additional Langfuse projects + API keys (empty in the chart). Overlay, not init.projectId.
   extraProjects: []
@@ -415,6 +415,8 @@ langfuse:
     password: ""
   init:
     enabled: false
+    # When empty, chart Secret {release}-langfuse-init generates pk/sk once (profiles enable init).
+    existingSecret: ""
     orgId: ""
     orgName: ""
     projectId: ""
@@ -493,12 +495,12 @@ aegra:
     enabled: false
   image:
     repository: ghcr.io/devopssquaddev/zelkor-aegra
-    tag: "1.2.3"
+    tag: "1.2.4"
     digest: ""
   cli:
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: ""
   resources:
     requests:
@@ -536,7 +538,7 @@ guardrails:
     replicaCount: 1
     image:
       repository: ghcr.io/devopssquaddev/zelkor-guardrails
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: ""
     configsDir: /etc/nemoguardrails/configs
     defaultConfigId: content_safety
@@ -594,7 +596,7 @@ mcp:
   extraBackends: []    # [{ name, url }] — customer ClusterIP MCP; empty in the platform chart
   image:
     repository: ghcr.io/devopssquaddev/zelkor-mcp
-    tag: "1.2.3"
+    tag: "1.2.4"
     digest: ""
   gateway:
     replicaCount: 1
@@ -744,7 +746,7 @@ mcp:
     strictIsolation: false
     workerImage:
       repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-      tag: "1.2.3"
+      tag: "1.2.4"
       digest: ""
     resources:
       requests:
