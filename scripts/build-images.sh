@@ -95,10 +95,16 @@ for name in "${SELECTED[@]}"; do
         extra_args+=(--build-arg "ZELKOR_AEGRA_DEEP_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra-deep:${IMAGE_TAG}")
         ;;
     esac
-    docker build -f "$df" -t "$ref" \
-      --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
-      "${extra_args[@]}" \
-      "$ROOT"
+    if ((${#extra_args[@]} > 0)); then
+      docker build -f "$df" -t "$ref" \
+        --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
+        "${extra_args[@]}" \
+        "$ROOT"
+    else
+      docker build -f "$df" -t "$ref" \
+        --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
+        "$ROOT"
+    fi
   fi
   BUILT+=("$ref")
 done
