@@ -121,6 +121,7 @@ def install() -> None:
 
     extra = parse_extra_otlp(os.getenv("LANGFUSE_EXTRA_OTLP", ""))
     default_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+    default_sk = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
 
     from opentelemetry import baggage, context, trace
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -143,8 +144,20 @@ def install() -> None:
 
     for pk, sk in extra.items():
         _leaf(pk, sk)
+    if default_pk and default_sk:
+        _leaf(default_pk, default_sk)
 
     orig_export = OTLPSpanExporter.export
+
+    def _resolve_sk(pk: str) -> tuple[str, str]:
+        effective = (pk or default_pk).strip()
+        if not effective:
+            return "", ""
+        if effective in extra:
+            return effective, extra[effective]
+        if effective == default_pk and default_sk:
+            return effective, default_sk
+        return "", ""
 
     def _kept(spans):  # type: ignore[no-untyped-def]
         return [span for span in spans if not is_orphan_http_client(span)]
@@ -153,15 +166,16 @@ def install() -> None:
         spans = _kept(spans)
         if not spans:
             return SpanExportResult.SUCCESS
-        if getattr(self, "_zelkor_route_leaf", False) or not extra:
+        if getattr(self, "_zelkor_route_leaf", False):
             return orig_export(self, spans)
         buckets: Dict[str, List] = defaultdict(list)
         for span in spans:
             buckets[pk_from_span(span, default_pk)].append(span)
         result = SpanExportResult.SUCCESS
         for pk, group in buckets.items():
-            if pk in extra:
-                result = _leaf(pk, extra[pk]).export(group)
+            route_pk, sk = _resolve_sk(pk)
+            if route_pk and sk:
+                result = _leaf(route_pk, sk).export(group)
             else:
                 result = orig_export(self, group)
         return result

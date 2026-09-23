@@ -2,5 +2,5 @@ apiVersion: v2
 name: zelkor-agent
 description: ClusterIP worker for one or more graphs in one image. Self-registers via sharedRoute HTTPRoute when host + gateway are set. CLI workers use zelkor-aegra-deep.
 type: application
-version: 1.2.4
-appVersion: "1.2.4"
+version: 1.2.5
+appVersion: "1.2.5"

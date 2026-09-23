@@ -117,6 +117,22 @@ kubectl -n envoy-gateway-system scale deploy/envoy-gateway --replicas=2
 kubectl -n envoy-ai-gateway-system scale deploy/ai-gateway-controller --replicas=2
 ```
 
+## NeMo guardrails traces in Langfuse
+
+Prerequisites: `langfuse.enabled` and `langfuse.init.enabled` (install scripts set this on quickstart/production).
+
+Enable OpenTelemetry export on the NeMo Deployment:
+
+```bash
+helm upgrade --install zelkor-platform ./charts/zelkor-platform \
+  --namespace zelkor --reuse-values \
+  --set guardrails.nemo.observability.otel.enabled=true
+```
+
+NeMo loads Langfuse ingest keys from the cluster Secret `{release}-langfuse-otel` (`envFrom`). You do **not** need `langfuse.extraProjects` for a single Langfuse project. Use `extraProjects` only when multiple Langfuse projects need NeMo OTLP routing (per-agent public keys). Optional: `guardrails.nemo.observability.otel.captureContent=true` for observation input/output (PII).
+
+After a chat completion through NeMo or the AI Gateway intercept, Langfuse should show rails such as `self_check_input` and `guardrails.request`. NeMo logs must not show OTLP export `401 Unauthorized`.
+
 ## Verifying the Deployment
 
 ```bash
