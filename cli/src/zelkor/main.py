@@ -262,7 +262,7 @@ def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) 
         else:
             shutil.copy2(item, target)
     (dest / "Dockerfile").write_text(
-        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:1.2.4")),
+        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:1.2.5")),
         encoding="utf-8",
     )
     if shape_kind == "deploy-first":
