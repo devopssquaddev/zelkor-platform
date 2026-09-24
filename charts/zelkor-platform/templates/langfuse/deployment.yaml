@@ -4,7 +4,7 @@ kind: Secret
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-langfuse
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse
 type: Opaque
 stringData:
@@ -17,7 +17,7 @@ kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-langfuse
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse
 spec:
   type: ClusterIP
@@ -35,7 +35,7 @@ kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-langfuse
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse
     app.kubernetes.io/langfuse-role: web
 spec:
@@ -88,7 +88,7 @@ kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-langfuse-worker
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse
     app.kubernetes.io/langfuse-role: worker
 spec:

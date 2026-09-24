@@ -154,6 +154,7 @@ fi
 cluster_install_print_dataplane
 cluster_install_wait_langfuse
 cluster_install_wait_langfuse_bootstrap
+cluster_install_enable_langfuse_public_route "${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
 cluster_install_print_secret_howto
 
 echo

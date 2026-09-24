@@ -311,6 +311,7 @@ def test_seed_admin_exists_http(monkeypatch):
     monkeypatch.setattr(seed_mod, "LANGFUSE_HOST", "http://lf")
     monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: False)
     monkeypatch.setattr(seed_mod, "_signup", lambda e, p, n: (422, '{"message":"User already exists"}'))
+    monkeypatch.setattr(seed_mod, "_verify_admin_password", lambda e, p: True)
     assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
 
 
@@ -327,12 +328,20 @@ def test_seed_admin_weak_password_fails(monkeypatch):
 
 def test_seed_admin_exists_sql(monkeypatch):
     monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: True)
+    monkeypatch.setattr(seed_mod, "_verify_admin_password", lambda e, p: True)
 
     def boom(*_a, **_k):
         raise AssertionError("signup should not run")
 
     monkeypatch.setattr(seed_mod, "_signup", boom)
     assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
+
+
+def test_seed_admin_exists_sql_wrong_password(monkeypatch):
+    monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: True)
+    monkeypatch.setattr(seed_mod, "_verify_admin_password", lambda e, p: False)
+    with pytest.raises(RuntimeError, match="public signup before bootstrap"):
+        seed_mod.seed_admin_user("a@b.c", "secret")
 
 
 def test_seed_admin_requires_creds():

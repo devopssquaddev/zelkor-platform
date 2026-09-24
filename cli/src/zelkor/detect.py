@@ -130,7 +130,21 @@ def helm_release_name(graph_id: str) -> str:
     return raw or "agent"
 
 
+_AGENT_CHART_NAME = "zelkor-agent"
+
+
+def agent_deployment_name(release: str) -> str:
+    """Match charts/zelkor-agent templates/zelkor-agent.fullname."""
+    if _AGENT_CHART_NAME in release:
+        return release
+    return f"{release}-{_AGENT_CHART_NAME}"
+
+
+def agent_http_route_name(release: str) -> str:
+    return f"{agent_deployment_name(release)}-route"
+
+
 def should_attach_as_default(existing_route_names: list[str], this_release: str) -> bool:
-    ours = f"{this_release}-zelkor-agent-route"
+    ours = agent_http_route_name(this_release)
     others = [n for n in existing_route_names if n != ours]
     return not others

@@ -62,7 +62,7 @@ kind: PodMonitor
 metadata:
   name: {{ $fn }}-envoy
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "observability") | nindent 4 }}
     {{- with $extra }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

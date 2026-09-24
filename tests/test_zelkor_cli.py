@@ -10,7 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "cli" / "src"))
 sys.path.insert(0, str(ROOT / "images" / "aegra-deep"))
 
-from zelkor.detect import DetectError, customer_dockerfile, detect, should_attach_as_default  # noqa: E402
+from zelkor.detect import (  # noqa: E402
+    DetectError,
+    agent_deployment_name,
+    customer_dockerfile,
+    detect,
+    should_attach_as_default,
+)
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
 from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, in_cluster_openai_base_url, main, merge_extra_backends  # noqa: E402
 
@@ -83,6 +89,13 @@ def test_should_attach_as_default_skips_existing_workers():
     assert should_attach_as_default([], "desk") is True
     assert should_attach_as_default(["desk-zelkor-agent-route"], "desk") is True
     assert should_attach_as_default(["finserve-desk-zelkor-agent-route"], "agent") is False
+
+
+def test_agent_deployment_name_matches_helm_fullname():
+    assert agent_deployment_name("agent") == "agent-zelkor-agent"
+    assert agent_deployment_name("desk") == "desk-zelkor-agent"
+    assert agent_deployment_name("zelkor-agent") == "zelkor-agent"
+    assert agent_deployment_name("my-zelkor-agent") == "my-zelkor-agent"
 
 
 def test_merge_extra_backends_keeps_existing():

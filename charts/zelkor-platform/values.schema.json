@@ -1,0 +1,4478 @@
+{
+  "type": "object",
+  "description": "Zelkor platform values.",
+  "properties": {
+    "extraManifests": {
+      "type": "array",
+      "description": "Additional manifests rendered alongside chart output.",
+      "items": {
+        "type": [
+          "object",
+          "string"
+        ],
+        "description": "Raw Kubernetes object (map) or templated YAML string."
+      }
+    },
+    "global": {
+      "type": "object",
+      "description": "Values under global.",
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": [
+            "oss",
+            "pro",
+            "enterprise"
+          ],
+          "description": "Allowed values for global.tier."
+        },
+        "imagePullPolicy": {
+          "type": "string",
+          "description": "Value for global.imagePullPolicy."
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "description": "List at global.imagePullSecrets.",
+          "items": {
+            "type": [
+              "string",
+              "object",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "initContainerImage": {
+          "type": "string",
+          "description": "Value for global.initContainerImage."
+        },
+        "zelkor": {
+          "type": "object",
+          "description": "Pro/Ent umbrella hooks (e.g. entitlements).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "description": "Values under logging.",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ],
+          "description": "Allowed values for logging.level."
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "json",
+            "text"
+          ],
+          "description": "Allowed values for logging.format."
+        }
+      },
+      "additionalProperties": false
+    },
+    "highAvailability": {
+      "type": "object",
+      "description": "Values under highAvailability.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for highAvailability.enabled."
+        },
+        "minReplicas": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for highAvailability.minReplicas."
+        },
+        "maxReplicas": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for highAvailability.maxReplicas."
+        },
+        "cpuUtilization": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for highAvailability.cpuUtilization."
+        }
+      },
+      "additionalProperties": false
+    },
+    "observability": {
+      "type": "object",
+      "description": "Values under observability.",
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "description": "Values under observability.serviceMonitor.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for observability.serviceMonitor.enabled."
+            },
+            "labels": {
+              "type": "object",
+              "description": "Values under observability.serviceMonitor.labels.",
+              "properties": {
+              }
+            },
+            "interval": {
+              "type": "string",
+              "description": "Value for observability.serviceMonitor.interval."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "databases": {
+      "type": "object",
+      "description": "Values under databases.",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "in-cluster-basic",
+            "operator-cr",
+            "external"
+          ],
+          "description": "Allowed values for databases.mode."
+        },
+        "postgresql": {
+          "type": "object",
+          "description": "Values under databases.postgresql.",
+          "properties": {
+            "instances": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for databases.postgresql.instances."
+            },
+            "storage": {
+              "type": "object",
+              "description": "Values under databases.postgresql.storage.",
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.storage.size."
+                },
+                "storageClass": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.storage.storageClass."
+                }
+              },
+              "additionalProperties": false
+            },
+            "imageName": {
+              "type": "string",
+              "description": "Value for databases.postgresql.imageName."
+            },
+            "barman": {
+              "type": "object",
+              "description": "Values under databases.postgresql.barman.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for databases.postgresql.barman.enabled."
+                },
+                "destinationPath": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.barman.destinationPath."
+                },
+                "s3CredentialsSecretRef": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.barman.s3CredentialsSecretRef."
+                },
+                "retentionPolicy": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.barman.retentionPolicy."
+                },
+                "pluginName": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.barman.pluginName."
+                }
+              },
+              "additionalProperties": false
+            },
+            "external": {
+              "type": "object",
+              "description": "Values under databases.postgresql.external.",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.external.host."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for databases.postgresql.external.port."
+                },
+                "username": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.external.username."
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Value for databases.postgresql.external.password."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "clickhouse": {
+          "type": "object",
+          "description": "Values under databases.clickhouse.",
+          "properties": {
+            "clientNetworks": {
+              "type": "array",
+              "description": "List at databases.clickhouse.clientNetworks.",
+              "items": {
+                "type": [
+                  "string",
+                  "object",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "ha": {
+              "type": "boolean",
+              "description": "Value for databases.clickhouse.ha."
+            },
+            "storage": {
+              "type": "object",
+              "description": "Values under databases.clickhouse.storage.",
+              "properties": {
+                "size": {
+                  "type": "string",
+                  "description": "Value for databases.clickhouse.storage.size."
+                },
+                "storageClass": {
+                  "type": "string",
+                  "description": "Value for databases.clickhouse.storage.storageClass."
+                }
+              },
+              "additionalProperties": false
+            },
+            "external": {
+              "type": "object",
+              "description": "Values under databases.clickhouse.external.",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Value for databases.clickhouse.external.host."
+                },
+                "httpPort": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for databases.clickhouse.external.httpPort."
+                },
+                "nativePort": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for databases.clickhouse.external.nativePort."
+                },
+                "username": {
+                  "type": "string",
+                  "description": "Value for databases.clickhouse.external.username."
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Value for databases.clickhouse.external.password."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "valkey": {
+          "type": "object",
+          "description": "Values under databases.valkey.",
+          "properties": {
+            "external": {
+              "type": "object",
+              "description": "Values under databases.valkey.external.",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Value for databases.valkey.external.host."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for databases.valkey.external.port."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "description": "Values under security.",
+      "properties": {
+        "mTLS": {
+          "type": "object",
+          "description": "Values under security.mTLS.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for security.mTLS.enabled."
+            }
+          },
+          "additionalProperties": false
+        },
+        "sandbox": {
+          "type": "object",
+          "description": "Values under security.sandbox.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for security.sandbox.enabled."
+            },
+            "runtimeClass": {
+              "type": "string",
+              "description": "Value for security.sandbox.runtimeClass."
+            },
+            "failClosed": {
+              "type": "boolean",
+              "description": "Value for security.sandbox.failClosed."
+            },
+            "createRuntimeClass": {
+              "type": "boolean",
+              "description": "Value for security.sandbox.createRuntimeClass."
+            },
+            "overhead": {
+              "type": "object",
+              "description": "Values under security.sandbox.overhead.",
+              "properties": {
+              }
+            },
+            "nodes": {
+              "type": "object",
+              "description": "Values under security.sandbox.nodes.",
+              "properties": {
+                "selector": {
+                  "type": "object",
+                  "description": "Values under security.sandbox.nodes.selector.",
+                  "properties": {
+                  }
+                },
+                "tolerations": {
+                  "type": "array",
+                  "description": "List at security.sandbox.nodes.tolerations.",
+                  "items": {
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "provisioning": {
+              "type": "object",
+              "description": "Values under security.sandbox.provisioning.",
+              "properties": {
+                "mode": {
+                  "type": "string",
+                  "description": "Value for security.sandbox.provisioning.mode."
+                },
+                "gvisorRelease": {
+                  "type": "string",
+                  "description": "Value for security.sandbox.provisioning.gvisorRelease."
+                },
+                "baseUrl": {
+                  "type": "string",
+                  "description": "Value for security.sandbox.provisioning.baseUrl."
+                },
+                "verifyChecksum": {
+                  "type": "boolean",
+                  "description": "Value for security.sandbox.provisioning.verifyChecksum."
+                },
+                "installer": {
+                  "type": "object",
+                  "description": "Values under security.sandbox.provisioning.installer.",
+                  "properties": {
+                    "image": {
+                      "type": "object",
+                      "description": "Values under security.sandbox.provisioning.installer.image.",
+                      "properties": {
+                        "repository": {
+                          "type": "string",
+                          "description": "Value for security.sandbox.provisioning.installer.image.repository."
+                        },
+                        "tag": {
+                          "type": "string",
+                          "description": "Value for security.sandbox.provisioning.installer.image.tag."
+                        },
+                        "digest": {
+                          "type": "string",
+                          "description": "Value for security.sandbox.provisioning.installer.image.digest."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "containerd": {
+                      "type": "object",
+                      "description": "Values under security.sandbox.provisioning.installer.containerd.",
+                      "properties": {
+                        "dropInDir": {
+                          "type": "string",
+                          "description": "Value for security.sandbox.provisioning.installer.containerd.dropInDir."
+                        },
+                        "configPaths": {
+                          "type": "array",
+                          "description": "List at security.sandbox.provisioning.installer.containerd.configPaths.",
+                          "items": {
+                            "type": [
+                              "string",
+                              "object",
+                              "number",
+                              "boolean"
+                            ]
+                          }
+                        },
+                        "restartUnits": {
+                          "type": "array",
+                          "description": "List at security.sandbox.provisioning.installer.containerd.restartUnits.",
+                          "items": {
+                            "type": [
+                              "string",
+                              "object",
+                              "number",
+                              "boolean"
+                            ]
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "verify": {
+                  "type": "object",
+                  "description": "Values under security.sandbox.provisioning.verify.",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Value for security.sandbox.provisioning.verify.enabled."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "executionLog": {
+              "type": "object",
+              "description": "Values under security.sandbox.executionLog.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for security.sandbox.executionLog.enabled."
+                },
+                "includeStdoutPreview": {
+                  "type": "boolean",
+                  "description": "Value for security.sandbox.executionLog.includeStdoutPreview."
+                },
+                "suspiciousOnProbePlusError": {
+                  "type": "boolean",
+                  "description": "Value for security.sandbox.executionLog.suspiciousOnProbePlusError."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "networkPolicies": {
+          "type": "object",
+          "description": "Values under security.networkPolicies.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for security.networkPolicies.enabled."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "description": "Values under auth.",
+      "properties": {
+        "sso": {
+          "type": "object",
+          "description": "Values under auth.sso.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for auth.sso.enabled."
+            }
+          },
+          "additionalProperties": false
+        },
+        "jwtSecret": {
+          "type": "string",
+          "description": "Value for auth.jwtSecret."
+        },
+        "devTokens": {
+          "type": "object",
+          "description": "Values under auth.devTokens.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for auth.devTokens.enabled."
+            },
+            "prefix": {
+              "type": "string",
+              "description": "Value for auth.devTokens.prefix."
+            }
+          },
+          "additionalProperties": false
+        },
+        "trustTenantHeader": {
+          "type": "boolean",
+          "description": "Value for auth.trustTenantHeader."
+        }
+      },
+      "additionalProperties": false
+    },
+    "gateway": {
+      "type": "object",
+      "description": "Values under gateway.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for gateway.enabled."
+        },
+        "gatewayClassName": {
+          "type": "string",
+          "description": "Value for gateway.gatewayClassName."
+        },
+        "createGatewayClass": {
+          "type": "boolean",
+          "description": "Value for gateway.createGatewayClass."
+        },
+        "createGateway": {
+          "type": "boolean",
+          "description": "Value for gateway.createGateway."
+        },
+        "parentRef": {
+          "type": "object",
+          "description": "Values under gateway.parentRef.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Value for gateway.parentRef.name."
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Value for gateway.parentRef.namespace."
+            },
+            "sectionName": {
+              "type": "string",
+              "description": "Value for gateway.parentRef.sectionName."
+            }
+          },
+          "additionalProperties": false
+        },
+        "envoyProxy": {
+          "type": "object",
+          "description": "Values under gateway.envoyProxy.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for gateway.envoyProxy.enabled."
+            },
+            "hostNetwork": {
+              "type": "boolean",
+              "description": "Value for gateway.envoyProxy.hostNetwork."
+            },
+            "nodeSelector": {
+              "type": "object",
+              "description": "Values under gateway.envoyProxy.nodeSelector.",
+              "properties": {
+              }
+            },
+            "service": {
+              "type": "object",
+              "description": "Values under gateway.envoyProxy.service.",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "Value for gateway.envoyProxy.service.type."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Value for gateway.envoyProxy.service.name."
+                }
+              },
+              "additionalProperties": false
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under gateway.envoyProxy.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under gateway.envoyProxy.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for gateway.envoyProxy.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for gateway.envoyProxy.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under gateway.envoyProxy.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for gateway.envoyProxy.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for gateway.envoyProxy.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Values under gateway.annotations.",
+          "properties": {
+          }
+        },
+        "tls": {
+          "type": "object",
+          "description": "Values under gateway.tls.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for gateway.tls.enabled."
+            },
+            "port": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for gateway.tls.port."
+            },
+            "clusterIssuer": {
+              "type": "string",
+              "description": "Value for gateway.tls.clusterIssuer."
+            },
+            "certificateRefs": {
+              "type": "array",
+              "description": "List at gateway.tls.certificateRefs.",
+              "items": {
+                "type": [
+                  "string",
+                  "object",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "hosts": {
+          "type": "object",
+          "description": "Values under gateway.hosts.",
+          "properties": {
+            "langfuse": {
+              "type": "string",
+              "description": "Value for gateway.hosts.langfuse."
+            },
+            "aiGateway": {
+              "type": "string",
+              "description": "Value for gateway.hosts.aiGateway."
+            },
+            "aegra": {
+              "type": "string",
+              "description": "Value for gateway.hosts.aegra."
+            },
+            "agents": {
+              "type": "string",
+              "description": "Value for gateway.hosts.agents."
+            },
+            "mcp": {
+              "type": "string",
+              "description": "Value for gateway.hosts.mcp."
+            },
+            "nemo": {
+              "type": "string",
+              "description": "Value for gateway.hosts.nemo."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "postgresql": {
+      "type": "object",
+      "description": "Values under postgresql.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for postgresql.enabled."
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under postgresql.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for postgresql.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for postgresql.image.tag."
+            }
+          },
+          "additionalProperties": false
+        },
+        "auth": {
+          "type": "object",
+          "description": "Values under postgresql.auth.",
+          "properties": {
+            "username": {
+              "type": "string",
+              "description": "Value for postgresql.auth.username."
+            },
+            "password": {
+              "type": "string",
+              "description": "Value for postgresql.auth.password."
+            },
+            "postgresPassword": {
+              "type": "string",
+              "description": "Value for postgresql.auth.postgresPassword."
+            },
+            "database": {
+              "type": "string",
+              "description": "Value for postgresql.auth.database."
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under postgresql.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under postgresql.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for postgresql.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for postgresql.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under postgresql.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for postgresql.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for postgresql.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under postgresql.livenessProbe.",
+          "properties": {
+            "exec": {
+              "type": "object",
+              "description": "Values under postgresql.livenessProbe.exec.",
+              "properties": {
+                "command": {
+                  "type": "array",
+                  "description": "List at postgresql.livenessProbe.exec.command.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for postgresql.livenessProbe.exec.command.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.livenessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under postgresql.readinessProbe.",
+          "properties": {
+            "exec": {
+              "type": "object",
+              "description": "Values under postgresql.readinessProbe.exec.",
+              "properties": {
+                "command": {
+                  "type": "array",
+                  "description": "List at postgresql.readinessProbe.exec.command.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for postgresql.readinessProbe.exec.command.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.readinessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for postgresql.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "valkey": {
+      "type": "object",
+      "description": "Values under valkey.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for valkey.enabled."
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under valkey.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for valkey.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for valkey.image.tag."
+            }
+          },
+          "additionalProperties": false
+        },
+        "auth": {
+          "type": "object",
+          "description": "Values under valkey.auth.",
+          "properties": {
+            "password": {
+              "type": "string",
+              "description": "Value for valkey.auth.password."
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under valkey.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under valkey.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for valkey.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for valkey.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under valkey.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for valkey.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for valkey.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under valkey.livenessProbe.",
+          "properties": {
+            "tcpSocket": {
+              "type": "object",
+              "description": "Values under valkey.livenessProbe.tcpSocket.",
+              "properties": {
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for valkey.livenessProbe.tcpSocket.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.livenessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under valkey.readinessProbe.",
+          "properties": {
+            "tcpSocket": {
+              "type": "object",
+              "description": "Values under valkey.readinessProbe.tcpSocket.",
+              "properties": {
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for valkey.readinessProbe.tcpSocket.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.readinessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for valkey.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "clickhouse": {
+      "type": "object",
+      "description": "Values under clickhouse.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for clickhouse.enabled."
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under clickhouse.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for clickhouse.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for clickhouse.image.tag."
+            }
+          },
+          "additionalProperties": false
+        },
+        "auth": {
+          "type": "object",
+          "description": "Values under clickhouse.auth.",
+          "properties": {
+            "username": {
+              "type": "string",
+              "description": "Value for clickhouse.auth.username."
+            },
+            "password": {
+              "type": "string",
+              "description": "Value for clickhouse.auth.password."
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under clickhouse.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under clickhouse.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for clickhouse.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for clickhouse.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under clickhouse.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for clickhouse.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for clickhouse.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under clickhouse.livenessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under clickhouse.livenessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for clickhouse.livenessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for clickhouse.livenessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.livenessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under clickhouse.readinessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under clickhouse.readinessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for clickhouse.readinessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for clickhouse.readinessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.readinessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for clickhouse.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "qdrant": {
+      "type": "object",
+      "description": "Values under qdrant.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for qdrant.enabled."
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under qdrant.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for qdrant.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for qdrant.image.tag."
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under qdrant.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under qdrant.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for qdrant.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for qdrant.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under qdrant.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for qdrant.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for qdrant.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under qdrant.livenessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under qdrant.livenessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for qdrant.livenessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for qdrant.livenessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.livenessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under qdrant.readinessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under qdrant.readinessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for qdrant.readinessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for qdrant.readinessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.readinessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for qdrant.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "aiGateway": {
+      "type": "object",
+      "description": "Values under aiGateway.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for aiGateway.enabled."
+        },
+        "consumerKey": {
+          "type": "string",
+          "description": "Value for aiGateway.consumerKey."
+        },
+        "defaultModel": {
+          "type": "string",
+          "description": "Value for aiGateway.defaultModel."
+        },
+        "internalUrl": {
+          "type": "string",
+          "description": "Value for aiGateway.internalUrl."
+        },
+        "inClusterService": {
+          "type": "object",
+          "description": "Values under aiGateway.inClusterService.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for aiGateway.inClusterService.enabled."
+            },
+            "port": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aiGateway.inClusterService.port."
+            },
+            "targetHost": {
+              "type": "string",
+              "description": "Value for aiGateway.inClusterService.targetHost."
+            }
+          },
+          "additionalProperties": false
+        },
+        "providers": {
+          "type": "object",
+          "description": "Values under aiGateway.providers.",
+          "properties": {
+            "openai": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.openai.",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.openai.apiKey."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.openai.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.openai.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "anthropic": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.anthropic.",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.anthropic.apiKey."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.anthropic.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.anthropic.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "gemini": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.gemini.",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.gemini.apiKey."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.gemini.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.gemini.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "ollamaLocal": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.ollamaLocal.",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.ollamaLocal.host."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.ollamaLocal.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.ollamaLocal.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "ollamaCloud": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.ollamaCloud.",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.ollamaCloud.apiKey."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.ollamaCloud.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.ollamaCloud.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "azure": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.azure.",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.azure.apiKey."
+                },
+                "endpoint": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.azure.endpoint."
+                },
+                "apiVersion": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.azure.apiVersion."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.azure.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.azure.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "bedrock": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.bedrock.",
+              "properties": {
+                "region": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.bedrock.region."
+                },
+                "accessKeyId": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.bedrock.accessKeyId."
+                },
+                "secretAccessKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.bedrock.secretAccessKey."
+                },
+                "anthropic": {
+                  "type": "boolean",
+                  "description": "Value for aiGateway.providers.bedrock.anthropic."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.bedrock.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.bedrock.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "vertex": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.vertex.",
+              "properties": {
+                "project": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.vertex.project."
+                },
+                "region": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.vertex.region."
+                },
+                "credentialsJson": {
+                  "type": [
+                    "string",
+                    "object",
+                    "array"
+                  ],
+                  "description": "JSON credentials string or structured value for aiGateway.providers.vertex.credentialsJson."
+                },
+                "existingSecret": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.vertex.existingSecret."
+                },
+                "anthropic": {
+                  "type": "boolean",
+                  "description": "Value for aiGateway.providers.vertex.anthropic."
+                },
+                "anthropicRegion": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.vertex.anthropicRegion."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.vertex.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.vertex.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "cohere": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.cohere.",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.cohere.apiKey."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.cohere.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.cohere.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "openaiCompat": {
+              "type": "array",
+              "description": "List at aiGateway.providers.openaiCompat.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ]
+                  },
+                  "prefix": {
+                    "type": "string"
+                  },
+                  "apiKey": {
+                    "type": "string"
+                  },
+                  "modelMatch": {
+                    "type": "string"
+                  },
+                  "tls": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "host",
+                  "prefix",
+                  "modelMatch"
+                ]
+              }
+            },
+            "vllm": {
+              "type": "object",
+              "description": "Values under aiGateway.providers.vllm.",
+              "properties": {
+                "backendUrl": {
+                  "type": "string",
+                  "description": "Value for aiGateway.providers.vllm.backendUrl."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at aiGateway.providers.vllm.models.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for aiGateway.providers.vllm.models.0."
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "langfuse": {
+      "type": "object",
+      "description": "Values under langfuse.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for langfuse.enabled."
+        },
+        "publicHttpRoute": {
+          "type": "object",
+          "description": "Values under langfuse.publicHttpRoute.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for langfuse.publicHttpRoute.enabled."
+            }
+          },
+          "additionalProperties": false
+        },
+        "replicaCount": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for langfuse.replicaCount."
+        },
+        "highAvailability": {
+          "type": "object",
+          "description": "Values under langfuse.highAvailability.",
+          "properties": {
+            "minReplicas": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.highAvailability.minReplicas."
+            }
+          },
+          "additionalProperties": false
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under langfuse.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for langfuse.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for langfuse.image.tag."
+            }
+          },
+          "additionalProperties": false
+        },
+        "worker": {
+          "type": "object",
+          "description": "Values under langfuse.worker.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for langfuse.worker.enabled."
+            },
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.worker.replicaCount."
+            },
+            "image": {
+              "type": "object",
+              "description": "Values under langfuse.worker.image.",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "description": "Value for langfuse.worker.image.repository."
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Value for langfuse.worker.image.tag."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "s3": {
+          "type": "object",
+          "description": "Values under langfuse.s3.",
+          "properties": {
+            "bucket": {
+              "type": "string",
+              "description": "Value for langfuse.s3.bucket."
+            },
+            "region": {
+              "type": "string",
+              "description": "Value for langfuse.s3.region."
+            }
+          },
+          "additionalProperties": false
+        },
+        "migration": {
+          "type": "object",
+          "description": "Values under langfuse.migration.",
+          "properties": {
+            "v4WriteMode": {
+              "type": "string",
+              "description": "Value for langfuse.migration.v4WriteMode."
+            },
+            "enableHistoricBackfill": {
+              "type": "boolean",
+              "description": "Value for langfuse.migration.enableHistoricBackfill."
+            },
+            "nativeOtelBehaviour": {
+              "type": "string",
+              "description": "Value for langfuse.migration.nativeOtelBehaviour."
+            },
+            "allowPreviewOptIn": {
+              "type": "boolean",
+              "description": "Value for langfuse.migration.allowPreviewOptIn."
+            }
+          },
+          "additionalProperties": false
+        },
+        "surfaces": {
+          "type": "object",
+          "description": "Values under langfuse.surfaces.",
+          "properties": {
+            "llmConnection": {
+              "type": "object",
+              "description": "Values under langfuse.surfaces.llmConnection.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for langfuse.surfaces.llmConnection.enabled."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Value for langfuse.surfaces.llmConnection.name."
+                },
+                "models": {
+                  "type": "array",
+                  "description": "List at langfuse.surfaces.llmConnection.models.",
+                  "items": {
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "tools": {
+              "type": "object",
+              "description": "Values under langfuse.surfaces.tools.",
+              "properties": {
+                "seedFromMcp": {
+                  "type": "boolean",
+                  "description": "Value for langfuse.surfaces.tools.seedFromMcp."
+                },
+                "seedTenant": {
+                  "type": "string",
+                  "description": "Value for langfuse.surfaces.tools.seedTenant."
+                },
+                "authToken": {
+                  "type": "string",
+                  "description": "Value for langfuse.surfaces.tools.authToken."
+                }
+              },
+              "additionalProperties": false
+            },
+            "evaluators": {
+              "type": "object",
+              "description": "Values under langfuse.surfaces.evaluators.",
+              "properties": {
+                "seedCode": {
+                  "type": "boolean",
+                  "description": "Value for langfuse.surfaces.evaluators.seedCode."
+                }
+              },
+              "additionalProperties": false
+            },
+            "image": {
+              "type": "object",
+              "description": "Values under langfuse.surfaces.image.",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "description": "Value for langfuse.surfaces.image.repository."
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Value for langfuse.surfaces.image.tag."
+                },
+                "digest": {
+                  "type": "string",
+                  "description": "Value for langfuse.surfaces.image.digest."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "extraProjects": {
+          "type": "array",
+          "description": "List at langfuse.extraProjects.",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "nextauthUrl": {
+          "type": "string",
+          "description": "Value for langfuse.nextauthUrl."
+        },
+        "nextauthSecret": {
+          "type": "string",
+          "description": "Value for langfuse.nextauthSecret."
+        },
+        "salt": {
+          "type": "string",
+          "description": "Value for langfuse.salt."
+        },
+        "encryptionKey": {
+          "type": "string",
+          "description": "Value for langfuse.encryptionKey."
+        },
+        "admin": {
+          "type": "object",
+          "description": "Values under langfuse.admin.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for langfuse.admin.enabled."
+            },
+            "existingSecret": {
+              "type": "string",
+              "description": "Value for langfuse.admin.existingSecret."
+            },
+            "email": {
+              "type": "string",
+              "description": "Value for langfuse.admin.email."
+            },
+            "name": {
+              "type": "string",
+              "description": "Value for langfuse.admin.name."
+            },
+            "password": {
+              "type": "string",
+              "description": "Value for langfuse.admin.password."
+            }
+          },
+          "additionalProperties": false
+        },
+        "init": {
+          "type": "object",
+          "description": "Values under langfuse.init.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for langfuse.init.enabled."
+            },
+            "existingSecret": {
+              "type": "string",
+              "description": "Value for langfuse.init.existingSecret."
+            },
+            "orgId": {
+              "type": "string",
+              "description": "Value for langfuse.init.orgId."
+            },
+            "orgName": {
+              "type": "string",
+              "description": "Value for langfuse.init.orgName."
+            },
+            "projectId": {
+              "type": "string",
+              "description": "Value for langfuse.init.projectId."
+            },
+            "projectName": {
+              "type": "string",
+              "description": "Value for langfuse.init.projectName."
+            },
+            "projectPublicKey": {
+              "type": "string",
+              "description": "Value for langfuse.init.projectPublicKey."
+            },
+            "projectSecretKey": {
+              "type": "string",
+              "description": "Value for langfuse.init.projectSecretKey."
+            },
+            "userEmail": {
+              "type": "string",
+              "description": "Value for langfuse.init.userEmail."
+            },
+            "userName": {
+              "type": "string",
+              "description": "Value for langfuse.init.userName."
+            },
+            "userPassword": {
+              "type": "string",
+              "description": "Value for langfuse.init.userPassword."
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under langfuse.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under langfuse.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for langfuse.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for langfuse.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under langfuse.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for langfuse.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for langfuse.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "startupProbe": {
+          "type": "object",
+          "description": "Values under langfuse.startupProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under langfuse.startupProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for langfuse.startupProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for langfuse.startupProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.startupProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.startupProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.startupProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.startupProbe.failureThreshold."
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under langfuse.livenessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under langfuse.livenessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for langfuse.livenessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for langfuse.livenessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under langfuse.readinessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under langfuse.readinessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for langfuse.readinessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for langfuse.readinessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for langfuse.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "aegra": {
+      "type": "object",
+      "description": "Values under aegra.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for aegra.enabled."
+        },
+        "replicaCount": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for aegra.replicaCount."
+        },
+        "tenantOrgMappings": {
+          "type": "object",
+          "description": "Values under aegra.tenantOrgMappings.",
+          "properties": {
+          }
+        },
+        "redisBroker": {
+          "type": "object",
+          "description": "Values under aegra.redisBroker.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for aegra.redisBroker.enabled."
+            }
+          },
+          "additionalProperties": false
+        },
+        "redis": {
+          "type": "object",
+          "description": "Values under aegra.redis.",
+          "properties": {
+            "channelPrefix": {
+              "type": "string",
+              "description": "Value for aegra.redis.channelPrefix."
+            },
+            "queueKey": {
+              "type": "string",
+              "description": "Value for aegra.redis.queueKey."
+            }
+          },
+          "additionalProperties": false
+        },
+        "runMigrationsOnStartup": {
+          "type": "boolean",
+          "description": "Value for aegra.runMigrationsOnStartup."
+        },
+        "workerCount": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for aegra.workerCount."
+        },
+        "nJobsPerWorker": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for aegra.nJobsPerWorker."
+        },
+        "workerDrainTimeout": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for aegra.workerDrainTimeout."
+        },
+        "terminationGracePeriodSeconds": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for aegra.terminationGracePeriodSeconds."
+        },
+        "otelTargets": {
+          "type": "string",
+          "description": "Value for aegra.otelTargets."
+        },
+        "graphs": {
+          "type": "object",
+          "description": "Values under aegra.graphs.",
+          "properties": {
+          }
+        },
+        "graphModules": {
+          "type": "object",
+          "description": "Values under aegra.graphModules.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for aegra.graphModules.enabled."
+            },
+            "configMapName": {
+              "type": "string",
+              "description": "Value for aegra.graphModules.configMapName."
+            },
+            "mountPath": {
+              "type": "string",
+              "description": "Value for aegra.graphModules.mountPath."
+            }
+          },
+          "additionalProperties": false
+        },
+        "workers": {
+          "type": "array",
+          "description": "List at aegra.workers.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "graphId": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              },
+              "port": {
+                "type": [
+                  "integer",
+                  "string"
+                ]
+              }
+            },
+            "required": [
+              "graphId",
+              "service",
+              "port"
+            ]
+          }
+        },
+        "attachDefaultRoute": {
+          "type": "boolean",
+          "description": "Value for aegra.attachDefaultRoute."
+        },
+        "mcpInject": {
+          "type": "object",
+          "description": "Values under aegra.mcpInject.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for aegra.mcpInject.enabled."
+            }
+          },
+          "additionalProperties": false
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under aegra.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for aegra.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for aegra.image.tag."
+            },
+            "digest": {
+              "type": "string",
+              "description": "Value for aegra.image.digest."
+            }
+          },
+          "additionalProperties": false
+        },
+        "cli": {
+          "type": "object",
+          "description": "Values under aegra.cli.",
+          "properties": {
+            "image": {
+              "type": "object",
+              "description": "Values under aegra.cli.image.",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "description": "Value for aegra.cli.image.repository."
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Value for aegra.cli.image.tag."
+                },
+                "digest": {
+                  "type": "string",
+                  "description": "Value for aegra.cli.image.digest."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under aegra.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under aegra.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for aegra.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for aegra.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under aegra.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for aegra.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for aegra.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "startupProbe": {
+          "type": "object",
+          "description": "Values under aegra.startupProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under aegra.startupProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for aegra.startupProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for aegra.startupProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.startupProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.startupProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.startupProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.startupProbe.failureThreshold."
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under aegra.livenessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under aegra.livenessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for aegra.livenessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for aegra.livenessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under aegra.readinessProbe.",
+          "properties": {
+            "httpGet": {
+              "type": "object",
+              "description": "Values under aegra.readinessProbe.httpGet.",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Value for aegra.readinessProbe.httpGet.path."
+                },
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for aegra.readinessProbe.httpGet.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for aegra.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guardrails": {
+      "type": "object",
+      "description": "Values under guardrails.",
+      "properties": {
+        "nemo": {
+          "type": "object",
+          "description": "Values under guardrails.nemo.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for guardrails.nemo.enabled."
+            },
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for guardrails.nemo.replicaCount."
+            },
+            "image": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.image.",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "description": "Value for guardrails.nemo.image.repository."
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Value for guardrails.nemo.image.tag."
+                },
+                "digest": {
+                  "type": "string",
+                  "description": "Value for guardrails.nemo.image.digest."
+                }
+              },
+              "additionalProperties": false
+            },
+            "configsDir": {
+              "type": "string",
+              "description": "Value for guardrails.nemo.configsDir."
+            },
+            "defaultConfigId": {
+              "type": "string",
+              "description": "Value for guardrails.nemo.defaultConfigId."
+            },
+            "model": {
+              "type": "string",
+              "description": "Value for guardrails.nemo.model."
+            },
+            "intercept": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.intercept.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for guardrails.nemo.intercept.enabled."
+                }
+              },
+              "additionalProperties": false
+            },
+            "aiGatewayRoute": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.aiGatewayRoute.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for guardrails.nemo.aiGatewayRoute.enabled."
+                }
+              },
+              "additionalProperties": false
+            },
+            "observability": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.observability.",
+              "properties": {
+                "otel": {
+                  "type": "object",
+                  "description": "Values under guardrails.nemo.observability.otel.",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Value for guardrails.nemo.observability.otel.enabled."
+                    },
+                    "captureContent": {
+                      "type": "boolean",
+                      "description": "Value for guardrails.nemo.observability.otel.captureContent."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "safetyRefusal": {
+              "type": "string",
+              "description": "Value for guardrails.nemo.safetyRefusal."
+            },
+            "complianceRefusal": {
+              "type": "string",
+              "description": "Value for guardrails.nemo.complianceRefusal."
+            },
+            "selfCheck": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.selfCheck.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for guardrails.nemo.selfCheck.enabled."
+                },
+                "model": {
+                  "type": "string",
+                  "description": "Value for guardrails.nemo.selfCheck.model."
+                }
+              },
+              "additionalProperties": false
+            },
+            "extraInputFlows": {
+              "type": "array",
+              "description": "List at guardrails.nemo.extraInputFlows.",
+              "items": {
+                "type": [
+                  "string",
+                  "object",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "extraColang": {
+              "type": "string",
+              "description": "Value for guardrails.nemo.extraColang."
+            },
+            "extraRailsConfig": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.extraRailsConfig.",
+              "properties": {
+              }
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under guardrails.nemo.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under guardrails.nemo.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "startupProbe": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.startupProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under guardrails.nemo.startupProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.startupProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for guardrails.nemo.startupProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "initialDelaySeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.startupProbe.initialDelaySeconds."
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.startupProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.startupProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.startupProbe.failureThreshold."
+                }
+              }
+            },
+            "livenessProbe": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.livenessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under guardrails.nemo.livenessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.livenessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for guardrails.nemo.livenessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.livenessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.livenessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.livenessProbe.failureThreshold."
+                }
+              }
+            },
+            "readinessProbe": {
+              "type": "object",
+              "description": "Values under guardrails.nemo.readinessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under guardrails.nemo.readinessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for guardrails.nemo.readinessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for guardrails.nemo.readinessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.readinessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.readinessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for guardrails.nemo.readinessProbe.failureThreshold."
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "llamaGuard": {
+          "type": "object",
+          "description": "Enterprise Llama Guard (reserved; install fails on CE without entitlement).",
+          "additionalProperties": true
+        },
+        "presidio": {
+          "type": "object",
+          "description": "Enterprise Presidio masking (reserved; install fails on CE without entitlement).",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcp": {
+      "type": "object",
+      "description": "Values under mcp.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for mcp.enabled."
+        },
+        "extraBackends": {
+          "type": "array",
+          "description": "List at mcp.extraBackends.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Backend name prefix for MCP gateway routing."
+              },
+              "url": {
+                "type": "string",
+                "description": "ClusterIP MCP base URL."
+              }
+            },
+            "required": [
+              "name",
+              "url"
+            ]
+          }
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under mcp.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for mcp.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for mcp.image.tag."
+            },
+            "digest": {
+              "type": "string",
+              "description": "Value for mcp.image.digest."
+            }
+          },
+          "additionalProperties": false
+        },
+        "gateway": {
+          "type": "object",
+          "description": "Values under mcp.gateway.",
+          "properties": {
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for mcp.gateway.replicaCount."
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under mcp.gateway.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under mcp.gateway.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under mcp.gateway.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "startupProbe": {
+              "type": "object",
+              "description": "Values under mcp.gateway.startupProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.gateway.startupProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.startupProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.gateway.startupProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "initialDelaySeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.startupProbe.initialDelaySeconds."
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.startupProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.startupProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.startupProbe.failureThreshold."
+                }
+              }
+            },
+            "livenessProbe": {
+              "type": "object",
+              "description": "Values under mcp.gateway.livenessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.gateway.livenessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.livenessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.gateway.livenessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.livenessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.livenessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.livenessProbe.failureThreshold."
+                }
+              }
+            },
+            "readinessProbe": {
+              "type": "object",
+              "description": "Values under mcp.gateway.readinessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.gateway.readinessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.gateway.readinessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.gateway.readinessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.readinessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.readinessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.gateway.readinessProbe.failureThreshold."
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "mcproute": {
+          "type": "object",
+          "description": "Values under mcp.mcproute.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for mcp.mcproute.enabled."
+            }
+          },
+          "additionalProperties": false
+        },
+        "postgresMCP": {
+          "type": "object",
+          "description": "Values under mcp.postgresMCP.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for mcp.postgresMCP.enabled."
+            },
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for mcp.postgresMCP.replicaCount."
+            },
+            "databaseUrl": {
+              "type": "string",
+              "description": "Value for mcp.postgresMCP.databaseUrl."
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under mcp.postgresMCP.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under mcp.postgresMCP.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under mcp.postgresMCP.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "startupProbe": {
+              "type": "object",
+              "description": "Values under mcp.postgresMCP.startupProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.postgresMCP.startupProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.startupProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.postgresMCP.startupProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "initialDelaySeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.startupProbe.initialDelaySeconds."
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.startupProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.startupProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.startupProbe.failureThreshold."
+                }
+              }
+            },
+            "livenessProbe": {
+              "type": "object",
+              "description": "Values under mcp.postgresMCP.livenessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.postgresMCP.livenessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.livenessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.postgresMCP.livenessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.livenessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.livenessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.livenessProbe.failureThreshold."
+                }
+              }
+            },
+            "readinessProbe": {
+              "type": "object",
+              "description": "Values under mcp.postgresMCP.readinessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.postgresMCP.readinessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.postgresMCP.readinessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.postgresMCP.readinessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.readinessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.readinessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.postgresMCP.readinessProbe.failureThreshold."
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "qdrantMCP": {
+          "type": "object",
+          "description": "Values under mcp.qdrantMCP.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for mcp.qdrantMCP.enabled."
+            },
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for mcp.qdrantMCP.replicaCount."
+            },
+            "url": {
+              "type": "string",
+              "description": "Value for mcp.qdrantMCP.url."
+            },
+            "collection": {
+              "type": "string",
+              "description": "Value for mcp.qdrantMCP.collection."
+            },
+            "aiGatewayUrl": {
+              "type": "string",
+              "description": "Value for mcp.qdrantMCP.aiGatewayUrl."
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under mcp.qdrantMCP.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under mcp.qdrantMCP.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under mcp.qdrantMCP.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "startupProbe": {
+              "type": "object",
+              "description": "Values under mcp.qdrantMCP.startupProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.qdrantMCP.startupProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.startupProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.qdrantMCP.startupProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "initialDelaySeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.startupProbe.initialDelaySeconds."
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.startupProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.startupProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.startupProbe.failureThreshold."
+                }
+              }
+            },
+            "livenessProbe": {
+              "type": "object",
+              "description": "Values under mcp.qdrantMCP.livenessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.qdrantMCP.livenessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.livenessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.qdrantMCP.livenessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.livenessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.livenessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.livenessProbe.failureThreshold."
+                }
+              }
+            },
+            "readinessProbe": {
+              "type": "object",
+              "description": "Values under mcp.qdrantMCP.readinessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.qdrantMCP.readinessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.qdrantMCP.readinessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.qdrantMCP.readinessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.readinessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.readinessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.qdrantMCP.readinessProbe.failureThreshold."
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "egressMCP": {
+          "type": "object",
+          "description": "Values under mcp.egressMCP.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for mcp.egressMCP.enabled."
+            },
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for mcp.egressMCP.replicaCount."
+            },
+            "allowedModels": {
+              "type": "array",
+              "description": "List at mcp.egressMCP.allowedModels.",
+              "items": {
+                "type": [
+                  "string",
+                  "object",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under mcp.egressMCP.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under mcp.egressMCP.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under mcp.egressMCP.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "startupProbe": {
+              "type": "object",
+              "description": "Values under mcp.egressMCP.startupProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.egressMCP.startupProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.startupProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.egressMCP.startupProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "initialDelaySeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.startupProbe.initialDelaySeconds."
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.startupProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.startupProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.startupProbe.failureThreshold."
+                }
+              }
+            },
+            "livenessProbe": {
+              "type": "object",
+              "description": "Values under mcp.egressMCP.livenessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.egressMCP.livenessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.livenessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.egressMCP.livenessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.livenessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.livenessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.livenessProbe.failureThreshold."
+                }
+              }
+            },
+            "readinessProbe": {
+              "type": "object",
+              "description": "Values under mcp.egressMCP.readinessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.egressMCP.readinessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.egressMCP.readinessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.egressMCP.readinessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.readinessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.readinessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.egressMCP.readinessProbe.failureThreshold."
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "sandboxMCP": {
+          "type": "object",
+          "description": "Values under mcp.sandboxMCP.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for mcp.sandboxMCP.enabled."
+            },
+            "replicaCount": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for mcp.sandboxMCP.replicaCount."
+            },
+            "runtimeClassName": {
+              "type": "string",
+              "description": "Value for mcp.sandboxMCP.runtimeClassName."
+            },
+            "environments": {
+              "type": "array",
+              "description": "List at mcp.sandboxMCP.environments.",
+              "items": {
+                "type": "string",
+                "description": "Value for mcp.sandboxMCP.environments.0."
+              }
+            },
+            "warmPool": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.warmPool.",
+              "properties": {
+                "replicas": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.warmPool.replicas."
+                }
+              },
+              "additionalProperties": false
+            },
+            "workerToken": {
+              "type": "string",
+              "description": "Value for mcp.sandboxMCP.workerToken."
+            },
+            "strictIsolation": {
+              "type": "boolean",
+              "description": "Value for mcp.sandboxMCP.strictIsolation."
+            },
+            "workerImage": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.workerImage.",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "description": "Value for mcp.sandboxMCP.workerImage.repository."
+                },
+                "tag": {
+                  "type": "string",
+                  "description": "Value for mcp.sandboxMCP.workerImage.tag."
+                },
+                "digest": {
+                  "type": "string",
+                  "description": "Value for mcp.sandboxMCP.workerImage.digest."
+                }
+              },
+              "additionalProperties": false
+            },
+            "resources": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.resources.",
+              "properties": {
+                "requests": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.resources.requests.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.resources.requests.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.resources.requests.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "limits": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.resources.limits.",
+                  "properties": {
+                    "cpu": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.resources.limits.cpu."
+                    },
+                    "memory": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.resources.limits.memory."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "startupProbe": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.startupProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.startupProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.startupProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.startupProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "initialDelaySeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.startupProbe.initialDelaySeconds."
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.startupProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.startupProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.startupProbe.failureThreshold."
+                }
+              }
+            },
+            "livenessProbe": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.livenessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.livenessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.livenessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.livenessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.livenessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.livenessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.livenessProbe.failureThreshold."
+                }
+              }
+            },
+            "readinessProbe": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.readinessProbe.",
+              "properties": {
+                "httpGet": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.readinessProbe.httpGet.",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "Value for mcp.sandboxMCP.readinessProbe.httpGet.path."
+                    },
+                    "port": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.readinessProbe.httpGet.port."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "periodSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.readinessProbe.periodSeconds."
+                },
+                "timeoutSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.readinessProbe.timeoutSeconds."
+                },
+                "failureThreshold": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for mcp.sandboxMCP.readinessProbe.failureThreshold."
+                }
+              }
+            },
+            "worker": {
+              "type": "object",
+              "description": "Values under mcp.sandboxMCP.worker.",
+              "properties": {
+                "resources": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.worker.resources.",
+                  "properties": {
+                    "requests": {
+                      "type": "object",
+                      "description": "Values under mcp.sandboxMCP.worker.resources.requests.",
+                      "properties": {
+                        "cpu": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.resources.requests.cpu."
+                        },
+                        "memory": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.resources.requests.memory."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "description": "Values under mcp.sandboxMCP.worker.resources.limits.",
+                      "properties": {
+                        "cpu": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.resources.limits.cpu."
+                        },
+                        "memory": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.resources.limits.memory."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "startupProbe": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.worker.startupProbe.",
+                  "properties": {
+                    "httpGet": {
+                      "type": "object",
+                      "description": "Values under mcp.sandboxMCP.worker.startupProbe.httpGet.",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.startupProbe.httpGet.path."
+                        },
+                        "port": {
+                          "type": [
+                            "integer",
+                            "string"
+                          ],
+                          "description": "Value for mcp.sandboxMCP.worker.startupProbe.httpGet.port."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "initialDelaySeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.startupProbe.initialDelaySeconds."
+                    },
+                    "periodSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.startupProbe.periodSeconds."
+                    },
+                    "timeoutSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.startupProbe.timeoutSeconds."
+                    },
+                    "failureThreshold": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.startupProbe.failureThreshold."
+                    }
+                  }
+                },
+                "livenessProbe": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.worker.livenessProbe.",
+                  "properties": {
+                    "httpGet": {
+                      "type": "object",
+                      "description": "Values under mcp.sandboxMCP.worker.livenessProbe.httpGet.",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.livenessProbe.httpGet.path."
+                        },
+                        "port": {
+                          "type": [
+                            "integer",
+                            "string"
+                          ],
+                          "description": "Value for mcp.sandboxMCP.worker.livenessProbe.httpGet.port."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "periodSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.livenessProbe.periodSeconds."
+                    },
+                    "timeoutSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.livenessProbe.timeoutSeconds."
+                    },
+                    "failureThreshold": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.livenessProbe.failureThreshold."
+                    }
+                  }
+                },
+                "readinessProbe": {
+                  "type": "object",
+                  "description": "Values under mcp.sandboxMCP.worker.readinessProbe.",
+                  "properties": {
+                    "httpGet": {
+                      "type": "object",
+                      "description": "Values under mcp.sandboxMCP.worker.readinessProbe.httpGet.",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "Value for mcp.sandboxMCP.worker.readinessProbe.httpGet.path."
+                        },
+                        "port": {
+                          "type": [
+                            "integer",
+                            "string"
+                          ],
+                          "description": "Value for mcp.sandboxMCP.worker.readinessProbe.httpGet.port."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "periodSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.readinessProbe.periodSeconds."
+                    },
+                    "timeoutSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.readinessProbe.timeoutSeconds."
+                    },
+                    "failureThreshold": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for mcp.sandboxMCP.worker.readinessProbe.failureThreshold."
+                    }
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "seaweedfs": {
+      "type": "object",
+      "description": "Values under seaweedfs.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Value for seaweedfs.enabled."
+        },
+        "image": {
+          "type": "object",
+          "description": "Values under seaweedfs.image.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Value for seaweedfs.image.repository."
+            },
+            "tag": {
+              "type": "string",
+              "description": "Value for seaweedfs.image.tag."
+            }
+          },
+          "additionalProperties": false
+        },
+        "auth": {
+          "type": "object",
+          "description": "Values under seaweedfs.auth.",
+          "properties": {
+            "accessKey": {
+              "type": "string",
+              "description": "Value for seaweedfs.auth.accessKey."
+            },
+            "secretKey": {
+              "type": "string",
+              "description": "Value for seaweedfs.auth.secretKey."
+            }
+          },
+          "additionalProperties": false
+        },
+        "resources": {
+          "type": "object",
+          "description": "Values under seaweedfs.resources.",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Values under seaweedfs.resources.requests.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for seaweedfs.resources.requests.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for seaweedfs.resources.requests.memory."
+                }
+              },
+              "additionalProperties": false
+            },
+            "limits": {
+              "type": "object",
+              "description": "Values under seaweedfs.resources.limits.",
+              "properties": {
+                "cpu": {
+                  "type": "string",
+                  "description": "Value for seaweedfs.resources.limits.cpu."
+                },
+                "memory": {
+                  "type": "string",
+                  "description": "Value for seaweedfs.resources.limits.memory."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Values under seaweedfs.livenessProbe.",
+          "properties": {
+            "tcpSocket": {
+              "type": "object",
+              "description": "Values under seaweedfs.livenessProbe.tcpSocket.",
+              "properties": {
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for seaweedfs.livenessProbe.tcpSocket.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.livenessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.livenessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.livenessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.livenessProbe.failureThreshold."
+            }
+          }
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Values under seaweedfs.readinessProbe.",
+          "properties": {
+            "tcpSocket": {
+              "type": "object",
+              "description": "Values under seaweedfs.readinessProbe.tcpSocket.",
+              "properties": {
+                "port": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for seaweedfs.readinessProbe.tcpSocket.port."
+                }
+              },
+              "additionalProperties": false
+            },
+            "initialDelaySeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.readinessProbe.initialDelaySeconds."
+            },
+            "periodSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.readinessProbe.periodSeconds."
+            },
+            "timeoutSeconds": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.readinessProbe.timeoutSeconds."
+            },
+            "failureThreshold": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Value for seaweedfs.readinessProbe.failureThreshold."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Override chart name."
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override full release name."
+    }
+  },
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft-07/schema#"
+}

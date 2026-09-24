@@ -10,7 +10,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-envoy-proxy-config
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "gateway") | nindent 4 }}
 spec:
   logging:
     level:

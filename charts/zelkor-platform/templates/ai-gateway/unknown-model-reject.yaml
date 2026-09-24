@@ -8,7 +8,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-unknown-model
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   directResponse:
@@ -24,7 +24,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-unknown-model
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   parentRefs:

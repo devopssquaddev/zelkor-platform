@@ -128,8 +128,26 @@ if binaries_ready && runtime_registered; then
 fi
 
 base="${GVISOR_BASE_URL%/}/${GVISOR_RELEASE}/${arch}"
+
+verify_gvisor_bin() {
+  _bin="$1"
+  _host_path="$2"
+  [ "${VERIFY_CHECKSUM}" = "true" ] || return 0
+  _expected="$(curl -fsSL "${base}/${_bin}.sha512" | awk '{print $1}')"
+  [ -n "${_expected}" ] || {
+    echo "gVisor checksum file missing for ${_bin}" >&2
+    return 1
+  }
+  _actual="$(chroot "${ROOT}" sha512sum "${_host_path}" | awk '{print $1}')"
+  if [ "${_expected}" != "${_actual}" ]; then
+    echo "gVisor checksum mismatch for ${_bin}" >&2
+    return 1
+  fi
+}
+
 for bin in runsc containerd-shim-runsc-v1; do
   curl -fsSL "${base}/${bin}" -o "${ROOT}/usr/local/bin/${bin}.new"
+  verify_gvisor_bin "${bin}" "/usr/local/bin/${bin}.new"
   mv -f "${ROOT}/usr/local/bin/${bin}.new" "${ROOT}/usr/local/bin/${bin}"
 done
 chmod a+rx "${ROOT}/usr/local/bin/runsc" "${ROOT}/usr/local/bin/containerd-shim-runsc-v1"

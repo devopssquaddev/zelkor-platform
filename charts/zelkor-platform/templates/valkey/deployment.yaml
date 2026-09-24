@@ -5,7 +5,7 @@ kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-valkey
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "valkey") | nindent 4 }}
     app.kubernetes.io/component: valkey
 spec:
   type: ClusterIP
@@ -22,7 +22,7 @@ kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-valkey
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "valkey") | nindent 4 }}
     app.kubernetes.io/component: valkey
 spec:
   replicas: 1

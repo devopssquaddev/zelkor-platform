@@ -23,6 +23,9 @@ highAvailability:
 security:
   mTLS:
     enabled: false
+  sandbox:
+    provisioning:
+      verifyChecksum: true
   networkPolicies:
     enabled: false
 

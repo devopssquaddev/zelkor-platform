@@ -9,7 +9,7 @@ metadata:
   name: {{ $fullname }}-agent-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -82,7 +82,7 @@ metadata:
   name: {{ $fullname }}-aegra-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -161,7 +161,7 @@ metadata:
   name: {{ $fullname }}-mcp-gateway-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -226,7 +226,7 @@ metadata:
   name: {{ $fullname }}-mcp-postgres-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -257,7 +257,7 @@ metadata:
   name: {{ $fullname }}-mcp-qdrant-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -309,7 +309,7 @@ metadata:
   name: {{ $fullname }}-mcp-egress-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -354,7 +354,7 @@ metadata:
   name: {{ $fullname }}-sandbox-worker-ingress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -381,7 +381,7 @@ metadata:
   name: {{ $fullname }}-langfuse-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -414,7 +414,7 @@ metadata:
   name: {{ $fullname }}-langfuse-bootstrap-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchExpressions:

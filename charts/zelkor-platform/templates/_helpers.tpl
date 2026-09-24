@@ -29,15 +29,36 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Common labels. Pass (dict "root" . "intent" "postgresql") to set zelkor.io/intent; plain . omits intent.
 */}}
 {{- define "zelkor-platform.labels" -}}
-helm.sh/chart: {{ include "zelkor-platform.chart" . }}
-{{ include "zelkor-platform.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- $root := . -}}
+{{- $intent := "" -}}
+{{- if kindIs "map" . -}}
+{{- if hasKey . "root" -}}{{- $root = .root -}}{{- end -}}
+{{- if hasKey . "intent" -}}{{- $intent = .intent -}}{{- end -}}
+{{- end -}}
+helm.sh/chart: {{ include "zelkor-platform.chart" $root }}
+{{ include "zelkor-platform.selectorLabels" $root }}
+{{- if $root.Chart.AppVersion }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+{{- if $intent }}
+zelkor.io/intent: {{ $intent | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Tier gate: true when umbrella listed entitlement suppresses a CE reserved-key fail.
+*/}}
+{{- define "zelkor-platform.hasEntitlement" -}}
+{{- $name := .name -}}
+{{- $ents := list -}}
+{{- if and .Values.global.zelkor (kindIs "map" .Values.global.zelkor) .Values.global.zelkor.entitlements -}}
+{{- $ents = .Values.global.zelkor.entitlements -}}
+{{- end -}}
+{{- if has $name $ents -}}true{{- else -}}false{{- end -}}
 {{- end }}
 
 {{/*
@@ -196,6 +217,19 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 {{- else -}}
 {{- required "clickhouse.auth.password must be set in a values overlay. The chart ships no default password." .Values.clickhouse.auth.password -}}
 {{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.clickhouseClientNetworks" -}}
+{{- $nets := ((.Values.databases.clickhouse).clientNetworks) | default list -}}
+{{- if $nets -}}
+{{- range $nets }}
+        - {{ . | quote }}
+{{- end }}
+{{- else }}
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+{{- end }}
 {{- end }}
 
 {{- define "zelkor-platform.clickhouseHost" -}}
@@ -933,7 +967,7 @@ Usage: {{ include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
 - name: SANDBOX_EXECUTION_LOG_ENABLED
   value: {{ ternary "true" "false" ($log.enabled | default true) | quote }}
 - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
-  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default true) | quote }}
+  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default false) | quote }}
 - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
   value: {{ ternary "true" "false" ($log.suspiciousOnProbePlusError | default true) | quote }}
 {{- end }}

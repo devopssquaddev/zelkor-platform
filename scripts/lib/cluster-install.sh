@@ -664,6 +664,22 @@ cluster_install_wait_langfuse_bootstrap() {
     cluster_install_warn_or_fail "Langfuse bootstrap Job did not complete"
 }
 
+cluster_install_enable_langfuse_public_route() {
+  local values_file="$1"
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  if ! kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
+    get deploy "${CLUSTER_INSTALL_RELEASE}-langfuse" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "install: enabling Langfuse public HTTPRoute after bootstrap"
+  local cmd=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && cmd+=("$line")
+  done < <(cluster_install_helm_cmd "$values_file")
+  cmd+=(--set "langfuse.publicHttpRoute.enabled=true")
+  cluster_install_print_or_run HELM "${cmd[@]}"
+}
+
 cluster_install_prepare() {
   cluster_install_need kubectl
   cluster_install_need helm

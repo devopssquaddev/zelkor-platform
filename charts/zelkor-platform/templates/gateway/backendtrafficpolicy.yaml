@@ -5,7 +5,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-ratelimit-policy
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "gateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
