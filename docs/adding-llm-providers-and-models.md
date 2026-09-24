@@ -61,6 +61,28 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 Upstream keys: [helm-install.md](helm-install.md). Provider matrix: multi-root `internal/plan/requirements_ai_gateway_providers.md`.
 
+## Vertex credentials
+
+Enable Vertex with `aiGateway.providers.vertex.project` and `aiGateway.providers.vertex.region` (use `global` for the global Vertex endpoint). Choose **one** auth mode:
+
+| Mode | Helm values | Notes |
+| :--- | :--- | :--- |
+| Service account JSON in values | `credentialsJson` | Chart creates a Secret with key `service_account.json`. |
+| Pre-created Secret | `existingSecret` | Secret **must** contain key `service_account.json` (GCP key JSON). |
+| Workload Identity / ADC | Leave `credentialsJson` and `existingSecret` empty | Envoy uses the pod’s default credential chain. |
+
+Create a Secret for GitOps (replace namespace and file path):
+
+```bash
+kubectl -n zelkor create secret generic zelkor-platform-vertex-sa \
+  --from-file=service_account.json=./sa.json \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+Then set `aiGateway.providers.vertex.existingSecret` to that Secret name.
+
+Envoy AI Gateway rotates a short-lived token into `ai-eg-bsp-<release>-vertex-gcp` (key `gcpAccessToken`). If the key name is wrong, the JSON is invalid, or GCP rejects the key (`invalid_grant`), the `BackendSecurityPolicy` stays **NotAccepted**, the Vertex backend is omitted from the dataplane config, and `POST /v1/chat/completions` with `model: gemini-*` returns **500** with `unknown backend` in access logs. See [kb/ai-gateway-vertex-unknown-backend.md](kb/ai-gateway-vertex-unknown-backend.md).
+
 ## Agent / demo release (not platform core)
 
 | Do | Do not |

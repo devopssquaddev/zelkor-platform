@@ -55,7 +55,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set langfuse.encryptionKey="$(openssl rand -hex 32)"
 ```
 
-Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `aiGateway.providers.openaiCompat`. Model ids are prefix-namespaced where providers share a pattern (`azure/*`, `bedrock/*`, `cohere/*`). Vertex-only installs use bare `gemini-*` (Envoy `GCPVertexAI`); use `vertex/*` when both `providers.gemini.apiKey` and `providers.vertex` are set. Do not put the upstream provider key in `aiGateway.consumerKey`.
+Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `aiGateway.providers.openaiCompat`. Model ids are prefix-namespaced where providers share a pattern (`azure/*`, `bedrock/*`, `cohere/*`). Vertex-only installs use bare `gemini-*` (Envoy `GCPVertexAI`); use `vertex/*` when both `providers.gemini.apiKey` and `providers.vertex` are set. For Vertex with `existingSecret`, the Secret must use data key `service_account.json`. Do not put the upstream provider key in `aiGateway.consumerKey`.
 
 NeMo pinned rails (`guardrails.nemo.model` / self-check) default from the first enabled provider when `aiGateway.defaultModel` is empty (same model ids as `install-quickstart.sh`). With **multiple** providers, set `aiGateway.defaultModel` explicitly (install scripts set it from `DEFAULT_LLM_MODEL`).
 
