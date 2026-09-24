@@ -4,7 +4,7 @@ kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-aegra
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aegra") | nindent 4 }}
     app.kubernetes.io/component: aegra
 spec:
   type: ClusterIP
@@ -21,7 +21,7 @@ kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-aegra
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aegra") | nindent 4 }}
     app.kubernetes.io/component: aegra
 spec:
   {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}

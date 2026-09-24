@@ -11,7 +11,7 @@ kind: ClickHouseInstallation
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "clickhouse") | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 spec:
   defaults:

@@ -5,7 +5,7 @@ kind: Job
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-gvisor-verify
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
     app.kubernetes.io/component: gvisor-verify
 spec:
   ttlSecondsAfterFinished: 600

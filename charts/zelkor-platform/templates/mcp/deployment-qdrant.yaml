@@ -4,7 +4,7 @@ kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-mcp-qdrant
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.qdrantMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-qdrant
 spec:
   ports:
@@ -20,7 +20,7 @@ kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-mcp-qdrant
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.qdrantMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-qdrant
 spec:
   {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
@@ -33,7 +33,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.qdrantMCP") | nindent 8 }}
         app.kubernetes.io/component: mcp-qdrant
     spec:
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}

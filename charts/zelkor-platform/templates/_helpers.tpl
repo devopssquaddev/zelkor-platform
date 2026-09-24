@@ -29,15 +29,36 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Common labels. Pass (dict "root" . "intent" "postgresql") to set zelkor.io/intent; plain . omits intent.
 */}}
 {{- define "zelkor-platform.labels" -}}
-helm.sh/chart: {{ include "zelkor-platform.chart" . }}
-{{ include "zelkor-platform.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- $root := . -}}
+{{- $intent := "" -}}
+{{- if kindIs "map" . -}}
+{{- if hasKey . "root" -}}{{- $root = .root -}}{{- end -}}
+{{- if hasKey . "intent" -}}{{- $intent = .intent -}}{{- end -}}
+{{- end -}}
+helm.sh/chart: {{ include "zelkor-platform.chart" $root }}
+{{ include "zelkor-platform.selectorLabels" $root }}
+{{- if $root.Chart.AppVersion }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+{{- if $intent }}
+zelkor.io/intent: {{ $intent | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Tier gate: true when umbrella listed entitlement suppresses a CE reserved-key fail.
+*/}}
+{{- define "zelkor-platform.hasEntitlement" -}}
+{{- $name := .name -}}
+{{- $ents := list -}}
+{{- if and .Values.global.zelkor (kindIs "map" .Values.global.zelkor) .Values.global.zelkor.entitlements -}}
+{{- $ents = .Values.global.zelkor.entitlements -}}
+{{- end -}}
+{{- if has $name $ents -}}true{{- else -}}false{{- end -}}
 {{- end }}
 
 {{/*

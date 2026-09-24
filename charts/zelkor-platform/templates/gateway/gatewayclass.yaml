@@ -4,7 +4,7 @@ kind: GatewayClass
 metadata:
   name: {{ include "zelkor-platform.gatewayClassName" . }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "gateway") | nindent 4 }}
 spec:
   controllerName: gateway.envoyproxy.io/gatewayclass-controller
   {{- if eq (include "zelkor-platform.envoyProxyEmit" .) "true" }}

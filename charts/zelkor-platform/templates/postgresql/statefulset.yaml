@@ -4,7 +4,7 @@ kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-postgresql
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   type: ClusterIP
@@ -21,7 +21,7 @@ kind: StatefulSet
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-postgresql
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   serviceName: {{ include "zelkor-platform.fullname" . }}-postgresql

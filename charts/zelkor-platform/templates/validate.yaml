@@ -1,0 +1,16 @@
+{{- $root := . -}}
+{{- if and .Values.auth.sso.enabled (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "sso")) "true") -}}
+{{- fail "auth.sso requires Zelkor Pro (OIDC/SAML SSO). On Community Edition use auth.jwtSecret and mint JWTs from your backend. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if and .Values.security.mTLS.enabled (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "mTLS")) "true") -}}
+{{- fail "security.mTLS requires Zelkor Enterprise. On CE use TLS at your ingress or service mesh. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if and .Values.guardrails.llamaGuard (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "llamaGuard")) "true") -}}
+{{- fail "guardrails.llamaGuard requires Zelkor Enterprise. On CE use guardrails.nemo self-check and Colang rails. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if and .Values.guardrails.presidio (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "presidio")) "true") -}}
+{{- fail "guardrails.presidio requires Zelkor Enterprise. On CE use NeMo masking rails within guardrails.nemo. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if and .Values.global.tier (ne .Values.global.tier "oss") (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "tier")) "true") -}}
+{{- fail (printf "global.tier=%q is not used on the CE chart alone. Install Zelkor Pro or Enterprise via the private umbrella chart. See docs/helm-install.md." .Values.global.tier) -}}
+{{- end -}}

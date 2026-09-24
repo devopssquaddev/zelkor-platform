@@ -19,7 +19,7 @@ kind: Cluster
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   instances: {{ $instances }}
@@ -59,7 +59,7 @@ kind: Service
 metadata:
   name: {{ $name }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   type: ExternalName
@@ -74,7 +74,7 @@ kind: ObjectStore
 metadata:
   name: {{ $name }}-barman
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   retentionPolicy: {{ $barman.retentionPolicy | default "30d" | quote }}
@@ -93,7 +93,7 @@ kind: ScheduledBackup
 metadata:
   name: {{ $name }}-daily
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 spec:
   schedule: "0 0 0 * * *"

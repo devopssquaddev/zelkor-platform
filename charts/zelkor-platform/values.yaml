@@ -1,3 +1,6 @@
+# Raw Kubernetes objects rendered alongside generated manifests (escape hatch).
+extraManifests: []
+
 # Zelkor Community Edition — production chart defaults.
 # Local kind: ./install.sh applies profiles/values-local.yaml (outside this chart).
 # Demo overlays: examples/<name>/chart/values-platform-overlay.yaml (domain knobs)
@@ -157,6 +160,8 @@ gateway:
   hosts:
     langfuse: ""
     aiGateway: ""
+    # Deprecated alias for agents; overlays may still set gateway.hosts.aegra.
+    aegra: ""
     # Public Agent Protocol hostname. Not the Aegra product name.
     agents: ""
     mcp: ""
@@ -558,6 +563,8 @@ guardrails:
         enabled: false  # when true: config.yml tracing adapter + opentelemetry-instrument (no sitecustomize)
         captureContent: false  # PII; LLMRails tracing.enable_content_capture (Langfuse observation I/O)
     safetyRefusal: "I can't help with that request."
+    # Demo/customer overlay copy for compliance refusals (FinServe and similar).
+    complianceRefusal: ""
     selfCheck:
       enabled: true  # LLM Yes/No I/O rails; false skips those extra completions (regex/extraColang still apply)
       model: ""  # empty = nemoEffectiveModel chain; not the request model (see aiGateway.defaultModel)

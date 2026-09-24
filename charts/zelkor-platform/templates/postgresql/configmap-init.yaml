@@ -4,7 +4,7 @@ kind: ConfigMap
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-postgresql-init
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "postgresql") | nindent 4 }}
     app.kubernetes.io/component: postgresql
 data:
     01-init-databases.sql: |

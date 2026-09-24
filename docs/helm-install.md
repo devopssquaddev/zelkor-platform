@@ -34,6 +34,42 @@ OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --topology shared \
   --parent-ref-namespace your-gateway-namespace
 ```
 
+## Validate your values
+
+The platform chart ships `values.schema.json`. Typos fail at `helm template` or `helm upgrade` with the unknown key name:
+
+```text
+Error: values don't meet the specifications of the schema(s) in the following chart(s):
+zelkor-platform:
+- (root): Additional property aiGatway is not allowed
+```
+
+Run `helm template` with your overlay before applying GitOps syncs.
+
+## Add raw resources (`extraManifests`)
+
+When you need a Kubernetes object the chart does not model (custom Envoy filter, extra ConfigMap, team-specific Service), add it under `extraManifests` in your values overlay. Objects render alongside generated manifests and survive chart upgrades:
+
+```yaml
+extraManifests:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: my-team-hooks
+    data:
+      note: "coexists with zelkor-platform output"
+```
+
+## Find what generated an object
+
+Generated resources include `zelkor.io/intent` on `metadata.labels`, naming the values path that produced them (for example `aiGateway.providers.openai`). After install:
+
+```bash
+kubectl get deploy,sts,svc -n your-namespace -l 'zelkor.io/intent=aiGateway.providers.openai'
+```
+
+Reserved Pro and Enterprise keys (`auth.sso`, `security.mTLS`, `guardrails.llamaGuard`, `guardrails.presidio`, non-`oss` `global.tier`) fail install on CE with a message that names the tier and the CE alternative.
+
 ## Manual Helm
 
 ```bash

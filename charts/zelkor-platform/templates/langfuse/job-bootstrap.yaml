@@ -13,7 +13,7 @@ kind: Job
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse-bootstrap
   annotations:
     zelkor.io/bootstrap-checksum: {{ $bootstrapChecksum | quote }}
