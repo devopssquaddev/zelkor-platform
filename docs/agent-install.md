@@ -164,6 +164,10 @@ Script: `./scripts/uninstall.sh` (with same `--kubeconfig` / `--kube-context` as
 
 ---
 
+## Troubleshooting
+
+Symptom-specific fixes (gateway backends, credentials rotation): [docs/kb/README.md](kb/README.md).
+
 ## See also
 
 - [production.md](production.md) · [helm-install.md](helm-install.md) · [envoy-gateway-topologies.md](envoy-gateway-topologies.md) · [agent-deploy.md](agent-deploy.md)

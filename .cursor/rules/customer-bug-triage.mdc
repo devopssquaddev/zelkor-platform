@@ -1,0 +1,22 @@
+---
+description: Triggered when the user says "fix customer bug" or when the context clearly indicates a customer issue or bug report.
+globs: "*"
+alwaysApply: false
+---
+
+# Customer Bug Triage
+
+When you see the hint "fix customer bug" or when it is clear from the context that the task involves a customer's issue or bug report, you must follow this exact triage and evaluation process:
+
+1. **Evaluate the Bug**: Analyze the given bug report or description to determine if it is a platform design flaw, a simple bug, or a customer misconfiguration.
+
+2. **Call Architect Agents**: Evaluate if the issue is a fundamental platform design flaw. If necessary, use the `Task` tool to spawn a subagent (acting as an architect) to help evaluate the platform design.
+
+3. **Handle Based on Evaluation**:
+   - **Platform Design Flaw**: Generate a detailed architectural report explaining the flaw and **stop**. Do not attempt to fix it immediately.
+   - **Simple Bug**: Fix the bug in the codebase following standard development procedures.
+   - **Customer Misconfiguration**: Do not change the platform code. Instead, suggest a change in the platform documentation for both coding agents and human users.
+
+4. **Documentation Categorization** (for misconfigurations):
+   - **Important / general cases** (every customer): `docs/` main guides (e.g. `adding-llm-providers-and-models.md`, `agent-install.md`).
+   - **Symptom-specific cases**: `docs/kb/` — one article per failure mode; index in `docs/kb/README.md`; link once from `agent-install.md` troubleshooting.
