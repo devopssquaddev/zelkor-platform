@@ -198,6 +198,19 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.clickhouseClientNetworks" -}}
+{{- $nets := ((.Values.databases.clickhouse).clientNetworks) | default list -}}
+{{- if $nets -}}
+{{- range $nets }}
+        - {{ . | quote }}
+{{- end }}
+{{- else }}
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+{{- end }}
+{{- end }}
+
 {{- define "zelkor-platform.clickhouseHost" -}}
 {{- $mode := include "zelkor-platform.dbMode" . -}}
 {{- if eq $mode "external" -}}
@@ -933,7 +946,7 @@ Usage: {{ include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
 - name: SANDBOX_EXECUTION_LOG_ENABLED
   value: {{ ternary "true" "false" ($log.enabled | default true) | quote }}
 - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
-  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default true) | quote }}
+  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default false) | quote }}
 - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
   value: {{ ternary "true" "false" ($log.suspiciousOnProbePlusError | default true) | quote }}
 {{- end }}

@@ -1,4 +1,5 @@
-{{- if and .Values.gateway.enabled .Values.langfuse.enabled .Values.gateway.hosts.langfuse }}
+{{- $lfPublic := (.Values.langfuse.publicHttpRoute | default dict).enabled | default false }}
+{{- if and .Values.gateway.enabled .Values.langfuse.enabled .Values.gateway.hosts.langfuse $lfPublic }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

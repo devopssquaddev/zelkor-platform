@@ -263,6 +263,33 @@ def test_metrics_deps_in_images():
     assert "/metrics" in mcp
 
 
+def test_langfuse_public_route_gated_until_enabled():
+    proc = _helm(
+        "--set",
+        "gateway.hosts.langfuse=langfuse.example.com",
+    )
+    assert proc.returncode == 0, proc.stderr
+    routes = [
+        d
+        for d in _docs(proc.stdout)
+        if d.get("kind") == "HTTPRoute" and d["metadata"]["name"].endswith("-langfuse-route")
+    ]
+    assert not routes
+    proc2 = _helm(
+        "--set",
+        "gateway.hosts.langfuse=langfuse.example.com",
+        "--set",
+        "langfuse.publicHttpRoute.enabled=true",
+    )
+    assert proc2.returncode == 0, proc2.stderr
+    routes2 = [
+        d
+        for d in _docs(proc2.stdout)
+        if d.get("kind") == "HTTPRoute" and d["metadata"]["name"].endswith("-langfuse-route")
+    ]
+    assert len(routes2) == 1
+
+
 def test_production_profile_renders_langfuse_seed_network_policy():
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr

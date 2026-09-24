@@ -19,6 +19,7 @@ import yaml
 from zelkor import __version__
 from zelkor.detect import (
     DetectError,
+    agent_deployment_name,
     customer_dockerfile,
     deploy_first_langgraph,
     detect,
@@ -379,7 +380,7 @@ def deploy_agent(
                 env,
                 "rollout",
                 "status",
-                f"deployment/{release}-zelkor-agent",
+                f"deployment/{agent_deployment_name(release)}",
                 "--timeout=180s",
             ),
             runner=runner,
@@ -435,7 +436,7 @@ def cmd_logs(
 ) -> int:
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
-    deploy = f"deployment/{release}-zelkor-agent"
+    deploy = f"deployment/{agent_deployment_name(release)}"
     argv = kube_argv(env, "logs", deploy)
     if follow:
         argv.append("-f")

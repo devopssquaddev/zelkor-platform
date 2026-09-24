@@ -27,7 +27,7 @@ spec:
     users:
       {{ $user }}/password: {{ include "zelkor-platform.clickhousePassword" . | quote }}
       {{ $user }}/networks/ip:
-        - 0.0.0.0/0
+{{- include "zelkor-platform.clickhouseClientNetworks" . | nindent 8 }}
       {{ $user }}/profile: default
     clusters:
       - name: default

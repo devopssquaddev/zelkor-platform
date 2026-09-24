@@ -9,6 +9,7 @@ import re
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from base64 import b64encode
@@ -778,6 +779,82 @@ def _admin_exists_sql(email: str) -> bool:
         return False
 
 
+_ADMIN_RACE_MSG = (
+    "Langfuse admin exists but Secret password does not match; "
+    "possible public signup before bootstrap — reset users or reinstall"
+)
+
+
+def _admin_password_matches_sql(email: str, password: str) -> bool:
+    if not DATABASE_URL or psycopg is None or bcrypt is None:
+        return False
+    try:
+        with psycopg.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT password FROM users WHERE lower(email) = lower(%s) LIMIT 1",
+                    (email,),
+                )
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    return False
+                stored = row[0]
+                if isinstance(stored, str):
+                    stored = stored.encode("utf-8")
+                return bcrypt.checkpw(password.encode("utf-8"), stored)
+    except Exception as exc:
+        logger.debug("admin password sql verify skipped: %s", exc)
+        return False
+
+
+def _verify_admin_login_http(email: str, password: str) -> bool:
+    if not LANGFUSE_HOST:
+        return False
+    ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(f"{LANGFUSE_HOST}/api/auth/csrf", method="GET"),
+            timeout=20,
+            context=ctx,
+        ) as resp:
+            csrf = json.loads(resp.read().decode("utf-8")).get("csrfToken") or ""
+        if not csrf:
+            return False
+        body = urllib.parse.urlencode(
+            {
+                "csrfToken": csrf,
+                "email": email,
+                "password": password,
+                "callbackUrl": LANGFUSE_HOST,
+                "json": "true",
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{LANGFUSE_HOST}/api/auth/callback/credentials",
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            return bool(payload.get("url"))
+    except Exception as exc:
+        logger.debug("admin login http verify skipped: %s", exc)
+        return False
+
+
+def _verify_admin_password(email: str, password: str) -> bool:
+    if _admin_password_matches_sql(email, password):
+        return True
+    return _verify_admin_login_http(email, password)
+
+
+def _confirm_admin_owns_credentials(email: str, password: str) -> None:
+    if _verify_admin_password(email, password):
+        return
+    raise RuntimeError(_ADMIN_RACE_MSG)
+
+
 def _signup(email: str, password: str, name: str) -> tuple[int, str]:
     body = json.dumps({"name": name, "email": email, "password": password}).encode("utf-8")
     req = urllib.request.Request(
@@ -803,6 +880,7 @@ def seed_admin_user(email: str = "", password: str = "", name: str = "") -> str:
     if not email or not password:
         raise RuntimeError("LANGFUSE_ADMIN_EMAIL and LANGFUSE_ADMIN_PASSWORD required")
     if _admin_exists_sql(email):
+        _confirm_admin_owns_credentials(email, password)
         logger.info("admin already present", extra={"event": "admin_exists", "email": email})
         return "exists"
     status, detail = _signup(email, password, name)
@@ -810,6 +888,7 @@ def seed_admin_user(email: str = "", password: str = "", name: str = "") -> str:
         logger.info("admin created", extra={"event": "admin_created", "email": email})
         return "created"
     if status == 409 or _already_exists_detail(detail):
+        _confirm_admin_owns_credentials(email, password)
         logger.info("admin already present", extra={"event": "admin_exists", "email": email})
         return "exists"
     raise RuntimeError(f"signup failed {status}: {detail}")

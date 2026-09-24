@@ -106,9 +106,25 @@ def test_operator_cr_emits_crs_and_first_party_valkey_qdrant():
     chi = _kinds(docs, "ClickHouseInstallation")
     assert chi
     assert chi[0]["apiVersion"] == "clickhouse.altinity.com/v1"
+    nets = chi[0]["spec"]["configuration"]["users"]["clickhouse/networks/ip"]
+    assert "0.0.0.0/0" not in nets
+    assert "10.0.0.0/8" in nets
     assert "zelkor-platform-valkey" in _names(docs, "Deployment")
     assert "zelkor-platform-seaweedfs" in _names(docs, "Deployment")
     assert "ObjectStore" not in {d.get("kind") for d in docs}
+
+
+def test_clickhouse_client_networks_override():
+    proc = _helm(
+        "--set",
+        "databases.mode=operator-cr",
+        "--set",
+        "databases.clickhouse.clientNetworks[0]=10.42.0.0/16",
+    )
+    assert proc.returncode == 0, proc.stderr
+    chi = _kinds(_docs(proc.stdout), "ClickHouseInstallation")[0]
+    nets = chi["spec"]["configuration"]["users"]["clickhouse/networks/ip"]
+    assert nets == ["10.42.0.0/16"]
 
 
 def test_production_overlay_is_operator_cr_without_dev_literals():

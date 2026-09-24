@@ -25,6 +25,8 @@ security:
     failClosed: false
     provisioning:
       mode: daemonset
+    executionLog:
+      includeStdoutPreview: true
   networkPolicies:
     enabled: true
 
@@ -100,6 +102,8 @@ aiGateway:
 
 langfuse:
   enabled: true
+  publicHttpRoute:
+    enabled: true
   replicaCount: 1
   # Chart default 30s delays first ready; local kind already has DBs up.
   startupProbe:

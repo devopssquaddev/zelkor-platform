@@ -8,6 +8,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "zelkor-platform"
+PRODUCTION = ROOT / "profiles" / "values-production.yaml"
 
 SECRET_SETS = [
     "postgresql.auth.password=test-pg",
@@ -143,7 +144,7 @@ def test_sandbox_execution_log_env_on_mcp_and_worker():
         env = dep["spec"]["template"]["spec"]["containers"][0]["env"]
         names = {item["name"]: item.get("value") for item in env}
         assert names.get("SANDBOX_EXECUTION_LOG_ENABLED") == "true"
-        assert names.get("SANDBOX_INCLUDE_STDOUT_PREVIEW") == "true"
+        assert names.get("SANDBOX_INCLUDE_STDOUT_PREVIEW") == "false"
         assert names.get("SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR") == "true"
 
 
@@ -166,6 +167,18 @@ def test_sandbox_worker_token_from_secret():
             "name": "zelkor-platform-sandbox-worker",
             "key": "token",
         }
+
+
+def test_production_overlay_enables_gvisor_checksum_verify():
+    proc = _helm("-f", str(PRODUCTION))
+    assert proc.returncode == 0, proc.stderr
+    ds = _gvisor_ds(_docs(proc.stdout))
+    assert ds is not None
+    env = {
+        item["name"]: item.get("value")
+        for item in ds["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert env.get("VERIFY_CHECKSUM") == "true"
 
 
 def test_node_selector_applies_to_installer_and_runtimeclass():

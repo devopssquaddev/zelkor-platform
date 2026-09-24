@@ -26,6 +26,8 @@ security:
     failClosed: false
     provisioning:
       mode: daemonset
+    executionLog:
+      includeStdoutPreview: true
   networkPolicies:
     enabled: false
 
@@ -97,6 +99,8 @@ aiGateway:
 
 langfuse:
   enabled: true
+  publicHttpRoute:
+    enabled: true
   replicaCount: 1
   startupProbe:
     initialDelaySeconds: 5
