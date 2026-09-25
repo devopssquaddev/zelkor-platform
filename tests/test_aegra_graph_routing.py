@@ -543,6 +543,8 @@ def test_platform_attach_default_route_false_keeps_workers():
         "aegra.workers[0].graphId=fraud",
         "--set",
         "aegra.workers[0].service=fraud-agent",
+        "--set",
+        "aegra.workers[0].port=8000",
         "-s",
         "templates/gateway/httproutes.yaml",
     )

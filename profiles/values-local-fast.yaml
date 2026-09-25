@@ -49,7 +49,7 @@ gateway:
   hosts:
     langfuse: "langfuse.localhost"
     aiGateway: "ai-gateway.localhost"
-    aegra: "aegra.localhost"
+    agents: "agents.localhost"
     mcp: "mcp.localhost"
     nemo: "nemo.localhost"
 

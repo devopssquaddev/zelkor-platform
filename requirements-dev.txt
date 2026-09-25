@@ -7,3 +7,6 @@ psycopg2-binary>=2.9.0
 kubernetes>=28.0.0
 pydantic>=2.0.0
 langgraph-sdk==0.4.2
+# NeMo OTLP route unit tests (images/guardrails pins)
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0

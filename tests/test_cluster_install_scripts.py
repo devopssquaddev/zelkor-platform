@@ -57,7 +57,7 @@ def test_quickstart_dry_run_greenfield():
     assert "values-gateway-greenfield.yaml" in out
     assert "values-local.yaml" not in out
     assert "aiGateway.providers.openai.apiKey=sk-test-cluster-install" in out
-    assert "aiGateway.consumerKey=" not in out
+    assert "aiGateway.consumerKey=" in out
     assert "gateway.hosts.agents=agents.zelkor-play.zelkor.local" in out
     assert "gateway.hosts.langfuse=langfuse.zelkor-play.zelkor.local" in out
     assert "postgresql.auth.password=" in out
@@ -397,7 +397,12 @@ def test_uninstall_purge_operators_respects_ownership():
 
 
 def test_uninstall_purge_gateway_skips_unowned():
-    proc = _run(UNINSTALL, "--dry-run", "--purge-gateway")
+    proc = _run(
+        UNINSTALL,
+        "--dry-run",
+        "--purge-gateway",
+        env={"KUBECONFIG": "/nonexistent/kubeconfig-for-offline-uninstall-test"},
+    )
     assert proc.returncode == 0, proc.stderr
     assert "SKIP_UNOWNED envoy-gateway" in proc.stdout
     assert "SKIP_UNOWNED ai-gateway" in proc.stdout

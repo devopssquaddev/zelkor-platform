@@ -66,8 +66,10 @@ def test_aegra_live_probe_drain_and_otel_knobs():
     assert "workerDrainTimeout: 30" in aegra
     assert 'otelTargets: ""' in aegra
     helpers = (ROOT / "charts/zelkor-platform/templates/_helpers.tpl").read_text()
+    front = (ROOT / "charts/zelkor-platform/templates/aegra/deployment.yaml").read_text()
     assert "OTEL_TARGETS" in helpers
-    assert "LANGFUSE_BASE_URL" in helpers
+    assert "zelkor-platform.aegraLangfuseOtelEnvFrom" in helpers
+    assert "zelkor-platform.aegraLangfuseOtelEnvFrom" in front
     assert "LANGFUSE_HOST" not in helpers.split("zelkor-platform.aegraOtelEnv", 1)[1][:800]
     worker = (ROOT / "charts/zelkor-agent/templates/deployment.yaml").read_text()
     assert "WORKER_DRAIN_TIMEOUT" in worker
