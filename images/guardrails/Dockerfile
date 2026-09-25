@@ -21,10 +21,12 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
 
 COPY images/guardrails/otel_project_route.py /app/otel_project_route.py
 COPY images/guardrails/boot.py /app/boot.py
+COPY images/guardrails/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && mkdir -p /etc/nemoguardrails/configs/content_safety \
+    && chmod 644 /usr/local/lib/python3.12/site-packages/sitecustomize.py \
     && chown -R zelkor:zelkor /etc/nemoguardrails /app/otel_project_route.py /app/boot.py /app/zelkor_logging.py
 USER 1000
 

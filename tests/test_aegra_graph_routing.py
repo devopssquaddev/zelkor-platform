@@ -136,6 +136,8 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "/app/boot.py" in deploy
     assert "OTEL_METRICS_EXPORTER" in deploy
     assert "LANGFUSE_EXTRA_OTLP" in deploy
+    assert "OTEL_EXPORTER_OTLP_HEADERS" in deploy
+    assert "Authorization=Basic" in deploy
     assert "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS" in deploy
     assert "/v1/health" in deploy
     assert "path: /v1/health" in deploy
@@ -184,11 +186,13 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "NEMO_GUARDRAILS_NO_USAGE_STATS" in off_deploy
 
 
-def test_nemo_otel_uses_instrument_not_sitecustomize():
+def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     dockerfile = (ROOT / "images/guardrails/Dockerfile").read_text()
     reqs = (ROOT / "images/guardrails/requirements.txt").read_text()
-    assert "sitecustomize" not in dockerfile
-    assert not (ROOT / "images/guardrails/sitecustomize.py").exists()
+    site = (ROOT / "images/guardrails/sitecustomize.py").read_text()
+    assert "sitecustomize.py" in dockerfile
+    assert "otel_project_route import install" in site
+    assert "install()" in site
     assert "boot.py" in dockerfile
     assert (ROOT / "images/guardrails/boot.py").exists()
     assert (ROOT / "images/guardrails/otel_project_route.py").exists()

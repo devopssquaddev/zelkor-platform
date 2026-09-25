@@ -673,8 +673,34 @@ false
 {{- end -}}
 {{- end }}
 
+{{/*
+Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster init secret).
+*/}}
+{{- define "zelkor-platform.langfuseInitIngestCredentials" -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- $pk := $init.projectPublicKey | default "" | toString | trim -}}
+{{- $sk := $init.projectSecretKey | default "" | toString | trim -}}
+{{- $initSecretName := include "zelkor-platform.langfuseInitSecretName" . -}}
+{{- if and (not $pk) (not $sk) $init.existingSecret }}
+{{- $byo := lookup "v1" "Secret" .Release.Namespace $init.existingSecret -}}
+{{- if and $byo $byo.data (index $byo.data "publicKey") (index $byo.data "secretKey") }}
+{{- $pk = index $byo.data "publicKey" | b64dec -}}
+{{- $sk = index $byo.data "secretKey" | b64dec -}}
+{{- end }}
+{{- end }}
+{{- if and (not $pk) (not $sk) (not $init.existingSecret) }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $initSecretName -}}
+{{- if and $existing $existing.data (index $existing.data "publicKey") (index $existing.data "secretKey") }}
+{{- $pk = index $existing.data "publicKey" | b64dec -}}
+{{- $sk = index $existing.data "secretKey" | b64dec -}}
+{{- end }}
+{{- end }}
+{{- printf "publicKey: %s\nsecretKey: %s" $pk $sk -}}
+{{- end }}
+
 {{- define "zelkor-platform.nemoOtelEnv" -}}
 {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+{{- $creds := include "zelkor-platform.langfuseInitIngestCredentials" . | fromYaml -}}
 - name: OTEL_SERVICE_NAME
   value: {{ printf "%s-nemo" (include "zelkor-platform.fullname" .) | quote }}
 - name: OTEL_TRACES_EXPORTER
@@ -687,6 +713,10 @@ false
   value: http/protobuf
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
+{{- if and $creds.publicKey $creds.secretKey }}
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" $creds.publicKey $creds.secretKey)) | quote }}
+{{- end }}
 - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
   value: "/v1/health"
 - name: LANGFUSE_EXTRA_OTLP

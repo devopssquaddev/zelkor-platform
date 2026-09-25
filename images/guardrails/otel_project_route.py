@@ -114,14 +114,19 @@ def stamp_identity(span: Any, values: Dict[str, str]) -> None:
             span.set_attribute("session.id", value)
 
 
+def _ingest_credentials() -> tuple[Dict[str, str], str, str]:
+    extra = parse_extra_otlp(os.getenv("LANGFUSE_EXTRA_OTLP", ""))
+    default_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+    default_sk = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+    return extra, default_pk, default_sk
+
+
 def install() -> None:
     if getattr(install, "_done", False):
         return
     install._done = True  # type: ignore[attr-defined]
 
-    extra = parse_extra_otlp(os.getenv("LANGFUSE_EXTRA_OTLP", ""))
-    default_pk = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
-    default_sk = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+    extra, default_pk, default_sk = _ingest_credentials()
 
     from opentelemetry import baggage, context, trace
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -150,13 +155,17 @@ def install() -> None:
     orig_export = OTLPSpanExporter.export
 
     def _resolve_sk(pk: str) -> tuple[str, str]:
-        effective = (pk or default_pk).strip()
+        extra_live, default_pk_live, default_sk_live = _ingest_credentials()
+        effective = (pk or default_pk_live).strip()
         if not effective:
             return "", ""
-        if effective in extra:
-            return effective, extra[effective]
-        if effective == default_pk and default_sk:
-            return effective, default_sk
+        if effective in extra_live:
+            return effective, extra_live[effective]
+        if default_pk_live and default_sk_live:
+            if effective == default_pk_live:
+                return effective, default_sk_live
+            # Agent stamped another project's pk we do not have — still export to default project.
+            return default_pk_live, default_sk_live
         return "", ""
 
     def _kept(spans):  # type: ignore[no-untyped-def]
@@ -168,15 +177,22 @@ def install() -> None:
             return SpanExportResult.SUCCESS
         if getattr(self, "_zelkor_route_leaf", False):
             return orig_export(self, spans)
+        _, default_pk_live, default_sk_live = _ingest_credentials()
         buckets: Dict[str, List] = defaultdict(list)
         for span in spans:
-            buckets[pk_from_span(span, default_pk)].append(span)
+            buckets[pk_from_span(span, default_pk_live)].append(span)
         result = SpanExportResult.SUCCESS
         for pk, group in buckets.items():
             route_pk, sk = _resolve_sk(pk)
             if route_pk and sk:
                 result = _leaf(route_pk, sk).export(group)
+            elif default_pk_live and default_sk_live:
+                result = _leaf(default_pk_live, default_sk_live).export(group)
             else:
+                _log.warning(
+                    "NeMo OTLP export without Langfuse credentials (batch=%d spans)",
+                    len(group),
+                )
                 result = orig_export(self, group)
         return result
 
