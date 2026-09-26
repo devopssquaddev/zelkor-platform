@@ -231,7 +231,13 @@ def test_production_generated_url_secrets_are_hex():
         "--generate-passwords",
     )
     assert proc.returncode == 0, proc.stderr
-    for name in ("POSTGRES_PASSWORD", "CLICKHOUSE_PASSWORD", "SEAWEEDFS_ACCESS_KEY", "SEAWEEDFS_SECRET_KEY"):
+    for name in (
+        "POSTGRES_PASSWORD",
+        "CLICKHOUSE_PASSWORD",
+        "VALKEY_PASSWORD",
+        "SEAWEEDFS_ACCESS_KEY",
+        "SEAWEEDFS_SECRET_KEY",
+    ):
         value = _printed_secret(proc.stdout, name)
         assert value, name
         assert all(c in "0123456789abcdef" for c in value), f"{name}={value!r} is not hex"
