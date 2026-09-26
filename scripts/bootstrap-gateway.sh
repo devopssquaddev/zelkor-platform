@@ -12,6 +12,7 @@ source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.1}"
 AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.1.0}"
 ROLLOUT_WAIT_TIMEOUT="${ROLLOUT_WAIT_TIMEOUT:-5m}"
+HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
 SKIP_ENVOY_GATEWAY=0
 SKIP_AI_GATEWAY=0
@@ -240,13 +241,16 @@ if [[ "$SKIP_AI_GATEWAY" -eq 0 ]]; then
       "${HELM_ARGS[@]}" \
       --version "$AI_GATEWAY_HELM_VERSION" \
       --namespace envoy-ai-gateway-system \
-      --create-namespace
+      --create-namespace \
+      --timeout "$HELM_INSTALL_TIMEOUT"
 
     helm upgrade -i aieg oci://docker.io/envoyproxy/ai-gateway-helm \
       "${HELM_ARGS[@]}" \
       --version "$AI_GATEWAY_HELM_VERSION" \
       --namespace envoy-ai-gateway-system \
-      --create-namespace
+      --create-namespace \
+      --wait \
+      --timeout "$HELM_INSTALL_TIMEOUT"
 
     zelkor_ownership_annotate_ns envoy-ai-gateway-system
     zelkor_ownership_record ai-gateway

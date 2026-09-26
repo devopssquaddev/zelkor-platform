@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Idempotent Gate B operator bootstrap. Skip a controller when its CRD exists
-# or when --skip-* is set. Not called from ./install.sh (Path A stays kind).
+# Idempotent Gate B operator bootstrap. Skip a controller when its Helm release
+# is already deployed or when --skip-* is set. Not called from ./install.sh (Path A).
 # --kubeconfig / --kube-context are optional (non-default kube context).
 set -euo pipefail
 
@@ -28,7 +28,8 @@ Usage: ./scripts/bootstrap-operators.sh [--skip-cnpg] [--skip-clickhouse] [--ski
          [--kubeconfig PATH] [--kube-context NAME]
 
 Installs CloudNativePG, Altinity ClickHouse Operator, and cert-manager when
-their CRDs are missing. Optional Barman Cloud plugin (needs cert-manager).
+their Helm releases are missing (CRDs alone do not skip install). Optional
+Barman Cloud plugin (needs cert-manager).
 Does not install ESO or a Valkey operator.
 
 --kubeconfig / --kube-context are optional. Customers run this against their
@@ -77,16 +78,24 @@ crd_exists() {
   kubectl "${KUBECTL_ARGS[@]}" get crd "$1" >/dev/null 2>&1
 }
 
-if [[ "$SKIP_CNPG" -eq 0 ]] && crd_exists clusters.postgresql.cnpg.io; then
-  echo "skip CNPG: CRD clusters.postgresql.cnpg.io already exists"
+helm_release_deployed() {
+  local release="$1"
+  local ns="$2"
+  local status
+  status=$(helm "${HELM_ARGS[@]}" status "$release" -n "$ns" -o jsonpath='{.info.status}' 2>/dev/null || true)
+  [[ "$status" == "deployed" ]]
+}
+
+if [[ "$SKIP_CNPG" -eq 0 ]] && helm_release_deployed cnpg cnpg-system; then
+  echo "skip CNPG: Helm release cnpg already deployed in cnpg-system"
   SKIP_CNPG=1
 fi
-if [[ "$SKIP_CLICKHOUSE" -eq 0 ]] && crd_exists clickhouseinstallations.clickhouse.altinity.com; then
-  echo "skip ClickHouse operator: CRD already exists"
+if [[ "$SKIP_CLICKHOUSE" -eq 0 ]] && helm_release_deployed clickhouse-operator clickhouse-operator; then
+  echo "skip ClickHouse operator: Helm release clickhouse-operator already deployed"
   SKIP_CLICKHOUSE=1
 fi
-if [[ "$SKIP_CERT_MANAGER" -eq 0 ]] && crd_exists certificates.cert-manager.io; then
-  echo "skip cert-manager: CRD certificates.cert-manager.io already exists"
+if [[ "$SKIP_CERT_MANAGER" -eq 0 ]] && helm_release_deployed cert-manager cert-manager; then
+  echo "skip cert-manager: Helm release cert-manager already deployed"
   SKIP_CERT_MANAGER=1
 fi
 
