@@ -17,10 +17,10 @@ SECRET_SETS = [
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
     "seaweedfs.auth.secretKey=test-sk",
-    "langfuse.nextauthSecret=test-na",
-    "langfuse.salt=test-salt-1234567890",
-    "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.telemetry.langfuse.nextauthSecret=test-na",
+    "platform.telemetry.langfuse.salt=test-salt-1234567890",
+    "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
 ]
 
 HA_DEPLOYMENTS = (
@@ -279,7 +279,7 @@ def test_langfuse_public_route_gated_until_enabled():
         "--set",
         "gateway.hosts.langfuse=langfuse.example.com",
         "--set",
-        "langfuse.publicHttpRoute.enabled=true",
+        "platform.telemetry.langfuse.publicHttpRoute.enabled=true",
     )
     assert proc2.returncode == 0, proc2.stderr
     routes2 = [

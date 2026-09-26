@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGatewayClass" . | trim) "true") (eq (include "zelkor-platform.envoyProxyEmit" .) "true") }}
 {{- $ep := .Values.gateway.envoyProxy | default dict -}}
 {{- $svc := $ep.service | default dict -}}

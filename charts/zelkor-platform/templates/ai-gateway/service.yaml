@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled }}
 {{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
 {{- if $targetHost }}

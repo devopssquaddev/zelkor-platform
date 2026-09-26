@@ -14,10 +14,10 @@ SECRET_SETS = [
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
     "seaweedfs.auth.secretKey=test-sk",
-    "langfuse.nextauthSecret=test-na",
-    "langfuse.salt=test-salt-1234567890",
-    "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.telemetry.langfuse.nextauthSecret=test-na",
+    "platform.telemetry.langfuse.salt=test-salt-1234567890",
+    "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
     "gateway.hosts.aiGateway=ai-gateway.example.com",
 ]
 
@@ -71,7 +71,7 @@ def test_empty_providers_omit_new_backends():
 
 
 def test_gemini_openai_prefix():
-    docs = _docs(_helm("--set", "aiGateway.providers.gemini.apiKey=AIza-test"))
+    docs = _docs(_helm("--set", "workspace.models.providers.gemini.apiKey=AIza-test"))
     backend = _named(docs, "AIServiceBackend", "zelkor-platform-backend-gemini")
     assert backend["spec"]["schema"]["name"] == "OpenAI"
     assert backend["spec"]["schema"]["prefix"] == "/v1beta/openai"
@@ -81,9 +81,9 @@ def test_azure_schema_and_route():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.azure.apiKey=az-key",
+            "workspace.models.providers.azure.apiKey=az-key",
             "--set",
-            "aiGateway.providers.azure.endpoint=https://myres.openai.azure.com",
+            "workspace.models.providers.azure.endpoint=https://myres.openai.azure.com",
         )
     )
     backend = _named(docs, "AIServiceBackend", "zelkor-platform-backend-azure")
@@ -101,13 +101,13 @@ def test_bedrock_and_anthropic_schema():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.bedrock.accessKeyId=AKIATEST",
+            "workspace.models.providers.bedrock.accessKeyId=AKIATEST",
             "--set",
-            "aiGateway.providers.bedrock.secretAccessKey=secret",
+            "workspace.models.providers.bedrock.secretAccessKey=secret",
             "--set",
-            "aiGateway.providers.bedrock.region=eu-west-1",
+            "workspace.models.providers.bedrock.region=eu-west-1",
             "--set",
-            "aiGateway.providers.bedrock.anthropic=true",
+            "workspace.models.providers.bedrock.anthropic=true",
         )
     )
     bedrock = _named(docs, "AIServiceBackend", "zelkor-platform-backend-bedrock")
@@ -128,13 +128,13 @@ def test_vertex_and_gcp_anthropic():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.vertex.project=my-proj",
+            "workspace.models.providers.vertex.project=my-proj",
             "--set",
-            "aiGateway.providers.vertex.region=us-central1",
+            "workspace.models.providers.vertex.region=us-central1",
             "--set-string",
-            "aiGateway.providers.vertex.credentialsJson={\"type\":\"service_account\"}",
+            "workspace.models.providers.vertex.credentialsJson={\"type\":\"service_account\"}",
             "--set",
-            "aiGateway.providers.vertex.anthropic=true",
+            "workspace.models.providers.vertex.anthropic=true",
         )
     )
     vertex = _named(docs, "AIServiceBackend", "zelkor-platform-backend-vertex")
@@ -155,11 +155,11 @@ def test_vertex_with_gemini_api_key_uses_vertex_prefix_route():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.vertex.project=my-proj",
+            "workspace.models.providers.vertex.project=my-proj",
             "--set",
-            "aiGateway.providers.vertex.region=us-central1",
+            "workspace.models.providers.vertex.region=us-central1",
             "--set",
-            "aiGateway.providers.gemini.apiKey=AIza-test",
+            "workspace.models.providers.gemini.apiKey=AIza-test",
         )
     )
     matches = _route_matches(docs)
@@ -173,11 +173,11 @@ def test_vertex_global_hostname_and_gemini_route_without_google_gemini_key():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.vertex.project=my-proj",
+            "workspace.models.providers.vertex.project=my-proj",
             "--set",
-            "aiGateway.providers.vertex.region=global",
+            "workspace.models.providers.vertex.region=global",
             "--set-string",
-            'aiGateway.providers.vertex.credentialsJson={"type":"service_account"}',
+            'workspace.models.providers.vertex.credentialsJson={"type":"service_account"}',
         )
     )
     host = _named(docs, "Backend", "zelkor-platform-backend-vertex")
@@ -189,7 +189,7 @@ def test_vertex_global_hostname_and_gemini_route_without_google_gemini_key():
 
 
 def test_cohere_schema():
-    docs = _docs(_helm("--set", "aiGateway.providers.cohere.apiKey=co-key"))
+    docs = _docs(_helm("--set", "workspace.models.providers.cohere.apiKey=co-key"))
     backend = _named(docs, "AIServiceBackend", "zelkor-platform-backend-cohere")
     assert backend["spec"]["schema"]["name"] == "Cohere"
     matches = _route_matches(docs)
@@ -200,15 +200,15 @@ def test_openai_compat_item():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.openaiCompat[0].name=groq",
+            "workspace.models.providers.openaiCompat[0].name=groq",
             "--set",
-            "aiGateway.providers.openaiCompat[0].host=api.groq.com",
+            "workspace.models.providers.openaiCompat[0].host=api.groq.com",
             "--set",
-            "aiGateway.providers.openaiCompat[0].prefix=/openai/v1",
+            "workspace.models.providers.openaiCompat[0].prefix=/openai/v1",
             "--set",
-            "aiGateway.providers.openaiCompat[0].apiKey=gsk-test",
+            "workspace.models.providers.openaiCompat[0].apiKey=gsk-test",
             "--set",
-            "aiGateway.providers.openaiCompat[0].modelMatch=^(groq/.*)",
+            "workspace.models.providers.openaiCompat[0].modelMatch=^(groq/.*)",
         )
     )
     backend = _named(docs, "AIServiceBackend", "zelkor-platform-backend-compat-groq")
@@ -242,7 +242,7 @@ def _aigateway_rules(docs: list[dict]) -> list[dict]:
 
 
 def test_nemo_derives_model_from_single_provider():
-    docs = _docs(_helm("--set", "aiGateway.providers.ollamaCloud.apiKey=ollama-key"))
+    docs = _docs(_helm("--set", "workspace.models.providers.ollamaCloud.apiKey=ollama-key"))
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
     assert by_type["main"] == "gpt-oss:20b"
     assert by_type["self_check_input"] == "gpt-oss:20b"
@@ -253,9 +253,9 @@ def test_ai_gateway_default_model_overrides_provider_derivation():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.ollamaCloud.apiKey=ollama-key",
+            "workspace.models.providers.ollamaCloud.apiKey=ollama-key",
             "--set",
-            "aiGateway.defaultModel=qwen3:8b",
+            "workspace.models.defaultModel=qwen3:8b",
         )
     )
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
@@ -266,9 +266,9 @@ def test_guardrails_nemo_model_wins_over_default_model():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.defaultModel=qwen3:8b",
+            "workspace.models.defaultModel=qwen3:8b",
             "--set",
-            "guardrails.nemo.model=openai/gpt-4o",
+            "workspace.policies.nemo.model=openai/gpt-4o",
         )
     )
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
@@ -276,7 +276,7 @@ def test_guardrails_nemo_model_wins_over_default_model():
 
 
 def test_self_check_models_inherit_nemo_model():
-    docs = _docs(_helm("--set", "guardrails.nemo.model=qwen3:8b"))
+    docs = _docs(_helm("--set", "workspace.policies.nemo.model=qwen3:8b"))
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
     assert by_type["main"] == "qwen3:8b"
     assert by_type["self_check_input"] == "qwen3:8b"
@@ -287,9 +287,9 @@ def test_self_check_model_override_does_not_change_main():
     docs = _docs(
         _helm(
             "--set",
-            "guardrails.nemo.model=qwen3:8b",
+            "workspace.policies.nemo.model=qwen3:8b",
             "--set",
-            "guardrails.nemo.selfCheck.model=gpt-oss:20b",
+            "workspace.policies.nemo.selfCheck.model=gpt-oss:20b",
         )
     )
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
@@ -299,7 +299,7 @@ def test_self_check_model_override_does_not_change_main():
 
 
 def test_self_check_models_omitted_when_disabled():
-    docs = _docs(_helm("--set", "guardrails.nemo.selfCheck.enabled=false"))
+    docs = _docs(_helm("--set", "workspace.policies.nemo.selfCheck.enabled=false"))
     types = {row["type"] for row in _nemo_config_models(docs)}
     assert "main" in types
     assert "self_check_input" not in types
@@ -307,7 +307,7 @@ def test_self_check_models_omitted_when_disabled():
 
 
 def test_unknown_bypass_reject_when_intercept_on():
-    docs = _docs(_helm("--set", "aiGateway.providers.ollamaCloud.apiKey=ollama-key"))
+    docs = _docs(_helm("--set", "workspace.models.providers.ollamaCloud.apiKey=ollama-key"))
     filt = _unknown_model_filter(docs)
     route = _unknown_model_route(docs)
     assert filt is not None
@@ -335,9 +335,9 @@ def test_unknown_bypass_reject_absent_when_intercept_off():
     docs = _docs(
         _helm(
             "--set",
-            "guardrails.nemo.intercept.enabled=false",
+            "workspace.policies.nemo.intercept.enabled=false",
             "--set",
-            "aiGateway.providers.ollamaCloud.apiKey=ollama-key",
+            "workspace.models.providers.ollamaCloud.apiKey=ollama-key",
         )
     )
     assert _unknown_model_route(docs) is None
@@ -348,9 +348,9 @@ def test_vertex_bypass_rule_stays_two_header_when_reject_present():
     docs = _docs(
         _helm(
             "--set",
-            "aiGateway.providers.vertex.project=my-proj",
+            "workspace.models.providers.vertex.project=my-proj",
             "--set",
-            "aiGateway.providers.vertex.region=us-central1",
+            "workspace.models.providers.vertex.region=us-central1",
         )
     )
     assert "^(gemini-.*)" in _route_matches(docs)

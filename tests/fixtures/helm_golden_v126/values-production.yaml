@@ -1,0 +1,4062 @@
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+# Default-deny egress for generic agent workloads (not Aegra checkpointer).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-agent-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      zelkor.io/workload-type: agent
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ai-gateway
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 10080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: aegra
+      ports:
+        - protocol: TCP
+          port: 8000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: guardrails
+      ports:
+        - protocol: TCP
+          port: 8000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+# Aegra runtimes (front door + workers) need Postgres + Valkey for the checkpointer.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-aegra-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: aegra
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: valkey
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ai-gateway
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 10080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: guardrails
+      ports:
+        - protocol: TCP
+          port: 8000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-mcp-gateway-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-postgres
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-qdrant
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-sandbox
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-egress
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-mcp-postgres-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-postgres
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-mcp-qdrant-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-qdrant
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: qdrant
+      ports:
+        - protocol: TCP
+          port: 6333
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ai-gateway
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 10080
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-mcp-egress-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-egress
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ai-gateway
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 10080
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-sandbox-worker-ingress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox-worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-sandbox
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+# Langfuse may reach in-cluster datastores + AI Gateway / MCP. No public internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-langfuse-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: langfuse
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+---
+# Source: zelkor-platform/templates/security/networkpolicies.yaml
+# Langfuse bootstrap Job needs Postgres, Valkey, Langfuse, MCP, and AI Gateway.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: zelkor-platform-langfuse-bootstrap-egress
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - langfuse-bootstrap
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+      ports:
+        - protocol: TCP
+          port: 3000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: valkey
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ai-gateway
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-aegra
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: aegra
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-langfuse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: langfuse
+      app.kubernetes.io/langfuse-role: web
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-langfuse-worker
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: langfuse
+      app.kubernetes.io/langfuse-role: worker
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-nemo
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: guardrails
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-mcp-gateway
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-gateway
+      app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-mcp-postgres
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-postgres
+      app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-mcp-qdrant
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-qdrant
+      app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-mcp-egress
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-egress
+      app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zelkor-platform-mcp-sandbox
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox
+      app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/langfuse/rbac-bootstrap.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zelkor-platform-langfuse-bootstrap
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse-bootstrap
+---
+# Source: zelkor-platform/templates/clickhouse/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-clickhouse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "clickhouse"
+    app.kubernetes.io/component: clickhouse
+type: Opaque
+stringData:
+  password: "test-ch"
+---
+# Source: zelkor-platform/templates/langfuse/deployment.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-langfuse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse
+type: Opaque
+stringData:
+  nextauth-secret: "test-na"
+  salt: "test-salt-1234567890"
+  encryption-key: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+---
+# Source: zelkor-platform/templates/langfuse/secret-admin.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-langfuse-admin
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse-admin
+type: Opaque
+stringData:
+  email: "admin@example.com"
+  name: "Admin"
+  password: "aZf45jfUh5lCQZL2IlEbFCJsuEXL!9"
+---
+# Source: zelkor-platform/templates/langfuse/secret-langfuse-keys.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-langfuse-init
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse-init
+type: Opaque
+stringData:
+  publicKey: "pk-lf-DS6LBUOMQNH5K6MxZmAzFozVxE56t2gK"
+  secretKey: "sk-lf-fR8dQaSyN5ictHoKWaV6c4YxB93aF7fR"
+---
+# Source: zelkor-platform/templates/langfuse/secret-langfuse-keys.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-langfuse-otel
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse-otel
+type: Opaque
+stringData:
+  OTEL_TARGETS: LANGFUSE
+  LANGFUSE_BASE_URL: "http://zelkor-platform-langfuse:3000"
+  LANGFUSE_PUBLIC_KEY: "pk-lf-DS6LBUOMQNH5K6MxZmAzFozVxE56t2gK"
+  LANGFUSE_SECRET_KEY: "sk-lf-fR8dQaSyN5ictHoKWaV6c4YxB93aF7fR"
+---
+# Source: zelkor-platform/templates/mcp/secret-sandbox-worker.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-sandbox-worker
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox
+type: Opaque
+stringData:
+  token: "jFJBSmqHmV2wTttYt8vCrbPCdOQf09oF"
+---
+# Source: zelkor-platform/templates/postgresql/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-postgresql
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "postgresql"
+    app.kubernetes.io/component: postgresql
+type: Opaque
+stringData:
+  postgres-password: "test-pg"
+  password: "test-pg"
+  username: "zelkor"
+  database: "zelkor"
+---
+# Source: zelkor-platform/templates/seaweedfs/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: zelkor-platform-seaweedfs
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "seaweedfs"
+    app.kubernetes.io/component: seaweedfs
+type: Opaque
+stringData:
+  access-key: "test-ak"
+  secret-key: "test-sk"
+  s3-config.json: |
+    {"identities":[{"name":"test-ak","credentials":[{"accessKey":"test-ak","secretKey":"test-sk"}],"actions":["Admin","Read","Write","List","Tagging"]}]}
+---
+# Source: zelkor-platform/templates/aegra/configmap-agents.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zelkor-platform-agents-auth
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aegra"
+    app.kubernetes.io/component: aegra
+data:
+  aegra.json: |
+    {
+      "graphs": {},
+      "auth": {
+        "path": "./tenant_auth.py:auth"
+      }
+    }
+---
+# Source: zelkor-platform/templates/contract-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zelkor-platform-contract
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "platform.contract"
+data:
+  CONTRACT_VERSION: "v2.0"
+  AI_GATEWAY_SERVICE: "zelkor-platform-ai-gateway.zelkor.svc.cluster.local:80"
+  MCP_GATEWAY_SERVICE: "zelkor-platform-mcp-gateway.zelkor.svc.cluster.local:8080"
+  AEGRA_FRONTDOOR_SERVICE: "zelkor-platform-aegra.zelkor.svc.cluster.local:8000"
+  DATABASE_SECRET_REF: "zelkor-platform-postgresql"
+  VALKEY_SECRET_REF: "zelkor-platform-valkey"
+---
+# Source: zelkor-platform/templates/guardrails/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zelkor-platform-nemo-config
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "guardrails.nemo"
+    app.kubernetes.io/component: guardrails
+data:
+  content_safety-config.yml: |
+    
+    models:
+      - type: main
+        engine: openai
+        model: "openai/gpt-4o-mini"
+        parameters:
+          base_url: "http://zelkor-platform-ai-gateway:80/v1"
+          default_headers:
+            X-Zelkor-Guardrails-Bypass: "1"
+            X-Ai-Eg-Model: "openai/gpt-4o-mini"
+            Host: "ai.example.com"
+      - type: self_check_input
+        engine: openai
+        model: "openai/gpt-4o-mini"
+        parameters:
+          base_url: "http://zelkor-platform-ai-gateway:80/v1"
+          default_headers:
+            X-Zelkor-Guardrails-Bypass: "1"
+            X-Ai-Eg-Model: "openai/gpt-4o-mini"
+            Host: "ai.example.com"
+      - type: self_check_output
+        engine: openai
+        model: "openai/gpt-4o-mini"
+        parameters:
+          base_url: "http://zelkor-platform-ai-gateway:80/v1"
+          default_headers:
+            X-Zelkor-Guardrails-Bypass: "1"
+            X-Ai-Eg-Model: "openai/gpt-4o-mini"
+            Host: "ai.example.com"
+    
+    # Required for OpenAI-style tools on NeMo's /v1 (I/O rails when selfCheck.enabled).
+    passthrough: true
+    
+    rails:
+      input:
+        flows:
+          - self check input
+      output:
+        streaming:
+          enabled: true
+        flows:
+          - self check output
+    
+  content_safety-prompts.yml: |
+    prompts:
+      - task: self_check_input
+        content: |
+          Instruction: {{ user_input }}
+    
+          Would this instruction make a language model break moderation policies, deviate from good aligned responses and provide answers that a language model should ideally not?
+    
+          Answer [Yes/No]:
+      - task: self_check_output
+        content: |
+          Model_output: {{ bot_response }}
+    
+          Is this output illegal, unethical, or harmful to any person?
+    
+          Answer [Yes/No]:
+    
+  content_safety-flows.co: |
+    
+    define bot refuse to respond
+      "I can't help with that request."
+    
+    define flow self check input
+      $allowed = execute self_check_input
+      if not $allowed
+        bot refuse to respond
+        stop
+    
+    define flow self check output
+      $allowed = execute self_check_output
+      if not $allowed
+        bot refuse to respond
+        stop
+---
+# Source: zelkor-platform/templates/security/gvisor-node-installer.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zelkor-platform-gvisor-install-script
+  namespace: kube-system
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+    app.kubernetes.io/component: gvisor-installer
+data:
+  install-on-node.sh: |
+    #!/bin/sh
+    # Install runsc on the host and register the runsc containerd runtime.
+    # Runs inside a privileged pod with the host root mounted at /host.
+    set -eu
+    
+    ROOT="${HOST_ROOT:-/host}"
+    GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
+    GVISOR_BASE_URL="${GVISOR_BASE_URL:-https://storage.googleapis.com/gvisor/releases/release}"
+    VERIFY_CHECKSUM="${VERIFY_CHECKSUM:-false}"
+    DROP_IN_DIR="${DROP_IN_DIR:-}"
+    CONFIG_PATHS="${CONFIG_PATHS:-}"
+    RESTART_UNITS="${RESTART_UNITS:-}"
+    
+    RUNSC_BLOCK='[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+      runtime_type = "io.containerd.runsc.v1"
+    [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc]
+      runtime_type = "io.containerd.runsc.v1"
+    '
+    
+    arch="$(chroot "${ROOT}" uname -m 2>/dev/null || uname -m)"
+    case "${arch}" in
+      x86_64|amd64) arch=x86_64 ;;
+      aarch64|arm64) arch=aarch64 ;;
+      *)
+        echo "unsupported architecture: ${arch}" >&2
+        exit 1
+        ;;
+    esac
+    
+    runsc_configured() {
+      _path="$1"
+      [ -f "${_path}" ] && grep -q 'containerd.runtimes.runsc' "${_path}"
+    }
+    
+    binaries_ready() {
+      [ -x "${ROOT}/usr/local/bin/runsc" ] \
+        && [ -x "${ROOT}/usr/local/bin/containerd-shim-runsc-v1" ] \
+        && chroot "${ROOT}" /usr/local/bin/runsc --version 2>/dev/null | grep -q "${GVISOR_RELEASE}"
+    }
+    
+    k3s_or_rke2_present() {
+      [ -d "${ROOT}/var/lib/rancher/k3s" ] || [ -d "${ROOT}/var/lib/rancher/rke2" ]
+    }
+    
+    collect_config_paths() {
+      if [ -n "${CONFIG_PATHS}" ]; then
+        for _p in ${CONFIG_PATHS}; do
+          [ -f "${ROOT}${_p}" ] && printf '%s\n' "${ROOT}${_p}"
+        done
+        return 0
+      fi
+      if ! k3s_or_rke2_present; then
+        [ -f "${ROOT}/etc/containerd/config.toml" ] && printf '%s\n' "${ROOT}/etc/containerd/config.toml"
+      fi
+      for _p in \
+        "${ROOT}/var/lib/rancher/k3s/agent/etc/containerd/config.toml" \
+        "${ROOT}/var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl" \
+        "${ROOT}/var/lib/rancher/k3s/server/etc/containerd/config.toml" \
+        "${ROOT}/var/lib/rancher/k3s/server/etc/containerd/config.toml.tmpl" \
+        "${ROOT}/var/lib/rancher/rke2/agent/etc/containerd/config.toml" \
+        "${ROOT}/var/lib/rancher/rke2/agent/etc/containerd/config.toml.tmpl" \
+        "${ROOT}/var/lib/rancher/rke2/server/etc/containerd/config.toml" \
+        "${ROOT}/var/lib/rancher/rke2/server/etc/containerd/config.toml.tmpl"
+      do
+        [ -f "${_p}" ] && printf '%s\n' "${_p}"
+      done
+    }
+    
+    imports_drop_in_dir() {
+      _cfg="$1"
+      _line="$(grep '^imports' "${_cfg}" 2>/dev/null | head -1 || true)"
+      [ -n "${_line}" ] || return 1
+      _dir="$(printf '%s\n' "${_line}" | sed -n 's/.*\["\([^"]*\)\/\*\.toml".*/\1/p')"
+      [ -n "${_dir}" ] || return 1
+      printf '%s\n' "${ROOT}${_dir#${ROOT}}"
+    }
+    
+    drop_in_dir() {
+      if [ -n "${DROP_IN_DIR}" ]; then
+        printf '%s\n' "${ROOT}${DROP_IN_DIR}"
+        return 0
+      fi
+      for _cfg in $(collect_config_paths); do
+        _dir="$(imports_drop_in_dir "${_cfg}" 2>/dev/null || true)"
+        if [ -n "${_dir}" ]; then
+          mkdir -p "${_dir}"
+          printf '%s\n' "${_dir}"
+          return 0
+        fi
+      done
+      if [ -d "${ROOT}/etc/k0s/containerd.d" ]; then
+        printf '%s\n' "${ROOT}/etc/k0s/containerd.d"
+        return 0
+      fi
+      if [ -f "${ROOT}/etc/containerd/config.toml" ]; then
+        _dir="$(imports_drop_in_dir "${ROOT}/etc/containerd/config.toml" 2>/dev/null || true)"
+        if [ -n "${_dir}" ]; then
+          mkdir -p "${_dir}"
+          printf '%s\n' "${_dir}"
+          return 0
+        fi
+        if grep -q 'config.d' "${ROOT}/etc/containerd/config.toml" 2>/dev/null; then
+          mkdir -p "${ROOT}/etc/containerd/config.d"
+          printf '%s\n' "${ROOT}/etc/containerd/config.d"
+          return 0
+        fi
+      fi
+      return 1
+    }
+    
+    runtime_registered() {
+      _drop="$(drop_in_dir 2>/dev/null || true)"
+      if [ -n "${_drop}" ]; then
+        runsc_configured "${_drop}/99-zelkor-runsc.toml"
+        return $?
+      fi
+      for _cfg in $(collect_config_paths); do
+        if runsc_configured "${_cfg}"; then
+          return 0
+        fi
+      done
+      return 1
+    }
+    
+    if binaries_ready && runtime_registered; then
+      echo "gVisor ${GVISOR_RELEASE} already installed and registered on this node"
+      exit 0
+    fi
+    
+    base="${GVISOR_BASE_URL%/}/${GVISOR_RELEASE}/${arch}"
+    
+    verify_gvisor_bin() {
+      _bin="$1"
+      _host_path="$2"
+      [ "${VERIFY_CHECKSUM}" = "true" ] || return 0
+      _expected="$(curl -fsSL "${base}/${_bin}.sha512" | awk '{print $1}')"
+      [ -n "${_expected}" ] || {
+        echo "gVisor checksum file missing for ${_bin}" >&2
+        return 1
+      }
+      _actual="$(chroot "${ROOT}" sha512sum "${_host_path}" | awk '{print $1}')"
+      if [ "${_expected}" != "${_actual}" ]; then
+        echo "gVisor checksum mismatch for ${_bin}" >&2
+        return 1
+      fi
+    }
+    
+    for bin in runsc containerd-shim-runsc-v1; do
+      curl -fsSL "${base}/${bin}" -o "${ROOT}/usr/local/bin/${bin}.new"
+      verify_gvisor_bin "${bin}" "/usr/local/bin/${bin}.new"
+      mv -f "${ROOT}/usr/local/bin/${bin}.new" "${ROOT}/usr/local/bin/${bin}"
+    done
+    chmod a+rx "${ROOT}/usr/local/bin/runsc" "${ROOT}/usr/local/bin/containerd-shim-runsc-v1"
+    chroot "${ROOT}" /usr/local/bin/runsc --version
+    
+    needs_restart=0
+    _drop_dir="$(drop_in_dir 2>/dev/null || true)"
+    if [ -n "${_drop_dir}" ]; then
+      _drop_file="${_drop_dir}/99-zelkor-runsc.toml"
+      if ! runsc_configured "${_drop_file}"; then
+        mkdir -p "${_drop_dir}"
+        printf '%s\n' "${RUNSC_BLOCK}" > "${_drop_file}.new"
+        mv -f "${_drop_file}.new" "${_drop_file}"
+        needs_restart=1
+      fi
+    else
+      for cfg in $(collect_config_paths); do
+        if ! runsc_configured "${cfg}"; then
+          printf '\n%s\n' "${RUNSC_BLOCK}" >> "${cfg}"
+          needs_restart=1
+        fi
+      done
+    fi
+    
+    if ! runtime_registered && [ "${needs_restart}" -eq 0 ]; then
+      echo "no containerd config found under ${ROOT}; installed binaries only" >&2
+    fi
+    
+    restart_unit() {
+      _unit="$1"
+      if chroot "${ROOT}" systemctl is-active --quiet "${_unit}" 2>/dev/null; then
+        chroot "${ROOT}" systemctl restart "${_unit}"
+        return 0
+      fi
+      return 1
+    }
+    
+    if [ "${needs_restart}" -eq 1 ]; then
+      restarted=0
+      if [ -n "${RESTART_UNITS}" ]; then
+        for unit in ${RESTART_UNITS}; do
+          if restart_unit "${unit}"; then
+            restarted=1
+            break
+          fi
+        done
+      else
+        for unit in k3s-agent k3s rke2-agent rke2-server containerd; do
+          if restart_unit "${unit}"; then
+            restarted=1
+            break
+          fi
+        done
+      fi
+      if [ "${restarted}" -eq 0 ]; then
+        echo "installed runsc but could not restart containerd/k3s/rke2" >&2
+        exit 1
+      fi
+      sleep 5
+    fi
+    
+    if ! runtime_registered; then
+      echo "runsc binaries installed but containerd runtime not registered" >&2
+      exit 1
+    fi
+    
+    echo "gVisor ${GVISOR_RELEASE} installed on $(chroot "${ROOT}" hostname 2>/dev/null || echo unknown)"
+---
+# Source: zelkor-platform/templates/aegra/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-aegra
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aegra"
+    app.kubernetes.io/component: aegra
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/component: aegra
+---
+# Source: zelkor-platform/templates/ai-gateway/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-ai-gateway
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aiGateway"
+    app.kubernetes.io/component: ai-gateway
+spec:
+  type: ExternalName
+  externalName: zelkor-zelkor-platform-dataplane.envoy-gateway-system.svc.cluster.local
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+---
+# Source: zelkor-platform/templates/guardrails/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-nemo
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "guardrails.nemo"
+    app.kubernetes.io/component: guardrails
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+  selector:
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/component: guardrails
+---
+# Source: zelkor-platform/templates/langfuse/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-langfuse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http
+  selector:
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/component: langfuse
+    app.kubernetes.io/langfuse-role: web
+---
+# Source: zelkor-platform/templates/mcp/deployment-egress.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-egress
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.egressMCP"
+    app.kubernetes.io/component: mcp-egress
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-egress
+    app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/mcp/deployment-gateway.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-gateway
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.gateway"
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-gateway
+    app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/mcp/deployment-postgres.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-postgres
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.postgresMCP"
+    app.kubernetes.io/component: mcp-postgres
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-postgres
+    app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/mcp/deployment-qdrant.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-qdrant
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.qdrantMCP"
+    app.kubernetes.io/component: mcp-qdrant
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-qdrant
+    app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-sandbox
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-sandbox
+    app.kubernetes.io/instance: zelkor-platform
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-sandbox-worker-0
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-sandbox-worker
+    app.kubernetes.io/instance: zelkor-platform
+    sandbox-worker-id: "0"
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-sandbox-worker-1
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-sandbox-worker
+    app.kubernetes.io/instance: zelkor-platform
+    sandbox-worker-id: "1"
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-mcp-sandbox-worker-2
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  ports:
+    - port: 8081
+      targetPort: 8081
+      name: http
+  selector:
+    app.kubernetes.io/component: mcp-sandbox-worker
+    app.kubernetes.io/instance: zelkor-platform
+    sandbox-worker-id: "2"
+---
+# Source: zelkor-platform/templates/postgresql/cluster.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-postgresql
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "postgresql"
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ExternalName
+  externalName: zelkor-platform-postgresql-rw.zelkor.svc.cluster.local
+  ports:
+    - port: 5432
+      name: postgresql
+---
+# Source: zelkor-platform/templates/qdrant/statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-qdrant
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "qdrant"
+    app.kubernetes.io/component: qdrant
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6333
+      targetPort: 6333
+      name: http
+    - port: 6334
+      targetPort: 6334
+      name: grpc
+  selector:
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/component: qdrant
+---
+# Source: zelkor-platform/templates/seaweedfs/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-seaweedfs
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "seaweedfs"
+    app.kubernetes.io/component: seaweedfs
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8333
+      targetPort: 8333
+      name: s3
+  selector:
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/component: seaweedfs
+---
+# Source: zelkor-platform/templates/valkey/deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: zelkor-platform-valkey
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "valkey"
+    app.kubernetes.io/component: valkey
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      name: valkey
+  selector:
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/component: valkey
+---
+# Source: zelkor-platform/templates/security/gvisor-node-installer.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: zelkor-platform-gvisor-installer
+  namespace: kube-system
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+    app.kubernetes.io/component: gvisor-installer
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: gvisor-installer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: gvisor-installer
+    spec:
+      
+      tolerations:
+        - operator: Exists
+      priorityClassName: system-node-critical
+      hostPID: true
+      hostNetwork: true
+      
+      containers:
+        - name: install
+          image: "alpine:3.22"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          env:
+            - name: GVISOR_RELEASE
+              value: "20260817"
+            - name: GVISOR_BASE_URL
+              value: "https://storage.googleapis.com/gvisor/releases/release"
+            - name: VERIFY_CHECKSUM
+              value: "true"
+            - name: HOST_ROOT
+              value: /host
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              apk add --no-cache curl bash >/dev/null
+              while true; do
+                bash /scripts/install-on-node.sh && sleep 3600 || sleep 30
+              done
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+            - name: install-script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+            type: Directory
+        - name: install-script
+          configMap:
+            name: zelkor-platform-gvisor-install-script
+            defaultMode: 0555
+---
+# Source: zelkor-platform/templates/aegra/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-aegra
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aegra"
+    app.kubernetes.io/component: aegra
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: aegra
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: aegra
+    spec:
+      
+      terminationGracePeriodSeconds: 35
+      initContainers:
+        - name: wait-langfuse-bootstrap
+          image: "busybox:1.37"
+          env:
+            - name: LANGFUSE_HOST
+              value: "http://zelkor-platform-langfuse:3000"
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-init
+                  key: publicKey
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-init
+                  key: secretKey
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              deadline=$(( $(date +%s) + 1200 ))
+              while [ "$(date +%s)" -lt "$deadline" ]; do
+                if wget -q -O /dev/null "${LANGFUSE_HOST}/api/public/health" 2>/dev/null; then
+                  auth=$(printf '%s:%s' "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\n')
+                  if wget -q -O /dev/null --header="Authorization: Basic ${auth}" "${LANGFUSE_HOST}/api/public/llm-connections" 2>/dev/null; then
+                    echo "Langfuse init project API ready"
+                    exit 0
+                  fi
+                fi
+                sleep 5
+              done
+              echo "Timed out waiting for Langfuse bootstrap (init project API)" >&2
+              exit 1
+        - name: wait-for-deps
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z -w 2 zelkor-platform-postgresql 5432; do
+                echo "Waiting for postgresql..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-valkey 6379; do
+                echo "Waiting for valkey..."
+                sleep 1
+              done
+              echo "Dependencies ready."
+        - name: migrate
+          image: "ghcr.io/devopssquaddev/zelkor-aegra-cli@sha256:91c7c30bb465f1d8fb28da255b310ca0eded3edfb29979c567026b0e63e83370"
+          imagePullPolicy: IfNotPresent
+          command: ["aegra", "db", "upgrade"]
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-aegra-cli"
+            - name: DATABASE_URL
+              value: "postgresql://zelkor:test-pg@zelkor-platform-postgresql:5432/aegra"
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
+      containers:
+        - name: aegra
+          image: "ghcr.io/devopssquaddev/zelkor-aegra@sha256:e122704ac0451ac7fb03717bb4dfe8ce0503882e25a74e18c5216b5dbd7644ab"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["uvicorn", "aegra_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-aegra"
+            
+            - name: LOG_EXCLUDE_PATHS
+              value: "/health,/live,/ready"
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: "false"
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: ""
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: "false"
+            - name: AUTH_JWT_SECRET
+              value: ""
+            - name: TENANT_ORG_MAPPINGS
+              value: "{}"
+            - name: DATABASE_URL
+              value: "postgresql://zelkor:test-pg@zelkor-platform-postgresql:5432/aegra"
+            - name: REDIS_URL
+              value: "redis://zelkor-platform-valkey:6379/0"
+            - name: REDIS_BROKER_ENABLED
+              value: "false"
+            - name: RUN_MIGRATIONS_ON_STARTUP
+              value: "false"
+            - name: WORKER_COUNT
+              value: "3"
+            - name: N_JOBS_PER_WORKER
+              value: "10"
+            - name: WORKER_DRAIN_TIMEOUT
+              value: "30"
+            - name: AEGRA_CONFIG
+              value: "/app/aegra.json"
+            - name: OPENAI_BASE_URL
+              value: "http://zelkor-platform-ai-gateway:80/v1"
+            - name: OPENAI_API_KEY
+              value: ""
+            - name: AI_GATEWAY_URL
+              value: "http://zelkor-platform-ai-gateway:80/v1"
+            - name: MCP_URL
+              value: "http://zelkor-platform-mcp-gateway:8080"
+            - name: ZELKOR_RUN_TIMEOUT
+              value: ""
+            - name: ZELKOR_MAX_TOKENS
+              value: "0"
+            - name: ZELKOR_APPROVAL_THRESHOLD
+              value: ""
+            - name: ZELKOR_APPROVAL_REQUIRED
+              value: "false"
+            - name: MCP_INJECT_ENABLED
+              value: "false"
+            - name: ZELKOR_TENANT_HEADER
+              value: "X-Tenant-ID"
+            - name: QDRANT_URL
+              value: "http://zelkor-platform-qdrant:6333"
+            - name: ENABLE_PROMETHEUS_METRICS
+              value: "false"
+            
+          envFrom:
+            
+            - secretRef:
+                name: zelkor-platform-langfuse-otel
+          volumeMounts:
+            - name: agents-auth
+              mountPath: /app/aegra.json
+              subPath: aegra.json
+          
+          startupProbe:
+            failureThreshold: 18
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /live
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: agents-auth
+          configMap:
+            name: zelkor-platform-agents-auth
+---
+# Source: zelkor-platform/templates/guardrails/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-nemo
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "guardrails.nemo"
+    app.kubernetes.io/component: guardrails
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: guardrails
+  template:
+    metadata:
+      annotations:
+        checksum/config: 96bbec2b74c61935f93a466535ccb3897f9c5fbfa2aecddc282cdc8250b42fcc
+        checksum/langfuse-otel: 2e4c3dfa88561a3366b8c0ebeccdb7e11cd865482beed9d16f9f53e694660007
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: guardrails
+    spec:
+      
+      initContainers:
+        - name: wait-langfuse-bootstrap
+          image: "busybox:1.37"
+          env:
+            - name: LANGFUSE_HOST
+              value: "http://zelkor-platform-langfuse:3000"
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-init
+                  key: publicKey
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-init
+                  key: secretKey
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              deadline=$(( $(date +%s) + 1200 ))
+              while [ "$(date +%s)" -lt "$deadline" ]; do
+                if wget -q -O /dev/null "${LANGFUSE_HOST}/api/public/health" 2>/dev/null; then
+                  auth=$(printf '%s:%s' "${LANGFUSE_PUBLIC_KEY}" "${LANGFUSE_SECRET_KEY}" | base64 | tr -d '\n')
+                  if wget -q -O /dev/null --header="Authorization: Basic ${auth}" "${LANGFUSE_HOST}/api/public/llm-connections" 2>/dev/null; then
+                    echo "Langfuse init project API ready"
+                    exit 0
+                  fi
+                fi
+                sleep 5
+              done
+              echo "Timed out waiting for Langfuse bootstrap (init project API)" >&2
+              exit 1
+      containers:
+        - name: nemo-guardrails
+          image: "ghcr.io/devopssquaddev/zelkor-guardrails@sha256:a9232166b106f5499cc92320f34feb62e61123b0baa7a632937163657b14ea84"
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/app/boot.py"]
+          args:
+            - server
+            - --config
+            - "/etc/nemoguardrails/configs"
+            - --port
+            - "8000"
+            - --default-config-id
+            - "content_safety"
+            - --disable-chat-ui
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-nemo"
+            - name: OPENAI_API_KEY
+              value: ""
+            - name: MAIN_MODEL_BASE_URL
+              value: "http://zelkor-platform-ai-gateway:80/v1"
+            - name: NEMO_GUARDRAILS_NO_USAGE_STATS
+              value: "1"
+            - name: ENABLE_PROMETHEUS_METRICS
+              value: "false"
+            
+          volumeMounts:
+            - name: nemo-config
+              mountPath: "/etc/nemoguardrails/configs/content_safety/config.yml"
+              subPath: content_safety-config.yml
+            - name: nemo-config
+              mountPath: "/etc/nemoguardrails/configs/content_safety/prompts.yml"
+              subPath: content_safety-prompts.yml
+            - name: nemo-config
+              mountPath: "/etc/nemoguardrails/configs/content_safety/flows.co"
+              subPath: content_safety-flows.co
+          
+          startupProbe:
+            failureThreshold: 24
+            httpGet:
+              path: /v1/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /v1/health
+              port: 8000
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /v1/health
+              port: 8000
+            periodSeconds: 5
+            timeoutSeconds: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+      volumes:
+        - name: nemo-config
+          configMap:
+            name: zelkor-platform-nemo-config
+---
+# Source: zelkor-platform/templates/langfuse/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-langfuse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse
+    app.kubernetes.io/langfuse-role: web
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: langfuse
+      app.kubernetes.io/langfuse-role: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: langfuse
+        app.kubernetes.io/langfuse-role: web
+    spec:
+      initContainers:
+        - name: wait-for-deps
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              
+              until nc -z -w 2 zelkor-platform-postgresql 5432; do
+                echo "Waiting for postgresql..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-clickhouse 8123; do
+                echo "Waiting for clickhouse..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-valkey 6379; do
+                echo "Waiting for valkey..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-seaweedfs 8333; do
+                echo "Waiting for seaweedfs..."
+                sleep 1
+              done
+              echo "Dependencies ready."
+      containers:
+        - name: langfuse
+          image: "langfuse/langfuse:4.24.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            
+            - name: DATABASE_URL
+              value: "postgresql://zelkor:test-pg@zelkor-platform-postgresql:5432/langfuse"
+            - name: CLICKHOUSE_URL
+              value: "http://zelkor-platform-clickhouse:8123"
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://zelkor-platform-clickhouse:9000/default"
+            - name: CLICKHOUSE_USER
+              value: "clickhouse"
+            - name: CLICKHOUSE_PASSWORD
+              value: "test-ch"
+            - name: CLICKHOUSE_DB
+              value: "default"
+            - name: CLICKHOUSE_CLUSTER_ENABLED
+              value: "false"
+            - name: REDIS_HOST
+              value: "zelkor-platform-valkey"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: SALT
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse
+                  key: salt
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse
+                  key: encryption-key
+            - name: TELEMETRY_ENABLED
+              value: "false"
+            - name: LANGFUSE_MIGRATION_V4_WRITE_MODE
+              value: "events_only"
+            - name: LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST
+              value: "zelkor-platform-ai-gateway,zelkor-platform-ai-gateway.zelkor.svc.cluster.local"
+            - name: LANGFUSE_BACKGROUND_MIGRATION_V4_ENABLE_HISTORIC_BACKFILL
+              value: "false"
+            - name: LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR
+              value: "direct"
+            - name: LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN
+              value: "true"
+            - name: LANGFUSE_LOG_LEVEL
+              value: "info"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+              value: "events/"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+              value: "http://zelkor-platform-seaweedfs:8333"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+              value: "test-ak"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+              value: "test-sk"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+              value: "media/"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT
+              value: "http://zelkor-platform-seaweedfs:8333"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+              value: "test-ak"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+              value: "test-sk"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse
+                  key: nextauth-secret
+            - name: NEXTAUTH_URL
+              value: "https://langfuse.example.com"
+            - name: AUTH_TRUST_HOST
+              value: "true"
+          
+          startupProbe:
+            failureThreshold: 45
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /api/public/health
+              port: 3000
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+---
+# Source: zelkor-platform/templates/langfuse/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-langfuse-worker
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse
+    app.kubernetes.io/langfuse-role: worker
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: langfuse
+      app.kubernetes.io/langfuse-role: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: langfuse
+        app.kubernetes.io/langfuse-role: worker
+    spec:
+      initContainers:
+        - name: wait-for-deps
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              
+              until nc -z -w 2 zelkor-platform-postgresql 5432; do
+                echo "Waiting for postgresql..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-clickhouse 8123; do
+                echo "Waiting for clickhouse..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-valkey 6379; do
+                echo "Waiting for valkey..."
+                sleep 1
+              done
+              until nc -z -w 2 zelkor-platform-seaweedfs 8333; do
+                echo "Waiting for seaweedfs..."
+                sleep 1
+              done
+              echo "Dependencies ready."
+      containers:
+        - name: langfuse-worker
+          image: "langfuse/langfuse-worker:4.24.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3030
+              name: http
+          env:
+            
+            - name: DATABASE_URL
+              value: "postgresql://zelkor:test-pg@zelkor-platform-postgresql:5432/langfuse"
+            - name: CLICKHOUSE_URL
+              value: "http://zelkor-platform-clickhouse:8123"
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://zelkor-platform-clickhouse:9000/default"
+            - name: CLICKHOUSE_USER
+              value: "clickhouse"
+            - name: CLICKHOUSE_PASSWORD
+              value: "test-ch"
+            - name: CLICKHOUSE_DB
+              value: "default"
+            - name: CLICKHOUSE_CLUSTER_ENABLED
+              value: "false"
+            - name: REDIS_HOST
+              value: "zelkor-platform-valkey"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: SALT
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse
+                  key: salt
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse
+                  key: encryption-key
+            - name: TELEMETRY_ENABLED
+              value: "false"
+            - name: LANGFUSE_MIGRATION_V4_WRITE_MODE
+              value: "events_only"
+            - name: LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST
+              value: "zelkor-platform-ai-gateway,zelkor-platform-ai-gateway.zelkor.svc.cluster.local"
+            - name: LANGFUSE_BACKGROUND_MIGRATION_V4_ENABLE_HISTORIC_BACKFILL
+              value: "false"
+            - name: LANGFUSE_MIGRATION_V4_NATIVE_OTEL_BEHAVIOUR
+              value: "direct"
+            - name: LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN
+              value: "true"
+            - name: LANGFUSE_LOG_LEVEL
+              value: "info"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_PREFIX
+              value: "events/"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT
+              value: "http://zelkor-platform-seaweedfs:8333"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID
+              value: "test-ak"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY
+              value: "test-sk"
+            - name: LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_BUCKET
+              value: "langfuse"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_PREFIX
+              value: "media/"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_REGION
+              value: "auto"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT
+              value: "http://zelkor-platform-seaweedfs:8333"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID
+              value: "test-ak"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY
+              value: "test-sk"
+            - name: LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE
+              value: "true"
+            - name: NEXTAUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse
+                  key: nextauth-secret
+            - name: NEXTAUTH_URL
+              value: "https://langfuse.example.com"
+          livenessProbe:
+            tcpSocket:
+              port: 3030
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 3030
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 100m
+              memory: 512Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-egress.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-egress
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.egressMCP"
+    app.kubernetes.io/component: mcp-egress
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-egress
+      app.kubernetes.io/instance: zelkor-platform
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.egressMCP"
+        app.kubernetes.io/component: mcp-egress
+    spec:
+      
+      containers:
+        - name: mcp-egress
+          image: "ghcr.io/devopssquaddev/zelkor-mcp@sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["python", "mcp/wrappers/egress_server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-mcp-egress"
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: "false"
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: ""
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: "false"
+            - name: AUTH_JWT_SECRET
+              value: ""
+            - name: TENANT_ORG_MAPPINGS
+              value: "{}"
+            - name: AI_GATEWAY_URL
+              value: "http://zelkor-platform-ai-gateway:80/v1"
+            - name: AI_GATEWAY_API_KEY
+              value: ""
+            - name: EGRESS_ALLOWED_MODELS
+              value: ""
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-gateway.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-gateway
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.gateway"
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-gateway
+      app.kubernetes.io/instance: zelkor-platform
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.gateway"
+        app.kubernetes.io/component: mcp-gateway
+    spec:
+      
+      containers:
+        - name: mcp-gateway
+          image: "ghcr.io/devopssquaddev/zelkor-mcp@sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["python", "mcp/gateway/gateway_server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-mcp-gateway"
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: "false"
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: ""
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: "false"
+            - name: AUTH_JWT_SECRET
+              value: ""
+            - name: TENANT_ORG_MAPPINGS
+              value: "{}"
+            - name: POSTGRES_MCP_URL
+              value: "http://zelkor-platform-mcp-postgres:8080"
+            - name: QDRANT_MCP_URL
+              value: "http://zelkor-platform-mcp-qdrant:8080"
+            - name: SANDBOX_MCP_URL
+              value: "http://zelkor-platform-mcp-sandbox:8080"
+            - name: EGRESS_MCP_URL
+              value: "http://zelkor-platform-mcp-egress:8080"
+            - name: MCP_EXTRA_BACKENDS
+              value: "[]"
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-postgres.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-postgres
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.postgresMCP"
+    app.kubernetes.io/component: mcp-postgres
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-postgres
+      app.kubernetes.io/instance: zelkor-platform
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.postgresMCP"
+        app.kubernetes.io/component: mcp-postgres
+    spec:
+      
+      containers:
+        - name: mcp-postgres
+          image: "ghcr.io/devopssquaddev/zelkor-mcp@sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["python", "mcp/wrappers/postgres_server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-mcp-postgres"
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: "false"
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: ""
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: "false"
+            - name: AUTH_JWT_SECRET
+              value: ""
+            - name: TENANT_ORG_MAPPINGS
+              value: "{}"
+            - name: POSTGRES_MCP_URL
+              value: "postgresql://zelkor:test-pg@zelkor-platform-postgresql:5432/postgres"
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-qdrant.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-qdrant
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.qdrantMCP"
+    app.kubernetes.io/component: mcp-qdrant
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-qdrant
+      app.kubernetes.io/instance: zelkor-platform
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.qdrantMCP"
+        app.kubernetes.io/component: mcp-qdrant
+    spec:
+      
+      containers:
+        - name: mcp-qdrant
+          image: "ghcr.io/devopssquaddev/zelkor-mcp@sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["python", "mcp/wrappers/qdrant_server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-mcp-qdrant"
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: "false"
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: ""
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: "false"
+            - name: AUTH_JWT_SECRET
+              value: ""
+            - name: TENANT_ORG_MAPPINGS
+              value: "{}"
+            - name: QDRANT_MCP_URL
+              value: "http://zelkor-platform-qdrant:6333"
+            - name: QDRANT_COLLECTION
+              value: "documents"
+            - name: AI_GATEWAY_URL
+              value: "http://zelkor-platform-ai-gateway:80/v1"
+            - name: AI_GATEWAY_API_KEY
+              value: ""
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-sandbox
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox
+      app.kubernetes.io/instance: zelkor-platform
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.sandboxMCP"
+        app.kubernetes.io/component: mcp-sandbox
+    spec:
+      
+      containers:
+        - name: mcp-sandbox
+          image: "ghcr.io/devopssquaddev/zelkor-mcp@sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["python", "mcp/sandbox/server.py"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-mcp-sandbox"
+            - name: AUTH_DEV_TOKENS_ENABLED
+              value: "false"
+            - name: AUTH_DEV_TOKEN_PREFIX
+              value: ""
+            - name: AUTH_TRUST_TENANT_HEADER
+              value: "false"
+            - name: AUTH_JWT_SECRET
+              value: ""
+            - name: TENANT_ORG_MAPPINGS
+              value: "{}"
+            - name: SANDBOX_WORKER_URLS
+              value: "http://zelkor-platform-mcp-sandbox-worker-0:8081,http://zelkor-platform-mcp-sandbox-worker-1:8081,http://zelkor-platform-mcp-sandbox-worker-2:8081"
+            - name: SANDBOX_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: "zelkor-platform-sandbox-worker"
+                  key: token
+            - name: SANDBOX_EXECUTION_LOG_ENABLED
+              value: "true"
+            - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
+              value: "false"
+            - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
+              value: "true"
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-sandbox-worker-0
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox-worker
+      app.kubernetes.io/instance: zelkor-platform
+      sandbox-worker-id: "0"
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.sandboxMCP"
+        app.kubernetes.io/component: mcp-sandbox-worker
+        sandbox-worker-id: "0"
+    spec:
+      
+      runtimeClassName: "gvisor"
+      containers:
+        - name: worker
+          image: "ghcr.io/devopssquaddev/zelkor-sandbox-worker@sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          ports:
+            - containerPort: 8081
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-sandbox-worker"
+            - name: PORT
+              value: "8081"
+            - name: SANDBOX_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: "zelkor-platform-sandbox-worker"
+                  key: token
+            - name: SANDBOX_EXECUTION_LOG_ENABLED
+              value: "true"
+            - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
+              value: "false"
+            - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
+              value: "true"
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8081
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8081
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-sandbox-worker-1
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox-worker
+      app.kubernetes.io/instance: zelkor-platform
+      sandbox-worker-id: "1"
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.sandboxMCP"
+        app.kubernetes.io/component: mcp-sandbox-worker
+        sandbox-worker-id: "1"
+    spec:
+      
+      runtimeClassName: "gvisor"
+      containers:
+        - name: worker
+          image: "ghcr.io/devopssquaddev/zelkor-sandbox-worker@sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          ports:
+            - containerPort: 8081
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-sandbox-worker"
+            - name: PORT
+              value: "8081"
+            - name: SANDBOX_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: "zelkor-platform-sandbox-worker"
+                  key: token
+            - name: SANDBOX_EXECUTION_LOG_ENABLED
+              value: "true"
+            - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
+              value: "false"
+            - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
+              value: "true"
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8081
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8081
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+# Source: zelkor-platform/templates/mcp/deployment-sandbox.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-mcp-sandbox-worker-2
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "mcp.sandboxMCP"
+    app.kubernetes.io/component: mcp-sandbox-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox-worker
+      app.kubernetes.io/instance: zelkor-platform
+      sandbox-worker-id: "2"
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: zelkor-platform-2.0.0
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/managed-by: Helm
+        zelkor.io/intent: "mcp.sandboxMCP"
+        app.kubernetes.io/component: mcp-sandbox-worker
+        sandbox-worker-id: "2"
+    spec:
+      
+      runtimeClassName: "gvisor"
+      containers:
+        - name: worker
+          image: "ghcr.io/devopssquaddev/zelkor-sandbox-worker@sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0"
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          ports:
+            - containerPort: 8081
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-sandbox-worker"
+            - name: PORT
+              value: "8081"
+            - name: SANDBOX_WORKER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: "zelkor-platform-sandbox-worker"
+                  key: token
+            - name: SANDBOX_EXECUTION_LOG_ENABLED
+              value: "true"
+            - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
+              value: "false"
+            - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
+              value: "true"
+          
+          startupProbe:
+            failureThreshold: 12
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8081
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: 8081
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+# Source: zelkor-platform/templates/seaweedfs/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-seaweedfs
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "seaweedfs"
+    app.kubernetes.io/component: seaweedfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: seaweedfs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: "chrislusf/seaweedfs:4.44"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p /data
+              exec weed -v=0 server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json
+          ports:
+            - containerPort: 8333
+              name: s3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs
+              readOnly: true
+          
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            tcpSocket:
+              port: 8333
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            tcpSocket:
+              port: 8333
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 50m
+              memory: 128Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: s3-config
+          secret:
+            secretName: zelkor-platform-seaweedfs
+            items:
+              - key: s3-config.json
+                path: s3-config.json
+---
+# Source: zelkor-platform/templates/valkey/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zelkor-platform-valkey
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "valkey"
+    app.kubernetes.io/component: valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: valkey
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: valkey
+    spec:
+      containers:
+        - name: valkey
+          image: "valkey/valkey:7.2.14-alpine"
+          imagePullPolicy: IfNotPresent
+          command:
+            - valkey-server
+            - --maxmemory-policy
+            - noeviction
+            - --loglevel
+            - "notice"
+          ports:
+            - containerPort: 6379
+              name: valkey
+          
+          livenessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            tcpSocket:
+              port: 6379
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 6
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            tcpSocket:
+              port: 6379
+            timeoutSeconds: 2
+          resources:
+            limits:
+              cpu: 250m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-aegra
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-aegra
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-langfuse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-langfuse
+  minReplicas: 1
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-langfuse-worker
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-langfuse-worker
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-nemo
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-nemo
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-mcp-gateway
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-mcp-gateway
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-mcp-postgres
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-mcp-postgres
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-mcp-qdrant
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-mcp-qdrant
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-mcp-egress
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-mcp-egress
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/hpa.yaml
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: zelkor-platform-mcp-sandbox
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: zelkor-platform-mcp-sandbox
+  minReplicas: 2
+  maxReplicas: 8
+  targetCPUUtilizationPercentage: 70
+---
+# Source: zelkor-platform/templates/qdrant/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: zelkor-platform-qdrant
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "qdrant"
+    app.kubernetes.io/component: qdrant
+spec:
+  serviceName: zelkor-platform-qdrant
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: zelkor-platform
+      app.kubernetes.io/instance: zelkor-platform
+      app.kubernetes.io/component: qdrant
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: "qdrant/qdrant:v1.19.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6333
+              name: http
+            - containerPort: 6334
+              name: grpc
+          env:
+            - name: QDRANT__LOG_LEVEL
+              value: "INFO"
+          
+          livenessProbe:
+            failureThreshold: 6
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            failureThreshold: 6
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+# Source: zelkor-platform/templates/langfuse/job-bootstrap.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zelkor-platform-langfuse-bootstrap
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "langfuse"
+    app.kubernetes.io/component: langfuse-bootstrap
+  annotations:
+    zelkor.io/bootstrap-checksum: "aea8b0be77edc983977e1dc23833ff8edaad6b26c1af327f2673e1b63460a340"
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: langfuse-bootstrap
+      annotations:
+        zelkor.io/bootstrap-checksum: "aea8b0be77edc983977e1dc23833ff8edaad6b26c1af327f2673e1b63460a340"
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: zelkor-platform-langfuse-bootstrap
+      
+      containers:
+        - name: seed
+          image: "ghcr.io/devopssquaddev/zelkor-langfuse-seed@sha256:02fbb3e9c3a7d6d1208b1f91314777a8d460cb3974dd4dd466ea89c74419931f"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: "INFO"
+            - name: ZELKOR_LOG_FORMAT
+              value: "json"
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-langfuse-seed"
+            - name: LANGFUSE_HOST
+              value: "http://zelkor-platform-langfuse:3000"
+            - name: DATABASE_URL
+              value: "postgresql://zelkor:test-pg@zelkor-platform-postgresql:5432/langfuse"
+            - name: SEED_ADMIN
+              value: "true"
+            - name: LANGFUSE_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-admin
+                  key: email
+            - name: LANGFUSE_ADMIN_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-admin
+                  key: name
+            - name: LANGFUSE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-admin
+                  key: password
+            - name: SEED_INIT
+              value: "true"
+            - name: LANGFUSE_ORG_ID
+              value: "zelkor"
+            - name: LANGFUSE_ORG_NAME
+              value: "Zelkor"
+            - name: LANGFUSE_PROJECT_ID
+              value: "zelkor-platform"
+            - name: LANGFUSE_PROJECT_NAME
+              value: "Zelkor Platform"
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-init
+                  key: publicKey
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: zelkor-platform-langfuse-init
+                  key: secretKey
+            - name: LANGFUSE_INIT_USER_EMAIL
+              value: ""
+            - name: LANGFUSE_SALT
+              value: "test-salt-1234567890"
+            - name: LANGFUSE_CONNECTION_NAME
+              value: "zelkor-ai-gateway"
+            - name: AI_GATEWAY_BASE_URL
+              value: "http://zelkor-platform-ai-gateway:80/v1"
+            - name: AI_GATEWAY_CONSUMER_KEY
+              value: ""
+            - name: LANGFUSE_CUSTOM_MODELS
+              value: ""
+            - name: SEED_LLM_CONNECTION
+              value: "true"
+            - name: SEED_MCP_TOOLS
+              value: "true"
+            - name: SEED_CODE_EVALUATORS
+              value: "true"
+            - name: MCP_URL
+              value: "http://zelkor-platform-mcp-gateway:8080"
+            - name: MCP_SEED_TENANT
+              value: "seed"
+            - name: MCP_AUTH_TOKEN
+              value: ""
+            - name: MCP_EXTRA_BACKENDS
+              value: "[]"
+            - name: LANGFUSE_EXTRA_PROJECTS
+              value: "[]"
+            - name: VALKEY_HOST
+              value: "zelkor-platform-valkey"
+            - name: VALKEY_PORT
+              value: "6379"
+            - name: VALKEY_PASSWORD
+              value: ""
+---
+# Source: zelkor-platform/templates/security/job-gvisor-verify.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: zelkor-platform-gvisor-verify
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+    app.kubernetes.io/component: gvisor-verify
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: zelkor-platform
+        app.kubernetes.io/instance: zelkor-platform
+        app.kubernetes.io/component: gvisor-verify
+    spec:
+      restartPolicy: Never
+      runtimeClassName: gvisor
+      
+      containers:
+        - name: verify
+          image: busybox:1.37.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              if dmesg 2>/dev/null | grep -qi gvisor; then
+                echo "gVisor sandbox verified (gVisor kernel banner in dmesg)"
+                exit 0
+              fi
+              echo "gVisor verify failed: host kernel dmesg (runsc not active)" >&2
+              echo "WARNING: failClosed=false; continuing without gVisor sandbox" >&2
+              exit 0
+---
+# Source: zelkor-platform/templates/ai-gateway/backends.yaml
+# Ollama Local — host Ollama / vLLM-compatible server (no upstream API key)
+
+# Ollama Cloud — ollama.com hosted models (requires apiKey)
+
+# OpenAI Backend
+
+# Anthropic Backend
+
+# Gemini Backend
+
+# vLLM Backend
+
+# Azure OpenAI
+
+# AWS Bedrock
+
+# GCP Vertex AI
+
+# Cohere
+
+# OpenAI-compatible extra hosts
+
+# NeMo Guardrails Backend (default /v1 intercept or legacy nemo/* prefix)
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIServiceBackend
+metadata:
+  name: zelkor-platform-backend-nemo
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aiGateway.providers.openai"
+    app.kubernetes.io/component: ai-gateway
+spec:
+  schema:
+    name: OpenAI
+  backendRef:
+    name: zelkor-platform-backend-nemo
+    kind: Backend
+    group: gateway.envoyproxy.io
+---
+# Source: zelkor-platform/templates/ai-gateway/backends.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: zelkor-platform-backend-nemo
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aiGateway.providers.openai"
+    app.kubernetes.io/component: ai-gateway
+spec:
+  endpoints:
+    - fqdn:
+        hostname: zelkor-platform-nemo.zelkor.svc.cluster.local
+        port: 8000
+---
+# Source: zelkor-platform/templates/gateway/aegra-backendtrafficpolicy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: zelkor-platform-aegra-sse
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "workload.intent"
+    app.kubernetes.io/component: aegra
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: zelkor-platform-aegra-route
+  mergeType: StrategicMerge
+  timeout:
+    http:
+      requestTimeout: 0s
+      maxStreamDuration: 0s
+      streamIdleTimeout: 1h
+---
+# Source: zelkor-platform/templates/gateway/backendtrafficpolicy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: zelkor-platform-ratelimit-policy
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "gateway"
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: zelkor-platform-gateway
+  rateLimit:
+    type: Local
+    local:
+      rules:
+        - clientSelectors:
+            - headers:
+                - type: Exact
+                  name: X-Tenant-ID
+                  value: Burst_Test_Tenant
+          limit:
+            requests: 5
+            unit: Second
+---
+# Source: zelkor-platform/templates/clickhouse/installation.yaml
+apiVersion: clickhouse.altinity.com/v1
+kind: ClickHouseInstallation
+metadata:
+  name: zelkor-platform-clickhouse
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "clickhouse"
+    app.kubernetes.io/component: clickhouse
+spec:
+  defaults:
+    templates:
+      dataVolumeClaimTemplate: data
+      serviceTemplate: svc
+      podTemplate: clickhouse
+  configuration:
+    profiles:
+      # Langfuse 4.24 inserts DateTime64 ticks as numbers; CH 26.8+ defaults to
+      # input_format_read_datetime_number_as_raw_value=0 and rejects OTEL events.
+      default/input_format_read_datetime_number_as_raw_value: "1"
+    users:
+      clickhouse/password: "test-ch"
+      clickhouse/networks/ip:
+        
+                - "10.0.0.0/8"
+                - "172.16.0.0/12"
+                - "192.168.0.0/16"
+      clickhouse/profile: default
+    clusters:
+      - name: default
+        layout:
+          shardsCount: 1
+          replicasCount: 1
+  templates:
+    podTemplates:
+      - name: clickhouse
+        spec:
+          containers:
+            - name: clickhouse
+              image: "clickhouse/clickhouse-server:26.8.2.7-alpine"
+    volumeClaimTemplates:
+      - name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: "100Gi"
+    serviceTemplates:
+      - name: svc
+        generateName: "{chi}"
+        spec:
+          type: ClusterIP
+          ports:
+            - name: http
+              port: 8123
+            - name: tcp
+              port: 9000
+---
+# Source: zelkor-platform/templates/ai-gateway/clienttrafficpolicy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: zelkor-platform-client-traffic-policy
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aiGateway"
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: zelkor-platform-gateway
+  connection:
+    bufferLimit: 50Mi
+  http2:
+    initialStreamWindowSize: 16Mi
+    initialConnectionWindowSize: 24Mi
+---
+# Source: zelkor-platform/templates/postgresql/cluster.yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: zelkor-platform-postgresql
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "postgresql"
+    app.kubernetes.io/component: postgresql
+spec:
+  instances: 3
+  imageName: "ghcr.io/cloudnative-pg/postgresql:16.15"
+  enableSuperuserAccess: false
+  inheritedMetadata:
+    labels:
+      app.kubernetes.io/component: postgresql
+      app.kubernetes.io/instance: zelkor-platform
+  bootstrap:
+    initdb:
+      database: aegra
+      owner: "zelkor"
+      secret:
+        name: zelkor-platform-postgresql
+      postInitSQL:
+        - CREATE DATABASE langfuse OWNER zelkor;
+  storage:
+    size: "50Gi"
+---
+# Source: zelkor-platform/templates/gateway/envoyproxy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: zelkor-platform-envoy-proxy-config
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "gateway"
+spec:
+  logging:
+    level:
+      default: info
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        name: "zelkor-zelkor-platform-dataplane"
+      envoyHpa:
+        minReplicas: 2
+        maxReplicas: 8
+        metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+      envoyDeployment:
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              strategy:
+                type: RollingUpdate
+                rollingUpdate:
+                  maxSurge: 0
+                  maxUnavailable: 1
+        container:
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+# Source: zelkor-platform/templates/gateway/gateway.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: zelkor-platform-gateway
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "gateway"
+spec:
+  gatewayClassName: eg
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+---
+# Source: zelkor-platform/templates/gateway/gatewayclass.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "gateway"
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: zelkor-platform-envoy-proxy-config
+    namespace: zelkor
+---
+# Source: zelkor-platform/templates/ai-gateway/mcproute.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: zelkor-platform-mcp-gateway-route
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "aiGateway"
+    app.kubernetes.io/component: mcp-gateway
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: "zelkor-platform-gateway"
+      namespace: "zelkor"
+  hostnames:
+    - "mcp.example.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: zelkor-platform-mcp-gateway
+          port: 8080
+---
+# Source: zelkor-platform/templates/gateway/httproutes.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: zelkor-platform-aegra-route
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "gateway"
+    app.kubernetes.io/component: aegra
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: "zelkor-platform-gateway"
+      namespace: "zelkor"
+  hostnames:
+    - "agents.example.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: zelkor-platform-aegra
+          port: 8000
+      timeouts:
+        request: 0s
+---
+# Source: zelkor-platform/templates/gateway/httproutes.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: zelkor-platform-nemo-route
+  namespace: zelkor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "gateway"
+    app.kubernetes.io/component: guardrails
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: "zelkor-platform-gateway"
+      namespace: "zelkor"
+  hostnames:
+    - "nemo.example.com"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: zelkor-platform-nemo
+          port: 8000
+---
+# Source: zelkor-platform/templates/security/runtimeclass-gvisor.yaml
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+  labels:
+    helm.sh/chart: zelkor-platform-2.0.0
+    app.kubernetes.io/name: zelkor-platform
+    app.kubernetes.io/instance: zelkor-platform
+    app.kubernetes.io/version: "2.0.0"
+    app.kubernetes.io/managed-by: Helm
+    zelkor.io/intent: "security"
+handler: runsc

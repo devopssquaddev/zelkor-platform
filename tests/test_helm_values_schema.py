@@ -23,11 +23,11 @@ SECRET_SETS = [
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
     "seaweedfs.auth.secretKey=test-sk",
-    "langfuse.nextauthSecret=test-na",
-    "langfuse.salt=test-salt-1234567890",
-    "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "langfuse.nextauthUrl=https://langfuse.example.com",
-    "langfuse.admin.email=admin@example.com",
+    "platform.telemetry.langfuse.nextauthSecret=test-na",
+    "platform.telemetry.langfuse.salt=test-salt-1234567890",
+    "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.telemetry.langfuse.admin.email=admin@example.com",
     "gateway.hosts.langfuse=langfuse.example.com",
     "gateway.hosts.agents=agents.example.com",
     "gateway.hosts.aiGateway=ai.example.com",
@@ -96,13 +96,13 @@ def test_unknown_top_level_key_fails_schema():
 
 
 def test_unknown_nested_provider_key_fails_schema():
-    r = _helm("--set", "aiGateway.providers.opneai.apiKey=x")
+    r = _helm("--set", "workspace.models.providers.opneai.apiKey=x")
     assert r.returncode != 0
     assert "opneai" in r.stderr
 
 
 def test_invalid_logging_level_fails_schema():
-    r = _helm("--set", "logging.level=verbose")
+    r = _helm("--set", "platform.telemetry.level=verbose")
     assert r.returncode != 0
 
 
@@ -112,19 +112,19 @@ def test_invalid_databases_mode_fails_schema():
 
 
 def test_tier_gate_auth_sso():
-    r = _helm("--set", "auth.sso.enabled=true")
+    r = _helm("--set", "platform.tenants.sso.enabled=true")
     assert r.returncode != 0
     assert "Pro" in r.stderr
 
 
 def test_tier_gate_mtls():
-    r = _helm("--set", "security.mTLS.enabled=true")
+    r = _helm("--set", "platform.mTLS.enabled=true")
     assert r.returncode != 0
     assert "Enterprise" in r.stderr
 
 
 def test_tier_gate_llama_guard():
-    r = _helm("--set", "guardrails.llamaGuard.enabled=true")
+    r = _helm("--set", "workspace.policies.llamaGuard.enabled=true")
     assert r.returncode != 0
     assert "Enterprise" in r.stderr
 
@@ -172,7 +172,7 @@ def test_provenance_labels_on_workloads():
 
 
 def test_openai_provider_intent_when_key_set():
-    r = _helm("--set", "aiGateway.providers.openai.apiKey=sk-test")
+    r = _helm("--set", "workspace.models.providers.openai.apiKey=sk-test")
     assert r.returncode == 0, r.stderr
     found = False
     for doc in _docs(r.stdout):
@@ -195,6 +195,18 @@ def test_template_values_paths_have_schema_properties():
         text = p.read_text(errors="ignore")
         for m in re.finditer(r"\.Values\.([a-zA-Z0-9_]+)", text):
             paths.add(m.group(1))
-    allowed = props | {"Chart", "Release", "Capabilities", "Template"}
+    allowed = props | {
+        "Chart",
+        "Release",
+        "Capabilities",
+        "Template",
+        "__compiled",
+        "__workloadIntent",
+        "__mcpExtraBackendJson",
+        "__mcpExtraBackendEnv",
+        "__mcpExtraBackendVolumes",
+        "__mcpExtraBackendVolumeMounts",
+        "__mcpExtraBackendIpBlocks",
+    }
     stray = sorted(paths - allowed)
     assert not stray, f"template references without schema property: {stray}"

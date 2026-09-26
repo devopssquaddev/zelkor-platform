@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if eq (include "zelkor-platform.serviceMonitorEnabled" .) "true" }}
 {{- $fn := include "zelkor-platform.fullname" . }}
 {{- $interval := ((.Values.observability).serviceMonitor).interval | default "30s" }}

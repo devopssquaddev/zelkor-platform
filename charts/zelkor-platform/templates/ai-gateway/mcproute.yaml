@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.mcp.enabled .Values.gateway.enabled .Values.gateway.hosts.mcp }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

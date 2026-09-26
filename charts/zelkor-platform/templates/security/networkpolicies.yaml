@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.security.networkPolicies.enabled (or .Values.aegra.enabled .Values.mcp.enabled) }}
 {{- $fullname := include "zelkor-platform.fullname" . }}
 {{- $ns := .Release.Namespace }}
@@ -218,6 +219,16 @@ spec:
           port: 8080
         - protocol: TCP
           port: 443
+    {{- end }}
+    {{- range .Values.__mcpExtraBackendIpBlocks | default list }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr | quote }}
+      ports:
+        {{- range .ports | default (list 443) }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
     {{- end }}
 ---
 apiVersion: networking.k8s.io/v1

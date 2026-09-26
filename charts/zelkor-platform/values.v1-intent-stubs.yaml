@@ -1,0 +1,19 @@
+# Schema-only stubs for removed V1 intent roots. Not merged into chart defaults.
+# Install fails in templates/validate.yaml when a non-empty value is supplied.
+aiGateway:
+  enabled: false
+auth:
+  jwtSecret: ""
+  trustTenantHeader: false
+langfuse:
+  enabled: false
+aegra:
+  enabled: false
+guardrails:
+  nemo:
+    enabled: false
+mcp:
+  enabled: false
+logging:
+  level: INFO
+  format: json

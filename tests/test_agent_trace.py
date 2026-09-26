@@ -44,8 +44,10 @@ def _skip_if_unreachable(exc: BaseException) -> None:
 
 def test_capture_content_chart_default_off_local_on():
     values = (PLATFORM_CHART / "values.yaml").read_text()
-    nemo = values.split("guardrails:", 1)[1]
-    assert "captureContent: false" in nemo.split("safetyRefusal", 1)[0]
+    telemetry = values.split("  telemetry:", 1)[1].split("\nworkspace:", 1)[0]
+    assert "captureContent: false" in telemetry
+    policies = values.split("  policies:", 1)[1].split("\n  tools:", 1)[0]
+    assert "captureContent: false" in policies
     local = LOCAL_VALUES.read_text()
     assert "captureContent: true" in local
     excluded = (PLATFORM_CHART / "templates/_helpers.tpl").read_text()

@@ -38,9 +38,9 @@ helm upgrade zelkor-platform "$CHART_PATH" \
   -f "$VALUES_FILE" \
   -f "$FINSERVE_OVERLAY" \
   -f "$FINSERVE_OVERLAY_LOCAL" \
-  --set "aiGateway.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}" \
-  --set "guardrails.nemo.model=${MODEL}" \
-  --set-string "langfuse.surfaces.llmConnection.models[0]=${MODEL}"
+  --set "workspace.models.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}" \
+  --set "workspace.policies.nemo.model=${MODEL}" \
+  --set-string "platform.telemetry.langfuse.surfaces.llmConnection.models[0]=${MODEL}"
 
 log "deploy FinServe..."
 helm dependency update "$FINSERVE_CHART" >/dev/null
@@ -77,7 +77,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 base = "http://127.0.0.1:8088"
-headers = {"Host": "langfuse.localhost"}
+headers = {"Host": "platform.telemetry.langfuse.localhost"}
 auth = ("pk-lf-zelkor-dev-00000000000000000000", "sk-lf-zelkor-dev-00000000000000000000")
 since = (datetime.now(timezone.utc) - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
 params = {

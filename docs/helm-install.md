@@ -62,13 +62,13 @@ extraManifests:
 
 ## Find what generated an object
 
-Generated resources include `zelkor.io/intent` on `metadata.labels`, naming the values path that produced them (for example `aiGateway.providers.openai`). After install:
+Generated resources include `zelkor.io/intent` on `metadata.labels`, naming the values path that produced them (for example `workspace.models.providers.openai`). After install:
 
 ```bash
-kubectl get deploy,sts,svc -n your-namespace -l 'zelkor.io/intent=aiGateway.providers.openai'
+kubectl get deploy,sts,svc -n your-namespace -l 'zelkor.io/intent=workspace.models.providers.openai'
 ```
 
-Reserved Pro and Enterprise keys (`auth.sso`, `security.mTLS`, `guardrails.llamaGuard`, `guardrails.presidio`, non-`oss` `global.tier`) fail install on CE with a message that names the tier and the CE alternative.
+Reserved Pro and Enterprise keys (`platform.tenants.sso`, `platform.mTLS`, `workspace.policies.llamaGuard`, `workspace.policies.presidio`, non-`oss` `global.tier`) fail install on CE with a message that names the tier and the CE alternative.
 
 ## Manual Helm
 
@@ -81,19 +81,19 @@ Reserved Pro and Enterprise keys (`auth.sso`, `security.mTLS`, `guardrails.llama
 helm upgrade --install zelkor-platform charts/zelkor-platform \
   -f profiles/values-quickstart.yaml \
   -f profiles/values-gateway-greenfield.yaml \
-  --set aiGateway.providers.openai.apiKey="sk-your-llm-api-key" \
+  --set workspace.models.providers.openai.apiKey="sk-your-llm-api-key" \
   --set gateway.hosts.agents=agents.zelkor.local \
   --set gateway.hosts.langfuse=langfuse.zelkor.local \
   --set postgresql.auth.password="..." \
   --set clickhouse.auth.password="..." \
   --set seaweedfs.auth.accessKey="..." --set seaweedfs.auth.secretKey="..." \
-  --set langfuse.nextauthSecret="..." --set langfuse.salt="..." \
-  --set langfuse.encryptionKey="$(openssl rand -hex 32)"
+  --set platform.telemetry.langfuse.nextauthSecret="..." --set platform.telemetry.langfuse.salt="..." \
+  --set platform.telemetry.langfuse.encryptionKey="$(openssl rand -hex 32)"
 ```
 
-Use `--set aiGateway.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `aiGateway.providers.openaiCompat`. Model ids are prefix-namespaced where providers share a pattern (`azure/*`, `bedrock/*`, `cohere/*`). Vertex-only installs use bare `gemini-*` (Envoy `GCPVertexAI`); use `vertex/*` when both `providers.gemini.apiKey` and `providers.vertex` are set. For Vertex with `existingSecret`, the Secret must use data key `service_account.json`. Do not put the upstream provider key in `aiGateway.consumerKey`.
+Use `--set workspace.models.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `workspace.models.providers.openaiCompat`. Model ids are prefix-namespaced where providers share a pattern (`azure/*`, `bedrock/*`, `cohere/*`). Vertex-only installs use bare `gemini-*` (Envoy `GCPVertexAI`); use `vertex/*` when both `providers.gemini.apiKey` and `providers.vertex` are set. For Vertex with `existingSecret`, the Secret must use data key `service_account.json`. Do not put the upstream provider key in `workspace.models.consumerKey`.
 
-NeMo pinned rails (`guardrails.nemo.model` / self-check) default from the first enabled provider when `aiGateway.defaultModel` is empty (same model ids as `install-quickstart.sh`). With **multiple** providers, set `aiGateway.defaultModel` explicitly (install scripts set it from `DEFAULT_LLM_MODEL`).
+NeMo pinned rails (`workspace.policies.nemo.model` / self-check) default from the first enabled provider when `workspace.models.defaultModel` is empty (same model ids as `install-quickstart.sh`). With **multiple** providers, set `workspace.models.defaultModel` explicitly (install scripts set it from `DEFAULT_LLM_MODEL`).
 
 Full matrix (providers, demos, agents, forbidden core edits): [adding-llm-providers-and-models.md](adding-llm-providers-and-models.md).
 

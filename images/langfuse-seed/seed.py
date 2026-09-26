@@ -66,27 +66,30 @@ NATIVE_PREFIXES = ("postgres__", "qdrant__", "sandbox__", "egress__")
 def parse_extra_projects(raw: str) -> List[Dict[str, str]]:
     try:
         data = json.loads(raw or "[]")
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LANGFUSE_EXTRA_PROJECTS is not valid JSON: {exc}") from exc
     if not isinstance(data, list):
-        return []
+        raise ValueError("LANGFUSE_EXTRA_PROJECTS must be a JSON array")
     out: List[Dict[str, str]] = []
-    for item in data:
+    for idx, item in enumerate(data):
         if not isinstance(item, dict):
-            continue
+            raise ValueError(f"LANGFUSE_EXTRA_PROJECTS[{idx}] must be an object")
         pid = str(item.get("id") or "").strip()
         public_key = str(item.get("publicKey") or item.get("public_key") or "").strip()
         secret_key = str(item.get("secretKey") or item.get("secret_key") or "").strip()
         name = str(item.get("name") or pid).strip()
-        if pid and public_key and secret_key:
-            out.append(
-                {
-                    "id": pid,
-                    "name": name,
-                    "publicKey": public_key,
-                    "secretKey": secret_key,
-                }
+        if not pid or not public_key or not secret_key:
+            raise ValueError(
+                f"LANGFUSE_EXTRA_PROJECTS[{idx}] requires id, publicKey, and secretKey"
             )
+        out.append(
+            {
+                "id": pid,
+                "name": name,
+                "publicKey": public_key,
+                "secretKey": secret_key,
+            }
+        )
     return out
 
 

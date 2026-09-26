@@ -6,13 +6,15 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
-from gateway.gateway_server import (  # noqa: E402
+from gateway.backend_config import (  # noqa: E402
     RESERVED_PREFIXES,
+    build_outbound_headers,
     merge_backends,
-    native_backends,
+    parse_extra_backend_item,
     parse_extra_backends,
     validate_extra_name,
 )
+from gateway.gateway_server import native_backends  # noqa: E402
 
 
 def test_native_backends_include_egress_when_url_set(monkeypatch):
@@ -53,12 +55,10 @@ def test_parse_extra_backends_empty():
 
 def test_merge_extra_backend_prefixes():
     native = {"postgres": "http://pg:8080", "qdrant": "http://qd:8080", "sandbox": "http://sb:8080"}
-    merged = merge_backends(
-        native,
-        [{"name": "acme-tools", "url": "http://acme-mcp.acme-tools.svc:8080"}],
-    )
-    assert merged["acme-tools"] == "http://acme-mcp.acme-tools.svc:8080"
-    assert merged["postgres"] == "http://pg:8080"
+    extra = [parse_extra_backend_item({"name": "acme-tools", "url": "http://acme-mcp.acme-tools.svc:8080"})]
+    merged = merge_backends(native, extra)
+    assert merged["acme-tools"].url == "http://acme-mcp.acme-tools.svc:8080"
+    assert merged["postgres"].url == "http://pg:8080"
 
 
 @pytest.mark.parametrize("name", sorted(RESERVED_PREFIXES))
@@ -74,4 +74,32 @@ def test_reject_double_underscore_in_name():
 
 def test_reject_missing_url():
     with pytest.raises(ValueError, match="url"):
-        merge_backends({}, [{"name": "okname", "url": ""}])
+        parse_extra_backend_item({"name": "okname", "url": ""})
+
+
+def test_bearer_auth_does_not_forward_zelkor_jwt(monkeypatch):
+    monkeypatch.setenv("ZELKOR_XB_TOKEN", "saas-secret")
+    cfg = parse_extra_backend_item(
+        {
+            "name": "saas",
+            "url": "https://mcp.example.com",
+            "auth": {"type": "bearer", "bearerEnv": "ZELKOR_XB_TOKEN"},
+        }
+    )
+    hdrs = build_outbound_headers(cfg, {"Authorization": "Bearer tenant-jwt", "X-Tenant-ID": "tenant-a"})
+    assert hdrs["Authorization"] == "Bearer saas-secret"
+    assert "tenant-jwt" not in hdrs["Authorization"]
+
+
+def test_inject_tenant_arg_off():
+    cfg = parse_extra_backend_item(
+        {"name": "saas", "url": "http://mcp:8080", "injectTenantArg": False}
+    )
+    assert cfg.inject_tenant_arg is False
+
+
+def test_legacy_json_list_still_parses():
+    raw = '[{"name": "acme", "url": "http://acme:8080"}]'
+    items = parse_extra_backends(raw)
+    assert len(items) == 1
+    assert items[0].name == "acme"

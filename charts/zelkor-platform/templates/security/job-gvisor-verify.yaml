@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if eq (include "zelkor-platform.gvisorVerifyEnabled" .) "true" }}
 {{- $failClosed := .Values.security.sandbox.failClosed | default false }}
 apiVersion: batch/v1

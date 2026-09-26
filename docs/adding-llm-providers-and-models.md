@@ -5,7 +5,7 @@
 
 ## Contract
 
-All LLM traffic goes through **Envoy AI Gateway** (`*-ai-gateway` Service, `/v1`). Provider API keys live in **platform Helm values** (or install env vars), not on agent pods. Agents use `Authorization: Bearer <aiGateway.consumerKey>` and pass a **model id** on each `/v1/chat/completions` call (or a default env var).
+All LLM traffic goes through **Envoy AI Gateway** (`*-ai-gateway` Service, `/v1`). Provider API keys live in **platform Helm values** (or install env vars), not on agent pods. Agents use `Authorization: Bearer <workspace.models.consumerKey>` and pass a **model id** on each `/v1/chat/completions` call (or a default env var).
 
 Do **not** change `charts/zelkor-platform/templates/ai-gateway/`, NeMo `content_safety` templates, or intercept routing to add one provider or model. That is product core; customers and demos **overlay values**.
 
@@ -13,20 +13,20 @@ Do **not** change `charts/zelkor-platform/templates/ai-gateway/`, NeMo `content_
 
 | Goal | Configure here | Example |
 | :--- | :--- | :--- |
-| Enable a first-party provider (OpenAI, Anthropic, Gemini, Ollama, vLLM, Azure, Bedrock, Vertex, Cohere) | Platform overlay: `aiGateway.providers.<name>.*` | `install.sh` / `install-quickstart.sh` env vars; production `--set aiGateway.providers.openai.apiKey=...` |
-| Enable an OpenAI-compatible host (Groq, DeepSeek, Together, …) | Platform overlay: `aiGateway.providers.openaiCompat[]` | `name`, `host`, `prefix`, `apiKey`, `modelMatch` (regex for `x-ai-eg-model`) |
-| Install / GitOps default model (NeMo pinned rails, Langfuse seed, docs) | `aiGateway.defaultModel` | `gpt-oss:20b`, `openai/gpt-4o-mini` |
-| Override NeMo pinned model only | `guardrails.nemo.model` or `guardrails.nemo.selfCheck.model` | Cheaper model for Yes/No self-check |
+| Enable a first-party provider (OpenAI, Anthropic, Gemini, Ollama, vLLM, Azure, Bedrock, Vertex, Cohere) | Platform overlay: `workspace.models.providers.<name>.*` | `install.sh` / `install-quickstart.sh` env vars; production `--set workspace.models.providers.openai.apiKey=...` |
+| Enable an OpenAI-compatible host (Groq, DeepSeek, Together, …) | Platform overlay: `workspace.models.providers.openaiCompat[]` | `name`, `host`, `prefix`, `apiKey`, `modelMatch` (regex for `x-ai-eg-model`) |
+| Install / GitOps default model (NeMo pinned rails, Langfuse seed, docs) | `workspace.models.defaultModel` | `gpt-oss:20b`, `openai/gpt-4o-mini` |
+| Override NeMo pinned model only | `workspace.policies.nemo.model` or `workspace.policies.nemo.selfCheck.model` | Cheaper model for Yes/No self-check |
 | Per-agent default model | `charts/zelkor-agent` → `platform.defaultLlmModel` or pod env `DEFAULT_LLM_MODEL` | Demo `examples/*/chart/values.yaml` |
 | Per-request model | Request JSON `model` (intercept passthrough) | Agent code / `ChatOpenAI(model=...)` |
 
-When **only** provider keys are set in GitOps, NeMo pinned rails derive the model id from the first enabled provider (same precedence as install scripts). With **multiple** providers, set `aiGateway.defaultModel` explicitly.
+When **only** provider keys are set in GitOps, NeMo pinned rails derive the model id from the first enabled provider (same precedence as install scripts). With **multiple** providers, set `workspace.models.defaultModel` explicitly.
 
 NeMo **must not** use the request `model` for self-check Yes/No calls; that stays on the pinned rail model chain. See multi-root spec `internal/plan/requirements_nemo_local_dev.md` §3.3.
 
 ## Install scripts (kind / quickstart / production)
 
-Set **one** provider env var (or pair for Azure/Bedrock/Vertex). The installer sets `aiGateway.defaultModel`, `guardrails.nemo.model`, and Langfuse seed model from `DEFAULT_LLM_MODEL` when unset.
+Set **one** provider env var (or pair for Azure/Bedrock/Vertex). The installer sets `workspace.models.defaultModel`, `workspace.policies.nemo.model`, and Langfuse seed model from `DEFAULT_LLM_MODEL` when unset.
 
 ```bash
 OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh --namespace zelkor
@@ -37,19 +37,23 @@ OLLAMA_API_KEY=... DEFAULT_LLM_MODEL=qwen3:8b ./install.sh
 
 ```yaml
 # customer-overlay.yaml (example)
-aiGateway:
-  defaultModel: "openai/gpt-4o-mini"
-  providers:
-    openai:
-      apiKey: "<from-secret>"
-    openaiCompat:
-      - name: groq
-        host: api.groq.com
-        port: 443
-        prefix: groq
+workspace:
+  models:
+    defaultModel: "openai/gpt-4o-mini"
+    providers:
+      openai:
         apiKey: "<from-secret>"
-        modelMatch: "^(groq/.*)"
-        tls: true
+      openaiCompat:
+        - name: groq
+          host: api.groq.com
+          port: 443
+          prefix: groq
+          apiKey: "<from-secret>"
+          modelMatch: "^(groq/.*)"
+          tls: true
+  policies:
+    nemo:
+      model: "openai/gpt-4o-mini"
 ```
 
 ```bash
@@ -63,7 +67,7 @@ Upstream keys: [helm-install.md](helm-install.md). Provider matrix: multi-root `
 
 ## Vertex credentials
 
-Enable Vertex with `aiGateway.providers.vertex.project` and `aiGateway.providers.vertex.region` (use `global` for the global Vertex endpoint). Choose **one** auth mode:
+Enable Vertex with `workspace.models.providers.vertex.project` and `workspace.models.providers.vertex.region` (use `global` for the global Vertex endpoint). Choose **one** auth mode:
 
 | Mode | Helm values | Notes |
 | :--- | :--- | :--- |
@@ -79,7 +83,7 @@ kubectl -n zelkor create secret generic zelkor-platform-vertex-sa \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Then set `aiGateway.providers.vertex.existingSecret` to that Secret name.
+Then set `workspace.models.providers.vertex.existingSecret` to that Secret name.
 
 Envoy AI Gateway rotates a short-lived token into `ai-eg-bsp-<release>-vertex-gcp` (key `gcpAccessToken`). If the key name is wrong, the JSON is invalid, or GCP rejects the key (`invalid_grant`), the `BackendSecurityPolicy` stays **NotAccepted**, the Vertex backend is omitted from the dataplane config, and `POST /v1/chat/completions` with `model: gemini-*` returns **500** with `unknown backend` in access logs. See [kb/ai-gateway-vertex-unknown-backend.md](kb/ai-gateway-vertex-unknown-backend.md).
 
@@ -89,7 +93,7 @@ Envoy AI Gateway rotates a short-lived token into `ai-eg-bsp-<release>-vertex-gc
 | :--- | :--- |
 | Set `platform.defaultLlmModel` on `zelkor-agent` | Edit `charts/zelkor-platform/files/nemo-configs/` for one demo |
 | Use `model=` in graph code or `DEFAULT_LLM_MODEL` in Deployment env | Add `AIServiceBackend` YAML under `charts/zelkor-platform/templates/` |
-| Register extra MCP via `mcp.extraBackends` on a **platform overlay** | Put provider secrets in `charts/zelkor-platform/values.yaml` defaults |
+| Register extra MCP via `workspace.tools.extraBackends` on a **platform overlay** | Put provider secrets in `charts/zelkor-platform/values.yaml` defaults |
 
 Demos: `examples/<name>/chart/values-platform-overlay.yaml` for platform knobs; agent model in `examples/<name>/chart/values.yaml` (`platform.defaultLlmModel`). See `.cursor/rules/example-charts.mdc`.
 

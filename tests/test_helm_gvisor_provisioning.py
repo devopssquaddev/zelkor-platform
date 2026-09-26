@@ -15,10 +15,10 @@ SECRET_SETS = [
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
     "seaweedfs.auth.secretKey=test-sk",
-    "langfuse.nextauthSecret=test-na",
-    "langfuse.salt=test-salt-1234567890",
-    "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.telemetry.langfuse.nextauthSecret=test-na",
+    "platform.telemetry.langfuse.salt=test-salt-1234567890",
+    "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
 ]
 
 
@@ -149,7 +149,7 @@ def test_sandbox_execution_log_env_on_mcp_and_worker():
 
 
 def test_sandbox_worker_token_from_secret():
-    proc = _helm("--set", "mcp.sandboxMCP.workerToken=unit-token")
+    proc = _helm("--set", "workspace.tools.sandboxMCP.workerToken=unit-token")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     secrets = [d for d in _kinds(docs, "Secret") if d["metadata"]["name"] == "zelkor-platform-sandbox-worker"]

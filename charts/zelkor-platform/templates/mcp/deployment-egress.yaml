@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.mcp.enabled .Values.mcp.egressMCP.enabled }}
 apiVersion: v1
 kind: Service

@@ -1,4 +1,117 @@
 {{/*
+V2 compiler: map platform.* / workspace.* / workload.* onto the internal flat tree used by templates.
+Idempotent; call via include "zelkor-platform.compile" . at the top of each template file.
+*/}}
+{{- define "zelkor-platform.compile" -}}
+{{- if not (hasKey .Values "__compiled") -}}
+{{- if hasKey .Values "aiGateway" -}}
+{{- fail "aiGateway.* was removed in V2. Declare models under workspace.models. See docs/adding-llm-providers-and-models.md." -}}
+{{- end -}}
+{{- if hasKey .Values "auth" -}}
+{{- fail "auth.* was removed in V2. Declare tenants under platform.tenants. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "langfuse" -}}
+{{- fail "langfuse.* was removed in V2. Declare observability under platform.telemetry.langfuse. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "aegra" -}}
+{{- fail "aegra.* was removed in V2. Declare agents under workload.agents. See docs/agent-deploy.md." -}}
+{{- end -}}
+{{- if hasKey .Values "guardrails" -}}
+{{- fail "guardrails.* was removed in V2. Declare policies under workspace.policies. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "mcp" -}}
+{{- fail "mcp.* was removed in V2. Declare tools under workspace.tools. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "logging" -}}
+{{- fail "logging.* was removed in V2. Declare telemetry under platform.telemetry (level/format). See docs/helm-install.md." -}}
+{{- end -}}
+{{- $_ := set .Values "__compiled" true -}}
+{{- include "zelkor-platform.compile.telemetry" . -}}
+{{- include "zelkor-platform.compile.tenants" . -}}
+{{- include "zelkor-platform.compile.models" . -}}
+{{- include "zelkor-platform.compile.policies" . -}}
+{{- include "zelkor-platform.compile.tools" . -}}
+{{- include "zelkor-platform.compile.workload" . -}}
+{{- include "zelkor-platform.compile.intent" . -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.telemetry" -}}
+{{- $p := .Values.platform | default dict -}}
+{{- $tel := $p.telemetry | default dict -}}
+{{- $_ := set .Values "logging" (dict "level" ($tel.level | default "INFO") "format" ($tel.format | default "json")) -}}
+{{- if $tel.langfuse -}}
+{{- $_ := set .Values "langfuse" $tel.langfuse -}}
+{{- end -}}
+{{- $agents := (.Values.workload.agents | default dict) -}}
+{{- if $tel.aegraOtelTargets -}}
+{{- $_ := set $agents "otelTargets" $tel.aegraOtelTargets -}}
+{{- $_ := set .Values.workload "agents" $agents -}}
+{{- end -}}
+{{- $no := $tel.nemoOtel | default dict -}}
+{{- if or $no.enabled $no.captureContent -}}
+{{- $pol := (.Values.workspace.policies | default dict) -}}
+{{- $nemo := $pol.nemo | default dict -}}
+{{- $obs := $nemo.observability | default dict -}}
+{{- $_ := set $obs "otel" (dict "enabled" ($no.enabled | default false) "captureContent" ($no.captureContent | default false)) -}}
+{{- $_ := set $nemo "observability" $obs -}}
+{{- $_ := set $pol "nemo" $nemo -}}
+{{- $_ := set .Values.workspace "policies" $pol -}}
+{{- end -}}
+{{- if $p.mTLS -}}
+{{- $sec := .Values.security | default dict -}}
+{{- $_ := set $sec "mTLS" $p.mTLS -}}
+{{- $_ := set .Values "security" $sec -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.tenants" -}}
+{{- $t := (.Values.platform.tenants | default dict) -}}
+{{- $_ := set .Values "auth" (dict "sso" ($t.sso | default dict) "jwtSecret" ($t.jwtSecret | default "") "devTokens" ($t.devTokens | default dict) "trustTenantHeader" ($t.trustTenantHeader | default false)) -}}
+{{- $agents := (.Values.workload.agents | default dict) -}}
+{{- if $t.orgMappings -}}
+{{- $_ := set $agents "tenantOrgMappings" $t.orgMappings -}}
+{{- else -}}
+{{- $_ := set $agents "tenantOrgMappings" ($agents.tenantOrgMappings | default dict) -}}
+{{- end -}}
+{{- $_ := set .Values.workload "agents" $agents -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.models" -}}
+{{- $m := (.Values.workspace.models | default dict) -}}
+{{- if $m -}}
+{{- $_ := set .Values "aiGateway" $m -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.policies" -}}
+{{- $pol := (.Values.workspace.policies | default dict) -}}
+{{- if $pol -}}
+{{- $_ := set .Values "guardrails" $pol -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.tools" -}}
+{{- $tools := (.Values.workspace.tools | default dict) -}}
+{{- if $tools -}}
+{{- $_ := set .Values "mcp" $tools -}}
+{{- end -}}
+{{- include "zelkor-platform.compile.mcpExtraBackends" . -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.workload" -}}
+{{- $agents := (.Values.workload.agents | default dict) -}}
+{{- if $agents -}}
+{{- $_ := set .Values "aegra" $agents -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.intent" -}}
+{{- $intent := (.Values.workload.intent | default dict) -}}
+{{- $_ := set .Values "__workloadIntent" $intent -}}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "zelkor-platform.name" -}}

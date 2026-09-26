@@ -9,11 +9,11 @@
 #     --set gateway.hosts.langfuse=langfuse.example.com
 #
 # Envoy dataplane uses a LoadBalancer unless gateway.envoyProxy.service.type is set.
-
+---
 gateway:
   createGatewayClass: true
   createGateway: true
   envoyProxy:
     enabled: true
     service:
-      type: ""
+      type: ''

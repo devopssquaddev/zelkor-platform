@@ -16,10 +16,10 @@ SECRET_SETS = [
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
     "seaweedfs.auth.secretKey=test-sk",
-    "langfuse.nextauthSecret=test-na",
-    "langfuse.salt=test-salt-1234567890",
-    "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.telemetry.langfuse.nextauthSecret=test-na",
+    "platform.telemetry.langfuse.salt=test-salt-1234567890",
+    "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
 ]
 
 
@@ -345,7 +345,7 @@ def test_langfuse_admin_secret_and_bootstrap_job():
 
 
 def test_langfuse_admin_disabled_still_emits_bootstrap_job():
-    proc = _helm("--set", "langfuse.admin.enabled=false")
+    proc = _helm("--set", "platform.telemetry.langfuse.admin.enabled=false")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     assert "zelkor-platform-langfuse-admin" not in _names(docs, "Secret")
@@ -359,7 +359,7 @@ def test_langfuse_admin_disabled_still_emits_bootstrap_job():
 
 
 def test_langfuse_admin_existing_secret_skips_generated_secret():
-    proc = _helm("--set", "langfuse.admin.existingSecret=customer-langfuse-admin")
+    proc = _helm("--set", "platform.telemetry.langfuse.admin.existingSecret=customer-langfuse-admin")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     assert "zelkor-platform-langfuse-admin" not in _names(docs, "Secret")

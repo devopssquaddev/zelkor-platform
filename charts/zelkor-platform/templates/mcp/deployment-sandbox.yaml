@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.mcp.enabled .Values.mcp.sandboxMCP.enabled }}
 {{- $fullname := include "zelkor-platform.fullname" . }}
 {{- $replicas := .Values.mcp.sandboxMCP.warmPool.replicas | default 3 }}

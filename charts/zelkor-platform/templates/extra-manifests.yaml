@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- range $i, $manifest := .Values.extraManifests }}
 {{- if $manifest }}
 ---

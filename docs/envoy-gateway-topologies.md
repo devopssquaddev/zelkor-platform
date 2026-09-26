@@ -135,7 +135,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set gateway.parentRef.namespace=your-gateway-namespace \
   --set gateway.hosts.agents=agents.example.com \
   --set gateway.hosts.langfuse=langfuse.example.com \
-  --set aiGateway.internalUrl=http://your-envoy-proxy.envoy-gateway-system.svc.cluster.local:80/v1
+  --set workspace.models.internalUrl=http://your-envoy-proxy.envoy-gateway-system.svc.cluster.local:80/v1
 ```
 
 Zelkor emits `HTTPRoute` and `AIGatewayRoute` resources attached to your Gateway. It does **not** create a second `GatewayClass`.

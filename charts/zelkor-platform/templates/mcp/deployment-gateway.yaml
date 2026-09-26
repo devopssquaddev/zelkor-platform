@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.mcp.enabled }}
 apiVersion: v1
 kind: Service
@@ -61,6 +62,29 @@ spec:
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-egress:8080"
             {{- end }}
             - name: MCP_EXTRA_BACKENDS
-              value: {{ .Values.mcp.extraBackends | default list | toJson | quote }}
+              value: {{ .Values.__mcpExtraBackendJson | default "[]" | quote }}
+            {{- range .Values.__mcpExtraBackendEnv | default list }}
+            - name: {{ .name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .valueFrom.secretKeyRef.name }}
+                  key: {{ .valueFrom.secretKeyRef.key }}
+            {{- end }}
+          {{- if .Values.__mcpExtraBackendVolumeMounts | default list }}
+          volumeMounts:
+            {{- range .Values.__mcpExtraBackendVolumeMounts | default list }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              readOnly: {{ .readOnly | default true }}
+            {{- end }}
+          {{- end }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.gateway) | nindent 10 }}
+      {{- if .Values.__mcpExtraBackendVolumes | default list }}
+      volumes:
+        {{- range .Values.__mcpExtraBackendVolumes | default list }}
+        - name: {{ .name }}
+          secret:
+            secretName: {{ .secret.secretName }}
+        {{- end }}
+      {{- end }}
 {{- end }}

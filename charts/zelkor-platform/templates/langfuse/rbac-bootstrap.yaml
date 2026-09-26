@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.langfuse.enabled }}
 apiVersion: v1
 kind: ServiceAccount

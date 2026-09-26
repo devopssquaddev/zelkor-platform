@@ -1,20 +1,24 @@
 """
-Unified MCP gateway — multiplexes native servers and mcp.extraBackends.
+Unified MCP gateway — multiplexes native servers and workspace.tools.extraBackends.
 Tool names are prefixed: postgres__query, qdrant__search_documents, sandbox__execute_python, egress__call_external_api
 """
 import json
 import logging
 import os
-import re
 import sys
 import threading
-import urllib.request
 from typing import Any, Dict, List
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common.mcp_server import MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
+from gateway.backend_config import (
+    BackendConfig,
+    merge_backends,
+    parse_extra_backends,
+    rpc_call,
+)
 
 logger = logging.getLogger("zelkor-mcp-gateway")
 
@@ -22,9 +26,6 @@ POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "").strip()
 QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "").strip()
 SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "").strip()
 EGRESS_MCP_URL = os.getenv("EGRESS_MCP_URL", "").strip()
-
-RESERVED_PREFIXES = frozenset({"postgres", "qdrant", "sandbox", "egress", "nemo", "aegra"})
-_DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def native_backends() -> Dict[str, str]:
@@ -40,46 +41,7 @@ def native_backends() -> Dict[str, str]:
     return backends
 
 
-def parse_extra_backends(raw: str) -> List[Dict[str, str]]:
-    text = (raw or "").strip()
-    if not text:
-        return []
-    data = json.loads(text)
-    if data is None:
-        return []
-    if not isinstance(data, list):
-        raise ValueError("MCP_EXTRA_BACKENDS must be a JSON list of {name, url}")
-    return data
-
-
-def validate_extra_name(name: str) -> str:
-    if not name or not isinstance(name, str):
-        raise ValueError("extra backend name is required")
-    if "__" in name:
-        raise ValueError("extra backend name must not contain __")
-    if name in RESERVED_PREFIXES:
-        raise ValueError(f"extra backend name collides with reserved prefix: {name}")
-    if not _DNS_LABEL.match(name):
-        raise ValueError(f"extra backend name must be a DNS label: {name}")
-    return name
-
-
-def merge_backends(native: Dict[str, str], extra: List[Dict[str, str]]) -> Dict[str, str]:
-    merged = dict(native)
-    for item in extra:
-        if not isinstance(item, dict):
-            raise ValueError("extra backend entries must be objects with name and url")
-        name = validate_extra_name((item.get("name") or "").strip())
-        url = (item.get("url") or "").strip()
-        if not url:
-            raise ValueError(f"extra backend {name} is missing url")
-        if name in merged:
-            raise ValueError(f"extra backend name already in use: {name}")
-        merged[name] = url
-    return merged
-
-
-def load_backends() -> Dict[str, str]:
+def load_backends() -> Dict[str, BackendConfig]:
     extra = parse_extra_backends(os.getenv("MCP_EXTRA_BACKENDS", "[]"))
     return merge_backends(native_backends(), extra)
 
@@ -93,24 +55,19 @@ def _get_headers() -> Dict[str, str]:
     return getattr(_request_headers, "value", {})
 
 
-def _rpc_call(base_url: str, method: str, params: dict) -> Any:
-    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode("utf-8")
-    hdrs = {"Content-Type": "application/json"}
-    hdrs.update({k: v for k, v in _get_headers().items() if k.lower() in ("authorization", "x-tenant-id")})
-    req = urllib.request.Request(f"{base_url.rstrip('/')}/mcp", data=payload, headers=hdrs, method="POST")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        if "error" in data:
-            raise RuntimeError(data["error"].get("message", str(data["error"])))
-        return data.get("result")
+from gateway.backend_config import RESERVED_PREFIXES, validate_extra_name  # noqa: E402 — re-export for tests
+
+
+def _rpc_call(cfg: BackendConfig, method: str, params: dict) -> Any:
+    return rpc_call(cfg, method, params, _get_headers())
 
 
 class GatewayMCPServer(MCPToolHandler):
     def list_tools(self) -> List[Dict[str, Any]]:
         tools: List[Dict[str, Any]] = []
-        for prefix, url in BACKENDS.items():
+        for prefix, cfg in BACKENDS.items():
             try:
-                result = _rpc_call(url, "tools/list", {})
+                result = _rpc_call(cfg, "tools/list", {})
                 n = 0
                 for tool in result.get("tools") or []:
                     t = dict(tool)
@@ -135,8 +92,10 @@ class GatewayMCPServer(MCPToolHandler):
         if prefix not in BACKENDS:
             raise ValueError(f"Unknown backend prefix: {prefix}")
 
+        cfg = BACKENDS[prefix]
         args = dict(arguments)
-        args.setdefault("tenant_id", tenant_id)
+        if cfg.inject_tenant_arg:
+            args.setdefault("tenant_id", tenant_id)
 
         logger.debug(
             "forward tools/call %s to %s",
@@ -144,7 +103,7 @@ class GatewayMCPServer(MCPToolHandler):
             prefix,
             extra={"event": "tools_call", "tenant_id": tenant_id},
         )
-        result = _rpc_call(BACKENDS[prefix], "tools/call", {"name": tool_name, "arguments": args})
+        result = _rpc_call(cfg, "tools/call", {"name": tool_name, "arguments": args})
         text = (result.get("content") or [{}])[0].get("text", "{}")
         try:
             return json.loads(text)

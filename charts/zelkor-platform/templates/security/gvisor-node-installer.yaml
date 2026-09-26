@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if eq (include "zelkor-platform.gvisorInstallerEnabled" .) "true" }}
 {{- $prov := .Values.security.sandbox.provisioning | default dict }}
 {{- $installer := $prov.installer | default dict }}

@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- $mode := include "zelkor-platform.dbMode" . -}}
 {{- if and .Values.valkey.enabled (or (eq $mode "in-cluster-basic") (eq $mode "operator-cr")) }}
 apiVersion: v1

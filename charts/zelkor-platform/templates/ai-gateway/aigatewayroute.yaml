@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
 {{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
 {{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}

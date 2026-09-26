@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.guardrails.nemo.enabled }}
 apiVersion: apps/v1
 kind: Deployment

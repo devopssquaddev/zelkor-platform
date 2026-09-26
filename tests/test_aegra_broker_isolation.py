@@ -4,15 +4,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _workload_agents_block(values_text: str) -> str:
+    block = values_text.split("\n  agents:", 1)[1]
+    return block.split("\n  intent:", 1)[0]
+
+
 def _has_aegra_db_upgrade(text: str) -> bool:
     return "aegra db upgrade" in text or '"aegra", "db", "upgrade"' in text
 
 
 def test_front_door_redis_broker_defaults_off():
     values = (ROOT / "charts/zelkor-platform/values.yaml").read_text()
-    aegra = values.split("\naegra:", 1)[1]
-    assert "redisBroker:" in aegra
-    broker = aegra.split("redisBroker:", 1)[1]
+    agents = _workload_agents_block(values)
+    assert "redisBroker:" in agents
+    broker = agents.split("redisBroker:", 1)[1]
     assert "enabled: false" in broker.split("\n", 8)[1]
 
 
@@ -34,8 +39,8 @@ def test_worker_chart_enables_redis_broker():
 def test_front_door_cannot_claim_worker_jobs():
     """Empty-graph front door must not BLPOP aegra:jobs; workers own that queue."""
     front_values = (ROOT / "charts/zelkor-platform/values.yaml").read_text()
-    aegra = front_values.split("\naegra:", 1)[1]
-    broker = aegra.split("redisBroker:", 1)[1]
+    agents = _workload_agents_block(front_values)
+    broker = agents.split("redisBroker:", 1)[1]
     assert "enabled: false" in broker.split("\n", 8)[1]
     worker = (ROOT / "charts/zelkor-agent/templates/deployment.yaml").read_text()
     block = worker.split("REDIS_BROKER_ENABLED", 1)[1][:200]
@@ -60,11 +65,12 @@ def test_app_pods_disable_lifespan_migrations():
 
 def test_aegra_live_probe_drain_and_otel_knobs():
     values = (ROOT / "charts/zelkor-platform/values.yaml").read_text()
-    aegra = values.split("\naegra:", 1)[1].split("\nguardrails:", 1)[0]
-    assert "path: /live" in aegra
-    assert "terminationGracePeriodSeconds: 35" in aegra
-    assert "workerDrainTimeout: 30" in aegra
-    assert 'otelTargets: ""' in aegra
+    agents = _workload_agents_block(values)
+    assert 'path: "/live"' in agents
+    assert "terminationGracePeriodSeconds: 35" in agents
+    assert "workerDrainTimeout: 30" in agents
+    telemetry = values.split("\n  telemetry:", 1)[1].split("\nworkspace:", 1)[0]
+    assert "aegraOtelTargets: ''" in telemetry
     helpers = (ROOT / "charts/zelkor-platform/templates/_helpers.tpl").read_text()
     front = (ROOT / "charts/zelkor-platform/templates/aegra/deployment.yaml").read_text()
     assert "OTEL_TARGETS" in helpers

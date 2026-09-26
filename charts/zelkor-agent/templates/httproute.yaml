@@ -1,4 +1,6 @@
 {{- $sr := .Values.sharedRoute | default dict }}
+{{- $intent := .Values.workload.intent | default dict }}
+{{- $timeout := $intent.timeout | default "" | toString | trim }}
 {{- $gatewayName := include "zelkor-agent.sharedRouteGatewayName" . }}
 {{- if and $sr.enabled $sr.host $gatewayName }}
 {{- $graphIds := .Values.graphIds | default list }}
@@ -42,7 +44,7 @@ spec:
         - name: {{ include "zelkor-agent.fullname" . }}
           port: 8000
       timeouts:
-        request: 0s
+        request: {{ if $timeout }}{{ $timeout | quote }}{{ else }}0s{{ end }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
@@ -58,7 +60,7 @@ spec:
   mergeType: StrategicMerge
   timeout:
     http:
-      requestTimeout: 0s
+      requestTimeout: {{ if $timeout }}{{ $timeout | quote }}{{ else }}0s{{ end }}
       maxStreamDuration: 0s
-      streamIdleTimeout: 1h
+      streamIdleTimeout: {{ if $timeout }}{{ $timeout | quote }}{{ else }}1h{{ end }}
 {{- end }}

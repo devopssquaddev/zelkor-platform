@@ -56,12 +56,12 @@ def test_quickstart_dry_run_greenfield():
     assert "values-quickstart.yaml" in out
     assert "values-gateway-greenfield.yaml" in out
     assert "values-local.yaml" not in out
-    assert "aiGateway.providers.openai.apiKey=sk-test-cluster-install" in out
-    assert "aiGateway.consumerKey=" in out
+    assert "workspace.models.providers.openai.apiKey=sk-test-cluster-install" in out
+    assert "workspace.models.consumerKey=" in out
     assert "gateway.hosts.agents=agents.zelkor-play.zelkor.local" in out
     assert "gateway.hosts.langfuse=langfuse.zelkor-play.zelkor.local" in out
     assert "postgresql.auth.password=" in out
-    assert "mcp.sandboxMCP.workerToken=" in out
+    assert "workspace.tools.sandboxMCP.workerToken=" in out
 
 
 def test_quickstart_dry_run_layered():
@@ -132,8 +132,8 @@ def test_quickstart_dry_run_azure_not_fatal():
         },
     )
     assert proc.returncode == 0, proc.stderr
-    assert "aiGateway.providers.azure.apiKey=az-test" in proc.stdout
-    assert "aiGateway.providers.azure.endpoint=https://res.openai.azure.com" in proc.stdout
+    assert "workspace.models.providers.azure.apiKey=az-test" in proc.stdout
+    assert "workspace.models.providers.azure.endpoint=https://res.openai.azure.com" in proc.stdout
 
 
 def test_quickstart_dry_run_bedrock_not_fatal():
@@ -150,8 +150,8 @@ def test_quickstart_dry_run_bedrock_not_fatal():
         },
     )
     assert proc.returncode == 0, proc.stderr
-    assert "aiGateway.providers.bedrock.accessKeyId=AKIATEST" in proc.stdout
-    assert "aiGateway.providers.bedrock.region=eu-west-1" in proc.stdout
+    assert "workspace.models.providers.bedrock.accessKeyId=AKIATEST" in proc.stdout
+    assert "workspace.models.providers.bedrock.region=eu-west-1" in proc.stdout
 
 
 def test_quickstart_dry_run_vertex_not_fatal():
@@ -167,8 +167,8 @@ def test_quickstart_dry_run_vertex_not_fatal():
         },
     )
     assert proc.returncode == 0, proc.stderr
-    assert "aiGateway.providers.vertex.project=my-proj" in proc.stdout
-    assert "aiGateway.providers.vertex.region=us-central1" in proc.stdout
+    assert "workspace.models.providers.vertex.project=my-proj" in proc.stdout
+    assert "workspace.models.providers.vertex.region=us-central1" in proc.stdout
 
 
 def test_quickstart_shared_requires_parent_ref():
@@ -196,11 +196,11 @@ def test_production_dry_run_greenfield():
     assert "values-gateway-greenfield.yaml" in out
     assert "values-local.yaml" not in out
     assert "gateway.hosts.agents=agents.example.com" in out
-    assert "langfuse.nextauthUrl=https://langfuse.example.com" in out
+    assert "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com" in out
     assert "postgresql.auth.password=" in out
-    assert "mcp.sandboxMCP.workerToken=" in out
+    assert "workspace.tools.sandboxMCP.workerToken=" in out
     assert "Generated install secrets" in out
-    assert "aiGateway.providers.openai.apiKey=sk-test-cluster-install" in out
+    assert "workspace.models.providers.openai.apiKey=sk-test-cluster-install" in out
 
 
 def _printed_secret(stdout: str, name: str) -> str:
@@ -323,8 +323,8 @@ def test_production_dry_run_generates_secrets_without_flag():
     )
     assert proc.returncode == 0, proc.stderr
     assert "postgresql.auth.password=" in proc.stdout
-    assert "mcp.sandboxMCP.workerToken=" in proc.stdout
-    assert "aiGateway.consumerKey=" in proc.stdout
+    assert "workspace.tools.sandboxMCP.workerToken=" in proc.stdout
+    assert "workspace.models.consumerKey=" in proc.stdout
     assert "Generated install secrets" not in proc.stdout
 
 

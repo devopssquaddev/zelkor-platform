@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.langfuse.enabled }}
 {{- $admin := .Values.langfuse.admin | default dict -}}
 {{- $surfaces := .Values.langfuse.surfaces | default dict -}}
@@ -117,7 +118,7 @@ spec:
             - name: MCP_AUTH_TOKEN
               value: {{ $tools.authToken | default "" | quote }}
             - name: MCP_EXTRA_BACKENDS
-              value: {{ .Values.mcp.extraBackends | default list | toJson | quote }}
+              value: {{ .Values.__mcpExtraBackendJson | default "[]" | quote }}
             - name: LANGFUSE_EXTRA_PROJECTS
               value: {{ $extraProjects | toJson | quote }}
             - name: VALKEY_HOST

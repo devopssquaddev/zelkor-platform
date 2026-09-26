@@ -1,3 +1,5 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $intent := .Values.__workloadIntent | default dict }}
 {{- if .Values.aegra.enabled }}
 apiVersion: v1
 kind: Service
@@ -111,6 +113,14 @@ spec:
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
             - name: MCP_URL
               value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+            - name: ZELKOR_RUN_TIMEOUT
+              value: {{ ($intent.timeout | default "") | quote }}
+            - name: ZELKOR_MAX_TOKENS
+              value: {{ ($intent.maxTokens | default 0) | quote }}
+            - name: ZELKOR_APPROVAL_THRESHOLD
+              value: {{ (($intent.approval).threshold | default "") | quote }}
+            - name: ZELKOR_APPROVAL_REQUIRED
+              value: {{ ternary "true" "false" (($intent.approval).enabled | default false) | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ ((.Values.aegra.mcpInject).enabled | default false) | quote }}
             - name: ZELKOR_TENANT_HEADER

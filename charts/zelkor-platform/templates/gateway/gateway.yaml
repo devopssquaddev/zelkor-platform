@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGateway" . | trim) "true") }}
 {{- $tls := .Values.gateway.tls | default dict }}
 {{- $hosts := .Values.gateway.hosts | default dict }}
