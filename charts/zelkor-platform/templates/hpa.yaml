@@ -25,8 +25,8 @@
 {{- if (.Values.mcp.qdrantMCP).enabled }}
 {{- $workloads = append $workloads (printf "%s-mcp-qdrant" $fn) }}
 {{- end }}
-{{- if (.Values.mcp.egressMCP).enabled }}
-{{- $workloads = append $workloads (printf "%s-mcp-egress" $fn) }}
+{{- if (.Values.mcp.aigatewayMCP).enabled }}
+{{- $workloads = append $workloads (printf "%s-mcp-aigateway" $fn) }}
 {{- end }}
 {{- if (.Values.mcp.sandboxMCP).enabled }}
 {{- $workloads = append $workloads (printf "%s-mcp-sandbox" $fn) }}

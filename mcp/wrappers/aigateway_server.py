@@ -1,6 +1,6 @@
-"""Zelkor egress MCP — AI Gateway /v1 only (CE-3).
+"""Zelkor AI Gateway MCP — Envoy AI Gateway /v1 only (CE-3).
 
-call_external_api POSTs chat.completions or embeddings to AI_GATEWAY_URL.
+call POSTs chat.completions or embeddings to AI_GATEWAY_URL.
 Rejects model-supplied url / base_url / Authorization.
 """
 from __future__ import annotations
@@ -18,11 +18,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common.mcp_server import MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
 
-logger = logging.getLogger("zelkor-egress-mcp")
+logger = logging.getLogger("zelkor-aigateway-mcp")
 
 AI_GATEWAY_URL = os.getenv("AI_GATEWAY_URL", "").rstrip("/")
 AI_GATEWAY_API_KEY = os.getenv("AI_GATEWAY_API_KEY", "")
-ALLOWED_MODELS = [m.strip() for m in os.getenv("EGRESS_ALLOWED_MODELS", "").split(",") if m.strip()]
+ALLOWED_MODELS = [
+    m.strip() for m in os.getenv("AIGATEWAY_ALLOWED_MODELS", "").split(",") if m.strip()
+]
 
 _FORBIDDEN_ARG_KEYS = frozenset({"url", "base_url", "baseurl", "authorization", "api_key", "apikey"})
 
@@ -34,7 +36,7 @@ def parse_allowed_models(raw: str) -> List[str]:
 def reject_forbidden_args(arguments: dict) -> None:
     for key in arguments:
         if str(key).lower() in _FORBIDDEN_ARG_KEYS:
-            raise PermissionError(f"call_external_api rejects {key}")
+            raise PermissionError(f"aigateway__call rejects {key}")
 
 
 def gateway_path(operation: str) -> str:
@@ -80,14 +82,14 @@ def post_gateway(path: str, body: dict) -> dict:
         raise RuntimeError(f"AI Gateway {exc.code}: {detail}") from exc
 
 
-class EgressMCPServer(MCPToolHandler):
+class AIGatewayMCPServer(MCPToolHandler):
     def __init__(self, allowed_models: Optional[List[str]] = None):
         self.allowed_models = allowed_models if allowed_models is not None else ALLOWED_MODELS
 
     def list_tools(self):
         return [
             {
-                "name": "call_external_api",
+                "name": "call",
                 "description": (
                     "Call the in-cluster Envoy AI Gateway /v1 "
                     "(chat.completions or embeddings). "
@@ -108,7 +110,7 @@ class EgressMCPServer(MCPToolHandler):
         ]
 
     def call_tool(self, name: str, arguments: dict, tenant_id: str) -> Any:
-        if name != "call_external_api":
+        if name != "call":
             raise ValueError(f"Unknown tool: {name}")
         reject_forbidden_args(arguments)
         arg_tenant = arguments.get("tenant_id")
@@ -123,7 +125,7 @@ class EgressMCPServer(MCPToolHandler):
         path = gateway_path(operation)
         body = build_body(operation, arguments, model)
         logger.info(
-            "egress %s model=%s",
+            "aigateway %s model=%s",
             path,
             model,
             extra={"event": "tools_call", "tenant_id": tenant_id},
@@ -132,4 +134,4 @@ class EgressMCPServer(MCPToolHandler):
 
 
 if __name__ == "__main__":
-    run_mcp_server(EgressMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))
+    run_mcp_server(AIGatewayMCPServer(), extract_tenant, port=int(os.getenv("PORT", "8080")))

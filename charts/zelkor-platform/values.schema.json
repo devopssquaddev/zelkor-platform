@@ -2143,24 +2143,24 @@
               },
               "additionalProperties": false
             },
-            "egressMCP": {
+            "aigatewayMCP": {
               "type": "object",
-              "description": "Values under workspace.tools.egressMCP.",
+              "description": "Values under workspace.tools.aigatewayMCP.",
               "properties": {
                 "enabled": {
                   "type": "boolean",
-                  "description": "Value for workspace.tools.egressMCP.enabled."
+                  "description": "Value for workspace.tools.aigatewayMCP.enabled."
                 },
                 "replicaCount": {
                   "type": [
                     "integer",
                     "string"
                   ],
-                  "description": "Value for workspace.tools.egressMCP.replicaCount."
+                  "description": "Value for workspace.tools.aigatewayMCP.replicaCount."
                 },
                 "allowedModels": {
                   "type": "array",
-                  "description": "List at workspace.tools.egressMCP.allowedModels.",
+                  "description": "List at workspace.tools.aigatewayMCP.allowedModels.",
                   "items": {
                     "type": [
                       "string",
@@ -2172,34 +2172,34 @@
                 },
                 "resources": {
                   "type": "object",
-                  "description": "Values under workspace.tools.egressMCP.resources.",
+                  "description": "Values under workspace.tools.aigatewayMCP.resources.",
                   "properties": {
                     "requests": {
                       "type": "object",
-                      "description": "Values under workspace.tools.egressMCP.resources.requests.",
+                      "description": "Values under workspace.tools.aigatewayMCP.resources.requests.",
                       "properties": {
                         "cpu": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.resources.requests.cpu."
+                          "description": "Value for workspace.tools.aigatewayMCP.resources.requests.cpu."
                         },
                         "memory": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.resources.requests.memory."
+                          "description": "Value for workspace.tools.aigatewayMCP.resources.requests.memory."
                         }
                       },
                       "additionalProperties": false
                     },
                     "limits": {
                       "type": "object",
-                      "description": "Values under workspace.tools.egressMCP.resources.limits.",
+                      "description": "Values under workspace.tools.aigatewayMCP.resources.limits.",
                       "properties": {
                         "cpu": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.resources.limits.cpu."
+                          "description": "Value for workspace.tools.aigatewayMCP.resources.limits.cpu."
                         },
                         "memory": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.resources.limits.memory."
+                          "description": "Value for workspace.tools.aigatewayMCP.resources.limits.memory."
                         }
                       },
                       "additionalProperties": false
@@ -2208,22 +2208,22 @@
                 },
                 "startupProbe": {
                   "type": "object",
-                  "description": "Values under workspace.tools.egressMCP.startupProbe.",
+                  "description": "Values under workspace.tools.aigatewayMCP.startupProbe.",
                   "properties": {
                     "httpGet": {
                       "type": "object",
-                      "description": "Values under workspace.tools.egressMCP.startupProbe.httpGet.",
+                      "description": "Values under workspace.tools.aigatewayMCP.startupProbe.httpGet.",
                       "properties": {
                         "path": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.startupProbe.httpGet.path."
+                          "description": "Value for workspace.tools.aigatewayMCP.startupProbe.httpGet.path."
                         },
                         "port": {
                           "type": [
                             "integer",
                             "string"
                           ],
-                          "description": "Value for workspace.tools.egressMCP.startupProbe.httpGet.port."
+                          "description": "Value for workspace.tools.aigatewayMCP.startupProbe.httpGet.port."
                         }
                       },
                       "additionalProperties": false
@@ -2233,49 +2233,49 @@
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.startupProbe.initialDelaySeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.startupProbe.initialDelaySeconds."
                     },
                     "periodSeconds": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.startupProbe.periodSeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.startupProbe.periodSeconds."
                     },
                     "timeoutSeconds": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.startupProbe.timeoutSeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.startupProbe.timeoutSeconds."
                     },
                     "failureThreshold": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.startupProbe.failureThreshold."
+                      "description": "Value for workspace.tools.aigatewayMCP.startupProbe.failureThreshold."
                     }
                   }
                 },
                 "livenessProbe": {
                   "type": "object",
-                  "description": "Values under workspace.tools.egressMCP.livenessProbe.",
+                  "description": "Values under workspace.tools.aigatewayMCP.livenessProbe.",
                   "properties": {
                     "httpGet": {
                       "type": "object",
-                      "description": "Values under workspace.tools.egressMCP.livenessProbe.httpGet.",
+                      "description": "Values under workspace.tools.aigatewayMCP.livenessProbe.httpGet.",
                       "properties": {
                         "path": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.livenessProbe.httpGet.path."
+                          "description": "Value for workspace.tools.aigatewayMCP.livenessProbe.httpGet.path."
                         },
                         "port": {
                           "type": [
                             "integer",
                             "string"
                           ],
-                          "description": "Value for workspace.tools.egressMCP.livenessProbe.httpGet.port."
+                          "description": "Value for workspace.tools.aigatewayMCP.livenessProbe.httpGet.port."
                         }
                       },
                       "additionalProperties": false
@@ -2285,42 +2285,42 @@
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.livenessProbe.periodSeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.livenessProbe.periodSeconds."
                     },
                     "timeoutSeconds": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.livenessProbe.timeoutSeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.livenessProbe.timeoutSeconds."
                     },
                     "failureThreshold": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.livenessProbe.failureThreshold."
+                      "description": "Value for workspace.tools.aigatewayMCP.livenessProbe.failureThreshold."
                     }
                   }
                 },
                 "readinessProbe": {
                   "type": "object",
-                  "description": "Values under workspace.tools.egressMCP.readinessProbe.",
+                  "description": "Values under workspace.tools.aigatewayMCP.readinessProbe.",
                   "properties": {
                     "httpGet": {
                       "type": "object",
-                      "description": "Values under workspace.tools.egressMCP.readinessProbe.httpGet.",
+                      "description": "Values under workspace.tools.aigatewayMCP.readinessProbe.httpGet.",
                       "properties": {
                         "path": {
                           "type": "string",
-                          "description": "Value for workspace.tools.egressMCP.readinessProbe.httpGet.path."
+                          "description": "Value for workspace.tools.aigatewayMCP.readinessProbe.httpGet.path."
                         },
                         "port": {
                           "type": [
                             "integer",
                             "string"
                           ],
-                          "description": "Value for workspace.tools.egressMCP.readinessProbe.httpGet.port."
+                          "description": "Value for workspace.tools.aigatewayMCP.readinessProbe.httpGet.port."
                         }
                       },
                       "additionalProperties": false
@@ -2330,21 +2330,21 @@
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.readinessProbe.periodSeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.readinessProbe.periodSeconds."
                     },
                     "timeoutSeconds": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.readinessProbe.timeoutSeconds."
+                      "description": "Value for workspace.tools.aigatewayMCP.readinessProbe.timeoutSeconds."
                     },
                     "failureThreshold": {
                       "type": [
                         "integer",
                         "string"
                       ],
-                      "description": "Value for workspace.tools.egressMCP.readinessProbe.failureThreshold."
+                      "description": "Value for workspace.tools.aigatewayMCP.readinessProbe.failureThreshold."
                     }
                   }
                 }

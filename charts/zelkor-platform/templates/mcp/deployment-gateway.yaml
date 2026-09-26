@@ -57,9 +57,9 @@ spec:
             - name: SANDBOX_MCP_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-sandbox:8080"
             {{- end }}
-            {{- if and .Values.mcp.egressMCP .Values.mcp.egressMCP.enabled }}
-            - name: EGRESS_MCP_URL
-              value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-egress:8080"
+            {{- if and .Values.mcp.aigatewayMCP .Values.mcp.aigatewayMCP.enabled }}
+            - name: AIGATEWAY_MCP_URL
+              value: "http://{{ include "zelkor-platform.fullname" . }}-mcp-aigateway:8080"
             {{- end }}
             - name: MCP_EXTRA_BACKENDS
               value: {{ .Values.__mcpExtraBackendJson | default "[]" | quote }}

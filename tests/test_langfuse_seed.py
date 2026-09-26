@@ -14,7 +14,7 @@ def test_keep_native_prefixes_only_unless_extra():
     extras = extra_backend_names('[{"name":"acme-tools","url":"http://x"}]')
     assert keep_mcp_tool("postgres__query", extras)
     assert keep_mcp_tool("qdrant__upsert_document", extras)
-    assert keep_mcp_tool("egress__call_external_api", extras)
+    assert keep_mcp_tool("aigateway__call", extras)
     assert keep_mcp_tool("acme-tools__ping", extras)
     assert not keep_mcp_tool("servicenow__get", extras)
     assert not keep_mcp_tool("acme-tools__ping", [])

@@ -1,6 +1,6 @@
 """
 Unified MCP gateway — multiplexes native servers and workspace.tools.extraBackends.
-Tool names are prefixed: postgres__query, qdrant__search_documents, sandbox__execute_python, egress__call_external_api
+Tool names are prefixed: postgres__query, qdrant__search_documents, sandbox__execute_python, aigateway__call
 """
 import json
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger("zelkor-mcp-gateway")
 POSTGRES_MCP_URL = os.getenv("POSTGRES_MCP_URL", "").strip()
 QDRANT_MCP_URL = os.getenv("QDRANT_MCP_URL", "").strip()
 SANDBOX_MCP_URL = os.getenv("SANDBOX_MCP_URL", "").strip()
-EGRESS_MCP_URL = os.getenv("EGRESS_MCP_URL", "").strip()
+AIGATEWAY_MCP_URL = os.getenv("AIGATEWAY_MCP_URL", "").strip()
 
 
 def native_backends() -> Dict[str, str]:
@@ -36,8 +36,8 @@ def native_backends() -> Dict[str, str]:
         backends["qdrant"] = QDRANT_MCP_URL
     if SANDBOX_MCP_URL:
         backends["sandbox"] = SANDBOX_MCP_URL
-    if EGRESS_MCP_URL:
-        backends["egress"] = EGRESS_MCP_URL
+    if AIGATEWAY_MCP_URL:
+        backends["aigateway"] = AIGATEWAY_MCP_URL
     return backends
 
 

@@ -28,7 +28,7 @@ FIRST_PARTY_TEMPLATES = [
     CHART / "templates/mcp/deployment-gateway.yaml",
     CHART / "templates/mcp/deployment-postgres.yaml",
     CHART / "templates/mcp/deployment-qdrant.yaml",
-    CHART / "templates/mcp/deployment-egress.yaml",
+    CHART / "templates/mcp/deployment-aigateway.yaml",
     CHART / "templates/mcp/deployment-sandbox.yaml",
     CHART / "templates/guardrails/deployment.yaml",
     CHART / "templates/langfuse/job-bootstrap.yaml",

@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 _DNS_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
-RESERVED_PREFIXES = frozenset({"postgres", "qdrant", "sandbox", "egress", "nemo", "aegra", "langfuse"})
+RESERVED_PREFIXES = frozenset({"postgres", "qdrant", "sandbox", "aigateway", "nemo", "aegra", "langfuse"})
 
 
 @dataclass

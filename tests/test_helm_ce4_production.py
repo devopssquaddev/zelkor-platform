@@ -31,7 +31,7 @@ HA_DEPLOYMENTS = (
     "zelkor-platform-mcp-gateway",
     "zelkor-platform-mcp-postgres",
     "zelkor-platform-mcp-qdrant",
-    "zelkor-platform-mcp-egress",
+    "zelkor-platform-mcp-aigateway",
     "zelkor-platform-mcp-sandbox",
 )
 
@@ -41,7 +41,7 @@ SM_SERVICES = (
     "zelkor-platform-mcp-gateway",
     "zelkor-platform-mcp-postgres",
     "zelkor-platform-mcp-qdrant",
-    "zelkor-platform-mcp-egress",
+    "zelkor-platform-mcp-aigateway",
     "zelkor-platform-mcp-sandbox",
     "zelkor-platform-qdrant",
 )

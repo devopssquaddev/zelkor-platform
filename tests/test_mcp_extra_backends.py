@@ -17,24 +17,24 @@ from gateway.backend_config import (  # noqa: E402
 from gateway.gateway_server import native_backends  # noqa: E402
 
 
-def test_native_backends_include_egress_when_url_set(monkeypatch):
+def test_native_backends_include_aigateway_when_url_set(monkeypatch):
     monkeypatch.setattr("gateway.gateway_server.POSTGRES_MCP_URL", "http://mcp-postgres:8080")
-    monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "http://mcp-egress:8080")
+    monkeypatch.setattr("gateway.gateway_server.AIGATEWAY_MCP_URL", "http://mcp-aigateway:8080")
     backends = native_backends()
-    assert backends["egress"] == "http://mcp-egress:8080"
+    assert backends["aigateway"] == "http://mcp-aigateway:8080"
     assert backends["postgres"] == "http://mcp-postgres:8080"
 
 
-def test_native_backends_omit_egress_when_unset(monkeypatch):
-    monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "")
-    assert "egress" not in native_backends()
+def test_native_backends_omit_aigateway_when_unset(monkeypatch):
+    monkeypatch.setattr("gateway.gateway_server.AIGATEWAY_MCP_URL", "")
+    assert "aigateway" not in native_backends()
 
 
 def test_native_backends_omit_postgres_and_qdrant_when_unset(monkeypatch):
     monkeypatch.setattr("gateway.gateway_server.POSTGRES_MCP_URL", "")
     monkeypatch.setattr("gateway.gateway_server.QDRANT_MCP_URL", "")
     monkeypatch.setattr("gateway.gateway_server.SANDBOX_MCP_URL", "")
-    monkeypatch.setattr("gateway.gateway_server.EGRESS_MCP_URL", "")
+    monkeypatch.setattr("gateway.gateway_server.AIGATEWAY_MCP_URL", "")
     assert native_backends() == {}
 
 

@@ -200,11 +200,11 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    {{- if and .Values.mcp.egressMCP .Values.mcp.egressMCP.enabled }}
+    {{- if and .Values.mcp.aigatewayMCP .Values.mcp.aigatewayMCP.enabled }}
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: mcp-egress
+              app.kubernetes.io/component: mcp-aigateway
       ports:
         - protocol: TCP
           port: 8080
@@ -312,19 +312,19 @@ spec:
           port: 8080
         - protocol: TCP
           port: 10080
-{{- if and .Values.mcp.egressMCP .Values.mcp.egressMCP.enabled }}
+{{- if and .Values.mcp.aigatewayMCP .Values.mcp.aigatewayMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ $fullname }}-mcp-egress-egress
+  name: {{ $fullname }}-mcp-aigateway-egress
   namespace: {{ $ns }}
   labels:
     {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: mcp-egress
+      app.kubernetes.io/component: mcp-aigateway
   policyTypes:
     - Egress
   egress:

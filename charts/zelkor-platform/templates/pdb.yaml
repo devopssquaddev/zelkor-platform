@@ -22,8 +22,8 @@
 {{- if (.Values.mcp.qdrantMCP).enabled }}
 {{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-qdrant" $fn) "component" "mcp-qdrant" "role" "mcp") }}
 {{- end }}
-{{- if (.Values.mcp.egressMCP).enabled }}
-{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-egress" $fn) "component" "mcp-egress" "role" "mcp") }}
+{{- if (.Values.mcp.aigatewayMCP).enabled }}
+{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-aigateway" $fn) "component" "mcp-aigateway" "role" "mcp") }}
 {{- end }}
 {{- if (.Values.mcp.sandboxMCP).enabled }}
 {{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-sandbox" $fn) "component" "mcp-sandbox" "role" "mcp") }}

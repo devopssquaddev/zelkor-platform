@@ -18,8 +18,8 @@
 {{- if (.Values.mcp.qdrantMCP).enabled }}
 {{- $targets = append $targets (dict "name" (printf "%s-mcp-qdrant" $fn) "component" "mcp-qdrant" "port" "http" "path" "/metrics") }}
 {{- end }}
-{{- if (.Values.mcp.egressMCP).enabled }}
-{{- $targets = append $targets (dict "name" (printf "%s-mcp-egress" $fn) "component" "mcp-egress" "port" "http" "path" "/metrics") }}
+{{- if (.Values.mcp.aigatewayMCP).enabled }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-aigateway" $fn) "component" "mcp-aigateway" "port" "http" "path" "/metrics") }}
 {{- end }}
 {{- if (.Values.mcp.sandboxMCP).enabled }}
 {{- $targets = append $targets (dict "name" (printf "%s-mcp-sandbox" $fn) "component" "mcp-sandbox" "port" "http" "path" "/metrics") }}

@@ -69,7 +69,7 @@ def test_langfuse_mcp_tools_catalog_prompt():
     cfg = body.get("config") or {}
     tools = cfg.get("tools") or []
     names = {t.get("name") for t in tools if isinstance(t, dict)}
-    native = {n for n in names if n.startswith(("postgres__", "qdrant__", "sandbox__", "egress__"))}
+    native = {n for n in names if n.startswith(("postgres__", "qdrant__", "sandbox__", "aigateway__"))}
     if not native:
         pytest.skip(f"prompt config.tools has no native MCP names (got {names})")
 
