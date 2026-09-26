@@ -667,26 +667,26 @@ spec:
     app.kubernetes.io/component: langfuse
     app.kubernetes.io/langfuse-role: web
 ---
-# Source: zelkor-platform/templates/mcp/deployment-egress.yaml
+# Source: zelkor-platform/templates/mcp/deployment-aigateway.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: zelkor-platform-mcp-egress
+  name: zelkor-platform-mcp-aigateway
   labels:
     helm.sh/chart: zelkor-platform-2.0.0
     app.kubernetes.io/name: zelkor-platform
     app.kubernetes.io/instance: zelkor-platform
     app.kubernetes.io/version: "2.0.0"
     app.kubernetes.io/managed-by: Helm
-    zelkor.io/intent: "mcp.egressMCP"
-    app.kubernetes.io/component: mcp-egress
+    zelkor.io/intent: "mcp.aigatewayMCP"
+    app.kubernetes.io/component: mcp-aigateway
 spec:
   ports:
     - port: 8080
       targetPort: 8080
       name: http
   selector:
-    app.kubernetes.io/component: mcp-egress
+    app.kubernetes.io/component: mcp-aigateway
     app.kubernetes.io/instance: zelkor-platform
 ---
 # Source: zelkor-platform/templates/mcp/deployment-gateway.yaml
@@ -1630,24 +1630,24 @@ spec:
               cpu: 100m
               memory: 512Mi
 ---
-# Source: zelkor-platform/templates/mcp/deployment-egress.yaml
+# Source: zelkor-platform/templates/mcp/deployment-aigateway.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: zelkor-platform-mcp-egress
+  name: zelkor-platform-mcp-aigateway
   labels:
     helm.sh/chart: zelkor-platform-2.0.0
     app.kubernetes.io/name: zelkor-platform
     app.kubernetes.io/instance: zelkor-platform
     app.kubernetes.io/version: "2.0.0"
     app.kubernetes.io/managed-by: Helm
-    zelkor.io/intent: "mcp.egressMCP"
-    app.kubernetes.io/component: mcp-egress
+    zelkor.io/intent: "mcp.aigatewayMCP"
+    app.kubernetes.io/component: mcp-aigateway
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/component: mcp-egress
+      app.kubernetes.io/component: mcp-aigateway
       app.kubernetes.io/instance: zelkor-platform
   template:
     metadata:
@@ -1657,16 +1657,16 @@ spec:
         app.kubernetes.io/instance: zelkor-platform
         app.kubernetes.io/version: "2.0.0"
         app.kubernetes.io/managed-by: Helm
-        zelkor.io/intent: "mcp.egressMCP"
-        app.kubernetes.io/component: mcp-egress
+        zelkor.io/intent: "mcp.aigatewayMCP"
+        app.kubernetes.io/component: mcp-aigateway
     spec:
       
       containers:
-        - name: mcp-egress
+        - name: mcp-aigateway
           image: "ghcr.io/devopssquaddev/zelkor-mcp:2.0.0"
           imagePullPolicy: IfNotPresent
           workingDir: /app
-          command: ["python", "mcp/wrappers/egress_server.py"]
+          command: ["python", "mcp/wrappers/aigateway_server.py"]
           ports:
             - containerPort: 8080
           env:
@@ -1675,7 +1675,7 @@ spec:
             - name: ZELKOR_LOG_FORMAT
               value: "json"
             - name: ZELKOR_LOG_COMPONENT
-              value: "zelkor-mcp-egress"
+              value: "zelkor-mcp-aigateway"
             - name: AUTH_DEV_TOKENS_ENABLED
               value: "false"
             - name: AUTH_DEV_TOKEN_PREFIX
@@ -1690,7 +1690,7 @@ spec:
               value: "http://zelkor-platform-ai-gateway:80/v1"
             - name: AI_GATEWAY_API_KEY
               value: ""
-            - name: EGRESS_ALLOWED_MODELS
+            - name: AIGATEWAY_ALLOWED_MODELS
               value: ""
           
           startupProbe:
@@ -1785,8 +1785,8 @@ spec:
               value: "http://zelkor-platform-mcp-qdrant:8080"
             - name: SANDBOX_MCP_URL
               value: "http://zelkor-platform-mcp-sandbox:8080"
-            - name: EGRESS_MCP_URL
-              value: "http://zelkor-platform-mcp-egress:8080"
+            - name: AIGATEWAY_MCP_URL
+              value: "http://zelkor-platform-mcp-aigateway:8080"
             - name: MCP_EXTRA_BACKENDS
               value: "[]"
           

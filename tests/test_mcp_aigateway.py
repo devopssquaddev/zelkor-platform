@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
 from tests.helpers.llm import llm_model_or_skip
 from tests.helpers.mcp_client import MCPGatewayClient
-from wrappers.egress_server import (
-    EgressMCPServer,
+from wrappers.aigateway_server import (
+    AIGatewayMCPServer,
     build_body,
     gateway_path,
     post_gateway,
@@ -39,21 +39,21 @@ def test_gateway_path_and_body():
     assert emb == {"model": "m", "input": "hi"}
 
 
-def test_call_external_api_tenant_mismatch():
-    server = EgressMCPServer(allowed_models=[])
+def test_call_tenant_mismatch():
+    server = AIGatewayMCPServer(allowed_models=[])
     with pytest.raises(PermissionError, match="tenant_id mismatch"):
         server.call_tool(
-            "call_external_api",
+            "call",
             {"tenant_id": "tenant_b", "model": "openai/gpt-4o-mini", "messages": []},
             "tenant_a",
         )
 
 
-def test_call_external_api_rejects_disallowed_model():
-    server = EgressMCPServer(allowed_models=["allowed/model"])
+def test_call_rejects_disallowed_model():
+    server = AIGatewayMCPServer(allowed_models=["allowed/model"])
     with pytest.raises(PermissionError, match="not allowed"):
         server.call_tool(
-            "call_external_api",
+            "call",
             {
                 "tenant_id": "tenant_a",
                 "model": "other/model",
@@ -64,8 +64,8 @@ def test_call_external_api_rejects_disallowed_model():
 
 
 def test_post_gateway_uses_consumer_key_only(monkeypatch):
-    monkeypatch.setattr("wrappers.egress_server.AI_GATEWAY_URL", "http://ai-gateway:80/v1")
-    monkeypatch.setattr("wrappers.egress_server.AI_GATEWAY_API_KEY", "cluster-consumer")
+    monkeypatch.setattr("wrappers.aigateway_server.AI_GATEWAY_URL", "http://ai-gateway:80/v1")
+    monkeypatch.setattr("wrappers.aigateway_server.AI_GATEWAY_API_KEY", "cluster-consumer")
     captured = {}
 
     def fake_urlopen(req, timeout=60):
@@ -86,12 +86,12 @@ def test_post_gateway_uses_consumer_key_only(monkeypatch):
     assert b"stolen" not in (captured["body"] or b"")
 
 
-def test_mcp_egress_rejects_url_arg():
+def test_mcp_aigateway_rejects_url_arg():
     client = MCPGatewayClient("tenant_a")
     try:
         with pytest.raises(RuntimeError, match="(?i)url|reject"):
             client.call_tool(
-                "egress__call_external_api",
+                "aigateway__call",
                 {
                     "model": "openai/gpt-4o-mini",
                     "url": "https://evil.example/v1",
@@ -102,12 +102,12 @@ def test_mcp_egress_rejects_url_arg():
         pytest.skip(str(exc))
 
 
-def test_mcp_egress_rejects_tenant_mismatch():
+def test_mcp_aigateway_rejects_tenant_mismatch():
     client = MCPGatewayClient("tenant_a")
     try:
         with pytest.raises(RuntimeError, match="tenant_id mismatch"):
             client.call_tool(
-                "egress__call_external_api",
+                "aigateway__call",
                 {
                     "tenant_id": "tenant_b",
                     "model": "openai/gpt-4o-mini",
@@ -118,12 +118,12 @@ def test_mcp_egress_rejects_tenant_mismatch():
         pytest.skip(str(exc))
 
 
-def test_mcp_egress_chat_via_ai_gateway():
+def test_mcp_aigateway_chat_via_ai_gateway():
     model = llm_model_or_skip()
     client = MCPGatewayClient("tenant_a")
     try:
         result = client.call_tool(
-            "egress__call_external_api",
+            "aigateway__call",
             {
                 "model": model,
                 "messages": [{"role": "user", "content": "Reply with the single word pong."}],

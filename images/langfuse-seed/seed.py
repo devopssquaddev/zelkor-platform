@@ -60,7 +60,7 @@ MCP_URL = os.getenv("MCP_URL", "").rstrip("/")
 TOOL_NAME_OK = re.compile(r"^[a-zA-Z0-9._-]+$")
 MCP_TENANT = os.getenv("MCP_SEED_TENANT", "seed")
 MCP_AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "").strip()
-NATIVE_PREFIXES = ("postgres__", "qdrant__", "sandbox__", "egress__")
+NATIVE_PREFIXES = ("postgres__", "qdrant__", "sandbox__", "aigateway__")
 
 
 def parse_extra_projects(raw: str) -> List[Dict[str, str]]:
@@ -569,7 +569,7 @@ def seed_evaluators(project: Dict[str, str]) -> None:
         {
             "name": "zelkor-mcp-prefix",
             "dataType": "BOOLEAN",
-            "description": "Agent tool observations use a native MCP prefix (postgres__/qdrant__/sandbox__/egress__).",
+            "description": "Agent tool observations use a native MCP prefix (postgres__/qdrant__/sandbox__/aigateway__).",
         },
         {
             "name": "zelkor-tenant-userid",
