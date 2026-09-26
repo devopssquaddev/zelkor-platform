@@ -400,9 +400,13 @@ cluster_install_platform_secrets() {
   if [[ -z "${AI_GATEWAY_CONSUMER_KEY:-}" ]]; then
     AI_GATEWAY_CONSUMER_KEY="$(cluster_install_rand_b64)"
   fi
+  if [[ -z "${VALKEY_PASSWORD:-}" ]]; then
+    VALKEY_PASSWORD="$(cluster_install_rand_hex 24)"
+  fi
   CLUSTER_INSTALL_HELM_SETS+=(
     --set "postgresql.auth.password=${POSTGRES_PASSWORD}"
     --set "clickhouse.auth.password=${CLICKHOUSE_PASSWORD}"
+    --set "valkey.auth.password=${VALKEY_PASSWORD}"
     --set "seaweedfs.auth.accessKey=${SEAWEEDFS_ACCESS_KEY}"
     --set "seaweedfs.auth.secretKey=${SEAWEEDFS_SECRET_KEY}"
     --set "workspace.tools.sandboxMCP.workerToken=${WORKER_TOKEN}"
@@ -415,7 +419,7 @@ cluster_install_print_secret_howto() {
   local rel="$CLUSTER_INSTALL_RELEASE"
   echo
   echo "Install secrets are in cluster Secrets (override with env before install):"
-  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN / AI_GATEWAY_CONSUMER_KEY"
+  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / VALKEY_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN / AI_GATEWAY_CONSUMER_KEY"
   echo "  LANGFUSE_NEXTAUTH_SECRET / LANGFUSE_SALT / LANGFUSE_ENCRYPTION_KEY"
   echo "  Langfuse project keys (when platform.telemetry.langfuse.init.enabled): ${rel}-langfuse-init / ${rel}-langfuse-otel"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-postgresql -o jsonpath='{.data.password}' | base64 -d; echo"
