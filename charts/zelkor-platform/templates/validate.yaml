@@ -1,0 +1,48 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $root := . -}}
+{{- $tenants := (.Values.platform.tenants | default dict) -}}
+{{- if and ($tenants.sso).enabled (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "sso")) "true") -}}
+{{- fail "platform.tenants.sso requires Zelkor Pro (OIDC/SAML SSO). On Community Edition use platform.tenants.jwtSecret and mint JWTs from your backend. See docs/helm-install.md." -}}
+{{- end -}}
+{{- $mtls := (.Values.platform.mTLS | default dict) -}}
+{{- if and $mtls.enabled (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "mTLS")) "true") -}}
+{{- fail "platform.mTLS requires Zelkor Enterprise. On CE use TLS at your ingress or service mesh. See docs/helm-install.md." -}}
+{{- end -}}
+{{- $pol := (.Values.workspace.policies | default dict) -}}
+{{- if and $pol.llamaGuard (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "llamaGuard")) "true") -}}
+{{- fail "workspace.policies.llamaGuard requires Zelkor Enterprise. On CE use workspace.policies.nemo. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if and $pol.presidio (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "presidio")) "true") -}}
+{{- fail "workspace.policies.presidio requires Zelkor Enterprise. On CE use workspace.policies.nemo. See docs/helm-install.md." -}}
+{{- end -}}
+{{- $tel := (.Values.platform.telemetry | default dict) -}}
+{{- $audit := ($tel.audit | default dict) -}}
+{{- if and $audit.worm (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "wormAudit")) "true") -}}
+{{- fail "platform.telemetry.audit.worm requires Zelkor Enterprise. On CE use platform.telemetry.langfuse for operational traces. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if and .Values.global.tier (ne .Values.global.tier "oss") (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "tier")) "true") -}}
+{{- fail (printf "global.tier=%q is not used on the CE chart alone. Install Zelkor Pro or Enterprise via the private umbrella chart. See docs/helm-install.md." .Values.global.tier) -}}
+{{- end -}}
+{{- $intent := (.Values.workload.intent | default dict) -}}
+{{- $approval := ($intent.approval | default dict) -}}
+{{- if and (eq (.Values.global.tier | default "oss") "oss") ($approval.enabled | default false) -}}
+{{- fail "workload.intent.approval requires Zelkor Pro (HITL approval gateway). Remove workload.intent.approval or upgrade. See docs/helm-install.md." -}}
+{{- end -}}
+{{- $initPk := "" -}}
+{{- if and .Values.langfuse.init.enabled .Values.langfuse.init.projectPublicKey -}}
+{{- $initPk = .Values.langfuse.init.projectPublicKey -}}
+{{- end -}}
+{{- range $i, $p := (.Values.langfuse.extraProjects | default list) -}}
+{{- if not (kindIs "map" $p) -}}
+{{- fail (printf "platform.telemetry.langfuse.extraProjects[%d] must be an object" $i) -}}
+{{- end -}}
+{{- $pid := ($p.id | default "" | trim) -}}
+{{- $pk := ($p.publicKey | default $p.public_key | default "" | trim) -}}
+{{- $sk := ($p.secretKey | default $p.secret_key | default "" | trim) -}}
+{{- if or (not $pid) (not $pk) (not $sk) -}}
+{{- fail (printf "platform.telemetry.langfuse.extraProjects[%d] requires id, publicKey, and secretKey" $i) -}}
+{{- end -}}
+{{- if and $initPk (eq $pk $initPk) -}}
+{{- fail (printf "platform.telemetry.langfuse.extraProjects[%d].publicKey must not match langfuse.init.projectPublicKey" $i) -}}
+{{- end -}}
+{{- end -}}

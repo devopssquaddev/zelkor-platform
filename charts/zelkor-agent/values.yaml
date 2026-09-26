@@ -36,7 +36,7 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "1.2.5"
+  tag: "2.0.0"
   digest: ""
   pullPolicy: ""
 
@@ -123,3 +123,11 @@ readinessProbe:
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 3
+
+workload:
+  intent:
+    timeout: ""
+    maxTokens: 0
+    approval:
+      enabled: false
+      threshold: ""

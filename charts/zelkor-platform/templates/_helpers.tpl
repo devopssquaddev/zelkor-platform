@@ -1,4 +1,117 @@
 {{/*
+V2 compiler: map platform.* / workspace.* / workload.* onto the internal flat tree used by templates.
+Idempotent; call via include "zelkor-platform.compile" . at the top of each template file.
+*/}}
+{{- define "zelkor-platform.compile" -}}
+{{- if not (hasKey .Values "__compiled") -}}
+{{- if hasKey .Values "aiGateway" -}}
+{{- fail "aiGateway.* was removed in V2. Declare models under workspace.models. See docs/adding-llm-providers-and-models.md." -}}
+{{- end -}}
+{{- if hasKey .Values "auth" -}}
+{{- fail "auth.* was removed in V2. Declare tenants under platform.tenants. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "langfuse" -}}
+{{- fail "langfuse.* was removed in V2. Declare observability under platform.telemetry.langfuse. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "aegra" -}}
+{{- fail "aegra.* was removed in V2. Declare agents under workload.agents. See docs/agent-deploy.md." -}}
+{{- end -}}
+{{- if hasKey .Values "guardrails" -}}
+{{- fail "guardrails.* was removed in V2. Declare policies under workspace.policies. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "mcp" -}}
+{{- fail "mcp.* was removed in V2. Declare tools under workspace.tools. See docs/helm-install.md." -}}
+{{- end -}}
+{{- if hasKey .Values "logging" -}}
+{{- fail "logging.* was removed in V2. Declare telemetry under platform.telemetry (level/format). See docs/helm-install.md." -}}
+{{- end -}}
+{{- $_ := set .Values "__compiled" true -}}
+{{- include "zelkor-platform.compile.telemetry" . -}}
+{{- include "zelkor-platform.compile.tenants" . -}}
+{{- include "zelkor-platform.compile.models" . -}}
+{{- include "zelkor-platform.compile.policies" . -}}
+{{- include "zelkor-platform.compile.tools" . -}}
+{{- include "zelkor-platform.compile.workload" . -}}
+{{- include "zelkor-platform.compile.intent" . -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.telemetry" -}}
+{{- $p := .Values.platform | default dict -}}
+{{- $tel := $p.telemetry | default dict -}}
+{{- $_ := set .Values "logging" (dict "level" ($tel.level | default "INFO") "format" ($tel.format | default "json")) -}}
+{{- if $tel.langfuse -}}
+{{- $_ := set .Values "langfuse" $tel.langfuse -}}
+{{- end -}}
+{{- $agents := (.Values.workload.agents | default dict) -}}
+{{- if $tel.aegraOtelTargets -}}
+{{- $_ := set $agents "otelTargets" $tel.aegraOtelTargets -}}
+{{- $_ := set .Values.workload "agents" $agents -}}
+{{- end -}}
+{{- $no := $tel.nemoOtel | default dict -}}
+{{- if or $no.enabled $no.captureContent -}}
+{{- $pol := (.Values.workspace.policies | default dict) -}}
+{{- $nemo := $pol.nemo | default dict -}}
+{{- $obs := $nemo.observability | default dict -}}
+{{- $_ := set $obs "otel" (dict "enabled" ($no.enabled | default false) "captureContent" ($no.captureContent | default false)) -}}
+{{- $_ := set $nemo "observability" $obs -}}
+{{- $_ := set $pol "nemo" $nemo -}}
+{{- $_ := set .Values.workspace "policies" $pol -}}
+{{- end -}}
+{{- if $p.mTLS -}}
+{{- $sec := .Values.security | default dict -}}
+{{- $_ := set $sec "mTLS" $p.mTLS -}}
+{{- $_ := set .Values "security" $sec -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.tenants" -}}
+{{- $t := (.Values.platform.tenants | default dict) -}}
+{{- $_ := set .Values "auth" (dict "sso" ($t.sso | default dict) "jwtSecret" ($t.jwtSecret | default "") "devTokens" ($t.devTokens | default dict) "trustTenantHeader" ($t.trustTenantHeader | default false)) -}}
+{{- $agents := (.Values.workload.agents | default dict) -}}
+{{- if $t.orgMappings -}}
+{{- $_ := set $agents "tenantOrgMappings" $t.orgMappings -}}
+{{- else -}}
+{{- $_ := set $agents "tenantOrgMappings" ($agents.tenantOrgMappings | default dict) -}}
+{{- end -}}
+{{- $_ := set .Values.workload "agents" $agents -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.models" -}}
+{{- $m := (.Values.workspace.models | default dict) -}}
+{{- if $m -}}
+{{- $_ := set .Values "aiGateway" $m -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.policies" -}}
+{{- $pol := (.Values.workspace.policies | default dict) -}}
+{{- if $pol -}}
+{{- $_ := set .Values "guardrails" $pol -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.tools" -}}
+{{- $tools := (.Values.workspace.tools | default dict) -}}
+{{- if $tools -}}
+{{- $_ := set .Values "mcp" $tools -}}
+{{- end -}}
+{{- include "zelkor-platform.compile.mcpExtraBackends" . -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.workload" -}}
+{{- $agents := (.Values.workload.agents | default dict) -}}
+{{- if $agents -}}
+{{- $_ := set .Values "aegra" $agents -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.intent" -}}
+{{- $intent := (.Values.workload.intent | default dict) -}}
+{{- $_ := set .Values "__workloadIntent" $intent -}}
+{{- end }}
+
+{{/*
 Expand the name of the chart.
 */}}
 {{- define "zelkor-platform.name" -}}
@@ -29,15 +142,36 @@ Create chart name and version as used by the chart label.
 {{- end }}
 
 {{/*
-Common labels
+Common labels. Pass (dict "root" . "intent" "postgresql") to set zelkor.io/intent; plain . omits intent.
 */}}
 {{- define "zelkor-platform.labels" -}}
-helm.sh/chart: {{ include "zelkor-platform.chart" . }}
-{{ include "zelkor-platform.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- $root := . -}}
+{{- $intent := "" -}}
+{{- if kindIs "map" . -}}
+{{- if hasKey . "root" -}}{{- $root = .root -}}{{- end -}}
+{{- if hasKey . "intent" -}}{{- $intent = .intent -}}{{- end -}}
+{{- end -}}
+helm.sh/chart: {{ include "zelkor-platform.chart" $root }}
+{{ include "zelkor-platform.selectorLabels" $root }}
+{{- if $root.Chart.AppVersion }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+{{- if $intent }}
+zelkor.io/intent: {{ $intent | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Tier gate: true when umbrella listed entitlement suppresses a CE reserved-key fail.
+*/}}
+{{- define "zelkor-platform.hasEntitlement" -}}
+{{- $name := .name -}}
+{{- $ents := list -}}
+{{- if and .Values.global.zelkor (kindIs "map" .Values.global.zelkor) .Values.global.zelkor.entitlements -}}
+{{- $ents = .Values.global.zelkor.entitlements -}}
+{{- end -}}
+{{- if has $name $ents -}}true{{- else -}}false{{- end -}}
 {{- end }}
 
 {{/*
@@ -196,6 +330,19 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 {{- else -}}
 {{- required "clickhouse.auth.password must be set in a values overlay. The chart ships no default password." .Values.clickhouse.auth.password -}}
 {{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.clickhouseClientNetworks" -}}
+{{- $nets := ((.Values.databases.clickhouse).clientNetworks) | default list -}}
+{{- if $nets -}}
+{{- range $nets }}
+        - {{ . | quote }}
+{{- end }}
+{{- else }}
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+        - "192.168.0.0/16"
+{{- end }}
 {{- end }}
 
 {{- define "zelkor-platform.clickhouseHost" -}}
@@ -639,8 +786,34 @@ false
 {{- end -}}
 {{- end }}
 
+{{/*
+Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster init secret).
+*/}}
+{{- define "zelkor-platform.langfuseInitIngestCredentials" -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- $pk := $init.projectPublicKey | default "" | toString | trim -}}
+{{- $sk := $init.projectSecretKey | default "" | toString | trim -}}
+{{- $initSecretName := include "zelkor-platform.langfuseInitSecretName" . -}}
+{{- if and (not $pk) (not $sk) $init.existingSecret }}
+{{- $byo := lookup "v1" "Secret" .Release.Namespace $init.existingSecret -}}
+{{- if and $byo $byo.data (index $byo.data "publicKey") (index $byo.data "secretKey") }}
+{{- $pk = index $byo.data "publicKey" | b64dec -}}
+{{- $sk = index $byo.data "secretKey" | b64dec -}}
+{{- end }}
+{{- end }}
+{{- if and (not $pk) (not $sk) (not $init.existingSecret) }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $initSecretName -}}
+{{- if and $existing $existing.data (index $existing.data "publicKey") (index $existing.data "secretKey") }}
+{{- $pk = index $existing.data "publicKey" | b64dec -}}
+{{- $sk = index $existing.data "secretKey" | b64dec -}}
+{{- end }}
+{{- end }}
+{{- printf "publicKey: %s\nsecretKey: %s" $pk $sk -}}
+{{- end }}
+
 {{- define "zelkor-platform.nemoOtelEnv" -}}
 {{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+{{- $creds := include "zelkor-platform.langfuseInitIngestCredentials" . | fromYaml -}}
 - name: OTEL_SERVICE_NAME
   value: {{ printf "%s-nemo" (include "zelkor-platform.fullname" .) | quote }}
 - name: OTEL_TRACES_EXPORTER
@@ -653,6 +826,10 @@ false
   value: http/protobuf
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
+{{- if and $creds.publicKey $creds.secretKey }}
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" $creds.publicKey $creds.secretKey)) | quote }}
+{{- end }}
 - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
   value: "/v1/health"
 - name: LANGFUSE_EXTRA_OTLP
@@ -933,7 +1110,7 @@ Usage: {{ include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
 - name: SANDBOX_EXECUTION_LOG_ENABLED
   value: {{ ternary "true" "false" ($log.enabled | default true) | quote }}
 - name: SANDBOX_INCLUDE_STDOUT_PREVIEW
-  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default true) | quote }}
+  value: {{ ternary "true" "false" ($log.includeStdoutPreview | default false) | quote }}
 - name: SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR
   value: {{ ternary "true" "false" ($log.suspiciousOnProbePlusError | default true) | quote }}
 {{- end }}

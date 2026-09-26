@@ -43,7 +43,7 @@ Search AI Gateway controller logs for `vertex-gcp`, `service_account`, or `Skipp
 
 ## Fix
 
-1. Create a valid GCP service account key JSON for the project in `aiGateway.providers.vertex.project`.
+1. Create a valid GCP service account key JSON for the project in `workspace.models.providers.vertex.project`.
 2. Recreate the Secret with the required key name (no pod restart required):
 
 ```bash
@@ -55,7 +55,7 @@ kubectl -n zelkor create secret generic zelkor-platform-vertex-sa \
 3. Wait until `BackendSecurityPolicy` is **Accepted** and `ai-eg-bsp-*-vertex-gcp` contains `gcpAccessToken`.
 4. Retry `POST /v1/chat/completions` with `model: gemini-2.5-flash` (or your configured id).
 
-**Alternatives:** set `aiGateway.providers.vertex.credentialsJson` in Helm instead of `existingSecret`, or leave both empty for ADC / Workload Identity on GKE.
+**Alternatives:** set `workspace.models.providers.vertex.credentialsJson` in Helm instead of `existingSecret`, or leave both empty for ADC / Workload Identity on GKE.
 
 ## See also
 

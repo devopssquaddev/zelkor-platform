@@ -17,10 +17,10 @@ SECRET_SETS = [
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
     "seaweedfs.auth.secretKey=test-sk",
-    "langfuse.nextauthSecret=test-na",
-    "langfuse.salt=test-salt-1234567890",
-    "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    "langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.telemetry.langfuse.nextauthSecret=test-na",
+    "platform.telemetry.langfuse.salt=test-salt-1234567890",
+    "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
 ]
 
 AGENT_SETS = [

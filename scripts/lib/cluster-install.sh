@@ -302,49 +302,49 @@ EOF
 
 cluster_install_append_llm_helm_sets() {
   if [[ -n "${OPENAI_API_KEY:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.openai.apiKey=${OPENAI_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.openai.apiKey=${OPENAI_API_KEY}")
   fi
   if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.anthropic.apiKey=${ANTHROPIC_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.anthropic.apiKey=${ANTHROPIC_API_KEY}")
   fi
   if [[ -n "${GEMINI_API_KEY:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.gemini.apiKey=${GEMINI_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.gemini.apiKey=${GEMINI_API_KEY}")
   fi
   if [[ -n "${OLLAMA_API_KEY:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}")
   fi
   if [[ -n "$SELECTED_OLLAMA_LOCAL_HOST" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.ollamaLocal.host=${SELECTED_OLLAMA_LOCAL_HOST}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.ollamaLocal.host=${SELECTED_OLLAMA_LOCAL_HOST}")
   fi
   if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
   fi
   if [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
   fi
   if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.bedrock.region=${AWS_REGION:-us-east-1}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.bedrock.region=${AWS_REGION:-us-east-1}")
   fi
   if [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vertex.project=${VERTEX_PROJECT}")
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vertex.region=${VERTEX_REGION}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.vertex.project=${VERTEX_PROJECT}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.vertex.region=${VERTEX_REGION}")
     if [[ -n "${VERTEX_CREDENTIALS_JSON:-}" ]]; then
-      CLUSTER_INSTALL_HELM_SETS+=(--set-string "aiGateway.providers.vertex.credentialsJson=${VERTEX_CREDENTIALS_JSON}")
+      CLUSTER_INSTALL_HELM_SETS+=(--set-string "workspace.models.providers.vertex.credentialsJson=${VERTEX_CREDENTIALS_JSON}")
     fi
     if [[ "${VERTEX_ANTHROPIC:-}" == "true" ]]; then
-      CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.vertex.anthropic=true")
+      CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.vertex.anthropic=true")
     fi
   fi
   if [[ -n "${COHERE_API_KEY:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.providers.cohere.apiKey=${COHERE_API_KEY}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.providers.cohere.apiKey=${COHERE_API_KEY}")
   fi
   if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "aiGateway.defaultModel=${DEFAULT_LLM_MODEL}")
-    CLUSTER_INSTALL_HELM_SETS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")
-    CLUSTER_INSTALL_HELM_SETS+=(--set-string "langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.models.defaultModel=${DEFAULT_LLM_MODEL}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set "workspace.policies.nemo.model=${DEFAULT_LLM_MODEL}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set-string "platform.telemetry.langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
   fi
 }
 
@@ -372,9 +372,9 @@ cluster_install_langfuse_secrets() {
     LANGFUSE_ENCRYPTION_KEY="$(cluster_install_rand_hex32)"
   fi
   CLUSTER_INSTALL_HELM_SETS+=(
-    --set "langfuse.nextauthSecret=${LANGFUSE_NEXTAUTH_SECRET}"
-    --set "langfuse.salt=${LANGFUSE_SALT}"
-    --set "langfuse.encryptionKey=${LANGFUSE_ENCRYPTION_KEY}"
+    --set "platform.telemetry.langfuse.nextauthSecret=${LANGFUSE_NEXTAUTH_SECRET}"
+    --set "platform.telemetry.langfuse.salt=${LANGFUSE_SALT}"
+    --set "platform.telemetry.langfuse.encryptionKey=${LANGFUSE_ENCRYPTION_KEY}"
   )
 }
 
@@ -405,8 +405,8 @@ cluster_install_platform_secrets() {
     --set "clickhouse.auth.password=${CLICKHOUSE_PASSWORD}"
     --set "seaweedfs.auth.accessKey=${SEAWEEDFS_ACCESS_KEY}"
     --set "seaweedfs.auth.secretKey=${SEAWEEDFS_SECRET_KEY}"
-    --set "mcp.sandboxMCP.workerToken=${WORKER_TOKEN}"
-    --set "aiGateway.consumerKey=${AI_GATEWAY_CONSUMER_KEY}"
+    --set "workspace.tools.sandboxMCP.workerToken=${WORKER_TOKEN}"
+    --set "workspace.models.consumerKey=${AI_GATEWAY_CONSUMER_KEY}"
   )
 }
 
@@ -417,7 +417,7 @@ cluster_install_print_secret_howto() {
   echo "Install secrets are in cluster Secrets (override with env before install):"
   echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN / AI_GATEWAY_CONSUMER_KEY"
   echo "  LANGFUSE_NEXTAUTH_SECRET / LANGFUSE_SALT / LANGFUSE_ENCRYPTION_KEY"
-  echo "  Langfuse project keys (when langfuse.init.enabled): ${rel}-langfuse-init / ${rel}-langfuse-otel"
+  echo "  Langfuse project keys (when platform.telemetry.langfuse.init.enabled): ${rel}-langfuse-init / ${rel}-langfuse-otel"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-postgresql -o jsonpath='{.data.password}' | base64 -d; echo"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-clickhouse -o jsonpath='{.data.password}' | base64 -d; echo"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-seaweedfs -o jsonpath='{.data.access-key}' | base64 -d; echo"
@@ -432,7 +432,7 @@ cluster_install_append_host_helm_sets() {
   CLUSTER_INSTALL_HELM_SETS+=(
     --set "gateway.hosts.agents=${HOSTS_AGENTS}"
     --set "gateway.hosts.langfuse=${HOSTS_LANGFUSE}"
-    --set "langfuse.nextauthUrl=${CLUSTER_INSTALL_NEXTAUTH_SCHEME}://${HOSTS_LANGFUSE}"
+    --set "platform.telemetry.langfuse.nextauthUrl=${CLUSTER_INSTALL_NEXTAUTH_SCHEME}://${HOSTS_LANGFUSE}"
   )
   if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]]; then
     CLUSTER_INSTALL_HELM_SETS+=(
@@ -662,6 +662,22 @@ cluster_install_wait_langfuse_bootstrap() {
   kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
     wait "job/${job}" --for=condition=complete --timeout=20m || \
     cluster_install_warn_or_fail "Langfuse bootstrap Job did not complete"
+}
+
+cluster_install_enable_langfuse_public_route() {
+  local values_file="$1"
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  if ! kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
+    get deploy "${CLUSTER_INSTALL_RELEASE}-langfuse" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "install: enabling Langfuse public HTTPRoute after bootstrap"
+  local cmd=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && cmd+=("$line")
+  done < <(cluster_install_helm_cmd "$values_file")
+  cmd+=(--set "platform.telemetry.langfuse.publicHttpRoute.enabled=true")
+  cluster_install_print_or_run HELM "${cmd[@]}"
 }
 
 cluster_install_prepare() {

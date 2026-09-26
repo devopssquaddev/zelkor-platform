@@ -758,52 +758,52 @@ if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
   )
 fi
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.openai.apiKey=${OPENAI_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.openai.apiKey=${OPENAI_API_KEY}")
 fi
 if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.anthropic.apiKey=${ANTHROPIC_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.anthropic.apiKey=${ANTHROPIC_API_KEY}")
 fi
 if [[ -n "${GEMINI_API_KEY:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.gemini.apiKey=${GEMINI_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.gemini.apiKey=${GEMINI_API_KEY}")
 fi
 if [[ -n "${OLLAMA_API_KEY:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.ollamaCloud.apiKey=${OLLAMA_API_KEY}")
 fi
 if [[ -n "${OLLAMA_LOCAL_HOST:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.ollamaLocal.host=${OLLAMA_LOCAL_HOST}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.ollamaLocal.host=${OLLAMA_LOCAL_HOST}")
 elif [[ -n "$SELECTED_OLLAMA_LOCAL_HOST" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.ollamaLocal.host=${SELECTED_OLLAMA_LOCAL_HOST}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.ollamaLocal.host=${SELECTED_OLLAMA_LOCAL_HOST}")
 fi
 if [[ -n "${VLLM_BACKEND_URL:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.vllm.backendUrl=${VLLM_BACKEND_URL}")
 fi
 if [[ -n "${AZURE_OPENAI_API_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.azure.apiKey=${AZURE_OPENAI_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.azure.endpoint=${AZURE_OPENAI_ENDPOINT}")
 fi
 if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.bedrock.region=${AWS_REGION:-us-east-1}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.bedrock.accessKeyId=${AWS_ACCESS_KEY_ID}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.bedrock.secretAccessKey=${AWS_SECRET_ACCESS_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.bedrock.region=${AWS_REGION:-us-east-1}")
 fi
 if [[ -n "${VERTEX_PROJECT:-}" && -n "${VERTEX_REGION:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vertex.project=${VERTEX_PROJECT}")
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vertex.region=${VERTEX_REGION}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.vertex.project=${VERTEX_PROJECT}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.vertex.region=${VERTEX_REGION}")
   if [[ -n "${VERTEX_CREDENTIALS_JSON:-}" ]]; then
-    HELM_EXTRA_ARGS+=(--set-string "aiGateway.providers.vertex.credentialsJson=${VERTEX_CREDENTIALS_JSON}")
+    HELM_EXTRA_ARGS+=(--set-string "workspace.models.providers.vertex.credentialsJson=${VERTEX_CREDENTIALS_JSON}")
   fi
   if [[ "${VERTEX_ANTHROPIC:-}" == "true" ]]; then
-    HELM_EXTRA_ARGS+=(--set "aiGateway.providers.vertex.anthropic=true")
+    HELM_EXTRA_ARGS+=(--set "workspace.models.providers.vertex.anthropic=true")
   fi
 fi
 if [[ -n "${COHERE_API_KEY:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.providers.cohere.apiKey=${COHERE_API_KEY}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.providers.cohere.apiKey=${COHERE_API_KEY}")
 fi
 if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
-  HELM_EXTRA_ARGS+=(--set "aiGateway.defaultModel=${DEFAULT_LLM_MODEL}")
-  HELM_EXTRA_ARGS+=(--set "guardrails.nemo.model=${DEFAULT_LLM_MODEL}")
+  HELM_EXTRA_ARGS+=(--set "workspace.models.defaultModel=${DEFAULT_LLM_MODEL}")
+  HELM_EXTRA_ARGS+=(--set "workspace.policies.nemo.model=${DEFAULT_LLM_MODEL}")
   # Playground needs a custom model id on the Zelkor connection (no baked gpt-4o list).
-  HELM_EXTRA_ARGS+=(--set-string "langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
+  HELM_EXTRA_ARGS+=(--set-string "platform.telemetry.langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
 fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
@@ -834,9 +834,9 @@ append_gateway_url_helm() {
   host="${host%%/*}"
   host="${host%%:*}"
   HELM_EXTRA_ARGS+=(
-    --set "aiGateway.internalUrl=${url}"
-    --set "aiGateway.inClusterService.targetHost=${host}"
-    --set "mcp.qdrantMCP.aiGatewayUrl=${url}"
+    --set "workspace.models.internalUrl=${url}"
+    --set "workspace.models.inClusterService.targetHost=${host}"
+    --set "workspace.tools.qdrantMCP.aiGatewayUrl=${url}"
   )
 }
 
@@ -888,7 +888,7 @@ discover_internal_gateway_url() {
 
 if DISCOVERED_INTERNAL_URL=$(discover_internal_gateway_url); then
   if [[ "$DISCOVERED_INTERNAL_URL" == "$GATEWAY_INTERNAL_URL" ]]; then
-    log "aiGateway.internalUrl already ${DISCOVERED_INTERNAL_URL}; skipping second Helm upgrade"
+    log "workspace.models.internalUrl already ${DISCOVERED_INTERNAL_URL}; skipping second Helm upgrade"
   else
     log "Patching in-cluster AI Gateway URL for platform workloads: ${DISCOVERED_INTERNAL_URL}"
     GATEWAY_INTERNAL_URL="$DISCOVERED_INTERNAL_URL"
@@ -900,12 +900,12 @@ if DISCOVERED_INTERNAL_URL=$(discover_internal_gateway_url); then
     helm upgrade "$HELM_RELEASE_NAME" "$CHART_PATH" \
       --kube-context "$KCTX" \
       --reuse-values \
-      --set "aiGateway.internalUrl=${GATEWAY_INTERNAL_URL}" \
-      --set "aiGateway.inClusterService.targetHost=${GATEWAY_TARGET_HOST}" \
-      --set "mcp.qdrantMCP.aiGatewayUrl=${GATEWAY_INTERNAL_URL}"
+      --set "workspace.models.internalUrl=${GATEWAY_INTERNAL_URL}" \
+      --set "workspace.models.inClusterService.targetHost=${GATEWAY_TARGET_HOST}" \
+      --set "workspace.tools.qdrantMCP.aiGatewayUrl=${GATEWAY_INTERNAL_URL}"
   fi
 else
-  log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until aiGateway.internalUrl is set."
+  log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until workspace.models.internalUrl is set."
 fi
 
 step_begin rollout_langfuse
@@ -958,10 +958,17 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
     FINSERVE_HELM_ARGS+=(--set-string "quant.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
     FINSERVE_HELM_ARGS+=(--set-string "coder.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
   fi
-  helm upgrade --install finserve "$FINSERVE_CHART_PATH" \
-    --kube-context "$KCTX" \
-    -f "$FINSERVE_VALUES_FILE" \
-    "${FINSERVE_HELM_ARGS[@]}"
+  finserve_helm_apply() {
+    helm upgrade --install finserve "$FINSERVE_CHART_PATH" \
+      --kube-context "$KCTX" \
+      -f "$FINSERVE_VALUES_FILE" \
+      "${FINSERVE_HELM_ARGS[@]}"
+  }
+  if ! finserve_helm_apply; then
+    log "FinServe helm failed (often concurrent release lock); retrying once..."
+    sleep 3
+    finserve_helm_apply
+  fi
   step_end finserve_helm
 
   log "Tracking FinServe demo rollout..."
@@ -971,6 +978,16 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   step_end job_finserve_seed
   step_begin rollout_finserve
   wait_group optional "[2/2] FinServe desk + quant + coder" \
+    deployment/finserve-desk \
+    deployment/finserve-quant \
+    deployment/finserve-coder
+  # Workers can start before Aegra migrate finishes on a profile upgrade; recycle once DB is ready.
+  log "Recycling FinServe agent Deployments (graph registration after shared Postgres migrate)..."
+  kubectl --context "$KCTX" rollout restart \
+    deployment/finserve-desk \
+    deployment/finserve-quant \
+    deployment/finserve-coder
+  wait_group optional "FinServe agents (post-recycle)" \
     deployment/finserve-desk \
     deployment/finserve-quant \
     deployment/finserve-coder
@@ -1011,7 +1028,7 @@ if [[ -s "$INSTALL_TIMINGS_FILE" ]]; then
 fi
 
 install_print_access_footer() {
-local lf_host="${INSTALL_DISPLAY_GATEWAY_LANGFUSE_HOST:-langfuse.localhost}"
+local lf_host="${INSTALL_DISPLAY_GATEWAY_LANGFUSE_HOST:-platform.telemetry.langfuse.localhost}"
 local aigw_host="${INSTALL_DISPLAY_GATEWAY_AIGW_HOST:-ai-gateway.localhost}"
 local agents_host="${INSTALL_DISPLAY_GATEWAY_AGENTS_HOST:-agents.localhost}"
 LF_UI_EMAIL="${INSTALL_DISPLAY_LANGFUSE_ADMIN_EMAIL:-}"
@@ -1069,7 +1086,7 @@ cat <<EOF
 
   [Envoy AI Gateway]
     URL:              http://${aigw_host}:8088/v1/chat/completions
-    Bearer Token:     ${AIGW_KEY:-<aiGateway.consumerKey in profile>}
+    Bearer Token:     ${AIGW_KEY:-<workspace.models.consumerKey in profile>}
     Tenant Header:    X-Tenant-ID: tenant_a
     LLM Providers:    ${LLM_PROVIDER_SUMMARY}
     Default Model:    ${DEFAULT_LLM_MODEL}

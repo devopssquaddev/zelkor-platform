@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.gateway.enabled (eq (include "zelkor-platform.gatewayCreateGateway" . | trim) "true") }}
 {{- $tls := .Values.gateway.tls | default dict }}
 {{- $hosts := .Values.gateway.hosts | default dict }}
@@ -10,7 +11,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-gateway
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "gateway") | nindent 4 }}
   {{- if or .Values.gateway.annotations (and $tlsOn $issuer (not $preCerts)) }}
   annotations:
     {{- with .Values.gateway.annotations }}

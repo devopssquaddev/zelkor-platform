@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled }}
 {{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
 {{- if $targetHost }}
@@ -7,7 +8,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-ai-gateway
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   type: ExternalName

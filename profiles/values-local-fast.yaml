@@ -2,55 +2,37 @@
 # gVisor sandbox MCP with one warm-pool worker; skips NetworkPolicies and Langfuse evaluator seed.
 # Langfuse MCP tools seed (Playground llm_tools) is on; evaluators stay off.
 # Envoy hostNetwork:true maps kind extraPortMappings 8088; see docs/quickstart.md.
-
+---
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
-
-logging:
-  level: INFO
-  format: json
-
 databases:
   mode: in-cluster-basic
-
 highAvailability:
   enabled: false
-
 security:
-  mTLS:
-    enabled: false
   sandbox:
     enabled: true
     runtimeClass: gvisor
     failClosed: false
     provisioning:
       mode: daemonset
+    executionLog:
+      includeStdoutPreview: true
   networkPolicies:
     enabled: false
-
-auth:
-  sso:
-    enabled: false
-  jwtSecret: "zelkor-local-jwt-secret"
-  devTokens:
-    enabled: true
-    prefix: "dev:"
-  trustTenantHeader: true
-
 gateway:
   enabled: true
-  gatewayClassName: "eg"
+  gatewayClassName: eg
   envoyProxy:
     enabled: true
     hostNetwork: true
   hosts:
-    langfuse: "langfuse.localhost"
-    aiGateway: "ai-gateway.localhost"
-    aegra: "aegra.localhost"
-    mcp: "mcp.localhost"
-    nemo: "nemo.localhost"
-
+    langfuse: langfuse.localhost
+    aiGateway: ai-gateway.localhost
+    agents: agents.localhost
+    mcp: mcp.localhost
+    nemo: nemo.localhost
 postgresql:
   enabled: true
   auth:
@@ -58,12 +40,10 @@ postgresql:
     password: zelkor-dev-password
     postgresPassword: zelkor-postgres-pass
     database: zelkor
-
 valkey:
   enabled: true
   auth:
     password: zelkor-valkey-dev-password
-
 clickhouse:
   enabled: true
   auth:
@@ -74,88 +54,98 @@ clickhouse:
       cpu: 250m
       memory: 1Gi
     limits:
-      cpu: "1"
+      cpu: '1'
       memory: 2Gi
-
 seaweedfs:
   enabled: true
   auth:
     accessKey: zelkor-s3-dev
     secretKey: zelkor-s3-dev-secret
-
 qdrant:
   enabled: true
-
-aiGateway:
-  enabled: true
-  consumerKey: "dev-key"
-  providers:
-    ollamaLocal:
-      host: ""
-    ollamaCloud:
-      apiKey: ""
-
-langfuse:
-  enabled: true
-  replicaCount: 1
-  startupProbe:
-    initialDelaySeconds: 5
-  surfaces:
-    image:
-      tag: "dev"
-    llmConnection:
+platform:
+  tenants:
+    sso:
+      enabled: false
+    jwtSecret: zelkor-local-jwt-secret
+    devTokens:
       enabled: true
-    tools:
-      seedFromMcp: true
-    evaluators:
-      seedCode: false
-  nextauthUrl: "http://langfuse.localhost:8088"
-  nextauthSecret: "zelkor-langfuse-nextauth-secret-12345"
-  salt: "zelkor-langfuse-salt-123456789"
-  encryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-  admin:
-    email: "admin@zelkor.local"
-    name: "Zelkor Admin"
-    password: "Zelkor-dev1!"
-  init:
-    enabled: true
-    orgId: "zelkor-dev"
-    orgName: "Zelkor Dev"
-    projectId: "zelkor-platform"
-    projectName: "Zelkor Platform"
-    projectPublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-    projectSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
-    userEmail: "admin@zelkor.local"
-    userName: "Zelkor Admin"
-    userPassword: "Zelkor-dev1!"
-
-aegra:
-  enabled: true
-  replicaCount: 1
-  image:
-    tag: "dev"
-  cli:
-    image:
-      tag: "dev"
-
-guardrails:
-  nemo:
-    enabled: true
-    image:
-      tag: "dev"
-    observability:
-      otel:
+      prefix: 'dev:'
+    trustTenantHeader: true
+  telemetry:
+    level: INFO
+    format: json
+    langfuse:
+      enabled: true
+      publicHttpRoute:
         enabled: true
-        captureContent: true
-
-mcp:
-  enabled: true
-  image:
-    tag: "dev"
-  sandboxMCP:
-    # One gVisor worker is enough for fast-profile TTFV; sandbox still works.
-    warmPool:
-      replicas: 1
-    workerImage:
-      tag: "dev"
-    workerToken: "zelkor-local-sandbox-worker-token"
+      replicaCount: 1
+      startupProbe:
+        initialDelaySeconds: 5
+      surfaces:
+        image:
+          tag: dev
+        llmConnection:
+          enabled: true
+        tools:
+          seedFromMcp: true
+        evaluators:
+          seedCode: false
+      nextauthUrl: http://langfuse.localhost:8088
+      nextauthSecret: zelkor-langfuse-nextauth-secret-12345
+      salt: zelkor-langfuse-salt-123456789
+      encryptionKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+      admin:
+        email: admin@zelkor.local
+        name: Zelkor Admin
+        password: Zelkor-dev1!
+      init:
+        enabled: true
+        orgId: zelkor-dev
+        orgName: Zelkor Dev
+        projectId: zelkor-platform
+        projectName: Zelkor Platform
+        projectPublicKey: pk-lf-zelkor-dev-00000000000000000000
+        projectSecretKey: sk-lf-zelkor-dev-00000000000000000000
+        userEmail: admin@zelkor.local
+        userName: Zelkor Admin
+        userPassword: Zelkor-dev1!
+  mTLS:
+    enabled: false
+workspace:
+  models:
+    enabled: true
+    consumerKey: dev-key
+    providers:
+      ollamaLocal:
+        host: ''
+      ollamaCloud:
+        apiKey: ''
+  policies:
+    nemo:
+      enabled: true
+      image:
+        tag: dev
+      observability:
+        otel:
+          enabled: true
+          captureContent: true
+  tools:
+    enabled: true
+    image:
+      tag: dev
+    sandboxMCP:
+      warmPool:
+        replicas: 1
+      workerImage:
+        tag: dev
+      workerToken: zelkor-local-sandbox-worker-token
+workload:
+  agents:
+    enabled: true
+    replicaCount: 1
+    image:
+      tag: dev
+    cli:
+      image:
+        tag: dev

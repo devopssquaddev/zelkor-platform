@@ -28,7 +28,7 @@ OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
   --hosts-langfuse langfuse.yourdomain.com
 ```
 
-The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. Datastore, sandbox worker, AI Gateway consumer key, and Langfuse crypto secrets are generated when unset and stored in cluster Secrets. The profile creates default Langfuse project **Zelkor Platform**; ingest keys live in `{release}-langfuse-otel`. Auto-generated `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, and `SEAWEEDFS_*` are hex (URL-safe for Langfuse migration URLs). If you set `CLICKHOUSE_PASSWORD` yourself, use a URL-safe value (no `+`, `/`, `=`, `@`, `&`, etc.). Override with `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `SEAWEEDFS_*`, `WORKER_TOKEN`, or `LANGFUSE_*`. `--generate-passwords` also prints them once.
+The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. It waits for the Langfuse bootstrap Job, then runs a second Helm upgrade with `platform.telemetry.langfuse.publicHttpRoute.enabled=true` so the public Langfuse UI route is not exposed until the first admin exists. Datastore, sandbox worker, AI Gateway consumer key, and Langfuse crypto secrets are generated when unset and stored in cluster Secrets. The profile creates default Langfuse project **Zelkor Platform**; ingest keys live in `{release}-langfuse-otel`. Auto-generated `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, and `SEAWEEDFS_*` are hex (URL-safe for Langfuse migration URLs). If you set `CLICKHOUSE_PASSWORD` yourself, use a URL-safe value (no `+`, `/`, `=`, `@`, `&`, etc.). Override with `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `SEAWEEDFS_*`, `WORKER_TOKEN`, or `LANGFUSE_*`. `--generate-passwords` also prints them once. GitOps without the installer: keep `platform.telemetry.langfuse.publicHttpRoute.enabled` false until `{release}-langfuse-bootstrap` completes.
 
 ```bash
 # Existing ingress (NGINX, Traefik, ALB) — also valid when EG is already running
@@ -91,10 +91,10 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set clickhouse.auth.password="secure-ch-password" \
   --set seaweedfs.auth.accessKey="secure-s3-access" \
   --set seaweedfs.auth.secretKey="secure-s3-secret" \
-  --set langfuse.nextauthSecret="$(openssl rand -base64 32)" \
-  --set langfuse.salt="$(openssl rand -base64 32)" \
-  --set langfuse.encryptionKey="$(openssl rand -hex 32)" \
-  --set langfuse.nextauthUrl="https://langfuse.yourdomain.com" \
+  --set platform.telemetry.langfuse.nextauthSecret="$(openssl rand -base64 32)" \
+  --set platform.telemetry.langfuse.salt="$(openssl rand -base64 32)" \
+  --set platform.telemetry.langfuse.encryptionKey="$(openssl rand -hex 32)" \
+  --set platform.telemetry.langfuse.nextauthUrl="https://langfuse.yourdomain.com" \
   --set gateway.hosts.agents="agents.yourdomain.com" \
   --set gateway.hosts.langfuse="langfuse.yourdomain.com"
 ```
@@ -119,17 +119,17 @@ kubectl -n envoy-ai-gateway-system scale deploy/ai-gateway-controller --replicas
 
 ## NeMo guardrails traces in Langfuse
 
-Prerequisites: `langfuse.enabled` and `langfuse.init.enabled` (install scripts set this on quickstart/production).
+Prerequisites: `platform.telemetry.langfuse.enabled` and `platform.telemetry.langfuse.init.enabled` (install scripts set this on quickstart/production).
 
 Enable OpenTelemetry export on the NeMo Deployment:
 
 ```bash
 helm upgrade --install zelkor-platform ./charts/zelkor-platform \
   --namespace zelkor --reuse-values \
-  --set guardrails.nemo.observability.otel.enabled=true
+  --set workspace.policies.nemo.observability.otel.enabled=true
 ```
 
-NeMo loads Langfuse ingest keys from the cluster Secret `{release}-langfuse-otel` (`envFrom`). You do **not** need `langfuse.extraProjects` for a single Langfuse project. Use `extraProjects` only when multiple Langfuse projects need NeMo OTLP routing (per-agent public keys). Optional: `guardrails.nemo.observability.otel.captureContent=true` for observation input/output (PII).
+NeMo loads Langfuse ingest keys from the cluster Secret `{release}-langfuse-otel` (`envFrom`). You do **not** need `platform.telemetry.langfuse.extraProjects` for a single Langfuse project. Use `extraProjects` only when multiple Langfuse projects need NeMo OTLP routing (per-agent public keys). Optional: `workspace.policies.nemo.observability.otel.captureContent=true` for observation input/output (PII).
 
 After a chat completion through NeMo or the AI Gateway intercept, Langfuse should show rails such as `self_check_input` and `guardrails.request`. NeMo logs must not show OTLP export `401 Unauthorized`.
 

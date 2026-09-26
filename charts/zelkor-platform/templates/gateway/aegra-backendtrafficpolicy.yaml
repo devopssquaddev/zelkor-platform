@@ -1,4 +1,7 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- $agentsHost := include "zelkor-platform.agentsHost" . }}
+{{- $intent := .Values.__workloadIntent | default dict -}}
+{{- $timeout := $intent.timeout | default "" | toString | trim -}}
 {{- if and .Values.gateway.enabled .Values.aegra.enabled $agentsHost }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
@@ -6,7 +9,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-aegra-sse
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "workload.intent") | nindent 4 }}
     app.kubernetes.io/component: aegra
 spec:
   targetRefs:
@@ -16,7 +19,7 @@ spec:
   mergeType: StrategicMerge
   timeout:
     http:
-      requestTimeout: 0s
+      requestTimeout: {{ if $timeout }}{{ $timeout | quote }}{{ else }}0s{{ end }}
       maxStreamDuration: 0s
-      streamIdleTimeout: 1h
+      streamIdleTimeout: {{ if $timeout }}{{ $timeout | quote }}{{ else }}1h{{ end }}
 {{- end }}

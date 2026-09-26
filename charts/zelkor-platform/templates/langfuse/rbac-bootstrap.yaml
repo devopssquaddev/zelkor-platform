@@ -1,9 +1,10 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.langfuse.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse-bootstrap
 {{- end }}

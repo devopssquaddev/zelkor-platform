@@ -1,10 +1,11 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.guardrails.nemo.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-nemo
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "guardrails.nemo") | nindent 4 }}
     app.kubernetes.io/component: guardrails
 spec:
   type: ClusterIP

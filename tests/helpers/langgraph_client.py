@@ -24,7 +24,7 @@ def _request_headers(*, tenant_id: str, graph_id: str | None = None) -> dict[str
     headers = {
         "Authorization": f"Bearer {token or f'dev:{tenant_id}'}",
         "Host": os.environ.get("AGENTS_HOST_HEADER")
-        or os.environ.get("AEGRA_HOST_HEADER", "aegra.localhost"),
+        or os.environ.get("AEGRA_HOST_HEADER", "agents.localhost"),
         "X-Tenant-ID": tenant_id,
     }
     if graph_id:

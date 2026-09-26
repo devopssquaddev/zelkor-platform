@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
 {{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
 {{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
@@ -8,7 +9,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-unknown-model
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   directResponse:
@@ -24,7 +25,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-unknown-model
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   parentRefs:

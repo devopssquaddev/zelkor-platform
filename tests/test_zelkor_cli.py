@@ -10,9 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "cli" / "src"))
 sys.path.insert(0, str(ROOT / "images" / "aegra-deep"))
 
-from zelkor.detect import DetectError, customer_dockerfile, detect, should_attach_as_default  # noqa: E402
+from zelkor.detect import (  # noqa: E402
+    DetectError,
+    agent_deployment_name,
+    customer_dockerfile,
+    detect,
+    should_attach_as_default,
+)
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
-from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, in_cluster_openai_base_url, main, merge_extra_backends  # noqa: E402
+from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, in_cluster_openai_base_url, main, merge_extra_backends  # noqa: E402
 
 
 def test_detect_deploy_first(tmp_path):
@@ -83,6 +89,13 @@ def test_should_attach_as_default_skips_existing_workers():
     assert should_attach_as_default([], "desk") is True
     assert should_attach_as_default(["desk-zelkor-agent-route"], "desk") is True
     assert should_attach_as_default(["finserve-desk-zelkor-agent-route"], "agent") is False
+
+
+def test_agent_deployment_name_matches_helm_fullname():
+    assert agent_deployment_name("agent") == "agent-zelkor-agent"
+    assert agent_deployment_name("desk") == "desk-zelkor-agent"
+    assert agent_deployment_name("zelkor-agent") == "zelkor-agent"
+    assert agent_deployment_name("my-zelkor-agent") == "my-zelkor-agent"
 
 
 def test_merge_extra_backends_keeps_existing():
@@ -340,6 +353,40 @@ def test_auth_values_copy_platform_wrap_auth():
 
 def test_upgrade_text_constant():
     assert "Pro" in UPGRADE
+
+
+def test_deploy_agent_rejects_approval_threshold_on_ce(tmp_path):
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    with pytest.raises(RuntimeError, match="Pro"):
+        deploy_agent(
+            root=tmp_path,
+            env=env,
+            push=False,
+            skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            approval_threshold="0.5",
+            runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
+        )
+
+
+def test_deploy_agent_requires_registry_off_kind(tmp_path, monkeypatch):
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_IMAGE_REGISTRY", raising=False)
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    with pytest.raises(RuntimeError, match="ZELKOR_IMAGE_REGISTRY"):
+        deploy_agent(
+            root=tmp_path,
+            env=env,
+            push=False,
+            skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
+        )
 
 
 def test_cli_deploy_overlay_has_no_sandbox_worker_urls():

@@ -1,0 +1,15 @@
+{{- include "zelkor-platform.compile" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zelkor-platform-contract
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.contract") | nindent 4 }}
+data:
+  CONTRACT_VERSION: "v2.0"
+  AI_GATEWAY_SERVICE: {{ printf "%s-ai-gateway.%s.svc.cluster.local:%v" (include "zelkor-platform.fullname" .) .Release.Namespace (.Values.aiGateway.inClusterService.port | default 80) | quote }}
+  MCP_GATEWAY_SERVICE: {{ printf "%s-mcp-gateway.%s.svc.cluster.local:8080" (include "zelkor-platform.fullname" .) .Release.Namespace | quote }}
+  AEGRA_FRONTDOOR_SERVICE: {{ printf "%s-aegra.%s.svc.cluster.local:8000" (include "zelkor-platform.fullname" .) .Release.Namespace | quote }}
+  DATABASE_SECRET_REF: {{ printf "%s-postgresql" (include "zelkor-platform.fullname" .) | quote }}
+  VALKEY_SECRET_REF: {{ printf "%s-valkey" (include "zelkor-platform.fullname" .) | quote }}

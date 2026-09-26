@@ -14,6 +14,10 @@ source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 
 cluster_install_init
 
+if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
+  export ZELKOR_BOOTSTRAP_DRY_RUN=1
+fi
+
 ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.1}"
 BARMAN_PLUGIN_VERSION="${BARMAN_PLUGIN_VERSION:-0.14.0}"
 

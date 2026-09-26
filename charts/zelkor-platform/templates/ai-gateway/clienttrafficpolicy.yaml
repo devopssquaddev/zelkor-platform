@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.gateway.enabled .Values.aiGateway.enabled (eq (include "zelkor-platform.gatewayCreateGateway" . | trim) "true") }}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
@@ -5,7 +6,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-client-traffic-policy
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:

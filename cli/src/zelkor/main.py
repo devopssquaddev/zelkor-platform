@@ -19,6 +19,7 @@ import yaml
 from zelkor import __version__
 from zelkor.detect import (
     DetectError,
+    agent_deployment_name,
     customer_dockerfile,
     deploy_first_langgraph,
     detect,
@@ -286,12 +287,24 @@ def deploy_agent(
     platform_chart: Path,
     runner: Optional[RunFn] = None,
     skip_build: bool = False,
+    run_timeout: str = "",
+    max_tokens: int = 0,
+    approval_threshold: str = "",
+    image_registry: str = "",
 ) -> dict[str, Any]:
+    if approval_threshold:
+        raise RuntimeError(UPGRADE)
+    registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
+    if not _is_kind(env) and not registry:
+        raise RuntimeError(
+            "Set ZELKOR_IMAGE_REGISTRY or pass --registry when deploying to a non-kind cluster"
+        )
+    if not registry:
+        registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
     info = discover_platform(env, runner=runner)
     as_default = should_attach_as_default(info.agent_route_names, release)
-    registry = os.getenv("ZELKOR_IMAGE_REGISTRY", "ghcr.io/devopssquaddev").rstrip("/")
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
     image_ref = f"{image_repo}:{tag}"
@@ -330,6 +343,17 @@ def deploy_agent(
         },
         "auth": auth_values(info),
     }
+    if run_timeout or max_tokens or approval_threshold:
+        overlay["workload"] = {
+            "intent": {
+                "timeout": run_timeout,
+                "maxTokens": max_tokens,
+                "approval": {
+                    "enabled": bool(approval_threshold),
+                    "threshold": approval_threshold,
+                },
+            }
+        }
     if info.image_pull_secrets:
         overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
@@ -351,17 +375,20 @@ def deploy_agent(
         plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
         plat_file = ""
         if as_default:
-            plat_args.extend(["--set", "aegra.attachDefaultRoute=false"])
+            plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
         if shape.mcp_servers:
             current = yaml.safe_load(
                 _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner).stdout or ""
             ) or {}
+            tools = (current.get("workspace") or {}).get("tools") or {}
             plat = {
-                "mcp": {
-                    "extraBackends": merge_extra_backends(
-                        ((current.get("mcp") or {}).get("extraBackends") or []),
-                        list(shape.mcp_servers),
-                    )
+                "workspace": {
+                    "tools": {
+                        "extraBackends": merge_extra_backends(
+                            (tools.get("extraBackends") or []),
+                            list(shape.mcp_servers),
+                        )
+                    }
                 }
             }
             with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as pfh:
@@ -379,7 +406,7 @@ def deploy_agent(
                 env,
                 "rollout",
                 "status",
-                f"deployment/{release}-zelkor-agent",
+                f"deployment/{agent_deployment_name(release)}",
                 "--timeout=180s",
             ),
             runner=runner,
@@ -435,7 +462,7 @@ def cmd_logs(
 ) -> int:
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
-    deploy = f"deployment/{release}-zelkor-agent"
+    deploy = f"deployment/{agent_deployment_name(release)}"
     argv = kube_argv(env, "logs", deploy)
     if follow:
         argv.append("-f")
@@ -680,6 +707,10 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
 
     for p in (sub.choices["dev"], sub.choices["deploy"]):
         p.add_argument("--graph-id", default="")
+        p.add_argument("--timeout", default="", help="workload.intent.timeout (Envoy/Aegra)")
+        p.add_argument("--max-tokens", type=int, default=0, help="workload.intent.maxTokens")
+        p.add_argument("--approval-threshold", default="", help="workload.intent.approval.threshold (Pro)")
+        p.add_argument("--registry", default="", help="container registry for agent image (required off kind)")
         p.add_argument("directory", nargs="?", default=".")
 
     args = parser.parse_args(argv)
@@ -767,7 +798,14 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
             platform_chart=platform_chart,
             runner=runner,
             skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
+            run_timeout=getattr(args, "timeout", "") or "",
+            max_tokens=int(getattr(args, "max_tokens", 0) or 0),
+            approval_threshold=getattr(args, "approval_threshold", "") or "",
+            image_registry=getattr(args, "registry", "") or "",
         )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     except DetectError as exc:
         print(str(exc), file=sys.stderr)
         return 1

@@ -2,30 +2,34 @@
 # Demo-domain knobs only — no hosts, passwords, or kind Service DNS.
 # Kind MCP DSN: values-platform-overlay-local.yaml (install.sh only).
 # Graph routing is self-register (zelkor-agent sharedRoute), not aegra.workers.
-mcp:
-  qdrantMCP:
-    collection: "finserve_policies"
-
-aegra:
-  tenantOrgMappings:
-    org_alpha: Bank_Alpha
-    org_beta: Bank_Beta
-
-guardrails:
-  nemo:
-    extraColang: ""
-    extraInputFlows:
+---
+platform:
+  tenants:
+    orgMappings:
+      org_alpha: Bank_Alpha
+      org_beta: Bank_Beta
+workspace:
+  policies:
+    nemo:
+      extraColang: ''
+      extraInputFlows:
       - regex check input
-    extraRailsConfig:
-      regex_detection:
-        input:
-          case_insensitive: true
-          patterns:
-            - '\bpoem\b'
-            - '\bjoke\b'
-            - '\bweather\b'
-    complianceRefusal: "Request violated FinServe compliance, tenant privacy, and security guardrail policies."
-    observability:
-      otel:
-        enabled: true
-        captureContent: true
+      extraRailsConfig:
+        regex_detection:
+          input:
+            case_insensitive: true
+            patterns:
+            - "\\bpoem\\b"
+            - "\\bjoke\\b"
+            - "\\bweather\\b"
+      complianceRefusal: Request violated FinServe compliance, tenant privacy, and
+        security guardrail policies.
+      observability:
+        otel:
+          enabled: true
+          captureContent: true
+  tools:
+    qdrantMCP:
+      collection: finserve_policies
+workload:
+  agents: {}

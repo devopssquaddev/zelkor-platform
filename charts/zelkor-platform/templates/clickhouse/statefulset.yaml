@@ -1,10 +1,11 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.clickhouse.enabled (eq .Values.databases.mode "in-cluster-basic") }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-clickhouse
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "clickhouse") | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 spec:
   type: ClusterIP
@@ -24,7 +25,7 @@ kind: ConfigMap
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-clickhouse-log
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "clickhouse") | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 data:
   zelkor-log.xml: |
@@ -48,7 +49,7 @@ kind: StatefulSet
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-clickhouse
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "clickhouse") | nindent 4 }}
     app.kubernetes.io/component: clickhouse
 spec:
   serviceName: {{ include "zelkor-platform.fullname" . }}-clickhouse

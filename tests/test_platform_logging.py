@@ -197,15 +197,15 @@ def test_first_party_entrypoints_configure_logging():
 
 def test_chart_default_is_info_json_not_debug():
     values = (CHART / "values.yaml").read_text()
-    block = values.split("\nlogging:", 1)[1].split("\n\n", 1)[0]
+    block = values.split("  telemetry:", 1)[1].split("\nworkspace:", 1)[0]
     assert "level: INFO" in block
     assert "format: json" in block
-    assert "DEBUG" not in block
+    assert "DEBUG" not in block.split("level: INFO", 1)[0]
 
 
 def test_local_overlay_sets_debug():
     text = (ROOT / "profiles" / "values-local.yaml").read_text()
-    assert "level: DEBUG" in text.split("\nlogging:", 1)[1].split("\n\n", 1)[0]
+    assert "level: DEBUG" in text.split("  telemetry:", 1)[1].split("\nworkspace:", 1)[0]
 
 
 def test_helper_defines_log_env():
@@ -301,7 +301,7 @@ def test_helm_chart_default_is_info_not_debug():
         "-f",
         str(ROOT / "profiles" / "values-local.yaml"),
         "--set",
-        "logging.level=INFO",
+        "platform.telemetry.level=INFO",
         "-s",
         "templates/mcp/deployment-gateway.yaml",
     )

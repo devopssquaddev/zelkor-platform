@@ -143,11 +143,14 @@ You can customize the installation behavior using environment variables:
 Zelkor native MCP provides infrastructure tools (Postgres, Qdrant, sandbox). To connect SaaS tools (ServiceNow, Jira, etc.):
 
 1. Deploy your MCP image as a ClusterIP workload in the cluster.
-2. Register it in your local values overlay (`profiles/values-local.yaml`) under `mcp.extraBackends`.
+2. Register it in your local values overlay (`profiles/values-local.yaml`) under `workspace.tools.extraBackends`.
+
+Full recipes (bearer auth, private CA, egress CIDRs): [mcp-extra-backends.md](mcp-extra-backends.md).
 
 ```yaml
-mcp:
-  extraBackends:
-    - name: servicenow
-      url: http://acme-mcp-servicenow.acme-tools.svc:8080
+workspace:
+  tools:
+    extraBackends:
+      - name: acme
+        url: http://acme-mcp-servicenow.acme-tools.svc:8080
 ```

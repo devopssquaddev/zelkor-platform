@@ -1,80 +1,571 @@
-# Zelkor Community Edition — production chart defaults.
-# Local kind: ./install.sh applies profiles/values-local.yaml (outside this chart).
-# Demo overlays: examples/<name>/chart/values-platform-overlay.yaml (domain knobs)
-# plus values-platform-overlay-local.yaml (kind MCP DSN) when INSTALL_EXAMPLES=true.
+# Raw Kubernetes objects rendered alongside generated manifests (escape hatch).
+extraManifests: []
+
+# V2 intent API: platform.*, workspace.*, workload.* (compiled to internal templates at render).
+# Substrate keys (postgresql, gateway, databases, security.sandbox, …) stay at the root.
 #
-# This file ships no passwords, API keys, localhost hosts, or Docker Desktop endpoints.
-# Set secrets and hostnames in a customer overlay or existing Secret.
-#
-# First-party images (Aegra, MCP, guardrails, sandbox worker) are published to
-# GHCR as public ghcr.io/devopssquaddev/zelkor-*:1.2.5. No imagePullSecret in CE.
-# Override repository, tag, or digest per environment. Pin digest in
-# profiles/values-production.yaml. Kind keeps tag: "dev" in profiles/values-local*.yaml.
+# First-party images published as ghcr.io/devopssquaddev/zelkor-*:2.0.0. Kind uses tag: "dev" in profiles/values-local.yaml.
 
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   initContainerImage: busybox:1.37
-
-# Process logs (stdout). DEBUG is overlay-only — see profiles/values-local.yaml.
-logging:
-  level: INFO
-  format: json
-
-# Path B overlay flips enabled. Chart default off (kind / single-replica).
+platform:
+  mTLS:
+    enabled: false
+  tenants:
+    sso:
+      enabled: false
+    jwtSecret: ''
+    devTokens:
+      enabled: false
+      prefix: ''
+    trustTenantHeader: false
+    orgMappings: {}
+  telemetry:
+    level: INFO
+    format: json
+    aegraOtelTargets: ''
+    nemoOtel:
+      enabled: false
+      captureContent: false
+    langfuse:
+      enabled: true
+      publicHttpRoute:
+        enabled: false
+      replicaCount: 1
+      highAvailability:
+        minReplicas: 1
+      image:
+        repository: langfuse/langfuse
+        tag: 4.24.0
+      worker:
+        enabled: true
+        replicaCount: 1
+        image:
+          repository: langfuse/langfuse-worker
+          tag: 4.24.0
+      s3:
+        bucket: langfuse
+        region: auto
+      migration:
+        v4WriteMode: events_only
+        enableHistoricBackfill: false
+        nativeOtelBehaviour: direct
+        allowPreviewOptIn: true
+      surfaces:
+        llmConnection:
+          enabled: false
+          name: zelkor-ai-gateway
+          models: []
+        tools:
+          seedFromMcp: false
+          seedTenant: seed
+          authToken: ''
+        evaluators:
+          seedCode: false
+        image:
+          repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
+          tag: 2.0.0
+          digest: ''
+      extraProjects: []
+      nextauthUrl: ''
+      nextauthSecret: ''
+      salt: ''
+      encryptionKey: ''
+      admin:
+        enabled: true
+        existingSecret: ''
+        email: ''
+        name: Admin
+        password: ''
+      init:
+        enabled: false
+        existingSecret: ''
+        orgId: ''
+        orgName: ''
+        projectId: ''
+        projectName: ''
+        projectPublicKey: ''
+        projectSecretKey: ''
+        userEmail: ''
+        userName: ''
+        userPassword: ''
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+      startupProbe:
+        httpGet:
+          path: "/api/public/health"
+          port: 3000
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 45
+      livenessProbe:
+        httpGet:
+          path: "/api/public/health"
+          port: 3000
+        periodSeconds: 15
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/api/public/health"
+          port: 3000
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+workspace:
+  models:
+    enabled: true
+    consumerKey: ''
+    defaultModel: ''
+    internalUrl: ''
+    inClusterService:
+      enabled: true
+      port: 80
+      targetHost: ''
+    providers:
+      openai:
+        apiKey: ''
+        models:
+        - "*"
+      anthropic:
+        apiKey: ''
+        models:
+        - "*"
+      gemini:
+        apiKey: ''
+        models:
+        - "*"
+      ollamaLocal:
+        host: ''
+        models:
+        - "*"
+      ollamaCloud:
+        apiKey: ''
+        models:
+        - "*"
+      azure:
+        apiKey: ''
+        endpoint: ''
+        apiVersion: 2025-01-01-preview
+        models:
+        - "*"
+      bedrock:
+        region: us-east-1
+        accessKeyId: ''
+        secretAccessKey: ''
+        anthropic: false
+        models:
+        - "*"
+      vertex:
+        project: ''
+        region: ''
+        credentialsJson: ''
+        existingSecret: ''
+        anthropic: false
+        anthropicRegion: ''
+        models:
+        - "*"
+      cohere:
+        apiKey: ''
+        models:
+        - "*"
+      openaiCompat: []
+      vllm:
+        backendUrl: ''
+        models:
+        - "*"
+  policies:
+    nemo:
+      enabled: true
+      replicaCount: 1
+      image:
+        repository: ghcr.io/devopssquaddev/zelkor-guardrails
+        tag: 2.0.0
+        digest: ''
+      configsDir: "/etc/nemoguardrails/configs"
+      defaultConfigId: content_safety
+      model: ''
+      intercept:
+        enabled: true
+      aiGatewayRoute:
+        enabled: false
+      observability:
+        otel:
+          enabled: false
+          captureContent: false
+      safetyRefusal: I can't help with that request.
+      complianceRefusal: ''
+      selfCheck:
+        enabled: true
+        model: ''
+      extraInputFlows: []
+      extraColang: ''
+      extraRailsConfig: {}
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      startupProbe:
+        httpGet:
+          path: "/v1/health"
+          port: 8000
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 24
+      livenessProbe:
+        httpGet:
+          path: "/v1/health"
+          port: 8000
+        periodSeconds: 15
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/v1/health"
+          port: 8000
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 3
+  tools:
+    enabled: true
+    extraBackends: []
+    image:
+      repository: ghcr.io/devopssquaddev/zelkor-mcp
+      tag: 2.0.0
+      digest: ''
+    gateway:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      startupProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 12
+      livenessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+    mcproute:
+      enabled: false
+    postgresMCP:
+      enabled: true
+      replicaCount: 1
+      databaseUrl: ''
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      startupProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 12
+      livenessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+    qdrantMCP:
+      enabled: true
+      replicaCount: 1
+      url: ''
+      collection: documents
+      aiGatewayUrl: ''
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      startupProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 12
+      livenessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+    egressMCP:
+      enabled: true
+      replicaCount: 1
+      allowedModels: []
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      startupProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 12
+      livenessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+    sandboxMCP:
+      enabled: true
+      replicaCount: 1
+      runtimeClassName: gvisor
+      environments:
+      - python-base
+      warmPool:
+        replicas: 3
+      workerToken: ''
+      strictIsolation: false
+      workerImage:
+        repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
+        tag: 2.0.0
+        digest: ''
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      startupProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 12
+      livenessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: "/health"
+          port: 8080
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+      worker:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        startupProbe:
+          httpGet:
+            path: "/health"
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 12
+        livenessProbe:
+          httpGet:
+            path: "/health"
+            port: 8081
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: "/health"
+            port: 8081
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+workload:
+  agents:
+    enabled: true
+    replicaCount: 1
+    redisBroker:
+      enabled: false
+    redis:
+      channelPrefix: ''
+      queueKey: ''
+    runMigrationsOnStartup: false
+    workerCount: 3
+    nJobsPerWorker: 10
+    workerDrainTimeout: 30
+    terminationGracePeriodSeconds: 35
+    graphs: {}
+    graphModules:
+      enabled: false
+      configMapName: ''
+      mountPath: "/app/graphs"
+    workers: []
+    attachDefaultRoute: true
+    mcpInject:
+      enabled: false
+    image:
+      repository: ghcr.io/devopssquaddev/zelkor-aegra
+      tag: 2.0.0
+      digest: ''
+    cli:
+      image:
+        repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
+        tag: 2.0.0
+        digest: ''
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    startupProbe:
+      httpGet:
+        path: "/health"
+        port: 8000
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 5
+      failureThreshold: 18
+    livenessProbe:
+      httpGet:
+        path: "/live"
+        port: 8000
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readinessProbe:
+      httpGet:
+        path: "/ready"
+        port: 8000
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 3
+  intent:
+    timeout: ''
+    maxTokens: 0
+    approval:
+      enabled: false
+      threshold: ''
 highAvailability:
   enabled: false
   minReplicas: 2
   maxReplicas: 8
   cpuUtilization: 70
-
-# Customer BYO Prometheus Operator. Helm fails if CRDs are missing and this is true.
 observability:
   serviceMonitor:
     enabled: false
     labels: {}
     interval: 30s
-
 databases:
-  # in-cluster-basic (Gate A STS) | operator-cr (CNPG + Altinity CHI) | external (customer hosts)
   mode: in-cluster-basic
   postgresql:
     instances: 1
     storage:
       size: 10Gi
-      storageClass: ""
-    imageName: "ghcr.io/cloudnative-pg/postgresql:16.15"
+      storageClass: ''
+    imageName: ghcr.io/cloudnative-pg/postgresql:16.15
     barman:
       enabled: false
-      destinationPath: ""
-      s3CredentialsSecretRef: ""
-      retentionPolicy: "30d"
+      destinationPath: ''
+      s3CredentialsSecretRef: ''
+      retentionPolicy: 30d
       pluginName: barman-cloud.cloudnative-pg.io
     external:
-      host: ""
+      host: ''
       port: 5432
-      username: ""
-      password: ""
+      username: ''
+      password: ''
   clickhouse:
+    clientNetworks: []
     ha: false
     storage:
       size: 20Gi
-      storageClass: ""
+      storageClass: ''
     external:
-      host: ""
+      host: ''
       httpPort: 8123
       nativePort: 9000
-      username: ""
-      password: ""
+      username: ''
+      password: ''
   valkey:
     external:
-      host: ""
+      host: ''
       port: 6379
-
 security:
-  mTLS:
-    enabled: false
   sandbox:
     enabled: true
     runtimeClass: gvisor
@@ -86,58 +577,44 @@ security:
       tolerations: []
     provisioning:
       mode: auto
-      gvisorRelease: "20260817"
-      baseUrl: ""
+      gvisorRelease: '20260817'
+      baseUrl: ''
       verifyChecksum: false
       installer:
         image:
           repository: alpine
-          tag: "3.22"
-          digest: ""
+          tag: '3.22'
+          digest: ''
         containerd:
-          dropInDir: ""
+          dropInDir: ''
           configPaths: []
           restartUnits: []
       verify:
         enabled: true
     executionLog:
       enabled: true
-      includeStdoutPreview: true
+      includeStdoutPreview: false
       suspiciousOnProbePlusError: true
-  # Path A local + Path B production overlays set true. Chart default stays false.
   networkPolicies:
     enabled: false
-
-auth:
-  sso:
-    enabled: false  # Pro overlay: OAuth2 Proxy
-  jwtSecret: ""
-  # Unsigned identity. Must stay false in production. Enable only from a local overlay.
-  devTokens:
+  mTLS:
     enabled: false
-    prefix: ""
-  trustTenantHeader: false
-
 gateway:
   enabled: true
-  gatewayClassName: "eg"
-  # false when the customer already owns the GatewayClass / dataplane (option 2).
+  gatewayClassName: eg
   createGatewayClass: true
   createGateway: true
   parentRef:
-    name: ""
-    namespace: ""
-    sectionName: ""
+    name: ''
+    namespace: ''
+    sectionName: ''
   envoyProxy:
     enabled: false
     hostNetwork: false
     nodeSelector: {}
-    # Empty type = Envoy Gateway default (LoadBalancer). Set ClusterIP when an
-    # existing Ingress fronts the dataplane and preserves Host.
-    # Empty name = {namespace}-{release}-dataplane in envoy-gateway-system.
     service:
-      type: ""
-      name: ""
+      type: ''
+      name: ''
     resources:
       requests:
         cpu: 100m
@@ -149,25 +626,26 @@ gateway:
   tls:
     enabled: false
     port: 443
-    clusterIssuer: ""
+    clusterIssuer: ''
     certificateRefs: []
   hosts:
-    langfuse: ""
-    aiGateway: ""
-    # Public Agent Protocol hostname. Not the Aegra product name.
-    agents: ""
-    mcp: ""
-    nemo: ""
-
+    langfuse: ''
+    aiGateway: ''
+    aegra: ''
+    agents: ''
+    mcp: ''
+    nemo: ''
+  # Pro/team namespaces allowed to attach HTTPRoutes to this Gateway (ReferenceGrant).
+  allowedRouteNamespaces: []
 postgresql:
   enabled: true
   image:
     repository: postgres
-    tag: "16.15-alpine"
+    tag: 16.15-alpine
   auth:
     username: zelkor
-    password: ""
-    postgresPassword: ""
+    password: ''
+    postgresPassword: ''
     database: zelkor
   resources:
     requests:
@@ -179,9 +657,9 @@ postgresql:
   livenessProbe:
     exec:
       command:
-        - pg_isready
-        - -U
-        - "{{ .Values.postgresql.auth.username }}"
+      - pg_isready
+      - "-U"
+      - "{{ .Values.postgresql.auth.username }}"
     initialDelaySeconds: 15
     periodSeconds: 10
     timeoutSeconds: 5
@@ -189,21 +667,20 @@ postgresql:
   readinessProbe:
     exec:
       command:
-        - pg_isready
-        - -U
-        - "{{ .Values.postgresql.auth.username }}"
+      - pg_isready
+      - "-U"
+      - "{{ .Values.postgresql.auth.username }}"
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
-
 valkey:
   enabled: true
   image:
     repository: valkey/valkey
-    tag: "7.2.14-alpine"
+    tag: 7.2.14-alpine
   auth:
-    password: ""
+    password: ''
   resources:
     requests:
       cpu: 50m
@@ -225,15 +702,14 @@ valkey:
     periodSeconds: 5
     timeoutSeconds: 2
     failureThreshold: 6
-
 clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: "26.8.2.7-alpine"
+    tag: 26.8.2.7-alpine
   auth:
     username: clickhouse
-    password: ""
+    password: ''
   resources:
     requests:
       cpu: 100m
@@ -243,7 +719,7 @@ clickhouse:
       memory: 1Gi
   livenessProbe:
     httpGet:
-      path: /ping
+      path: "/ping"
       port: 8123
     initialDelaySeconds: 15
     periodSeconds: 10
@@ -251,18 +727,17 @@ clickhouse:
     failureThreshold: 6
   readinessProbe:
     httpGet:
-      path: /ping
+      path: "/ping"
       port: 8123
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
-
 qdrant:
   enabled: true
   image:
     repository: qdrant/qdrant
-    tag: "v1.19.0"
+    tag: v1.19.0
   resources:
     requests:
       cpu: 100m
@@ -272,7 +747,7 @@ qdrant:
       memory: 512Mi
   livenessProbe:
     httpGet:
-      path: /readyz
+      path: "/readyz"
       port: 6333
     initialDelaySeconds: 10
     periodSeconds: 10
@@ -280,542 +755,20 @@ qdrant:
     failureThreshold: 6
   readinessProbe:
     httpGet:
-      path: /readyz
+      path: "/readyz"
       port: 6333
     initialDelaySeconds: 5
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 6
-
-aiGateway:
-  enabled: true
-  # Consumer key for in-cluster callers (MCP, agents). Upstream provider keys stay in gateway secrets.
-  consumerKey: ""
-  # Default gateway model id for NeMo pinned rails, Langfuse seed, and agents when not overridden.
-  # Empty: derive from the first enabled aiGateway.providers.* (same ids as install scripts).
-  defaultModel: ""
-  # In-cluster OpenAI-compatible base URL (…/v1). Defaults to the stable
-  # {namespace}-{release}-dataplane Service when inClusterService.targetHost is empty.
-  internalUrl: ""
-  # ClusterIP/ExternalName service for in-cluster /v1 without Host: *.localhost
-  inClusterService:
-    enabled: true
-    port: 80
-    targetHost: ""
-  providers:
-    openai:
-      apiKey: ""
-      models:
-        - "*"
-    anthropic:
-      apiKey: ""
-      models:
-        - "*"
-    gemini:
-      apiKey: ""
-      models:
-        - "*"
-    ollamaLocal:
-      host: ""
-      models:
-        - "*"
-    ollamaCloud:
-      apiKey: ""
-      models:
-        - "*"
-    azure:
-      apiKey: ""
-      endpoint: ""
-      apiVersion: "2025-01-01-preview"
-      models:
-        - "*"
-    bedrock:
-      region: "us-east-1"
-      accessKeyId: ""
-      secretAccessKey: ""
-      # Native Anthropic Messages on Bedrock (schema AWSAnthropic). Models bedrock-anthropic/*.
-      anthropic: false
-      models:
-        - "*"
-    vertex:
-      project: ""
-      region: ""
-      # SA JSON body, or existingSecret with key service_account.json. Empty = ADC/WIF.
-      credentialsJson: ""
-      existingSecret: ""
-      # Claude on Vertex (schema GCPAnthropic). Models vertex-anthropic/*.
-      anthropic: false
-      anthropicRegion: ""
-      models:
-        - "*"
-    cohere:
-      apiKey: ""
-      models:
-        - "*"
-    # OpenAI-schema hosts that only differ by prefix (Groq, DeepSeek, …). Empty default.
-    # Each item: name, host, port (443), prefix, apiKey, modelMatch (required), tls (true).
-    openaiCompat: []
-    vllm:
-      backendUrl: ""
-      models:
-        - "*"
-
-langfuse:
-  enabled: true
-  replicaCount: 1
-  # Prisma migrate is not concurrent-safe. Web HPA stays at 1 unless raised.
-  highAvailability:
-    minReplicas: 1
-  image:
-    repository: langfuse/langfuse
-    tag: "4.24.0"
-  worker:
-    enabled: true
-    replicaCount: 1
-    image:
-      repository: langfuse/langfuse-worker
-      tag: "4.24.0"
-  s3:
-    bucket: langfuse
-    region: auto
-  migration:
-    v4WriteMode: events_only
-    enableHistoricBackfill: false
-    nativeOtelBehaviour: direct
-    allowPreviewOptIn: true
-  surfaces:
-    llmConnection:
-      enabled: false
-      name: zelkor-ai-gateway
-      models: []
-    tools:
-      seedFromMcp: false
-      seedTenant: "seed"
-      authToken: ""
-    evaluators:
-      seedCode: false
-    image:
-      repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-      tag: "1.2.5"
-      digest: ""
-  # Additional Langfuse projects + API keys (empty in the chart). Overlay, not init.projectId.
-  extraProjects: []
-  nextauthUrl: ""
-  nextauthSecret: ""
-  salt: ""
-  encryptionKey: ""
-  # First admin: Helm Secret + Job (signup if missing; not a Helm hook). Empty password
-  # is generated once and kept on upgrade. Admins: kubectl get secret
-  # {release}-langfuse-admin. No chart-default password.
-  admin:
-    enabled: true
-    existingSecret: ""
-    email: ""
-    name: "Admin"
-    password: ""
-  init:
-    enabled: false
-    # When empty, chart Secret {release}-langfuse-init generates pk/sk once (profiles enable init).
-    existingSecret: ""
-    orgId: ""
-    orgName: ""
-    projectId: ""
-    projectName: ""
-    projectPublicKey: ""
-    projectSecretKey: ""
-    userEmail: ""
-    userName: ""
-    userPassword: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 512Mi
-    limits:
-      cpu: 1000m
-      memory: 2Gi
-  startupProbe:
-    httpGet:
-      path: /api/public/health
-      port: 3000
-    initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 45
-  livenessProbe:
-    httpGet:
-      path: /api/public/health
-      port: 3000
-    periodSeconds: 15
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /api/public/health
-      port: 3000
-    periodSeconds: 10
-    timeoutSeconds: 3
-    failureThreshold: 3
-
-aegra:
-  enabled: true
-  replicaCount: 1
-  tenantOrgMappings: {}
-  # Empty-graph default stays off so this pod does not BLPOP the job list.
-  # Executing / HA installs set redisBroker.enabled and get a prefix pair.
-  redisBroker:
-    enabled: false
-  redis:
-    channelPrefix: ""
-    queueKey: ""
-  runMigrationsOnStartup: false
-  workerCount: 3
-  nJobsPerWorker: 10
-  workerDrainTimeout: 30
-  terminationGracePeriodSeconds: 35
-  # Comma-separated Aegra OTEL_TARGETS (LANGFUSE, PHOENIX, GENERIC). Empty = off.
-  otelTargets: ""
-  # Local/eval only: merge graph ids into front-door aegra.json.
-  # Production: one ClusterIP Deployment per agent; Envoy routes by
-  # X-Graph-ID / ?graph_id=. Per-agent vanity HTTPRoute is opt-in.
-  # See internal/plan/requirements_drop_in_agent_contract.md §4.4. Default: none.
-  graphs: {}
-  graphModules:
-    enabled: false
-    configMapName: ""
-    mountPath: /app/graphs
-  # Extra Agent Protocol backends on gateway.hosts.agents (overlay).
-  # Each entry: { graphId, service, port } — in-cluster Service, not an http:// URL.
-  # Empty = topology 1 (catch-all / → this Service). No fixture graphId.
-  workers: []
-  # Catch-all `/` on gateway.hosts.agents → this Service. First zelkor-agent
-  # asDefault worker sets this false (do not use `| default true` in templates).
-  attachDefaultRoute: true
-  # Mode B inject belongs on worker pods (charts/zelkor-agent), not the empty-graph front door.
-  mcpInject:
-    enabled: false
-  image:
-    repository: ghcr.io/devopssquaddev/zelkor-aegra
-    tag: "1.2.5"
-    digest: ""
-  cli:
-    image:
-      repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-      tag: "1.2.5"
-      digest: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
-  startupProbe:
-    httpGet:
-      path: /health
-      port: 8000
-    initialDelaySeconds: 5
-    periodSeconds: 5
-    timeoutSeconds: 5
-    failureThreshold: 18
-  livenessProbe:
-    httpGet:
-      path: /live
-      port: 8000
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readinessProbe:
-    httpGet:
-      path: /ready
-      port: 8000
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 3
-
-guardrails:
-  nemo:
-    enabled: true
-    replicaCount: 1
-    image:
-      repository: ghcr.io/devopssquaddev/zelkor-guardrails
-      tag: "1.2.5"
-      digest: ""
-    configsDir: /etc/nemoguardrails/configs
-    defaultConfigId: content_safety
-    model: ""  # override; empty uses aiGateway.defaultModel or provider-derived nemoEffectiveModel
-    intercept:
-      enabled: true
-    aiGatewayRoute:
-      enabled: false
-    observability:
-      otel:
-        enabled: false  # when true: config.yml tracing adapter + opentelemetry-instrument (no sitecustomize)
-        captureContent: false  # PII; LLMRails tracing.enable_content_capture (Langfuse observation I/O)
-    safetyRefusal: "I can't help with that request."
-    selfCheck:
-      enabled: true  # LLM Yes/No I/O rails; false skips those extra completions (regex/extraColang still apply)
-      model: ""  # empty = nemoEffectiveModel chain; not the request model (see aiGateway.defaultModel)
-    extraInputFlows: []
-    extraColang: ""
-    extraRailsConfig: {}
-    resources:
-      requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
-        cpu: 500m
-        memory: 1Gi
-    startupProbe:
-      httpGet:
-        path: /v1/health
-        port: 8000
-      initialDelaySeconds: 10
-      periodSeconds: 5
-      timeoutSeconds: 5
-      failureThreshold: 24
-    livenessProbe:
-      httpGet:
-        path: /v1/health
-        port: 8000
-      periodSeconds: 15
-      timeoutSeconds: 5
-      failureThreshold: 3
-    readinessProbe:
-      httpGet:
-        path: /v1/health
-        port: 8000
-      periodSeconds: 5
-      timeoutSeconds: 5
-      failureThreshold: 3
-  # Enterprise only:
-  # llamaGuard:
-  #   enabled: false
-
-mcp:
-  enabled: true
-  extraBackends: []    # [{ name, url }] — customer ClusterIP MCP; empty in the platform chart
-  image:
-    repository: ghcr.io/devopssquaddev/zelkor-mcp
-    tag: "1.2.5"
-    digest: ""
-  gateway:
-    replicaCount: 1
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
-    startupProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 12
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 3
-  mcproute:
-    enabled: false
-  postgresMCP:
-    enabled: true
-    replicaCount: 1
-    databaseUrl: ""
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
-    startupProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 12
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 3
-  qdrantMCP:
-    enabled: true
-    replicaCount: 1
-    url: ""
-    collection: "documents"
-    aiGatewayUrl: ""
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
-    startupProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 12
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 3
-  egressMCP:
-    enabled: true
-    replicaCount: 1
-    allowedModels: []
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
-    startupProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 12
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 3
-  sandboxMCP:
-    enabled: true
-    replicaCount: 1
-    runtimeClassName: gvisor
-    environments:
-      - python-base
-    warmPool:
-      replicas: 3
-    # Empty: installer generates; chart keeps Secret {release}-sandbox-worker.
-    # Override with mcp.sandboxMCP.workerToken or WORKER_TOKEN on install-*.sh.
-    workerToken: ""
-    strictIsolation: false
-    workerImage:
-      repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-      tag: "1.2.5"
-      digest: ""
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
-    startupProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      initialDelaySeconds: 5
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 12
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 10
-      timeoutSeconds: 3
-      failureThreshold: 3
-    readinessProbe:
-      httpGet:
-        path: /health
-        port: 8080
-      periodSeconds: 5
-      timeoutSeconds: 3
-      failureThreshold: 3
-    worker:
-      resources:
-        requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-      startupProbe:
-        httpGet:
-          path: /health
-          port: 8081
-        initialDelaySeconds: 5
-        periodSeconds: 5
-        timeoutSeconds: 3
-        failureThreshold: 12
-      livenessProbe:
-        httpGet:
-          path: /health
-          port: 8081
-        periodSeconds: 10
-        timeoutSeconds: 3
-        failureThreshold: 3
-      readinessProbe:
-        httpGet:
-          path: /health
-          port: 8081
-        periodSeconds: 5
-        timeoutSeconds: 3
-        failureThreshold: 3
-
 seaweedfs:
   enabled: true
   image:
     repository: chrislusf/seaweedfs
-    tag: "4.44"
+    tag: '4.44'
   auth:
-    accessKey: ""
-    secretKey: ""
+    accessKey: ''
+    secretKey: ''
   resources:
     requests:
       cpu: 50m

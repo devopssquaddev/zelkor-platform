@@ -1,10 +1,11 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.guardrails.nemo.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-nemo
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "guardrails.nemo") | nindent 4 }}
     app.kubernetes.io/component: guardrails
 spec:
   {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}

@@ -9,7 +9,7 @@
 #     --set gateway.hosts.langfuse=langfuse.example.com
 #
 # Point your ingress at the Envoy dataplane ClusterIP Service. Preserve Host headers.
-
+---
 gateway:
   createGatewayClass: true
   createGateway: true

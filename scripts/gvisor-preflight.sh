@@ -102,8 +102,10 @@ else
     log "GKE Sandbox node label detected"
   elif "${KUBECTL[@]}" get runtimeclass gvisor >/dev/null 2>&1 && smoke_gvisor; then
     MODE="preinstalled"
-    CREATE_RC="false"
-    log "RuntimeClass gvisor smoke pod succeeded; using preinstalled mode"
+    # Keep Helm rendering RuntimeClass. CREATE_RC=false on a profile upgrade deletes the
+    # CR while sandbox worker Deployments still reference runtimeClassName: gvisor.
+    CREATE_RC="true"
+    log "RuntimeClass gvisor smoke pod succeeded; preinstalled runsc (retain Helm RuntimeClass)"
   fi
 
   runtimes="$("${KUBECTL[@]}" get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.containerRuntimeVersion}{"\n"}{end}' 2>/dev/null | sort -u || true)"

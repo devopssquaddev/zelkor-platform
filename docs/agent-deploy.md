@@ -14,9 +14,13 @@ Human docs: [quickstart.md](quickstart.md) (Deploying an Agent), [production.md]
 | **Aegra wrap** | Agent Protocol host; threads/checkpoints in **existing** platform Postgres | None for LangGraph/Aegra graphs in your image |
 | **MCP** | Tools via `MCP_URL` / gateway | None if graph already uses MCP; else platform injects or you register backends |
 
+Register BYO MCP servers on the **platform** chart (`workspace.tools.extraBackends`). See [mcp-extra-backends.md](mcp-extra-backends.md).
+
 Production agents use in-cluster `*-ai-gateway` and optional `MCP_URL` — not raw provider API keys on the pod.
 
-**Adding a model or provider** is a **platform overlay** (`aiGateway.providers`, `openaiCompat`, `defaultModel`), not a change to agent chart core or `charts/zelkor-platform` templates. Per-agent default: `platform.defaultLlmModel` on `zelkor-agent`. See [adding-llm-providers-and-models.md](adding-llm-providers-and-models.md).
+Off kind, set `ZELKOR_IMAGE_REGISTRY` or `zelkor deploy --registry` so the CLI does not assume `ghcr.io/devopssquaddev`.
+
+**Adding a model or provider** is a **platform overlay** (`workspace.models.providers`, `openaiCompat`, `defaultModel`), not a change to agent chart core or `charts/zelkor-platform` templates. Per-agent default: `platform.defaultLlmModel` on `zelkor-agent`. See [adding-llm-providers-and-models.md](adding-llm-providers-and-models.md).
 
 ---
 
@@ -138,11 +142,11 @@ helm upgrade --install my-agent charts/zelkor-agent \
   ...
 ```
 
-`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl`, `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `-mcp-gateway` / `-langfuse` / `-gateway`. Workers inject `{release}-langfuse-otel` (optional Secret the platform chart writes from `langfuse.init`). Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`). Do not put Langfuse keys in the customer overlay.
+`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl`, `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `-mcp-gateway` / `-langfuse` / `-gateway`. Workers inject `{release}-langfuse-otel` (optional Secret the platform chart writes from `platform.telemetry.langfuse.init`). Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`). Do not put Langfuse keys in the customer overlay.
 
 ### Auth (JWT)
 
-Set the **same** `auth.jwtSecret` on the platform chart and each `zelkor-agent` (or FinServe) release. Clients send `Authorization: Bearer <HS256 JWT>` (`tenant_id` / `org_id` / `sub`). Wrap forwards that Bearer to MCP; MCP verifies it. Do not enable `auth.devTokens` or `auth.trustTenantHeader` except on kind (`values-local.yaml` / `profiles/values-local.yaml`). Blueprint: `examples/finserve/chart/values-tenants.yaml` + `values-platform-overlay-tenants.yaml`.
+Set the **same** `platform.tenants.jwtSecret` on the platform chart and each `zelkor-agent` (or FinServe) release. Clients send `Authorization: Bearer <HS256 JWT>` (`tenant_id` / `org_id` / `sub`). Wrap forwards that Bearer to MCP; MCP verifies it. Do not enable `platform.tenants.devTokens` or `platform.tenants.trustTenantHeader` except on kind (`values-local.yaml` / `profiles/values-local.yaml`). Blueprint: `examples/finserve/chart/values-tenants.yaml` + `values-platform-overlay-tenants.yaml`.
 
 ---
 
@@ -166,7 +170,7 @@ Agent pods should emit Langfuse OTEL when `platform.releaseName` is set (GitOps 
 - Copy FinServe `cnpgClusterName` / CNPG templates onto `zelkor-agent`.
 - Reuse the same Redis queue key across multiple agent Deployments.
 - Add Routes that bypass Envoy graph routing on the shared agents host.
-- Enable `auth.devTokens` / `auth.trustTenantHeader` on a customer or Path B cluster (kind overlays only).
+- Enable `platform.tenants.devTokens` / `platform.tenants.trustTenantHeader` on a customer or Path B cluster (kind overlays only).
 
 ---
 

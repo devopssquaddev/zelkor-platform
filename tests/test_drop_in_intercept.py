@@ -112,7 +112,7 @@ def test_intercept_refuses_harmful_prompt_on_default_model():
         resp = httpx.post(
             url,
             headers=_in_cluster_headers(),
-            json=_chat_payload(harmful_prompt, model),
+            json={**_chat_payload(harmful_prompt, model), "max_tokens": 256},
             timeout=120.0,
         )
     except httpx.ConnectError:

@@ -9,6 +9,7 @@ import re
 import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from base64 import b64encode
@@ -65,27 +66,30 @@ NATIVE_PREFIXES = ("postgres__", "qdrant__", "sandbox__", "egress__")
 def parse_extra_projects(raw: str) -> List[Dict[str, str]]:
     try:
         data = json.loads(raw or "[]")
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"LANGFUSE_EXTRA_PROJECTS is not valid JSON: {exc}") from exc
     if not isinstance(data, list):
-        return []
+        raise ValueError("LANGFUSE_EXTRA_PROJECTS must be a JSON array")
     out: List[Dict[str, str]] = []
-    for item in data:
+    for idx, item in enumerate(data):
         if not isinstance(item, dict):
-            continue
+            raise ValueError(f"LANGFUSE_EXTRA_PROJECTS[{idx}] must be an object")
         pid = str(item.get("id") or "").strip()
         public_key = str(item.get("publicKey") or item.get("public_key") or "").strip()
         secret_key = str(item.get("secretKey") or item.get("secret_key") or "").strip()
         name = str(item.get("name") or pid).strip()
-        if pid and public_key and secret_key:
-            out.append(
-                {
-                    "id": pid,
-                    "name": name,
-                    "publicKey": public_key,
-                    "secretKey": secret_key,
-                }
+        if not pid or not public_key or not secret_key:
+            raise ValueError(
+                f"LANGFUSE_EXTRA_PROJECTS[{idx}] requires id, publicKey, and secretKey"
             )
+        out.append(
+            {
+                "id": pid,
+                "name": name,
+                "publicKey": public_key,
+                "secretKey": secret_key,
+            }
+        )
     return out
 
 
@@ -778,6 +782,82 @@ def _admin_exists_sql(email: str) -> bool:
         return False
 
 
+_ADMIN_RACE_MSG = (
+    "Langfuse admin exists but Secret password does not match; "
+    "possible public signup before bootstrap — reset users or reinstall"
+)
+
+
+def _admin_password_matches_sql(email: str, password: str) -> bool:
+    if not DATABASE_URL or psycopg is None or bcrypt is None:
+        return False
+    try:
+        with psycopg.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT password FROM users WHERE lower(email) = lower(%s) LIMIT 1",
+                    (email,),
+                )
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    return False
+                stored = row[0]
+                if isinstance(stored, str):
+                    stored = stored.encode("utf-8")
+                return bcrypt.checkpw(password.encode("utf-8"), stored)
+    except Exception as exc:
+        logger.debug("admin password sql verify skipped: %s", exc)
+        return False
+
+
+def _verify_admin_login_http(email: str, password: str) -> bool:
+    if not LANGFUSE_HOST:
+        return False
+    ctx = ssl.create_default_context()
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(f"{LANGFUSE_HOST}/api/auth/csrf", method="GET"),
+            timeout=20,
+            context=ctx,
+        ) as resp:
+            csrf = json.loads(resp.read().decode("utf-8")).get("csrfToken") or ""
+        if not csrf:
+            return False
+        body = urllib.parse.urlencode(
+            {
+                "csrfToken": csrf,
+                "email": email,
+                "password": password,
+                "callbackUrl": LANGFUSE_HOST,
+                "json": "true",
+            }
+        ).encode("utf-8")
+        req = urllib.request.Request(
+            f"{LANGFUSE_HOST}/api/auth/callback/credentials",
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+            return bool(payload.get("url"))
+    except Exception as exc:
+        logger.debug("admin login http verify skipped: %s", exc)
+        return False
+
+
+def _verify_admin_password(email: str, password: str) -> bool:
+    if _admin_password_matches_sql(email, password):
+        return True
+    return _verify_admin_login_http(email, password)
+
+
+def _confirm_admin_owns_credentials(email: str, password: str) -> None:
+    if _verify_admin_password(email, password):
+        return
+    raise RuntimeError(_ADMIN_RACE_MSG)
+
+
 def _signup(email: str, password: str, name: str) -> tuple[int, str]:
     body = json.dumps({"name": name, "email": email, "password": password}).encode("utf-8")
     req = urllib.request.Request(
@@ -803,6 +883,7 @@ def seed_admin_user(email: str = "", password: str = "", name: str = "") -> str:
     if not email or not password:
         raise RuntimeError("LANGFUSE_ADMIN_EMAIL and LANGFUSE_ADMIN_PASSWORD required")
     if _admin_exists_sql(email):
+        _confirm_admin_owns_credentials(email, password)
         logger.info("admin already present", extra={"event": "admin_exists", "email": email})
         return "exists"
     status, detail = _signup(email, password, name)
@@ -810,6 +891,7 @@ def seed_admin_user(email: str = "", password: str = "", name: str = "") -> str:
         logger.info("admin created", extra={"event": "admin_created", "email": email})
         return "created"
     if status == 409 or _already_exists_detail(detail):
+        _confirm_admin_owns_credentials(email, password)
         logger.info("admin already present", extra={"event": "admin_exists", "email": email})
         return "exists"
     raise RuntimeError(f"signup failed {status}: {detail}")

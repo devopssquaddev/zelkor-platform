@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.mcp.enabled .Values.mcp.sandboxMCP.enabled }}
 {{- $fullname := include "zelkor-platform.fullname" . }}
 {{- $replicas := .Values.mcp.sandboxMCP.warmPool.replicas | default 3 }}
@@ -13,7 +14,7 @@ kind: Service
 metadata:
   name: {{ $fullname }}-mcp-sandbox
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.sandboxMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-sandbox
 spec:
   ports:
@@ -30,7 +31,7 @@ kind: Service
 metadata:
   name: {{ $fullname }}-mcp-sandbox-worker-{{ $i }}
   labels:
-    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "mcp.sandboxMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-sandbox-worker
 spec:
   ports:
@@ -48,7 +49,7 @@ kind: Deployment
 metadata:
   name: {{ $fullname }}-mcp-sandbox
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.sandboxMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-sandbox
 spec:
   {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
@@ -61,7 +62,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.sandboxMCP") | nindent 8 }}
         app.kubernetes.io/component: mcp-sandbox
     spec:
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
@@ -92,7 +93,7 @@ kind: Deployment
 metadata:
   name: {{ $fullname }}-mcp-sandbox-worker-{{ $i }}
   labels:
-    {{- include "zelkor-platform.labels" $ | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "mcp.sandboxMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-sandbox-worker
 spec:
   replicas: 1
@@ -104,7 +105,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "zelkor-platform.labels" $ | nindent 8 }}
+        {{- include "zelkor-platform.labels" (dict "root" $ "intent" "mcp.sandboxMCP") | nindent 8 }}
         app.kubernetes.io/component: mcp-sandbox-worker
         sandbox-worker-id: "{{ $i }}"
     spec:

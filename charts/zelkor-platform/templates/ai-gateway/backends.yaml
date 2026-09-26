@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if .Values.aiGateway.enabled }}
 
 # Ollama Local — host Ollama / vLLM-compatible server (no upstream API key)
@@ -9,7 +10,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.ollamaLocal") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -25,7 +26,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-local
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.ollamaLocal") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -43,7 +44,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.ollamaCloud") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -59,7 +60,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.ollamaCloud") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -73,7 +74,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-ollama-cloud-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.ollamaCloud") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -94,7 +95,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-openai
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -110,7 +111,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-openai
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -124,7 +125,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-openai-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -145,7 +146,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -161,7 +162,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -175,7 +176,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-anthropic-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -196,7 +197,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -213,7 +214,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-gemini
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -227,7 +228,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-gemini-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -248,7 +249,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -264,7 +265,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vllm
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -283,7 +284,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-azure
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -300,7 +301,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-azure
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -314,7 +315,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-azure-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -337,7 +338,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-bedrock
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -353,7 +354,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-bedrock
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -367,7 +368,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-bedrock-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -385,7 +386,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-bedrock-anthropic
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -408,7 +409,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vertex
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -424,7 +425,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vertex
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -438,7 +439,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vertex-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -458,7 +459,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vertex-anthropic
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -475,7 +476,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vertex-anthropic
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -489,7 +490,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-vertex-anthropic-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.anthropic") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -511,7 +512,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-cohere
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.cohere") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -528,7 +529,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-cohere
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.cohere") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:
@@ -542,7 +543,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-cohere-tls
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.cohere") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   targetRefs:
@@ -623,7 +624,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   schema:
@@ -639,7 +640,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway.providers.openai") | nindent 4 }}
     app.kubernetes.io/component: ai-gateway
 spec:
   endpoints:

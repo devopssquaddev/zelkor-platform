@@ -34,8 +34,21 @@ try:
     if not getattr(ChatOpenAI, "_zelkor_nonstream_patched", False):
         _orig_chat_openai_init = ChatOpenAI.__init__
 
+        def _max_tokens_cap() -> int:
+            raw = os.getenv("ZELKOR_MAX_TOKENS", "0").strip()
+            try:
+                return max(0, int(raw))
+            except ValueError:
+                return 0
+
         def _chat_openai_init(self, *args, **kwargs):
             kwargs.setdefault("disable_streaming", True)
+            cap = _max_tokens_cap()
+            if cap > 0:
+                for key in ("max_tokens", "max_completion_tokens"):
+                    if key in kwargs and kwargs[key] is not None:
+                        kwargs[key] = min(int(kwargs[key]), cap)
+                kwargs.setdefault("max_tokens", cap)
             return _orig_chat_openai_init(self, *args, **kwargs)
 
         ChatOpenAI.__init__ = _chat_openai_init  # type: ignore[method-assign]

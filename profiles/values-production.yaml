@@ -15,113 +15,103 @@
 #   kubectl -n envoy-ai-gateway-system scale deploy/ai-gateway-controller --replicas=2
 #
 # ./install.sh stays on profiles/values-local.yaml (kind).
-
+---
 global:
   tier: oss
-
 databases:
   mode: operator-cr
   postgresql:
     instances: 3
     storage:
       size: 50Gi
-      storageClass: ""
+      storageClass: ''
     barman:
       enabled: false
-      destinationPath: ""
-      s3CredentialsSecretRef: ""
-      retentionPolicy: "30d"
+      destinationPath: ''
+      s3CredentialsSecretRef: ''
+      retentionPolicy: 30d
   clickhouse:
     ha: false
     storage:
       size: 100Gi
-      storageClass: ""
-
+      storageClass: ''
 highAvailability:
   enabled: true
-
 observability:
   serviceMonitor:
     enabled: false
-
 security:
-  mTLS:
-    enabled: false
   sandbox:
     enabled: true
     failClosed: false
     provisioning:
       mode: daemonset
+      verifyChecksum: true
+    executionLog:
+      includeStdoutPreview: false
   networkPolicies:
     enabled: true
-
-auth:
-  sso:
-    enabled: false
-  devTokens:
-    enabled: false
-  trustTenantHeader: false
-
 gateway:
   envoyProxy:
     hostNetwork: false
-    # ClusterIP + existing Ingress: overlay enabled=true and service.type=ClusterIP
   tls:
     enabled: false
-    clusterIssuer: ""
+    clusterIssuer: ''
   hosts:
-    langfuse: ""
-    aiGateway: ""
-    agents: ""
-    mcp: ""
-    nemo: ""
-
-aiGateway:
-  consumerKey: ""
-
-# First-party images: tag 1.2.5 (chart default). Digests filled by
-# scripts/pin-production-digests.sh after GHCR push.
-aegra:
-  image:
-    tag: "1.2.5"
-    digest: "sha256:e122704ac0451ac7fb03717bb4dfe8ce0503882e25a74e18c5216b5dbd7644ab"
-  cli:
+    langfuse: ''
+    aiGateway: ''
+    agents: ''
+    mcp: ''
+    nemo: ''
+platform:
+  tenants:
+    sso:
+      enabled: false
+    devTokens:
+      enabled: false
+    trustTenantHeader: false
+  telemetry:
+    langfuse:
+      init:
+        enabled: true
+        orgId: zelkor
+        orgName: Zelkor
+        projectId: zelkor-platform
+        projectName: Zelkor Platform
+      surfaces:
+        llmConnection:
+          enabled: true
+        tools:
+          seedFromMcp: true
+        evaluators:
+          seedCode: true
+        image:
+          tag: 1.2.6
+          digest: sha256:02fbb3e9c3a7d6d1208b1f91314777a8d460cb3974dd4dd466ea89c74419931f
+  mTLS:
+    enabled: false
+workspace:
+  models:
+    consumerKey: ''
+  policies:
+    nemo:
+      image:
+        tag: 1.2.6
+        digest: sha256:a9232166b106f5499cc92320f34feb62e61123b0baa7a632937163657b14ea84
+  tools:
     image:
-      tag: "1.2.5"
-      digest: "sha256:91c7c30bb465f1d8fb28da255b310ca0eded3edfb29979c567026b0e63e83370"
-
-guardrails:
-  nemo:
+      tag: 1.2.6
+      digest: sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9
+    sandboxMCP:
+      workerImage:
+        tag: 1.2.6
+        digest: sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0
+workload:
+  agents:
     image:
-      tag: "1.2.5"
-      digest: "sha256:a9232166b106f5499cc92320f34feb62e61123b0baa7a632937163657b14ea84"
-
-mcp:
-  image:
-    tag: "1.2.5"
-    digest: "sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9"
-  sandboxMCP:
-    workerImage:
-      tag: "1.2.5"
-      digest: "sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0"
-
-langfuse:
-  init:
-    enabled: true
-    orgId: zelkor
-    orgName: Zelkor
-    projectId: zelkor-platform
-    projectName: Zelkor Platform
-  surfaces:
-    llmConnection:
-      enabled: true
-    tools:
-      seedFromMcp: true
-    evaluators:
-      seedCode: true
-    image:
-      tag: "1.2.5"
-      digest: "sha256:02fbb3e9c3a7d6d1208b1f91314777a8d460cb3974dd4dd466ea89c74419931f"
-  # First admin: Secret {release}-langfuse-admin (email/password generated if empty).
-  # Project API keys: Secret {release}-langfuse-init / {release}-langfuse-otel (generated when init keys empty).
-  # kubectl -n zelkor get secret zelkor-platform-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo
+      tag: 1.2.6
+      digest: sha256:e122704ac0451ac7fb03717bb4dfe8ce0503882e25a74e18c5216b5dbd7644ab
+    cli:
+      image:
+        tag: 1.2.6
+        digest: sha256:91c7c30bb465f1d8fb28da255b310ca0eded3edfb29979c567026b0e63e83370

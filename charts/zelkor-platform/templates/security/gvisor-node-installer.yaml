@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if eq (include "zelkor-platform.gvisorInstallerEnabled" .) "true" }}
 {{- $prov := .Values.security.sandbox.provisioning | default dict }}
 {{- $installer := $prov.installer | default dict }}
@@ -8,7 +9,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-gvisor-install-script
   namespace: kube-system
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
     app.kubernetes.io/component: gvisor-installer
 data:
   install-on-node.sh: |
@@ -20,7 +21,7 @@ metadata:
   name: {{ include "zelkor-platform.fullname" . }}-gvisor-installer
   namespace: kube-system
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
     app.kubernetes.io/component: gvisor-installer
 spec:
   selector:

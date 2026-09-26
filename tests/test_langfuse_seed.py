@@ -53,7 +53,7 @@ def test_to_llm_tool_is_flat_playground_row():
     assert "query" in tool["parameters"]["properties"]
 
 
-def test_parse_extra_projects_skips_incomplete():
+def test_parse_extra_projects_requires_complete_entries():
     raw = json.dumps(
         [
             {
@@ -65,11 +65,11 @@ def test_parse_extra_projects_skips_incomplete():
             {"id": "no-keys"},
         ]
     )
-    projects = parse_extra_projects(raw)
-    assert len(projects) == 1
-    assert projects[0]["id"] == "team-a"
+    with pytest.raises(ValueError, match="requires id, publicKey, and secretKey"):
+        parse_extra_projects(raw)
     assert parse_extra_projects("") == []
-    assert parse_extra_projects("not-json") == []
+    with pytest.raises(ValueError, match="not valid JSON"):
+        parse_extra_projects("not-json")
 
 
 def test_managed_projects_init_then_extras(monkeypatch):
@@ -107,7 +107,7 @@ def test_finserve_overlay_does_not_steal_init():
     overlay = Path(__file__).resolve().parents[1] / "examples/finserve/chart/values-platform-overlay.yaml"
     raw = overlay.read_text()
     assert "projectId:" not in raw
-    assert "langfuse.init" not in raw
+    assert "platform.telemetry.langfuse.init" not in raw
     assert "zelkor-dev-password" not in raw
     assert "databaseUrl:" not in raw
 
@@ -157,7 +157,7 @@ def test_helm_langfuse_otel_secret_omitted_when_init_disabled():
                 "zelkor-platform",
                 str(chart),
                 "--set",
-                "langfuse.init.enabled=false",
+                "platform.telemetry.langfuse.init.enabled=false",
                 "--set",
                 "postgresql.auth.password=test-pg-pass",
                 "--set",
@@ -205,13 +205,13 @@ def test_helm_langfuse_init_generates_otel_secret_when_enabled():
                 "--set",
                 "gateway.hosts.agents=agents.example.com",
                 "--set",
-                "langfuse.nextauthUrl=https://langfuse.example.com",
+                "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
                 "--set",
-                "langfuse.salt=salt",
+                "platform.telemetry.langfuse.salt=salt",
                 "--set",
-                "langfuse.nextauthSecret=nextauth",
+                "platform.telemetry.langfuse.nextauthSecret=nextauth",
                 "--set",
-                "langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                 "-s",
                 "templates/langfuse/secret-langfuse-keys.yaml",
             ],
@@ -236,12 +236,14 @@ def test_helm_extra_projects_on_seed_job_and_nemo():
     chart = root / "charts/zelkor-platform"
     local = root / "profiles/values-local.yaml"
     extra_overlay = """
-langfuse:
-  extraProjects:
-    - id: team-a
-      name: Team A
-      publicKey: pk-lf-team-a-dev-00000000000000000000
-      secretKey: sk-lf-team-a-dev-00000000000000000000
+platform:
+  telemetry:
+    langfuse:
+      extraProjects:
+        - id: team-a
+          name: Team A
+          publicKey: pk-lf-team-a-dev-00000000000000000000
+          secretKey: sk-lf-team-a-dev-00000000000000000000
 """
     try:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as fh:
@@ -311,6 +313,7 @@ def test_seed_admin_exists_http(monkeypatch):
     monkeypatch.setattr(seed_mod, "LANGFUSE_HOST", "http://lf")
     monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: False)
     monkeypatch.setattr(seed_mod, "_signup", lambda e, p, n: (422, '{"message":"User already exists"}'))
+    monkeypatch.setattr(seed_mod, "_verify_admin_password", lambda e, p: True)
     assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
 
 
@@ -327,12 +330,20 @@ def test_seed_admin_weak_password_fails(monkeypatch):
 
 def test_seed_admin_exists_sql(monkeypatch):
     monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: True)
+    monkeypatch.setattr(seed_mod, "_verify_admin_password", lambda e, p: True)
 
     def boom(*_a, **_k):
         raise AssertionError("signup should not run")
 
     monkeypatch.setattr(seed_mod, "_signup", boom)
     assert seed_mod.seed_admin_user("a@b.c", "secret") == "exists"
+
+
+def test_seed_admin_exists_sql_wrong_password(monkeypatch):
+    monkeypatch.setattr(seed_mod, "_admin_exists_sql", lambda email: True)
+    monkeypatch.setattr(seed_mod, "_verify_admin_password", lambda e, p: False)
+    with pytest.raises(RuntimeError, match="public signup before bootstrap"):
+        seed_mod.seed_admin_user("a@b.c", "secret")
 
 
 def test_seed_admin_requires_creds():

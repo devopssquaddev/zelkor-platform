@@ -1,10 +1,11 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if eq (include "zelkor-platform.gvisorRuntimeClassEnabled" .) "true" }}
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
   name: {{ include "zelkor-platform.gvisorRuntimeClassName" . }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 handler: runsc
 {{- $overhead := .Values.security.sandbox.overhead | default dict }}
 {{- with $overhead.podFixed }}

@@ -159,6 +159,23 @@ def test_export_uses_default_langfuse_auth_when_extra_empty(monkeypatch):
     }
 
 
+def test_export_falls_back_to_default_when_pk_unknown(monkeypatch):
+    created, root_exports, leaf_exports = _install_with_export_stub(
+        monkeypatch,
+        extra_otlp="[]",
+        default_pk="pk-default",
+        default_sk="sk-default",
+    )
+    root = OTLPSpanExporter(endpoint="http://ignored")
+    OTLPSpanExporter.export(root, [_span(pk="pk-unknown-other-project")])
+
+    assert root_exports == []
+    assert leaf_exports == [1]
+    assert basic_auth_header("pk-default", "sk-default") in {
+        h.get("Authorization") for h in created
+    }
+
+
 def test_export_routes_default_pk_when_extra_has_other_projects(monkeypatch):
     created, root_exports, leaf_exports = _install_with_export_stub(
         monkeypatch,

@@ -10,53 +10,53 @@
 #     --set langfuse.nextauthSecret=... --set langfuse.salt=... --set langfuse.encryptionKey=...
 #
 # ./install.sh stays on profiles/values-local.yaml (kind).
-
+---
 global:
   tier: oss
-
 databases:
   mode: in-cluster-basic
-
 highAvailability:
   enabled: false
-
 security:
-  mTLS:
-    enabled: false
+  sandbox:
+    provisioning:
+      verifyChecksum: true
   networkPolicies:
     enabled: false
-
-auth:
-  sso:
-    enabled: false
-  devTokens:
-    enabled: false
-  trustTenantHeader: false
-
 gateway:
   envoyProxy:
     hostNetwork: false
   hosts:
-    langfuse: ""
-    aiGateway: ""
-    agents: ""
-    mcp: ""
-    nemo: ""
-
-aiGateway:
-  consumerKey: ""
-
-langfuse:
-  init:
-    enabled: true
-    orgId: zelkor
-    orgName: Zelkor
-    projectId: zelkor-platform
-    projectName: Zelkor Platform
-  surfaces:
-    llmConnection:
-      enabled: true
-    tools:
-      seedFromMcp: true
-    evaluators:
-      seedCode: true
+    langfuse: ''
+    aiGateway: ''
+    agents: ''
+    mcp: ''
+    nemo: ''
+platform:
+  tenants:
+    sso:
+      enabled: false
+    devTokens:
+      enabled: false
+    trustTenantHeader: false
+  telemetry:
+    langfuse:
+      init:
+        enabled: true
+        orgId: zelkor
+        orgName: Zelkor
+        projectId: zelkor-platform
+        projectName: Zelkor Platform
+      surfaces:
+        llmConnection:
+          enabled: true
+        tools:
+          seedFromMcp: true
+        evaluators:
+          seedCode: true
+  mTLS:
+    enabled: false
+workspace:
+  models:
+    consumerKey: ''
+workload: {}

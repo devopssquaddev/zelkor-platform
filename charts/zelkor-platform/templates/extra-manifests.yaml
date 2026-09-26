@@ -1,0 +1,11 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- range $i, $manifest := .Values.extraManifests }}
+{{- if $manifest }}
+---
+{{- if kindIs "string" $manifest }}
+{{ tpl $manifest $ }}
+{{- else }}
+{{ tpl (toYaml $manifest) $ }}
+{{- end }}
+{{- end }}
+{{- end }}

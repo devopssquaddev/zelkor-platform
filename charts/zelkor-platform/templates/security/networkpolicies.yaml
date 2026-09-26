@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.security.networkPolicies.enabled (or .Values.aegra.enabled .Values.mcp.enabled) }}
 {{- $fullname := include "zelkor-platform.fullname" . }}
 {{- $ns := .Release.Namespace }}
@@ -9,7 +10,7 @@ metadata:
   name: {{ $fullname }}-agent-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -82,7 +83,7 @@ metadata:
   name: {{ $fullname }}-aegra-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -161,7 +162,7 @@ metadata:
   name: {{ $fullname }}-mcp-gateway-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -219,6 +220,16 @@ spec:
         - protocol: TCP
           port: 443
     {{- end }}
+    {{- range .Values.__mcpExtraBackendIpBlocks | default list }}
+    - to:
+        - ipBlock:
+            cidr: {{ .cidr | quote }}
+      ports:
+        {{- range .ports | default (list 443) }}
+        - protocol: TCP
+          port: {{ . }}
+        {{- end }}
+    {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -226,7 +237,7 @@ metadata:
   name: {{ $fullname }}-mcp-postgres-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -257,7 +268,7 @@ metadata:
   name: {{ $fullname }}-mcp-qdrant-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -309,7 +320,7 @@ metadata:
   name: {{ $fullname }}-mcp-egress-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -354,7 +365,7 @@ metadata:
   name: {{ $fullname }}-sandbox-worker-ingress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -381,7 +392,7 @@ metadata:
   name: {{ $fullname }}-langfuse-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
@@ -414,7 +425,7 @@ metadata:
   name: {{ $fullname }}-langfuse-bootstrap-egress
   namespace: {{ $ns }}
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
 spec:
   podSelector:
     matchExpressions:

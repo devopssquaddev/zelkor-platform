@@ -1,3 +1,4 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if eq (include "zelkor-platform.serviceMonitorEnabled" .) "true" }}
 {{- $fn := include "zelkor-platform.fullname" . }}
 {{- $interval := ((.Values.observability).serviceMonitor).interval | default "30s" }}
@@ -62,7 +63,7 @@ kind: PodMonitor
 metadata:
   name: {{ $fn }}-envoy
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "observability") | nindent 4 }}
     {{- with $extra }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

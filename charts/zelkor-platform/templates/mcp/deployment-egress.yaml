@@ -1,10 +1,11 @@
+{{- include "zelkor-platform.compile" . -}}
 {{- if and .Values.mcp.enabled .Values.mcp.egressMCP.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-mcp-egress
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.egressMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-egress
 spec:
   ports:
@@ -20,7 +21,7 @@ kind: Deployment
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-mcp-egress
   labels:
-    {{- include "zelkor-platform.labels" . | nindent 4 }}
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.egressMCP") | nindent 4 }}
     app.kubernetes.io/component: mcp-egress
 spec:
   {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
@@ -33,7 +34,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "zelkor-platform.labels" . | nindent 8 }}
+        {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.egressMCP") | nindent 8 }}
         app.kubernetes.io/component: mcp-egress
     spec:
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}

@@ -1,0 +1,6 @@
+{{- $tier := .Values.global.tier | default "oss" -}}
+{{- $intent := (.Values.workload.intent | default dict) -}}
+{{- $approval := ($intent.approval | default dict) -}}
+{{- if and (eq $tier "oss") ($approval.enabled | default false) -}}
+{{- fail "workload.intent.approval requires Zelkor Pro (HITL approval gateway). Remove workload.intent.approval or upgrade. See docs/helm-install.md." -}}
+{{- end -}}

@@ -1,0 +1,22 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $allowed := .Values.gateway.allowedRouteNamespaces | default list -}}
+{{- range $allowed }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: {{ printf "%s-refgrant-%s" (include "zelkor-platform.fullname" $) (. | replace "." "-") | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "gateway") | nindent 4 }}
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: {{ . | quote }}
+  to:
+    - group: ""
+      kind: Service
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+{{- end }}

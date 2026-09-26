@@ -11,6 +11,11 @@ AGENT_CHART = ROOT / "charts/zelkor-agent"
 LOCAL_VALUES = ROOT / "profiles/values-local.yaml"
 
 
+
+def _workload_agents_block(values_text: str) -> str:
+    block = values_text.split("\n  agents:", 1)[1]
+    return block.split("\n  intent:", 1)[0]
+
 def test_graph_router_proxy_removed():
     assert not (ROOT / "images/aegra/graph_router.py").exists()
     dockerfile = (ROOT / "images/aegra/Dockerfile").read_text()
@@ -28,11 +33,11 @@ def test_graph_router_proxy_removed():
 
 def test_workers_default_empty_and_not_urls():
     values = (PLATFORM_CHART / "values.yaml").read_text()
-    aegra = values.split("\naegra:", 1)[1].split("\nguardrails:", 1)[0]
-    assert "workers: []" in aegra
-    assert "attachDefaultRoute: true" in aegra
-    assert "localhost" not in aegra
-    assert "http://" not in aegra.split("workers:", 1)[1].split("\n", 8)[0]
+    agents = _workload_agents_block(values)
+    assert "workers: []" in agents
+    assert "attachDefaultRoute: true" in agents
+    assert "localhost" not in agents
+    assert "http://" not in agents.split("workers:", 1)[1].split("\n", 8)[0]
 
 
 def test_sitecustomize_has_ready_gate_not_proxy():
@@ -60,9 +65,9 @@ def test_nemo_self_check_can_be_disabled():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "guardrails.nemo.selfCheck.enabled=false",
+        "workspace.policies.nemo.selfCheck.enabled=false",
         "--set",
-        "guardrails.nemo.extraInputFlows[0]=regex-check-input",
+        "workspace.policies.nemo.extraInputFlows[0]=regex-check-input",
         "-s",
         "templates/guardrails/configmap.yaml",
     )
@@ -82,7 +87,7 @@ def test_nemo_self_check_can_be_disabled():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "guardrails.nemo.selfCheck.enabled=false",
+        "workspace.policies.nemo.selfCheck.enabled=false",
         "-s",
         "templates/guardrails/configmap.yaml",
     )
@@ -117,7 +122,7 @@ def test_nemo_content_safety_passthrough_for_tools():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "guardrails.nemo.extraInputFlows[0]=check-topic",
+        "workspace.policies.nemo.extraInputFlows[0]=check-topic",
         "-s",
         "templates/guardrails/configmap.yaml",
     )
@@ -136,6 +141,8 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "/app/boot.py" in deploy
     assert "OTEL_METRICS_EXPORTER" in deploy
     assert "LANGFUSE_EXTRA_OTLP" in deploy
+    assert "OTEL_EXPORTER_OTLP_HEADERS" in deploy
+    assert "Authorization=Basic" in deploy
     assert "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS" in deploy
     assert "/v1/health" in deploy
     assert "path: /v1/health" in deploy
@@ -149,7 +156,7 @@ def test_nemo_content_safety_passthrough_for_tools():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "guardrails.nemo.observability.otel.enabled=false",
+        "workspace.policies.nemo.observability.otel.enabled=false",
         "-s",
         "templates/guardrails/configmap.yaml",
     )
@@ -162,7 +169,7 @@ def test_nemo_content_safety_passthrough_for_tools():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "guardrails.nemo.observability.otel.captureContent=false",
+        "workspace.policies.nemo.observability.otel.captureContent=false",
         "-s",
         "templates/guardrails/configmap.yaml",
     )
@@ -174,7 +181,7 @@ def test_nemo_content_safety_passthrough_for_tools():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "guardrails.nemo.observability.otel.enabled=false",
+        "workspace.policies.nemo.observability.otel.enabled=false",
         "-s",
         "templates/guardrails/deployment.yaml",
     )
@@ -184,11 +191,13 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "NEMO_GUARDRAILS_NO_USAGE_STATS" in off_deploy
 
 
-def test_nemo_otel_uses_instrument_not_sitecustomize():
+def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     dockerfile = (ROOT / "images/guardrails/Dockerfile").read_text()
     reqs = (ROOT / "images/guardrails/requirements.txt").read_text()
-    assert "sitecustomize" not in dockerfile
-    assert not (ROOT / "images/guardrails/sitecustomize.py").exists()
+    site = (ROOT / "images/guardrails/sitecustomize.py").read_text()
+    assert "sitecustomize.py" in dockerfile
+    assert "otel_project_route import install" in site
+    assert "install()" in site
     assert "boot.py" in dockerfile
     assert (ROOT / "images/guardrails/boot.py").exists()
     assert (ROOT / "images/guardrails/otel_project_route.py").exists()
@@ -232,9 +241,9 @@ def test_openai_model_regex_does_not_steal_gpt_oss():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "aiGateway.providers.openai.apiKey=sk-test",
+        "workspace.models.providers.openai.apiKey=sk-test",
         "--set",
-        "aiGateway.providers.ollamaCloud.apiKey=ollama-test",
+        "workspace.models.providers.ollamaCloud.apiKey=ollama-test",
         "-s",
         "templates/ai-gateway/aigatewayroute.yaml",
     )
@@ -266,7 +275,7 @@ def test_aegra_openai_base_url_uses_in_cluster_service_not_envoy_fqdn():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "aiGateway.internalUrl=http://envoy-default-zelkor-platform-gateway.envoy-gateway-system.svc.cluster.local:80/v1",
+        "workspace.models.internalUrl=http://envoy-default-zelkor-platform-gateway.envoy-gateway-system.svc.cluster.local:80/v1",
         "-s",
         "templates/aegra/deployment.yaml",
     )
@@ -304,11 +313,11 @@ def test_platform_httproute_workers_match_header_and_query():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "aegra.workers[0].graphId=fraud",
+        "workload.agents.workers[0].graphId=fraud",
         "--set",
-        "aegra.workers[0].service=fraud-agent",
+        "workload.agents.workers[0].service=fraud-agent",
         "--set",
-        "aegra.workers[0].port=8000",
+        "workload.agents.workers[0].port=8000",
         "-s",
         "templates/gateway/httproutes.yaml",
     )
@@ -470,6 +479,52 @@ def test_agent_chart_graph_ids_share_one_service():
     assert route["spec"]["rules"][0]["backendRefs"][0]["name"] == "desk-zelkor-agent"
 
 
+def test_agent_chart_intent_timeout_on_shared_route():
+    rendered = _helm(
+        "template",
+        "fraud",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=fraud",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "sharedRoute.host=agents.example",
+        "--set",
+        "sharedRoute.gatewayName=zelkor-platform-gateway",
+        "--set",
+        "workload.intent.timeout=120s",
+    )
+    docs = _docs(rendered)
+    route = next(d for d in docs if d.get("kind") == "HTTPRoute")
+    assert route["spec"]["rules"][0]["timeouts"]["request"] == "120s"
+    btp = next(d for d in docs if d.get("kind") == "BackendTrafficPolicy")
+    assert btp["spec"]["timeout"]["http"]["requestTimeout"] == "120s"
+    assert btp["spec"]["timeout"]["http"]["streamIdleTimeout"] == "120s"
+
+
+def test_agent_chart_approval_enabled_fails_on_ce():
+    res = subprocess.run(
+        [
+            "helm",
+            "template",
+            "fraud",
+            str(AGENT_CHART),
+            "--set",
+            "graphId=fraud",
+            "--set",
+            "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+            "--set",
+            "workload.intent.approval.enabled=true",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res.returncode != 0
+    assert "approval" in (res.stderr or res.stdout).lower()
+
+
 def test_agent_chart_shared_route_emits_when_host_and_gateway_set():
     """CE-1: HTTPRoute when host + gatewayName are set; enabled is not required."""
     rendered = _helm(
@@ -518,7 +573,7 @@ def test_platform_attach_default_route_false_drops_catchall():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "aegra.attachDefaultRoute=false",
+        "workload.agents.attachDefaultRoute=false",
         "-s",
         "templates/gateway/httproutes.yaml",
     )
@@ -534,11 +589,13 @@ def test_platform_attach_default_route_false_keeps_workers():
         "-f",
         str(LOCAL_VALUES),
         "--set",
-        "aegra.attachDefaultRoute=false",
+        "workload.agents.attachDefaultRoute=false",
         "--set",
-        "aegra.workers[0].graphId=fraud",
+        "workload.agents.workers[0].graphId=fraud",
         "--set",
-        "aegra.workers[0].service=fraud-agent",
+        "workload.agents.workers[0].service=fraud-agent",
+        "--set",
+        "workload.agents.workers[0].port=8000",
         "-s",
         "templates/gateway/httproutes.yaml",
     )

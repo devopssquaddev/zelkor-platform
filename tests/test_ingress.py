@@ -10,7 +10,9 @@ from tests.helpers.llm import llm_model_or_skip
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", "dev-key"))
-AEGRA_HOST = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get("AEGRA_HOST_HEADER", "aegra.localhost")
+AEGRA_HOST = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get(
+    "AEGRA_HOST_HEADER", "agents.localhost"
+)
 LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
 AI_GATEWAY_HOST = os.environ.get("AI_GATEWAY_HOST_HEADER", "ai-gateway.localhost")
 
