@@ -45,6 +45,14 @@ def test_scripts_bash_n():
         assert proc.returncode == 0, f"{path}: {proc.stderr}"
 
 
+def test_bootstrap_operators_skips_on_helm_deployed_not_crd_only():
+    text = OPS.read_text()
+    assert "helm_release_deployed" in text
+    assert "skip CNPG: CRD" not in text
+    assert "Helm release cnpg already deployed" in text
+    assert "HELM_INSTALL_TIMEOUT" in GW.read_text()
+
+
 def test_quickstart_dry_run_greenfield():
     proc = _run(QS, "--dry-run", "--namespace", "zelkor-play")
     assert proc.returncode == 0, proc.stderr

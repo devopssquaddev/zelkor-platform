@@ -10,7 +10,7 @@ Human-oriented docs: [quickstart.md](quickstart.md) (kind), [helm-install.md](he
 
 Zelkor CE installs in **three layers**:
 
-1. **Operators (production only)** — `scripts/bootstrap-operators.sh`: CloudNativePG, Altinity ClickHouse Operator, cert-manager, optional Barman. Skips when CRDs already exist.
+1. **Operators (production only)** — `scripts/bootstrap-operators.sh`: CloudNativePG, Altinity ClickHouse Operator, cert-manager, optional Barman. Skips a controller only when its Helm release is already **deployed** (CRDs alone do not skip install).
 2. **Gateways** — `scripts/bootstrap-gateway.sh`: Gateway API CRDs, Envoy Gateway, Envoy AI Gateway.
 3. **Platform** — Helm `charts/zelkor-platform`: datastores (CRs or in-chart), Aegra, Langfuse, MCP, NeMo, Zelkor `Gateway` + HTTPRoutes, ClusterIP **dataplane**.
 
