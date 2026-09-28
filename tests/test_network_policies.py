@@ -15,9 +15,6 @@ QUICKSTART = ROOT / "profiles" / "values-quickstart.yaml"
 GREENFIELD = ROOT / "profiles" / "values-gateway-greenfield.yaml"
 
 SECRET_SETS = [
-    "platform.tenants.jwt.issuer=https://issuer.example",
-    "platform.tenants.jwt.audiences[0]=zelkor",
-    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
     "security.mcp.acceptUnprotectedBackends=true",
     "postgresql.auth.password=test-pg",
     "clickhouse.auth.password=test-ch",

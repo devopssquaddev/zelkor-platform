@@ -60,9 +60,13 @@ INTENT_KINDS = frozenset(
 
 def _helm(*extra: str, values_files: list[Path] | None = None) -> subprocess.CompletedProcess[str]:
     cmd = ["helm", "template", "zelkor-platform", str(CHART), "--namespace", "zelkor"]
+    lab_profiles = (
+        "values-local.yaml",
+        "values-local-fast.yaml",
+        "values-quickstart.yaml",
+    )
     skip_jwt_sets = bool(
-        values_files
-        and any("values-local" in vf.name for vf in values_files)
+        values_files and any(vf.name in lab_profiles for vf in values_files)
     )
     for item in SECRET_SETS:
         if skip_jwt_sets and item.startswith("platform.tenants.jwt"):
