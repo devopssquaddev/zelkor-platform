@@ -933,30 +933,22 @@ log "  -> [4/5] Agent Orchestrator (Aegra)..."
 wait_one critical deployment/zelkor-platform-aegra
 step_end rollout_aegra
 
-MCP_WAIT_TARGETS=()
+# shellcheck source=lib/mcp-dataplane-install.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/mcp-dataplane-install.sh"
+MCP_DP_KUBECTL_ARGS=(--context "$KCTX")
+MCP_DP_RELEASE="$HELM_RELEASE_NAME"
+MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
+MCP_DP_KUBE_CONTEXT="$KCTX"
+step_begin rollout_mcp_nemo
 if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
-  MCP_WAIT_TARGETS+=(deployment/zelkor-platform-nemo)
+  wait_one optional deployment/zelkor-platform-nemo
 fi
-if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/null 2>&1; then
-  MCP_WAIT_TARGETS+=(
-    deployment/zelkor-platform-mcp-gateway
-    deployment/zelkor-platform-mcp-postgres
-    deployment/zelkor-platform-mcp-qdrant
-  )
-  if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox >/dev/null 2>&1; then
-    MCP_WAIT_TARGETS+=(deployment/zelkor-platform-mcp-sandbox)
-  fi
-  for i in 0 1 2; do
-    if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox-worker-$i >/dev/null 2>&1; then
-      MCP_WAIT_TARGETS+=("deployment/zelkor-platform-mcp-sandbox-worker-$i")
-    fi
-  done
+if mcp_dataplane_wait_all; then
+  log "  -> [5/5] MCP dataplane (Gateway, native MCP, MCPRoute) ready"
+else
+  DEGRADED_COMPONENTS+=("mcp dataplane"$'\t'"MCPRoute or native MCP rollout did not become ready in time")
 fi
-if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
-  step_begin rollout_mcp_nemo
-  wait_group optional "[5/5] Guardrails + native MCP (+ sandbox when enabled)" "${MCP_WAIT_TARGETS[@]}"
-  step_end rollout_mcp_nemo
-fi
+step_end rollout_mcp_nemo
 
 step_begin job_langfuse_bootstrap
 wait_langfuse_bootstrap_job
@@ -1223,6 +1215,11 @@ cat <<EOF
 ======================================================================
 EOF
 fi
+  MCP_DP_LOCAL_SIGNING=1
+  MCP_DP_RELEASE="$HELM_RELEASE_NAME"
+  MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
+  MCP_DP_KUBE_CONTEXT="$KCTX"
+  mcp_dataplane_print_token_banner
 }
 
 if [[ ${#DEGRADED_COMPONENTS[@]} -gt 0 && "$INSTALL_STRICT" == "true" ]]; then

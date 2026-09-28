@@ -27,6 +27,7 @@ from zelkor.detect import (
     should_attach_as_default,
 )
 from zelkor.envfile import Env, add_env, list_envs, load_store, remove_env, resolve_env
+from zelkor.extra_backends import format_missing_extras_error, missing_extra_registrations
 from zelkor.token_cmd import cmd_token_jwks, cmd_token_mint
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
@@ -249,16 +250,6 @@ def auth_values(info: PlatformInfo) -> dict[str, Any]:
     }
 
 
-def merge_extra_backends(existing: list[Any], extra: list[dict[str, str]]) -> list[dict[str, str]]:
-    by_name: dict[str, dict[str, str]] = {}
-    for row in existing or []:
-        if isinstance(row, dict) and row.get("name") and row.get("url"):
-            by_name[str(row["name"])] = {"name": str(row["name"]), "url": str(row["url"])}
-    for row in extra:
-        by_name[row["name"]] = {"name": row["name"], "url": row["url"]}
-    return list(by_name.values())
-
-
 def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) -> None:
     ignore = {".git", ".zelkor", "__pycache__", ".venv", ".pytest_cache"}
     for item in src.iterdir():
@@ -311,6 +302,13 @@ def deploy_agent(
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
     info = discover_platform(env, runner=runner)
+    platform_values: dict[str, Any] = {}
+    if shape.mcp_servers:
+        values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
+        platform_values = yaml.safe_load(values_raw.stdout or "") or {}
+        missing = missing_extra_registrations(shape.mcp_servers, platform_values)
+        if missing:
+            raise RuntimeError(format_missing_extras_error(missing))
     as_default = should_attach_as_default(info.agent_route_names, release)
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
@@ -379,35 +377,10 @@ def deploy_agent(
             ),
             runner=runner,
         )
-        plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
-        plat_file = ""
         if as_default:
+            plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
             plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
-        if shape.mcp_servers:
-            current = yaml.safe_load(
-                _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner).stdout or ""
-            ) or {}
-            tools = (current.get("workspace") or {}).get("tools") or {}
-            plat = {
-                "workspace": {
-                    "tools": {
-                        "extraBackends": merge_extra_backends(
-                            (tools.get("extraBackends") or []),
-                            list(shape.mcp_servers),
-                        )
-                    }
-                }
-            }
-            with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as pfh:
-                yaml.safe_dump(plat, pfh)
-                plat_file = pfh.name
-            plat_args.extend(["-f", plat_file])
-        if as_default or shape.mcp_servers:
-            try:
-                _run(plat_args, runner=runner)
-            finally:
-                if plat_file:
-                    Path(plat_file).unlink(missing_ok=True)
+            _run(plat_args, runner=runner)
         _run(
             kube_argv(
                 env,

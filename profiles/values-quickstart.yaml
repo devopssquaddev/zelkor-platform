@@ -36,6 +36,15 @@ platform:
   tenants:
     sso:
       enabled: false
+    jwt:
+      issuer: https://quickstart.zelkor.invalid
+      audiences:
+      - zelkor
+      localSigning:
+        enabled: true
+        seedTenant: quickstart-seed
+        tokenTTL: 24h
+        seedTokenTTL: 24h
   telemetry:
     langfuse:
       init:

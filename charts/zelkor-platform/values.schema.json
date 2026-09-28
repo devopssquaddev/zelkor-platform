@@ -171,6 +171,10 @@
                     "rotationId": {
                       "type": "string",
                       "description": "Value for platform.tenants.jwt.localSigning.rotationId."
+                    },
+                    "privateKey": {
+                      "type": "string",
+                      "description": "Install-time PEM via --set-file (local-signing-helm-sets.sh); not stored in git."
                     }
                   },
                   "additionalProperties": false

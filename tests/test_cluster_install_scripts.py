@@ -14,10 +14,20 @@ QS = ROOT / "scripts" / "install-quickstart.sh"
 PROD = ROOT / "scripts" / "install-production.sh"
 UNINSTALL = ROOT / "scripts" / "uninstall.sh"
 LIB = ROOT / "scripts" / "lib" / "cluster-install.sh"
+MCP_DP = ROOT / "scripts" / "lib" / "mcp-dataplane-install.sh"
 INSTALL_LOG = ROOT / "scripts" / "lib" / "install-log.sh"
 OWN = ROOT / "scripts" / "lib" / "bootstrap-ownership.sh"
 GW = ROOT / "scripts" / "bootstrap-gateway.sh"
 OPS = ROOT / "scripts" / "bootstrap-operators.sh"
+
+PROD_JWT_ARGS = (
+    "--set",
+    "platform.tenants.jwt.issuer=https://customer.example",
+    "--set",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "--set",
+    "platform.tenants.jwt.jwksConfigMap=customer-tenant-jwks",
+)
 
 
 def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -40,7 +50,7 @@ def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subproc
 
 
 def test_scripts_bash_n():
-    for path in (LIB, INSTALL_LOG, OWN, QS, PROD, UNINSTALL, GW, OPS):
+    for path in (LIB, MCP_DP, INSTALL_LOG, OWN, QS, PROD, UNINSTALL, GW, OPS):
         proc = subprocess.run(["bash", "-n", str(path)], check=False, capture_output=True, text=True)
         assert proc.returncode == 0, f"{path}: {proc.stderr}"
 
@@ -186,6 +196,7 @@ def test_production_dry_run_greenfield():
         "--hosts-langfuse",
         "langfuse.example.com",
         "--generate-passwords",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
@@ -221,6 +232,7 @@ def test_production_generated_url_secrets_are_hex():
         "--hosts-langfuse",
         "langfuse.example.com",
         "--generate-passwords",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     for name in ("POSTGRES_PASSWORD", "CLICKHOUSE_PASSWORD", "SEAWEEDFS_ACCESS_KEY", "SEAWEEDFS_SECRET_KEY"):
@@ -249,6 +261,7 @@ def test_production_dry_run_skip_operators_and_tls():
         "--cluster-issuer",
         "letsencrypt-prod",
         "--service-monitor",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
@@ -270,6 +283,7 @@ def test_production_image_pull_secret_quoted():
         "--generate-passwords",
         "--image-pull-secret",
         "private-registry",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     assert "global.imagePullSecrets[0].name=private-registry" in proc.stdout
@@ -320,6 +334,7 @@ def test_production_dry_run_generates_secrets_without_flag():
         "agents.example.com",
         "--hosts-langfuse",
         "langfuse.example.com",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     assert "postgresql.auth.password=" in proc.stdout

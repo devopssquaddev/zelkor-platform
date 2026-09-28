@@ -9,6 +9,8 @@ cluster_install_die() {
 
 # shellcheck source=gateway-policies.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
+# shellcheck source=mcp-dataplane-install.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/mcp-dataplane-install.sh"
 
 cluster_install_need() {
   command -v "$1" >/dev/null 2>&1 || cluster_install_die "missing required command: $1"
@@ -533,10 +535,67 @@ cluster_install_run_bootstrap_gateway() {
     cluster_install_print_or_run BOOTSTRAP_GATEWAY \
       "${ZELKOR_REPO_ROOT}/scripts/bootstrap-gateway.sh"
   fi
+  cluster_install_envoy_enable_backend_preflight
+}
+
+cluster_install_helm_template_preflight() {
+  local values_file="$1"
+  [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]] && return 0
+  local chart="${ZELKOR_REPO_ROOT}/charts/zelkor-platform"
+  local tpl_extra=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && tpl_extra+=("$line")
+  done < <(cluster_install_helm_template_extra_args "$values_file")
+  local err_file
+  err_file="$(mktemp)"
+  if ! helm template "$CLUSTER_INSTALL_RELEASE" "$chart" \
+    --namespace "$CLUSTER_INSTALL_NAMESPACE" \
+    "${tpl_extra[@]}" >"${err_file}" 2>&1; then
+    cluster_install_die "helm template failed: $(tail -n 3 "${err_file}")"
+  fi
+  rm -f "${err_file}"
+}
+
+cluster_install_profile_local_signing() {
+  local values_file="$1"
+  # shellcheck source=local-signing-helm-sets.sh
+  source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
+  HELM_RELEASE_NAME="$CLUSTER_INSTALL_RELEASE"
+  local cfg
+  cfg="$(_local_signing_read_config "$values_file" 2>/dev/null || true)"
+  [[ -n "$cfg" ]]
+}
+
+cluster_install_envoy_enable_backend_preflight() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  local native_ref=""
+  local arg
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    case "$arg" in
+      mcp.mcproute.nativeRefKind=*) native_ref="${arg#mcp.mcproute.nativeRefKind=}" ;;
+      gateway.mcproute.nativeRefKind=*) native_ref="${arg#gateway.mcproute.nativeRefKind=}" ;;
+    esac
+  done
+  if [[ -z "$native_ref" ]]; then
+    native_ref="Backend"
+  fi
+  if [[ "$native_ref" != "Backend" ]]; then
+    return 0
+  fi
+  if ! kubectl "${KUBECTL_ARGS[@]}" get configmap envoy-gateway-config -n envoy-gateway-system >/dev/null 2>&1; then
+    return 0
+  fi
+  local body
+  body="$(kubectl "${KUBECTL_ARGS[@]}" get configmap envoy-gateway-config -n envoy-gateway-system \
+    -o jsonpath='{.data.envoy-gateway\.yaml}' 2>/dev/null || true)"
+  if [[ "$body" != *"enableBackend: true"* ]]; then
+    cluster_install_die "Envoy Gateway extensionApis.enableBackend must be true for MCPRoute Backend refs (re-run scripts/bootstrap-gateway.sh)"
+  fi
 }
 
 cluster_install_run_helm() {
   local values_file="$1"
+  cluster_install_helm_template_preflight "$values_file"
   cluster_install_gateway_policies_preflight "$values_file"
   local cmd=()
   while IFS= read -r line; do
@@ -740,6 +799,27 @@ cluster_install_wait_langfuse_bootstrap() {
   kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
     wait "job/${job}" --for=condition=complete --timeout=20m || \
     cluster_install_warn_or_fail "Langfuse bootstrap Job did not complete"
+}
+
+cluster_install_wait_mcp_dataplane() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  MCP_DP_KUBECTL_ARGS=("${KUBECTL_ARGS[@]}")
+  MCP_DP_RELEASE="$CLUSTER_INSTALL_RELEASE"
+  MCP_DP_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
+  MCP_DP_KUBE_CONTEXT="${KUBE_CONTEXT:-}"
+  mcp_dataplane_wait_all
+}
+
+cluster_install_print_mcp_token_banner() {
+  local values_file="$1"
+  MCP_DP_LOCAL_SIGNING=0
+  if cluster_install_profile_local_signing "$values_file"; then
+    MCP_DP_LOCAL_SIGNING=1
+  fi
+  MCP_DP_RELEASE="$CLUSTER_INSTALL_RELEASE"
+  MCP_DP_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
+  MCP_DP_KUBE_CONTEXT="${KUBE_CONTEXT:-}"
+  mcp_dataplane_print_token_banner
 }
 
 cluster_install_enable_langfuse_public_route() {
