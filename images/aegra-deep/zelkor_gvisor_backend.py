@@ -5,11 +5,11 @@ File ops are in-memory (not host FilesystemBackend).
 """
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import json
 import logging
 import os
-import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("zelkor-gvisor-backend")
 
 SKILLS_VIRTUAL_PATH = "/skills"
+_MCP_HTTP_TIMEOUT_SEC = 110.0
+_SANDBOX_TIMEOUT_MAX = 90
 
 try:
     from deepagents.backends.protocol import SandboxBackendProtocol as _ProtocolBase
@@ -49,22 +51,115 @@ def _execute_response(output: str, exit_code: int, truncated: bool = False) -> A
         return SimpleNamespace(output=output, exit_code=exit_code, truncated=truncated)
 
 
-def _tenant_id() -> str:
-    try:
-        from mcp_inject import tenant_from_run_config
+def _mcp_endpoint() -> str:
+    base = os.getenv("MCP_URL", "").rstrip("/")
+    if not base:
+        return ""
+    return f"{base}/mcp"
 
-        return tenant_from_run_config()
+
+def _run_config() -> dict:
+    try:
+        from mcp_inject import _current_run_config
+
+        cfg = _current_run_config()
+        return cfg if isinstance(cfg, dict) else {}
+    except Exception:
+        return {}
+
+
+def _mcp_bearer() -> str:
+    try:
+        from mcp_inject import inbound_authorization
+
+        return inbound_authorization(_run_config())
     except Exception:
         return ""
 
 
-def _identity_headers() -> Dict[str, str]:
-    try:
-        from mcp_inject import identity_headers
+def _clamp_timeout(seconds: int) -> int:
+    return max(1, min(int(seconds), _SANDBOX_TIMEOUT_MAX))
 
-        return identity_headers()
+
+def _parse_execute_payload(result: Any) -> tuple[str, int]:
+    if getattr(result, "isError", False):
+        text = ""
+        content = getattr(result, "content", None) or []
+        if content and getattr(content[0], "text", None):
+            text = content[0].text
+        return text or "sandbox tool call failed", 1
+    content = getattr(result, "content", None) or []
+    text = ""
+    if content and getattr(content[0], "text", None):
+        text = content[0].text
+    if not text:
+        return "", 0
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text, 0
+    stdout = parsed.get("stdout") or ""
+    stderr = parsed.get("stderr") or ""
+    err = parsed.get("error") or ""
+    output = stdout
+    if stderr:
+        output = f"{output}\n{stderr}".strip() if output else stderr
+    if err and err not in output:
+        output = f"{output}\n{err}".strip() if output else err
+    exit_code = int(parsed.get("exit_code") or 0)
+    if parsed.get("status") == "error" and exit_code == 0:
+        exit_code = 1
+    try:
+        from sandbox_trace import stamp_sandbox_execution_span
+
+        stamp_sandbox_execution_span(parsed)
     except Exception:
-        return {"Content-Type": "application/json"}
+        logger.debug("sandbox trace stamp skipped on execute backend", exc_info=True)
+    return output, exit_code
+
+
+async def _call_sandbox_execute(code: str, environment: str, timeout_sec: int) -> Any:
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    import httpx
+
+    url = _mcp_endpoint()
+    if not url:
+        raise RuntimeError("MCP_URL is not set")
+    bearer = _mcp_bearer()
+    if not bearer:
+        raise RuntimeError("no MCP bearer for sandbox execute")
+
+    auth = bearer if bearer.lower().startswith("bearer ") else f"Bearer {bearer}"
+    timeout = httpx.Timeout(_MCP_HTTP_TIMEOUT_SEC, connect=30.0)
+    async with httpx.AsyncClient(
+        headers={"Authorization": auth},
+        timeout=timeout,
+    ) as http_client:
+        async with streamable_http_client(url, http_client=http_client) as streams:
+            read_stream, write_stream, _ = streams
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                return await session.call_tool(
+                    "sandbox__execute_python",
+                    {
+                        "code": code,
+                        "environment": environment,
+                        "timeout": timeout_sec,
+                    },
+                )
+
+
+def _run_async(coro: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 def _norm(path: str) -> str:
@@ -198,20 +293,17 @@ class _MemoryFiles:
 
     def ls(self, path: str) -> Any:
         virt = _norm(path)
-        if virt in self._files:
-            return _ls_result(f"Path '{path}': not_a_directory", None)
         if not self._dir_exists(virt):
-            return _ls_result(f"Path '{path}': path_not_found", None)
+            return _ls_result("directory_not_found", None)
         return _ls_result(None, self._children(virt))
 
     def read(self, file_path: str, offset: int = 0, limit: int = 2000) -> Any:
         virt = _norm(file_path)
         if virt not in self._files:
-            return _read_result(virt, error=f"File '{file_path}' not found")
-        lines = self._files[virt].splitlines(keepends=True)
-        start = max(0, offset)
-        window = lines[start : start + max(limit, 0)]
-        return _read_result(virt, content="".join(window))
+            return _read_result(virt, error="file_not_found")
+        lines = self._files[virt].splitlines()
+        chunk = "\n".join(lines[offset : offset + limit])
+        return _read_result(virt, content=chunk)
 
     def write(self, file_path: str, content: str) -> Any:
         virt = _norm(file_path)
@@ -227,15 +319,24 @@ class _MemoryFiles:
     ) -> Any:
         virt = _norm(file_path)
         if virt not in self._files:
-            return _edit_result(error=f"File '{file_path}' not found")
+            return _edit_result(error="file_not_found")
         text = self._files[virt]
-        count = text.count(old_string)
-        if count == 0:
-            return _edit_result(error="old_string not found")
-        if not replace_all and count != 1:
-            return _edit_result(error="old_string is not unique")
-        self._files[virt] = text.replace(old_string, new_string)
-        return _edit_result(path=virt, occurrences=count if replace_all else 1)
+        if old_string not in text:
+            return _edit_result(error="string_not_found")
+        if replace_all:
+            count = text.count(old_string)
+            self._files[virt] = text.replace(old_string, new_string)
+        else:
+            count = 1
+            self._files[virt] = text.replace(old_string, new_string, 1)
+        return _edit_result(path=virt, occurrences=count)
+
+    def delete(self, file_path: str) -> Any:
+        virt = _norm(file_path)
+        if virt not in self._files:
+            return _delete_result(error="file_not_found")
+        del self._files[virt]
+        return _delete_result(path=virt)
 
     def grep(
         self,
@@ -243,56 +344,47 @@ class _MemoryFiles:
         path: str | None = None,
         glob: str | None = None,
         *,
-        max_count: int | None = None,
-        **_kwargs: Any,
+        output_mode: str = "files_with_matches",
     ) -> Any:
-        root = _norm(path or "/")
-        prefix = root.rstrip("/") + "/" if root != "/" else "/"
-        matches = []
+        base = _norm(path or "/")
+        matches: list = []
         for key, text in self._files.items():
-            if root != "/" and key != root and not key.startswith(prefix):
+            if base != "/" and not (key == base or key.startswith(base.rstrip("/") + "/")):
                 continue
-            if glob and not fnmatch.fnmatch(key, glob) and not fnmatch.fnmatch(key.rsplit("/", 1)[-1], glob):
+            if glob and not fnmatch.fnmatch(key, glob):
                 continue
-            for i, line in enumerate(text.splitlines(), start=1):
-                if pattern in line:
-                    matches.append({"path": key, "line": i, "text": line})
-                    if max_count is not None and len(matches) >= max_count:
-                        return _grep_result(matches, truncated=True)
-        return _grep_result(matches)
+            for idx, line in enumerate(text.splitlines(), start=1):
+                if fnmatch.fnmatch(line, pattern) or pattern in line:
+                    matches.append({"path": key, "line": idx, "text": line})
+        if output_mode == "content":
+            return _grep_result(matches)
+        paths = sorted({m["path"] for m in matches})
+        return _grep_result([{"path": p} for p in paths])
 
-    def glob(self, pattern: str, path: str | None = None) -> Any:
-        root = _norm(path or "/")
-        prefix = root.rstrip("/") + "/" if root != "/" else "/"
-        matches = []
-        for key in sorted(self._files):
-            if root != "/" and key != root and not key.startswith(prefix):
+    def glob(self, pattern: str, path: str = "/") -> Any:
+        base = _norm(path)
+        found = []
+        for key in self._files:
+            if base != "/" and not (key == base or key.startswith(base.rstrip("/") + "/")):
                 continue
-            rel = key[len(prefix) :] if root != "/" else key.lstrip("/")
-            if fnmatch.fnmatch(key, pattern) or fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch("/" + rel, pattern):
-                matches.append({"path": key, "is_dir": False})
-        return _glob_result(matches)
-
-    def delete(self, file_path: str) -> Any:
-        virt = _norm(file_path)
-        prefix = virt.rstrip("/") + "/"
-        keys = [k for k in self._files if k == virt or k.startswith(prefix)]
-        if not keys:
-            return _delete_result(error=f"Path '{file_path}' not found")
-        for key in keys:
-            del self._files[key]
-        return _delete_result(path=virt)
+            if fnmatch.fnmatch(key, pattern):
+                found.append(key)
+        return _glob_result(sorted(found))
 
     def upload_files(self, files: list) -> list:
         out = []
-        for path, content in files:
-            virt = _norm(path)
+        for item in files:
+            path = _norm(getattr(item, "path", "") or item.get("path", ""))
+            content = getattr(item, "content", None)
+            if content is None and isinstance(item, dict):
+                content = item.get("content")
             if isinstance(content, bytes):
-                text = content.decode("utf-8")
-            else:
-                text = str(content)
-            self._files[virt] = text
-            out.append(_upload_response(virt))
+                content = content.decode("utf-8", errors="replace")
+            if not isinstance(content, str):
+                out.append(_upload_response(path, error="invalid_content"))
+                continue
+            self._files[path] = content
+            out.append(_upload_response(path))
         return out
 
     def download_files(self, paths: list) -> list:
@@ -336,70 +428,24 @@ class ZelkorGvisorBackend(_ProtocolBase):
         return virt
 
     def execute(self, command: str, *, timeout: int | None = None) -> Any:
-        if not self._mcp:
+        if not self._mcp and not _mcp_endpoint():
             logger.error("MCP_URL is not set")
             return _execute_response("MCP_URL is not set", 1)
-        seconds = 5 if timeout is None else int(timeout)
-        tenant = _tenant_id()
+        seconds = _clamp_timeout(5 if timeout is None else int(timeout))
         logger.info(
             "gvisor execute timeout=%s",
             seconds,
-            extra={"event": "sandbox_execute", "tenant_id": tenant},
+            extra={"event": "sandbox_execute"},
         )
-        headers = dict(_identity_headers())
-        headers["Content-Type"] = "application/json"
-        args: Dict[str, Any] = {
-            "code": wrap_shell_as_python(command),
-            "environment": "python-base",
-            "timeout": seconds,
-        }
-        if tenant:
-            args["tenant_id"] = tenant
-        payload = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "sandbox__execute_python", "arguments": args},
-            }
-        ).encode("utf-8")
-        req = urllib.request.Request(
-            f"{self._mcp}/mcp",
-            data=payload,
-            headers=headers,
-            method="POST",
-        )
+        code = wrap_shell_as_python(command)
         try:
-            with urllib.request.urlopen(req, timeout=seconds + 5) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
+            result = _run_async(
+                _call_sandbox_execute(code, "python-base", seconds),
+            )
         except Exception as exc:
             logger.warning("MCP sandbox execute failed: %s", exc)
             return _execute_response(str(exc), 1)
-        if body.get("error"):
-            msg = (body["error"] or {}).get("message") or str(body["error"])
-            return _execute_response(msg, 1)
-        text = ((body.get("result") or {}).get("content") or [{}])[0].get("text") or "{}"
-        try:
-            result = json.loads(text)
-        except json.JSONDecodeError:
-            return _execute_response(text, 0)
-        stdout = result.get("stdout") or ""
-        stderr = result.get("stderr") or ""
-        err = result.get("error") or ""
-        output = stdout
-        if stderr:
-            output = f"{output}\n{stderr}".strip() if output else stderr
-        if err and err not in output:
-            output = f"{output}\n{err}".strip() if output else err
-        exit_code = int(result.get("exit_code") or 0)
-        if result.get("status") == "error" and exit_code == 0:
-            exit_code = 1
-        try:
-            from sandbox_trace import stamp_sandbox_execution_span
-
-            stamp_sandbox_execution_span(result)
-        except Exception:
-            logger.debug("sandbox trace stamp skipped on execute backend", exc_info=True)
+        output, exit_code = _parse_execute_payload(result)
         return _execute_response(output, exit_code)
 
     async def aexecute(self, command: str, *, timeout: int | None = None) -> Any:
@@ -447,10 +493,9 @@ class ZelkorGvisorBackend(_ProtocolBase):
         path: str | None = None,
         glob: str | None = None,
         *,
-        max_count: int | None = None,
-        **kwargs: Any,
+        output_mode: str = "files_with_matches",
     ) -> Any:
-        return self._files.grep(pattern, path=path, glob=glob, max_count=max_count, **kwargs)
+        return self._files.grep(pattern, path, glob, output_mode=output_mode)
 
     async def agrep(
         self,
@@ -458,15 +503,14 @@ class ZelkorGvisorBackend(_ProtocolBase):
         path: str | None = None,
         glob: str | None = None,
         *,
-        max_count: int | None = None,
-        **kwargs: Any,
+        output_mode: str = "files_with_matches",
     ) -> Any:
-        return await _to_thread(self.grep, pattern, path, glob, max_count=max_count, **kwargs)
+        return await _to_thread(self.grep, pattern, path, glob, output_mode=output_mode)
 
-    def glob(self, pattern: str, path: str | None = None) -> Any:
-        return self._files.glob(pattern, path=path)
+    def glob(self, pattern: str, path: str = "/") -> Any:
+        return self._files.glob(pattern, path)
 
-    async def aglob(self, pattern: str, path: str | None = None) -> Any:
+    async def aglob(self, pattern: str, path: str = "/") -> Any:
         return await _to_thread(self.glob, pattern, path)
 
     def delete(self, file_path: str) -> Any:

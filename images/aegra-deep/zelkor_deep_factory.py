@@ -8,12 +8,23 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("zelkor-deep-factory")
 
 APP = Path(os.getenv("ZELKOR_AGENT_ROOT", "/app"))
+
+try:
+    from langchain_core.runnables import RunnableConfig
+except ImportError:  # pragma: no cover
+    RunnableConfig = dict  # type: ignore[misc,assignment]
+
+try:
+    from langgraph_sdk.runtime import ServerRuntime
+except ImportError:  # pragma: no cover
+    ServerRuntime = Any  # type: ignore[misc,assignment]
 
 
 def load_json(path: Path) -> Any:
@@ -104,6 +115,41 @@ def mcp_servers_from_tools(tools: Any) -> List[Dict[str, str]]:
     return out
 
 
+def _canonical_mcp_url() -> str:
+    base = os.getenv("MCP_URL", "").rstrip("/")
+    if not base:
+        return ""
+    return f"{base}/mcp"
+
+
+def _normalize_mcp_url(raw: str) -> str:
+    text = (raw or "").strip().rstrip("/")
+    if not text:
+        return ""
+    if text.endswith("/mcp"):
+        return text
+    return f"{text}/mcp"
+
+
+def validate_mcp_servers(servers: List[Dict[str, str]]) -> None:
+    """Refuse tools.json entries that are not the platform MCP_URL hop."""
+    expected = _canonical_mcp_url()
+    if not servers:
+        return
+    if not expected:
+        raise RuntimeError(
+            "tools.json declares MCP servers but MCP_URL is not set; "
+            "Deep Agents may only use {MCP_URL}/mcp"
+        )
+    for srv in servers:
+        got = _normalize_mcp_url(srv.get("url") or "")
+        if got != expected.rstrip("/"):
+            name = srv.get("name") or "?"
+            raise RuntimeError(
+                f"tools.json MCP server {name!r} must use {expected!r} only (got {srv.get('url')!r})"
+            )
+
+
 def build_chat_model(agent: Dict[str, Any]) -> Any:
     from langchain_openai import ChatOpenAI
 
@@ -127,46 +173,33 @@ def factory_kwargs(root: Path | None = None) -> Dict[str, Any]:
         "mcp_servers": mcp_servers_from_tools(tools_doc),
         "model_spec": model_spec(agent),
         "skills_dir": str(base / "skills") if (base / "skills").is_dir() else "",
+        "agent": agent,
     }
     return kwargs
 
 
-def _load_mcp_tools(servers: List[Dict[str, str]]) -> list:
-    if not servers:
-        return []
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-    except Exception:
-        logger.warning("langchain-mcp-adapters not available; skip Mode A MCP tools")
-        return []
-    conf = {}
-    for srv in servers:
-        conf[srv["name"]] = {"url": srv["url"], "transport": "streamable_http"}
-    try:
-        client = MultiServerMCPClient(conf)
-        get_tools = getattr(client, "get_tools", None)
-        if get_tools is None:
-            return []
-        import asyncio
-        import inspect
+async def _load_tools_from_session(session) -> list:
+    from langchain_mcp_adapters.tools import convert_mcp_tool_to_langchain_tool
 
-        result = get_tools()
-        if inspect.isawaitable(result):
-            result = asyncio.run(result)
-        return list(result or [])
-    except Exception:
-        logger.exception("Mode A MCP tool load failed")
-        return []
+    result = await session.list_tools()
+    specs = list(getattr(result, "tools", None) or [])
+    return [convert_mcp_tool_to_langchain_tool(session, spec) for spec in specs]
 
 
-def build_graph(root: Path | None = None) -> Any:
+@asynccontextmanager
+async def _deep_mcp_session(bearer: str):
+    from mcp_inject import _mcp_client_session
+
+    async with _mcp_client_session(bearer) as session:
+        yield session
+
+
+def build_graph(root: Path | None = None, *, tools: Optional[list] = None) -> Any:
     from deepagents import create_deep_agent
 
     base = root or APP
-    agent = load_json(base / "agent.json") or {}
-    if not isinstance(agent, dict):
-        agent = {}
     kwargs = factory_kwargs(base)
+    agent = kwargs["agent"]
     create: Dict[str, Any] = {
         "model": build_chat_model(agent),
         "name": kwargs["name"],
@@ -187,18 +220,49 @@ def build_graph(root: Path | None = None) -> Any:
                 create["skills"] = [virt]
         else:
             create["skills"] = [host_skills]
-    tools = _load_mcp_tools(kwargs["mcp_servers"])
     if tools:
         create["tools"] = tools
     logger.info(
         "deep agent graph=%s sandbox=%s tools=%s",
         kwargs["name"],
         bool(kwargs["sandbox"]),
-        len(tools),
+        len(tools or []),
         extra={"event": "graph_build", "graph_id": kwargs["name"]},
     )
     return create_deep_agent(**create)
 
 
-def graph():
-    return build_graph()
+def graph(config: RunnableConfig, runtime: ServerRuntime) -> Any:
+    """Aegra deploy-first factory: MCP session only for threads.create_run."""
+    kwargs = factory_kwargs()
+    validate_mcp_servers(kwargs["mcp_servers"])
+    access = getattr(runtime, "access_context", "") or ""
+
+    if access != "threads.create_run":
+        return build_graph(tools=[])
+
+    if not kwargs["mcp_servers"]:
+        return build_graph(tools=[])
+
+    try:
+        from mcp_inject import inbound_authorization
+    except ImportError as exc:  # pragma: no cover
+        raise RuntimeError("mcp_inject not available in deep image") from exc
+
+    bearer = inbound_authorization(config if isinstance(config, dict) else None)
+    if not bearer:
+        logger.warning(
+            "Deep factory: no MCP bearer for threads.create_run; graph runs without MCP tools"
+        )
+        return build_graph(tools=[])
+
+    @asynccontextmanager
+    async def _run_with_tools():
+        async with _deep_mcp_session(bearer) as session:
+            tools = await _load_tools_from_session(session)
+            yield build_graph(tools=tools)
+
+    return _run_with_tools()
+
+
+graph.__annotations__ = {"config": RunnableConfig, "runtime": ServerRuntime}
