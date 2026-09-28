@@ -53,26 +53,46 @@ helm --kube-context kind-zelkor list
 
 All services and Web UIs are accessible via the Kubernetes Gateway API on port `8088`:
 
-| Component | URL | Credentials / Headers |
+| Component | URL | Auth |
 | :--- | :--- | :--- |
-| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | `admin@zelkor.local` / `zelkor-dev-password` |
-| **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer dev-key`, `X-Tenant-ID: Bank_Alpha` |
-| **Aegra Agent Runtime** | [http://aegra.localhost:8088/docs](http://aegra.localhost:8088/docs) | `Authorization: Bearer dev:Bank_Alpha` |
-| **Native MCP Gateway** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | `Authorization: Bearer dev:Bank_Alpha`, `X-Tenant-ID: Bank_Alpha` |
+| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | Admin user/password from `profiles/values-local.yaml` (kind overlay only) |
+| **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer <consumerKey>` — `workspace.models.consumerKey` in the kind overlay (gateway credential, not tenant identity) |
+| **Agent Protocol** | [http://agents.localhost:8088](http://agents.localhost:8088) | `Authorization: Bearer <tenant JWT>` — mint with `zelkor token mint` (see below) |
+| **MCP (Envoy MCPRoute)** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | Same tenant JWT as Agent Protocol |
+
+Kind installs enable **`platform.tenants.jwt.localSigning`** in `profiles/values-local.yaml` (applied by `./install.sh`). That is lab-only; production uses your IdP JWKS via `install-production.sh` (`--jwt-issuer`, `--jwks-file`, `--jwt-audience`). Agents reach native tools at in-cluster `http://<release>-mcp` (`MCP_URL`); the public MCP host above is optional debugging.
+
+### Mint a tenant JWT (kind)
+
+```bash
+pip install -e ./cli
+export AUTH_JWT_ISSUER=https://local.zelkor.invalid
+TOKEN=$(zelkor token mint --release zelkor-platform --tenant seed --namespace default --context kind-zelkor)
+```
+
+Use `--tenant` matching your workload (`seed` is the default lab tenant in the kind overlay). Set `--namespace` to the namespace where you installed the platform release.
 
 ### Quick Test
 
-You can test the AI Gateway directly. Harmful prompts are automatically refused by NeMo Guardrails on the default route:
+Test the AI Gateway with the overlay consumer key only (no tenant header). Harmful prompts are refused by NeMo Guardrails on the default route:
 
 ```bash
 curl -X POST http://ai-gateway.localhost:8088/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer dev-key" \
-  -H "X-Tenant-ID: Bank_Alpha" \
   -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
 ```
 
-*(Ensure the `model` matches the default model for your chosen provider).*
+*(Replace `dev-key` with your overlay `workspace.models.consumerKey` if you changed it. Ensure the `model` matches your provider.)*
+
+Call MCP or Agent Protocol with the minted JWT:
+
+```bash
+curl -sS http://mcp.localhost:8088/mcp \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
 
 ## Deploying an Agent
 

@@ -12,11 +12,11 @@ Human docs: [quickstart.md](quickstart.md) (Deploying an Agent), [production.md]
 | :--- | :--- | :--- |
 | **Intercept** | Envoy AI Gateway on `/v1` — keys, NeMo, OTEL | None if LLM uses OpenAI-compatible client against gateway |
 | **Aegra wrap** | Agent Protocol host; threads/checkpoints in **existing** platform Postgres | None for LangGraph/Aegra graphs in your image |
-| **MCP** | Tools via `MCP_URL` / gateway | None if graph already uses MCP; else platform injects or you register backends |
+| **MCP** | Tools via in-cluster `MCP_URL` → `{release}-mcp` (Envoy MCPRoute on `/mcp`) | None if the graph already uses MCP; else enable inject (below) or register extra backends |
 
 Register BYO MCP servers on the **platform** chart (`workspace.tools.extraBackends`). See [mcp-extra-backends.md](mcp-extra-backends.md).
 
-Production agents use in-cluster `*-ai-gateway` and optional `MCP_URL` — not raw provider API keys on the pod.
+Production agents use in-cluster `{release}-ai-gateway` and `http://{release}-mcp` as `MCP_URL` — not raw provider API keys on the pod. Each `tools/call` forwards the run's `Authorization` bearer (tenant JWT); do not pass `tenant_id` in tool arguments.
 
 Off kind, set `ZELKOR_IMAGE_REGISTRY` or `zelkor deploy --registry` so the CLI does not assume `ghcr.io/devopssquaddev`.
 
@@ -108,7 +108,7 @@ Required values (see `charts/zelkor-agent/values.yaml`):
 | `graphId` or `graphIds[]` | Routing key(s) |
 | `image.repository` / tag / digest | `FROM zelkor-aegra` or `zelkor-aegra-deep` |
 | `platform.databaseUrl`, `platform.valkeyUrl` | Existing platform Aegra DSN + Valkey (see Persistence) |
-| `platform.releaseName` or MCP / AI gateway / Langfuse URLs | `{release}-mcp-gateway` / `{release}-ai-gateway` / `{release}-langfuse` + envFrom `{release}-langfuse-otel`, or copy from platform Aegra env |
+| `platform.releaseName` or MCP / AI gateway / Langfuse URLs | `{release}-mcp` / `{release}-ai-gateway` / `{release}-langfuse` + envFrom `{release}-langfuse-otel`, or copy from platform Aegra env |
 | `sharedRoute.host`, `gatewayName`, `gatewayNamespace`, `asDefault` | Register on shared agents host. Empty `gatewayName` + `releaseName` → `{release}-gateway`. |
 | `redis.prefix` | Isolate Valkey keys per Deployment (sets channel + job queue) |
 
@@ -142,11 +142,26 @@ helm upgrade --install my-agent charts/zelkor-agent \
   ...
 ```
 
-`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl`, `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `-mcp-gateway` / `-langfuse` / `-gateway`. Workers inject `{release}-langfuse-otel` (optional Secret the platform chart writes from `platform.telemetry.langfuse.init`). Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`). Do not put Langfuse keys in the customer overlay.
+`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl` (`http://{release}-mcp`), `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `{release}-langfuse` / `{release}-gateway`. The runtime appends `/mcp` when calling the dataplane. Workers inject `{release}-langfuse-otel` (optional Secret the platform chart writes from `platform.telemetry.langfuse.init`). Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`). Do not put Langfuse keys in the customer overlay.
 
-### Auth (JWT)
+### MCP tool inject (Mode B)
 
-Set the **same** `platform.tenants.jwtSecret` on the platform chart and each `zelkor-agent` (or FinServe) release. Clients send `Authorization: Bearer <HS256 JWT>` (`tenant_id` / `org_id` / `sub`). Wrap forwards that Bearer to MCP; MCP verifies it. Do not enable `platform.tenants.devTokens` or `platform.tenants.trustTenantHeader` except on kind (`values-local.yaml` / `profiles/values-local.yaml`). Blueprint: `examples/finserve/chart/values-tenants.yaml` + `values-platform-overlay-tenants.yaml`.
+When `platform.mcpInject: true` (chart default), the worker sets `MCP_INJECT_ENABLED` and lists tools from `MCP_URL` on each run. Bind named tools in the graph module with `MCP_INJECT_TOOLS = ("postgres__query",)` (or set `platform.mcpInjectToolPrefixes` when modules omit prefixes). For startup `tools/list` before inbound traffic, mount a tenant JWT via `platform.mcpAuthTokenSecret` (platform chart can write one when `localSigning` is enabled). Readiness stays 503 until inject succeeds.
+
+### Auth (tenant JWT)
+
+Configure **`platform.tenants.jwt`** on the platform release: `issuer`, `audiences`, and JWKS (`jwks`, `jwksConfigMap`, or `remoteJwksUri`). Production installs pass `--jwt-issuer`, `--jwks-file`, and `--jwt-audience` to `install-production.sh`. Kind lab only: `platform.tenants.jwt.localSigning.enabled: true` in `profiles/values-local.yaml` (not chart defaults).
+
+Clients and agent runs send `Authorization: Bearer <RS256 JWT>` with a `tenant_id` claim (also `org_id` / `sub` when mapped). The wrap handler forwards that bearer to MCP; MCP verifies JWT and derives tenant context — not a bare `X-Tenant-ID` header from clients.
+
+Mint lab tokens after install:
+
+```bash
+export AUTH_JWT_ISSUER=https://local.zelkor.invalid   # match platform.tenants.jwt.issuer in your overlay
+zelkor token mint --release <platform-release> --tenant <tenant_id> --namespace <ns>
+```
+
+On `charts/zelkor-agent`, set `auth.issuer` / `auth.audiences` or rely on `{release}-tenant-jwks` when `platform.releaseName` is set. Blueprint: `examples/finserve/chart/values-tenants.yaml` + `values-platform-overlay-tenants.yaml`.
 
 ---
 
@@ -170,7 +185,7 @@ Agent pods should emit Langfuse OTEL when `platform.releaseName` is set (GitOps 
 - Copy FinServe `cnpgClusterName` / CNPG templates onto `zelkor-agent`.
 - Reuse the same Redis queue key across multiple agent Deployments.
 - Add Routes that bypass Envoy graph routing on the shared agents host.
-- Enable `platform.tenants.devTokens` / `platform.tenants.trustTenantHeader` on a customer or Path B cluster (kind overlays only).
+- Rely on unsigned tokens, `dev:` prefixes, or header-only tenant identity on production clusters (removed from the platform contract).
 
 ---
 
