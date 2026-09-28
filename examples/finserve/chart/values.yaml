@@ -37,6 +37,10 @@ desk:
   replicaCount: 1
   autoscaling:
     enabled: false
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 4096
   sharedRoute:
     <<: *sharedRoute
   redis:
@@ -59,6 +63,10 @@ quant:
   replicaCount: 1
   autoscaling:
     enabled: false
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 4096
   sharedRoute:
     <<: *sharedRoute
   redis:
@@ -80,6 +88,10 @@ coder:
   replicaCount: 1
   autoscaling:
     enabled: false
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 4096
   sharedRoute:
     <<: *sharedRoute
   redis:
@@ -118,6 +130,15 @@ langfuseSeed:
     limits:
       cpu: 250m
       memory: 256Mi
+
+extraMcp:
+  enabled: false
+  name: acme
+  port: 8080
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-mcp
+    tag: "2.1.0"
+    digest: ""
 
 dbInit:
   resources:
