@@ -11,7 +11,7 @@ import os
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
-from mcp_tools import MCP_INJECT_PREFIXES, single_mcp_tool
+MCP_INJECT_TOOLS = ("sandbox__execute_python",)
 
 MODEL = os.getenv("DEFAULT_LLM_MODEL", "")
 
@@ -20,6 +20,6 @@ SYSTEM = """FinServe Quant. Use sandbox__execute_python only."""
 _model = ChatOpenAI(model=MODEL, temperature=0)
 graph = create_agent(
     _model,
-    tools=[single_mcp_tool("sandbox__execute_python")],
+    tools=[],
     system_prompt=SYSTEM,
 )

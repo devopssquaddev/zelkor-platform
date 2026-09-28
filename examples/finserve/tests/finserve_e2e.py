@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict
 
 import httpx
@@ -46,15 +48,20 @@ PROMPTS_BY_GRAPH = {
 
 
 def _bearer(tenant_id: str) -> str:
-    secret = (os.environ.get("FINSERVE_JWT_SECRET") or os.environ.get("AUTH_JWT_SECRET") or "").strip()
-    if secret:
-        import jwt
+    root = Path(__file__).resolve().parents[3]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tests.helpers.tokens import bearer_for, test_tokens
 
-        token = jwt.encode({"tenant_id": tenant_id, "sub": tenant_id}, secret, algorithm="HS256")
-        if isinstance(token, bytes):
-            token = token.decode("ascii")
-        return f"Bearer {token}"
-    return f"Bearer dev:{tenant_id}"
+    try:
+        return bearer_for(tenant_id)
+    except KeyError:
+        if not test_tokens():
+            pytest.skip(
+                "ZELKOR_TEST_TOKENS not set; mint with "
+                "`zelkor token mint --release <platform> --tenant <id>`"
+            )
+        raise
 
 
 def _headers(tenant_id: str, graph_id: str) -> Dict[str, str]:
@@ -62,7 +69,6 @@ def _headers(tenant_id: str, graph_id: str) -> Dict[str, str]:
         "Host": AEGRA_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": _bearer(tenant_id),
-        "X-Tenant-ID": tenant_id,
         "X-Graph-ID": graph_id,
     }
 

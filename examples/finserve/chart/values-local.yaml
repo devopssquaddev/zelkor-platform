@@ -13,12 +13,11 @@ _workerPlatform: &workerPlatform
   otelTargets: "LANGFUSE"
   mcpAuthTokenSecret: zelkor-platform-mcp-service-token
 
+# Match profiles/values-local.yaml platform.tenants.jwt (localSigning on kind).
 _auth: &auth
-  jwtSecret: "zelkor-local-jwt-secret"
-  devTokens:
-    enabled: true
-    prefix: "dev:"
-  trustTenantHeader: true
+  issuer: https://local.zelkor.invalid
+  audiences:
+    - zelkor
 
 _sharedRoute: &sharedRoute
   host: agents.localhost

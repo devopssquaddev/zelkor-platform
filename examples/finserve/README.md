@@ -18,7 +18,7 @@ This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent
 | Mode B wrap (`OPENAI_BASE_URL`, `MCP_URL`) | `job-db-init`, `job-langfuse-seed` |
 | `sharedRoute` on `gateway.hosts.agents` | CNPG `Database` / `cnpgClusterName` (MCP/app schema only) |
 | Unique `redis.prefix` per Deployment | `values-platform-overlay.yaml` tenant/NeMo blocks |
-| [`values-tenants.yaml`](chart/values-tenants.yaml) (`auth.jwtSecret`, unsigned auth off) | `values-local.yaml` (kind secrets, `*.localhost`, `devTokens`) |
+| [`values-tenants.yaml`](chart/values-tenants.yaml) (JWT issuer/audiences; JWKS from `platform.releaseName`) | `values-local.yaml` (kind secrets, `*.localhost`, `dev-key` consumer key) |
 
 Minimal customer path: [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
 
@@ -65,7 +65,7 @@ helm upgrade --install finserve examples/finserve/chart \
   -f your-finserve-overlay.yaml
 ```
 
-On the **platform** chart, apply [values-platform-overlay.yaml](chart/values-platform-overlay.yaml) (collection, tenant mappings, NeMo rails) and set `mcp.postgresMCP.databaseUrl` to **your** FinServe DB DSN. For JWT tenants (customer blueprint), also apply [values-platform-overlay-tenants.yaml](chart/values-platform-overlay-tenants.yaml) and [values-tenants.yaml](chart/values-tenants.yaml) with the **same** `auth.jwtSecret`. Do not apply `values-platform-overlay-local.yaml` or `values-local.yaml` outside kind.
+On the **platform** chart, apply [values-platform-overlay.yaml](chart/values-platform-overlay.yaml) (collection, tenant mappings, NeMo rails) and set `mcp.postgresMCP.databaseUrl` to **your** FinServe DB DSN. Configure `platform.tenants.jwt` (issuer, audiences, JWKS) on the platform release and mirror issuer/audiences on worker [values-tenants.yaml](chart/values-tenants.yaml). Mint client tokens with `zelkor token mint`. Do not apply `values-platform-overlay-local.yaml` or `values-local.yaml` outside kind.
 
 ## Kind eval
 
@@ -79,10 +79,11 @@ helm upgrade --install finserve examples/finserve/chart \
 ```
 
 ```bash
+TOKEN="$(zelkor token mint --release zelkor-platform --tenant Bank_Alpha --namespace zelkor)"
 curl -X POST http://127.0.0.1:8088/runs/wait \
   -H "Host: agents.localhost" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev:Bank_Alpha" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "X-Graph-ID: finserve-advisor" \
   -d '{
     "graph_id": "finserve-advisor",
@@ -108,7 +109,7 @@ flowchart TD
         Coder["finserve-coder Deep Agent"]
         NeMo["NeMo intercept on /v1"]
         AIGateway["Envoy AI Gateway"]
-        MCP["MCP gateway"]
+        MCP["MCPRoute / MCP_URL"]
         Postgres[("PostgreSQL (Portfolios)")]
         Qdrant[("Qdrant (Semantic Policies)")]
         Langfuse["Langfuse (OTel)"]
@@ -150,7 +151,7 @@ pytest examples/finserve/tests/ -v
 
 ## Mode B MCP
 
-The graph source does not embed an MCP client. At worker process start, Zelkor lists tools from `MCP_URL` and binds them onto `langchain.agents.create_agent`. Each `tools/call` uses the run's tenant (`Authorization` + `X-Tenant-ID`).
+The graph source does not embed an MCP client. Mode B inject lists tools from `MCP_URL` on each run and binds named tools via `MCP_INJECT_TOOLS` on the graph module. Each `tools/call` forwards the run's `Authorization` bearer (JWT tenant).
 
 Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`. Desk/quant specialization is prompt-only. Coder is deploy-first (`examples/finserve/coder/`); it uses Mode B `postgres__*` plus Deep Agents `execute()`.
 

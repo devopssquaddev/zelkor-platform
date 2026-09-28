@@ -15,7 +15,6 @@ SCHEMA_PATH = CHART / "values.schema.json"
 FINSERVE_OVERLAYS = [
     ROOT / "examples" / "finserve" / "chart" / "values-platform-overlay.yaml",
     ROOT / "examples" / "finserve" / "chart" / "values-platform-overlay-local.yaml",
-    ROOT / "examples" / "finserve" / "chart" / "values-platform-overlay-tenants.yaml",
 ]
 
 SECRET_SETS = [
@@ -96,8 +95,6 @@ def test_finserve_platform_overlays_on_local_profile_render():
     for overlay in FINSERVE_OVERLAYS:
         if not overlay.is_file():
             continue
-        if overlay.name == "values-platform-overlay-tenants.yaml":
-            continue  # P7: overlay clears jwt; removed when FinServe drops HS256 anchors
         r = _helm(values_files=[local, overlay])
         assert r.returncode == 0, f"{overlay.name}: {r.stderr}"
 

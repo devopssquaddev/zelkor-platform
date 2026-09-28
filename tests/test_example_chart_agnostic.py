@@ -111,6 +111,10 @@ def test_zelkor_agent_release_name_constructs_urls():
         "--set",
         "graphId=demo-graph",
         "--set",
+        "auth.issuer=https://issuer.example",
+        "--set",
+        "auth.audiences[0]=zelkor",
+        "--set",
         "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
         "--set",
         "platform.valkeyUrl=redis://vk:6379/0",
@@ -132,6 +136,10 @@ def test_zelkor_agent_explicit_url_wins_over_release_name():
         "--set",
         "graphId=demo-graph",
         "--set",
+        "auth.issuer=https://issuer.example",
+        "--set",
+        "auth.audiences[0]=zelkor",
+        "--set",
         "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
         "--set",
         "platform.releaseName=my-platform",
@@ -151,3 +159,6 @@ def test_agent_python_has_no_kind_model_default():
         text = (FINSERVE_CHART / "files" / name).read_text()
         assert 'os.getenv("DEFAULT_LLM_MODEL", "")' in text
         assert "gpt-oss:20b" not in text
+        assert "MCP_INJECT_TOOLS" in text
+        assert "defer_named_mcp_tool" not in text
+        assert "mcp_tools" not in text
