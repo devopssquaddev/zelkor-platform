@@ -125,7 +125,7 @@ _install_gateway_policies() {
   done < <(LISTENERS_JSON="$listeners_json" python3 -c 'import json, os
 for i, item in enumerate(json.loads(os.environ["LISTENERS_JSON"])):
     port = item["port"] if isinstance(item, dict) else item
-    print(f"--set listeners[{i}].port={int(port)}")')
+    print(f"--set=listeners[{i}].port={int(port)}")')
   echo "Installing zelkor-gateway-policies (envoy-gateway-system)..."
   helm upgrade --install zelkor-gateway-policies "${policies_chart}" \
     "${HELM_ARGS[@]}" \

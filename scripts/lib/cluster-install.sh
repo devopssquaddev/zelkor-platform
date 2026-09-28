@@ -627,6 +627,7 @@ cluster_install_helm_template_preflight() {
   err_file="$(mktemp)"
   if ! helm template "$CLUSTER_INSTALL_RELEASE" "$chart" \
     --namespace "$CLUSTER_INSTALL_NAMESPACE" \
+    --disable-openapi-validation \
     "${tpl_extra[@]}" >"${err_file}" 2>&1; then
     cluster_install_die "helm template failed: $(tail -n 3 "${err_file}")"
   fi
