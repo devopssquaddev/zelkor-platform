@@ -74,6 +74,7 @@ platform:
       issuer: https://local.zelkor.invalid
       audiences:
       - zelkor
+      jwks: '{"keys":[{"kty":"RSA","kid":"kind-lab","use":"sig","alg":"RS256","n":"AQAB","e":"AQAB"}]}'
       localSigning:
         enabled: true
         seedTenant: seed

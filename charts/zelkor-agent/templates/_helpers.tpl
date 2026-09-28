@@ -173,6 +173,74 @@ OTEL env. Explicit platform.langfuse* wins over envFrom of {release}-langfuse-ot
   value: "zelkor-aegra"
 {{- end }}
 
+{{- define "zelkor-agent.tenantJwksConfigMapName" -}}
+{{- $auth := .Values.auth | default dict -}}
+{{- $explicit := ($auth.jwksConfigMap | default "") | trim -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else if (include "zelkor-agent.platformReleaseName" .) -}}
+{{- printf "%s-tenant-jwks" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.tenantAuthEnv" -}}
+{{- $auth := .Values.auth | default dict -}}
+{{- $issuer := ($auth.issuer | default "") | trim -}}
+{{- $audiences := $auth.audiences | default list -}}
+{{- $claims := $auth.tenantClaims | default list -}}
+{{- if eq (len $claims) 0 -}}
+{{- $claims = list "tenant_id" "org_id" "sub" -}}
+{{- end -}}
+{{- $remote := ($auth.jwksUri | default "") | trim -}}
+{{- if not $issuer -}}
+{{- fail "auth.issuer must be set (or set platform.releaseName and inherit from the platform contract ConfigMap)" -}}
+{{- end -}}
+{{- if eq (len $audiences) 0 -}}
+{{- fail "auth.audiences must be a non-empty list" -}}
+{{- end -}}
+{{- if and (not $remote) (not (include "zelkor-agent.tenantJwksConfigMapName" .)) -}}
+{{- fail "auth.jwksUri or auth.jwksConfigMap (or platform.releaseName for default JWKS ConfigMap) is required" -}}
+{{- end -}}
+{{- if $remote }}
+- name: AUTH_JWKS_URI
+  value: {{ $remote | quote }}
+{{- else }}
+- name: AUTH_JWKS_PATH
+  value: "/etc/zelkor/tenant-jwks"
+{{- end }}
+- name: AUTH_JWT_ISSUER
+  value: {{ $issuer | quote }}
+- name: AUTH_JWT_AUDIENCES
+  value: {{ $audiences | toJson | quote }}
+- name: AUTH_TENANT_CLAIMS
+  value: {{ $claims | toJson | quote }}
+- name: TENANT_ORG_MAPPINGS
+  value: {{ ($auth.orgMappings | default dict) | toJson | quote }}
+{{- end }}
+
+{{- define "zelkor-agent.tenantAuthVolumeMount" -}}
+{{- $auth := .Values.auth | default dict -}}
+{{- $remote := ($auth.jwksUri | default "") | trim -}}
+{{- if not $remote }}
+- name: tenant-jwks
+  mountPath: /etc/zelkor/tenant-jwks
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "zelkor-agent.tenantAuthVolume" -}}
+{{- $auth := .Values.auth | default dict -}}
+{{- $remote := ($auth.jwksUri | default "") | trim -}}
+{{- $cm := include "zelkor-agent.tenantJwksConfigMapName" . | trim -}}
+{{- if and (not $remote) $cm }}
+- name: tenant-jwks
+  configMap:
+    name: {{ $cm | quote }}
+{{- end }}
+{{- end }}
+
 {{/*
 Render startup/liveness/readiness probes from chart values.
 Usage: {{ include "zelkor-agent.containerProbes" (dict "root" . "values" .Values) | nindent 12 }}

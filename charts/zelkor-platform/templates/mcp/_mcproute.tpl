@@ -42,6 +42,12 @@ false
 {{- if not (kindIs "map" $item) -}}
 {{- fail (printf "workspace.tools.extraBackends[%d] must be an object" $idx) -}}
 {{- end -}}
+{{- $allowed := list "name" "service" "fqdn" "path" "apiKey" "tls" "toolSelector" "forwardHeaders" "egress" -}}
+{{- range $k, $_ := $item -}}
+{{- if not (has $k $allowed) -}}
+{{- fail (printf "workspace.tools.extraBackends[%d]: unknown key %q (allowed: %s)" $idx $k (join ", " $allowed)) -}}
+{{- end -}}
+{{- end -}}
 {{- $name := ($item.name | default "" | trim) -}}
 {{- if not $name -}}{{- fail (printf "workspace.tools.extraBackends[%d].name is required" $idx) -}}{{- end -}}
 {{- if has $name $reserved -}}{{- fail (printf "workspace.tools.extraBackends[%d].name %q is reserved" $idx $name) -}}{{- end -}}
@@ -73,12 +79,7 @@ false
 {{- $_ := set $root.Values "__mcpExtraBackendIpBlocks" $ipBlocks -}}
 {{- end -}}
 
-{{- define "zelkor-platform.mcpRouteValidate" -}}
-{{- if not (eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true") -}}
-{{- if .Values.mcp.enabled -}}
-{{- fail "mcp.enabled requires gateway.enabled or gateway.parentRef.name for MCPRoute" -}}
-{{- end -}}
-{{- else -}}
+{{- define "zelkor-platform.tenantJwtValidate" -}}
 {{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
 {{- $issuer := $jwt.issuer | default "" | trim -}}
 {{- $audiences := $jwt.audiences | default list -}}
@@ -106,10 +107,19 @@ false
 {{- if and ($ls.enabled) (not ($ls.seedTenant | default "" | trim)) ($lfTools.seedFromMcp | default false) -}}
 {{- fail "platform.tenants.jwt.localSigning.seedTenant is required when langfuse surfaces seed MCP tools" -}}
 {{- end -}}
+{{- end -}}
+
+{{- define "zelkor-platform.mcpRouteValidate" -}}
+{{- if not (eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true") -}}
+{{- if .Values.mcp.enabled -}}
+{{- fail "mcp.enabled requires gateway.enabled or gateway.parentRef.name for MCPRoute" -}}
+{{- end -}}
+{{- else -}}
+{{- include "zelkor-platform.tenantJwtValidate" . -}}
 {{- $pr := (.Values.gateway.parentRef | default dict) -}}
 {{- $ownsGw := or .Values.gateway.enabled (eq (include "zelkor-platform.envoyProxyEmit" . | trim) "true") -}}
 {{- if and (not $ownsGw) ($pr.name | default "") (not (.Values.mcp.mcproute.sharedGatewayAck | default false)) -}}
-{{- fail "shared Gateway topology requires workspace.tools.mcproute.sharedGatewayAck: true" -}}
+{{- fail "shared Gateway topology requires gateway.mcproute.sharedGatewayAck: true" -}}
 {{- end -}}
 {{- $target := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
 {{- if and (not $target) (not (.Values.security.mcp.acceptUnprotectedBackends | default false)) -}}

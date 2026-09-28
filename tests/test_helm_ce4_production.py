@@ -13,6 +13,11 @@ PRODUCTION = ROOT / "profiles" / "values-production.yaml"
 FINSERVE_VALUES = ROOT / "examples" / "finserve" / "chart" / "values.yaml"
 
 SECRET_SETS = [
+    "platform.tenants.jwt.issuer=https://issuer.example",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
+    "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    "security.mcp.acceptUnprotectedBackends=true",
     "postgresql.auth.password=test-pg",
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
@@ -48,6 +53,9 @@ AGENT_SETS = [
     "graphId=demo-graph",
     "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "platform.valkeyUrl=redis://vk:6379/0",
+    "auth.issuer=https://issuer.example",
+    "auth.audiences[0]=zelkor",
+    "auth.jwksUri=https://issuer.example/.well-known/jwks.json",
 ]
 
 
@@ -258,7 +266,7 @@ def test_metrics_deps_in_images():
     guardrails = (ROOT / "images" / "guardrails" / "requirements.txt").read_text()
     assert "prometheus-fastapi-instrumentator" in guardrails
     mcp = (ROOT / "mcp" / "common" / "mcp_server.py").read_text()
-    assert "/metrics" in mcp
+    assert "start_http_server" in mcp and "METRICS_PORT" in mcp
 
 
 def test_langfuse_public_route_gated_until_enabled():

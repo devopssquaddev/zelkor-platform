@@ -36,7 +36,6 @@ platform:
         tokenTTL: 1h
         seedTokenTTL: 24h
         rotationId: ''
-        privateKey: ''
   telemetry:
     level: INFO
     format: json
@@ -260,9 +259,6 @@ workspace:
       repository: ghcr.io/devopssquaddev/zelkor-mcp
       tag: 2.1.0
       digest: ''
-    mcproute:
-      nativeRefKind: Backend
-      sharedGatewayAck: false
     postgresMCP:
       enabled: true
       replicaCount: 1
@@ -590,6 +586,9 @@ gateway:
   gatewayClassName: eg
   createGatewayClass: true
   createGateway: true
+  mcproute:
+    nativeRefKind: Backend
+    sharedGatewayAck: false
   parentRef:
     name: ''
     namespace: ''

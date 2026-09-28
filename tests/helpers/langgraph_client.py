@@ -27,7 +27,9 @@ def _request_headers(*, tenant_id: str, graph_id: str | None = None) -> dict[str
         if test_tokens():
             auth = bearer_for(tenant_id).removeprefix("Bearer ")
         else:
-            auth = f"dev:{tenant_id}"
+            raise RuntimeError(
+                "Set AEGRA_AUTH_TOKEN or ZELKOR_TEST_TOKENS / ZELKOR_TEST_SIGNING_RELEASE for live Aegra tests"
+            )
     headers = {
         "Authorization": f"Bearer {auth}",
         "Host": os.environ.get("AGENTS_HOST_HEADER")

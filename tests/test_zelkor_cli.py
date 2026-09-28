@@ -336,19 +336,18 @@ def test_in_cluster_openai_base_url_uses_ai_gateway_service():
     assert in_cluster_openai_base_url(env, runner=runner) == "http://zelkor-platform-ai-gateway:80/v1"
 
 
-def test_auth_values_copy_platform_wrap_auth():
+def test_auth_values_copy_platform_jwt_contract():
     info = PlatformInfo(
-        jwt_secret="cluster-jwt",
-        auth_dev_tokens_enabled="true",
-        auth_dev_token_prefix="dev:",
-        auth_trust_tenant_header="true",
+        jwt_issuer="https://issuer.example",
+        jwt_audiences=["zelkor"],
+        jwt_jwks_configmap="zelkor-platform-tenant-jwks",
+        jwt_tenant_claims=["tenant_id", "sub"],
     )
     auth = auth_values(info)
-    assert auth["jwtSecret"] == "cluster-jwt"
-    assert auth["devTokens"]["enabled"] is True
-    assert auth["devTokens"]["prefix"] == "dev:"
-    assert auth["trustTenantHeader"] is True
-    assert auth_values(PlatformInfo())["devTokens"]["enabled"] is False
+    assert auth["issuer"] == "https://issuer.example"
+    assert auth["audiences"] == ["zelkor"]
+    assert auth["jwksConfigMap"] == "zelkor-platform-tenant-jwks"
+    assert auth["tenantClaims"] == ["tenant_id", "sub"]
 
 
 def test_upgrade_text_constant():

@@ -79,7 +79,7 @@ platform:
         llmConnection:
           enabled: true
         tools:
-          seedFromMcp: true
+          seedFromMcp: false
         evaluators:
           seedCode: true
         image:

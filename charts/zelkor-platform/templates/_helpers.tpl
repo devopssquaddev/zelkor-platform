@@ -97,6 +97,12 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- if $tools -}}
 {{- $_ := set .Values "mcp" $tools -}}
 {{- end -}}
+{{- $mcp := .Values.mcp | default dict -}}
+{{- $gwMr := (.Values.gateway.mcproute | default dict) -}}
+{{- if $gwMr -}}
+{{- $_ := set $mcp "mcproute" $gwMr -}}
+{{- $_ := set .Values "mcp" $mcp -}}
+{{- end -}}
 {{- include "zelkor-platform.compile.mcpExtraBackends" . -}}
 {{- end }}
 

@@ -83,6 +83,12 @@
               },
               "additionalProperties": false
             },
+            "orgMappings": {
+              "type": "object",
+              "description": "Values under platform.tenants.orgMappings.",
+              "properties": {
+              }
+            },
             "jwt": {
               "type": "object",
               "description": "Values under platform.tenants.jwt.",
@@ -95,7 +101,12 @@
                   "type": "array",
                   "description": "List at platform.tenants.jwt.audiences.",
                   "items": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
                   }
                 },
                 "jwks": {
@@ -114,18 +125,27 @@
                   "type": "array",
                   "description": "List at platform.tenants.jwt.jwksEgressCIDRs.",
                   "items": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
                   }
                 },
                 "jwksCacheSeconds": {
-                  "type": "integer",
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
                   "description": "Value for platform.tenants.jwt.jwksCacheSeconds."
                 },
                 "tenantClaims": {
                   "type": "array",
                   "description": "List at platform.tenants.jwt.tenantClaims.",
                   "items": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Value for platform.tenants.jwt.tenantClaims.0."
                   }
                 },
                 "localSigning": {
@@ -151,21 +171,12 @@
                     "rotationId": {
                       "type": "string",
                       "description": "Value for platform.tenants.jwt.localSigning.rotationId."
-                    },
-                    "privateKey": {
-                      "type": "string",
-                      "description": "PEM private key; install host only via --set-file, never commit."
                     }
                   },
                   "additionalProperties": false
                 }
               },
               "additionalProperties": false
-            },
-            "orgMappings": {
-              "type": "object",
-              "description": "Values under platform.tenants.orgMappings.",
-              "properties": {}
             }
           },
           "additionalProperties": false
@@ -1180,7 +1191,8 @@
                 "extraRailsConfig": {
                   "type": "object",
                   "description": "Values under workspace.policies.nemo.extraRailsConfig.",
-                  "properties": {}
+                  "properties": {
+                  }
                 },
                 "resources": {
                   "type": "object",
@@ -1393,76 +1405,59 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "description": "Backend name prefix for MCP gateway routing."
+                    "description": "Backend name prefix for MCPRoute tool routing."
                   },
-                  "url": {
-                    "type": "string",
-                    "description": "MCP base URL (in-cluster or external HTTPS)."
-                  },
-                  "path": {
-                    "type": "string",
-                    "description": "JSON-RPC path (default /mcp)."
-                  },
-                  "timeoutSeconds": {
-                    "type": [
-                      "integer",
-                      "string"
-                    ],
-                    "description": "Outbound RPC timeout."
-                  },
-                  "forwardAuthorization": {
-                    "type": "boolean",
-                    "description": "Forward caller Zelkor Bearer (default true; false when backend auth sets Authorization)."
-                  },
-                  "forwardTenantHeader": {
-                    "type": "boolean",
-                    "description": "Send X-Tenant-ID (default true)."
-                  },
-                  "injectTenantArg": {
-                    "type": "boolean",
-                    "description": "Default args.tenant_id on tools/call (default true)."
-                  },
-                  "isolation": {
-                    "type": "string",
-                    "description": "Enterprise: hardware for Kata (Ent only)."
-                  },
-                  "auth": {
+                  "service": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "none",
-                          "bearer",
-                          "basic",
-                          "header"
-                        ]
-                      },
-                      "secretRef": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ]
-                      },
-                      "headerName": {
+                      "name": {
                         "type": "string"
                       },
-                      "usernameSecretRef": {
+                      "port": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "port"
+                    ]
+                  },
+                  "fqdn": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "hostname": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "hostname",
+                      "port"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "MCP path on the backend (default /mcp)."
+                  },
+                  "apiKey": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "secretRef": {
                         "type": "object",
+                        "additionalProperties": false,
                         "properties": {
                           "name": {
-                            "type": "string"
-                          },
-                          "key": {
                             "type": "string"
                           }
                         },
@@ -1470,43 +1465,55 @@
                           "name"
                         ]
                       },
-                      "passwordSecretRef": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ]
+                      "header": {
+                        "type": "string",
+                        "description": "Empty or Authorization for Bearer; else custom header name."
+                      }
+                    },
+                    "required": [
+                      "secretRef"
+                    ]
+                  },
+                  "tls": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "caSecretRef": {
+                        "type": "string",
+                        "description": "Secret name for CA cert (FQDN backends)."
                       }
                     }
                   },
-                  "headers": {
+                  "toolSelector": {
                     "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
+                    "additionalProperties": false,
+                    "properties": {
+                      "include": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "includeRegex": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
                     }
                   },
-                  "headersFrom": {
+                  "forwardHeaders": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "header": {
+                      "oneOf": [
+                        {
                           "type": "string"
                         },
-                        "secretRef": {
+                        {
                           "type": "object",
+                          "additionalProperties": false,
                           "properties": {
                             "name": {
-                              "type": "string"
-                            },
-                            "key": {
                               "type": "string"
                             }
                           },
@@ -1514,34 +1521,13 @@
                             "name"
                           ]
                         }
-                      },
-                      "required": [
-                        "header",
-                        "secretRef"
                       ]
-                    }
-                  },
-                  "tls": {
-                    "type": "object",
-                    "properties": {
-                      "caSecretRef": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ]
-                      }
-                    }
+                    },
+                    "description": "Client headers to forward; Authorization is forbidden."
                   },
                   "egress": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                       "cidrs": {
                         "type": "array",
@@ -1562,8 +1548,7 @@
                   }
                 },
                 "required": [
-                  "name",
-                  "url"
+                  "name"
                 ]
               }
             },
@@ -1582,25 +1567,6 @@
                 "digest": {
                   "type": "string",
                   "description": "Value for workspace.tools.image.digest."
-                }
-              },
-              "additionalProperties": false
-            },
-            "mcproute": {
-              "type": "object",
-              "description": "Values under workspace.tools.mcproute.",
-              "properties": {
-                "nativeRefKind": {
-                  "type": "string",
-                  "enum": [
-                    "Backend",
-                    "Service"
-                  ],
-                  "description": "Value for workspace.tools.mcproute.nativeRefKind."
-                },
-                "sharedGatewayAck": {
-                  "type": "boolean",
-                  "description": "Value for workspace.tools.mcproute.sharedGatewayAck."
                 }
               },
               "additionalProperties": false
@@ -2741,7 +2707,8 @@
             "graphs": {
               "type": "object",
               "description": "Values under workload.agents.graphs.",
-              "properties": {}
+              "properties": {
+              }
             },
             "graphModules": {
               "type": "object",
@@ -3113,7 +3080,8 @@
             "labels": {
               "type": "object",
               "description": "Values under observability.serviceMonitor.labels.",
-              "properties": {}
+              "properties": {
+              }
             },
             "interval": {
               "type": "string",
@@ -3361,7 +3329,8 @@
             "overhead": {
               "type": "object",
               "description": "Values under security.sandbox.overhead.",
-              "properties": {}
+              "properties": {
+              }
             },
             "nodes": {
               "type": "object",
@@ -3370,7 +3339,8 @@
                 "selector": {
                   "type": "object",
                   "description": "Values under security.sandbox.nodes.selector.",
-                  "properties": {}
+                  "properties": {
+                  }
                 },
                 "tolerations": {
                   "type": "array",
@@ -3549,6 +3519,21 @@
           "type": "boolean",
           "description": "Value for gateway.createGateway."
         },
+        "mcproute": {
+          "type": "object",
+          "description": "Values under gateway.mcproute.",
+          "properties": {
+            "nativeRefKind": {
+              "type": "string",
+              "description": "Value for gateway.mcproute.nativeRefKind."
+            },
+            "sharedGatewayAck": {
+              "type": "boolean",
+              "description": "Value for gateway.mcproute.sharedGatewayAck."
+            }
+          },
+          "additionalProperties": false
+        },
         "parentRef": {
           "type": "object",
           "description": "Values under gateway.parentRef.",
@@ -3583,7 +3568,8 @@
             "nodeSelector": {
               "type": "object",
               "description": "Values under gateway.envoyProxy.nodeSelector.",
-              "properties": {}
+              "properties": {
+              }
             },
             "service": {
               "type": "object",
@@ -3642,7 +3628,8 @@
         "annotations": {
           "type": "object",
           "description": "Values under gateway.annotations.",
-          "properties": {}
+          "properties": {
+          }
         },
         "tls": {
           "type": "object",
@@ -4606,7 +4593,7 @@
     },
     "aiGateway": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -4617,22 +4604,18 @@
     },
     "auth": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
-        "jwtSecret": {
-          "type": "string",
-          "description": "Value for auth.jwtSecret."
-        },
-        "trustTenantHeader": {
+        "enabled": {
           "type": "boolean",
-          "description": "Value for auth.trustTenantHeader."
+          "description": "Value for auth.enabled."
         }
       },
       "additionalProperties": false
     },
     "langfuse": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -4643,7 +4626,7 @@
     },
     "aegra": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -4654,7 +4637,7 @@
     },
     "guardrails": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
         "nemo": {
           "type": "object",
@@ -4672,7 +4655,7 @@
     },
     "mcp": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -4683,7 +4666,7 @@
     },
     "logging": {
       "type": "object",
-      "description": "REMOVED in V2 \u2014 use platform.* / workspace.* / workload.*. Supplying values fails at render.",
+      "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
         "level": {
           "type": "string",

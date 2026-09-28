@@ -31,72 +31,82 @@ STRICT_ARRAY_ITEM_SCHEMAS = {
     "type" => "object",
     "additionalProperties" => false,
     "properties" => {
-      "name" => { "type" => "string", "description" => "Backend name prefix for MCP gateway routing." },
-      "url" => { "type" => "string", "description" => "MCP base URL (in-cluster or external HTTPS)." },
-      "path" => { "type" => "string", "description" => "JSON-RPC path (default /mcp)." },
-      "timeoutSeconds" => { "type" => %w[integer string], "description" => "Outbound RPC timeout." },
-      "forwardAuthorization" => { "type" => "boolean", "description" => "Forward caller Zelkor Bearer (default true; false when backend auth sets Authorization)." },
-      "forwardTenantHeader" => { "type" => "boolean", "description" => "Send X-Tenant-ID (default true)." },
-      "injectTenantArg" => { "type" => "boolean", "description" => "Default args.tenant_id on tools/call (default true)." },
-      "isolation" => { "type" => "string", "description" => "Enterprise: hardware for Kata (Ent only)." },
-      "auth" => {
+      "name" => { "type" => "string", "description" => "Backend name prefix for MCPRoute tool routing." },
+      "service" => {
         "type" => "object",
         "additionalProperties" => false,
         "properties" => {
-          "type" => { "type" => "string", "enum" => %w[none bearer basic header] },
+          "name" => { "type" => "string" },
+          "port" => { "type" => %w[integer string] },
+        },
+        "required" => %w[name port],
+      },
+      "fqdn" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => {
+          "hostname" => { "type" => "string" },
+          "port" => { "type" => %w[integer string] },
+        },
+        "required" => %w[hostname port],
+      },
+      "path" => { "type" => "string", "description" => "MCP path on the backend (default /mcp)." },
+      "apiKey" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => {
           "secretRef" => {
             "type" => "object",
-            "properties" => { "name" => { "type" => "string" }, "key" => { "type" => "string" } },
-            "required" => %w[name],
-          },
-          "headerName" => { "type" => "string" },
-          "usernameSecretRef" => {
-            "type" => "object",
-            "properties" => { "name" => { "type" => "string" }, "key" => { "type" => "string" } },
-            "required" => %w[name],
-          },
-          "passwordSecretRef" => {
-            "type" => "object",
-            "properties" => { "name" => { "type" => "string" }, "key" => { "type" => "string" } },
-            "required" => %w[name],
-          },
-        },
-      },
-      "headers" => { "type" => "object", "additionalProperties" => { "type" => "string" } },
-      "headersFrom" => {
-        "type" => "array",
-        "items" => {
-          "type" => "object",
-          "properties" => {
-            "header" => { "type" => "string" },
-            "secretRef" => {
-              "type" => "object",
-              "properties" => { "name" => { "type" => "string" }, "key" => { "type" => "string" } },
-              "required" => %w[name],
+            "additionalProperties" => false,
+            "properties" => {
+              "name" => { "type" => "string" },
             },
+            "required" => %w[name],
           },
-          "required" => %w[header secretRef],
+          "header" => { "type" => "string", "description" => "Empty or Authorization for Bearer; else custom header name." },
         },
+        "required" => %w[secretRef],
       },
       "tls" => {
         "type" => "object",
+        "additionalProperties" => false,
         "properties" => {
-          "caSecretRef" => {
-            "type" => "object",
-            "properties" => { "name" => { "type" => "string" }, "key" => { "type" => "string" } },
-            "required" => %w[name],
-          },
+          "caSecretRef" => { "type" => "string", "description" => "Secret name for CA cert (FQDN backends)." },
         },
+      },
+      "toolSelector" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => {
+          "include" => { "type" => "array", "items" => { "type" => "string" } },
+          "includeRegex" => { "type" => "array", "items" => { "type" => "string" } },
+        },
+      },
+      "forwardHeaders" => {
+        "type" => "array",
+        "items" => {
+          "oneOf" => [
+            { "type" => "string" },
+            {
+              "type" => "object",
+              "additionalProperties" => false,
+              "properties" => { "name" => { "type" => "string" } },
+              "required" => %w[name],
+            },
+          ],
+        },
+        "description" => "Client headers to forward; Authorization is forbidden.",
       },
       "egress" => {
         "type" => "object",
+        "additionalProperties" => false,
         "properties" => {
           "cidrs" => { "type" => "array", "items" => { "type" => "string" } },
           "ports" => { "type" => "array", "items" => { "type" => %w[integer string] } },
         },
       },
     },
-    "required" => %w[name url],
+    "required" => %w[name],
   },
   "workspace.models.providers.openaiCompat" => {
     "type" => "object",

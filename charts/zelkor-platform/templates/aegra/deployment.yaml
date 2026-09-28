@@ -123,8 +123,6 @@ spec:
               value: {{ ternary "true" "false" (($intent.approval).enabled | default false) | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ ((.Values.aegra.mcpInject).enabled | default false) | quote }}
-            - name: ZELKOR_TENANT_HEADER
-              value: "X-Tenant-ID"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
             - name: ENABLE_PROMETHEUS_METRICS

@@ -47,9 +47,28 @@ def test_external_fqdn_requires_egress_cidrs_when_network_policies_enabled():
         "workspace.tools.extraBackends[0].name=saas",
         "--set",
         "workspace.tools.extraBackends[0].fqdn.hostname=mcp.example.com",
+        "--set",
+        "workspace.tools.extraBackends[0].fqdn.port=443",
     )
     assert r.returncode != 0
     assert "egress.cidrs" in r.stderr
+
+
+def test_extra_backend_unknown_key_fails_render():
+    r = _helm(
+        "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
+        "--set",
+        "workspace.tools.extraBackends[0].name=acme",
+        "--set",
+        "workspace.tools.extraBackends[0].url=http://bad",
+    )
+    assert r.returncode != 0
+    assert "unknown key" in r.stderr or "url" in r.stderr
 
 
 def test_extra_projects_missing_keys_fail_render():

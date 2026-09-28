@@ -58,14 +58,7 @@ spec:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             - name: LOG_EXCLUDE_PATHS
               value: "/health,/live,/ready"
-            - name: AUTH_DEV_TOKENS_ENABLED
-              value: {{ ((.Values.auth.devTokens).enabled | default false) | quote }}
-            - name: AUTH_DEV_TOKEN_PREFIX
-              value: {{ ((.Values.auth.devTokens).prefix | default "") | quote }}
-            - name: AUTH_TRUST_TENANT_HEADER
-              value: {{ (.Values.auth.trustTenantHeader | default false) | quote }}
-            - name: AUTH_JWT_SECRET
-              value: {{ (.Values.auth.jwtSecret | default "") | quote }}
+            {{- include "zelkor-agent.tenantAuthEnv" . | nindent 12 }}
             - name: DATABASE_URL
               value: {{ required "platform.databaseUrl must be set (shared Aegra checkpointer DSN)" .Values.platform.databaseUrl | quote }}
             - name: REDIS_URL
@@ -131,8 +124,18 @@ spec:
             - name: {{ .name | quote }}
               value: {{ .value | quote }}
             {{- end }}
+          {{- $authVolMount := include "zelkor-agent.tenantAuthVolumeMount" . | trim -}}
+          {{- if $authVolMount }}
+          volumeMounts:
+            {{ $authVolMount | nindent 12 }}
+          {{- end }}
           {{- include "zelkor-agent.containerProbes" (dict "root" . "values" .Values) | nindent 10 }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- $authVol := include "zelkor-agent.tenantAuthVolume" . | trim -}}
+      {{- if $authVol }}
+      volumes:
+        {{ $authVol | nindent 8 }}
+      {{- end }}

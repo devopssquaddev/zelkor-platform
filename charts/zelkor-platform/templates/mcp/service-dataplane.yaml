@@ -2,9 +2,10 @@
 {{- include "zelkor-platform.mcpRouteValidate" . -}}
 {{- if eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true" }}
 {{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
-{{- if not $targetHost -}}
-{{- fail "aiGateway.inClusterService.targetHost must be set" -}}
+{{- if and (not $targetHost) (not (.Values.security.mcp.acceptUnprotectedBackends | default false)) -}}
+{{- fail "aiGateway.inClusterService.targetHost must be set when the chart does not emit EnvoyProxy (or set security.mcp.acceptUnprotectedBackends for lab overlays)" -}}
 {{- end -}}
+{{- if $targetHost -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -20,4 +21,5 @@ spec:
     - name: http
       port: 80
       protocol: TCP
+{{- end }}
 {{- end }}

@@ -33,6 +33,11 @@ SECRET_SETS = [
     "gateway.hosts.aiGateway=ai.example.com",
     "gateway.hosts.mcp=mcp.example.com",
     "gateway.hosts.nemo=nemo.example.com",
+    "platform.tenants.jwt.issuer=https://issuer.example",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
+    "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    "gateway.envoyProxy.enabled=true",
 ]
 
 INTENT_KINDS = frozenset(
@@ -56,7 +61,13 @@ INTENT_KINDS = frozenset(
 
 def _helm(*extra: str, values_files: list[Path] | None = None) -> subprocess.CompletedProcess[str]:
     cmd = ["helm", "template", "zelkor-platform", str(CHART), "--namespace", "zelkor"]
+    skip_jwt_sets = bool(
+        values_files
+        and any("values-local" in vf.name for vf in values_files)
+    )
     for item in SECRET_SETS:
+        if skip_jwt_sets and item.startswith("platform.tenants.jwt"):
+            continue
         cmd.extend(["--set", item])
     for vf in values_files or []:
         cmd.extend(["-f", str(vf)])
@@ -85,6 +96,8 @@ def test_finserve_platform_overlays_on_local_profile_render():
     for overlay in FINSERVE_OVERLAYS:
         if not overlay.is_file():
             continue
+        if overlay.name == "values-platform-overlay-tenants.yaml":
+            continue  # P7: overlay clears jwt; removed when FinServe drops HS256 anchors
         r = _helm(values_files=[local, overlay])
         assert r.returncode == 0, f"{overlay.name}: {r.stderr}"
 
@@ -115,6 +128,29 @@ def test_tier_gate_auth_sso():
     r = _helm("--set", "platform.tenants.sso.enabled=true")
     assert r.returncode != 0
     assert "Pro" in r.stderr
+
+
+def test_schema_rejects_platform_tenants_trust_tenant_header():
+    r = _helm("--set", "platform.tenants.trustTenantHeader=true")
+    assert r.returncode != 0
+    assert "trustTenantHeader" in r.stderr
+
+
+def test_render_fails_without_jwt_even_when_mcp_disabled():
+    cmd = ["helm", "template", "zelkor-platform", str(CHART), "--namespace", "zelkor"]
+    for item in SECRET_SETS:
+        if item.startswith("platform.tenants.jwt"):
+            continue
+        cmd.extend(["--set", item])
+    cmd.extend(
+        [
+            "--set",
+            "workspace.tools.enabled=false",
+        ]
+    )
+    r = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "platform.tenants.jwt" in r.stderr
 
 
 def test_tier_gate_mtls():
@@ -207,6 +243,7 @@ def test_template_values_paths_have_schema_properties():
         "__mcpExtraBackendVolumes",
         "__mcpExtraBackendVolumeMounts",
         "__mcpExtraBackendIpBlocks",
+        "__mcpExtraBackendSeedJson",
     }
     stray = sorted(paths - allowed)
     assert not stray, f"template references without schema property: {stray}"
