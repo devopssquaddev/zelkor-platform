@@ -160,3 +160,54 @@ def test_gateway_multi_provider_routing_via_gateway():
     assert resp.status_code == 200, f"AI Gateway call failed with status {resp.status_code}: {resp.text}"
     data = resp.json()
     assert is_chat_completion(data), f"Not an OpenAI chat.completion: {data}"
+
+
+def _in_cluster_hostname(host: str) -> bool:
+    return "." not in host or host.endswith(".svc.cluster.local")
+
+
+def test_s11_ingress_inventory_no_public_mcp_nemo_db(kubecontext):
+    """S-11 / P9: public hosts are agents/langfuse only; MCP/NeMo/DB stay in-cluster."""
+    from tests.helpers.kube import kubectl_run
+
+    res = kubectl_run(["get", "httproute", "-A", "-o", "json"], namespace="")
+    if res.returncode != 0:
+        pytest.skip(res.stderr or res.stdout)
+    items = json.loads(res.stdout).get("items") or []
+    if not items:
+        pytest.skip("no HTTPRoutes")
+
+    agents = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get("AEGRA_HOST_HEADER") or ""
+    langfuse = os.environ.get("LANGFUSE_HOST_HEADER") or ""
+    public_ok = {h for h in (agents, langfuse) if h}
+    if not public_ok:
+        pytest.skip("AGENTS_HOST_HEADER / LANGFUSE_HOST_HEADER unset")
+
+    forbidden_public_needles = (
+        "mcp",
+        "nemo",
+        "postgres",
+        "qdrant",
+        "clickhouse",
+        "valkey",
+        "redis",
+        "sandbox-worker",
+    )
+    public_hosts: set[str] = set()
+    for route in items:
+        hosts = list(route.get("spec", {}).get("hostnames") or [])
+        for host in hosts:
+            if _in_cluster_hostname(host):
+                continue
+            public_hosts.add(host)
+            lowered = host.lower()
+            assert not any(n in lowered for n in forbidden_public_needles), (
+                f"public HTTPRoute hostname looks like MCP/NeMo/DB: {host} "
+                f"({route['metadata']['namespace']}/{route['metadata']['name']})"
+            )
+            assert host in public_ok, (
+                f"unexpected public HTTPRoute host {host} "
+                f"({route['metadata']['namespace']}/{route['metadata']['name']}); "
+                f"allowed={sorted(public_ok)}"
+            )
+    assert public_hosts, "no public HTTPRoute hostnames found"
