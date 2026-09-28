@@ -217,7 +217,9 @@ def test_service_monitors_opt_in_on_production():
     docs = _docs(proc.stdout)
     sm_names = {d["metadata"]["name"] for d in _kinds(docs, "ServiceMonitor")}
     assert set(SM_SERVICES) <= sm_names
-    assert "zelkor-platform-envoy" in {d["metadata"]["name"] for d in _kinds(docs, "PodMonitor")}
+    assert not _kinds(docs, "PodMonitor")
+    postgres_sm = _named(docs, "ServiceMonitor", "zelkor-platform-mcp-postgres")
+    assert postgres_sm["spec"]["endpoints"][0]["port"] == "metrics"
     aegra = _named(docs, "Deployment", "zelkor-platform-aegra")
     assert _env(aegra, "ENABLE_PROMETHEUS_METRICS") == "true"
     nemo = _named(docs, "Deployment", "zelkor-platform-nemo")

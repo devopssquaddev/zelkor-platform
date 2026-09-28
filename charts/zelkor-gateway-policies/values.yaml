@@ -1,6 +1,11 @@
-listeners:
-  - 80
-  - 443
+gateway:
+  name: ""
+  namespace: ""
+listeners: []
 monitoring:
+  namespaceSelector: {}
   podMonitor:
     enabled: false
+    interval: 30s
+otel:
+  existingSecret: ""

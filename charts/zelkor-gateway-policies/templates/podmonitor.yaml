@@ -1,0 +1,25 @@
+{{- if .Values.monitoring.podMonitor.enabled }}
+{{- $gwName := required "gateway.name is required" .Values.gateway.name -}}
+{{- $gwNs := required "gateway.namespace is required" .Values.gateway.namespace -}}
+{{- $interval := .Values.monitoring.podMonitor.interval | default "30s" -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Release.Name }}-envoy
+  namespace: {{ .Release.Namespace }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  selector:
+    matchLabels:
+      gateway.envoyproxy.io/owning-gateway-name: {{ $gwName | quote }}
+      gateway.envoyproxy.io/owning-gateway-namespace: {{ $gwNs | quote }}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /stats/prometheus
+      interval: {{ $interval | quote }}
+    - port: extproc
+      path: /metrics
+      interval: {{ $interval | quote }}
+{{- end }}

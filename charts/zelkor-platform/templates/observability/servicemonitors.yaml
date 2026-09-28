@@ -12,16 +12,16 @@
 {{- end }}
 {{- if .Values.mcp.enabled }}
 {{- if (.Values.mcp.postgresMCP).enabled }}
-{{- $targets = append $targets (dict "name" (printf "%s-mcp-postgres" $fn) "component" "mcp-postgres" "port" "http" "path" "/metrics") }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-postgres" $fn) "component" "mcp-postgres" "port" "metrics" "path" "/metrics") }}
 {{- end }}
 {{- if (.Values.mcp.qdrantMCP).enabled }}
-{{- $targets = append $targets (dict "name" (printf "%s-mcp-qdrant" $fn) "component" "mcp-qdrant" "port" "http" "path" "/metrics") }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-qdrant" $fn) "component" "mcp-qdrant" "port" "metrics" "path" "/metrics") }}
 {{- end }}
 {{- if (.Values.mcp.aigatewayMCP).enabled }}
-{{- $targets = append $targets (dict "name" (printf "%s-mcp-aigateway" $fn) "component" "mcp-aigateway" "port" "http" "path" "/metrics") }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-aigateway" $fn) "component" "mcp-aigateway" "port" "metrics" "path" "/metrics") }}
 {{- end }}
 {{- if (.Values.mcp.sandboxMCP).enabled }}
-{{- $targets = append $targets (dict "name" (printf "%s-mcp-sandbox" $fn) "component" "mcp-sandbox" "port" "http" "path" "/metrics") }}
+{{- $targets = append $targets (dict "name" (printf "%s-mcp-sandbox" $fn) "component" "mcp-sandbox" "port" "metrics" "path" "/metrics") }}
 {{- end }}
 {{- end }}
 {{- if .Values.qdrant.enabled }}
@@ -51,32 +51,6 @@ spec:
   endpoints:
     - port: {{ $t.port }}
       path: {{ $t.path | quote }}
-      interval: {{ $interval | quote }}
-{{- end }}
-{{- if eq (include "zelkor-platform.envoyProxyEmit" .) "true" }}
-{{- if $targets }}
----
-{{- end }}
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: {{ $fn }}-envoy
-  labels:
-    {{- include "zelkor-platform.labels" (dict "root" . "intent" "observability") | nindent 4 }}
-    {{- with $extra }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-spec:
-  namespaceSelector:
-    matchNames:
-      - {{ .Release.Namespace }}
-  selector:
-    matchLabels:
-      app.kubernetes.io/component: proxy
-      app.kubernetes.io/managed-by: envoy-gateway
-  podMetricsEndpoints:
-    - port: metrics
-      path: /stats/prometheus
       interval: {{ $interval | quote }}
 {{- end }}
 {{- end }}

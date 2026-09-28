@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "namespace": { "type": "string" }
+      }
+    },
+    "listeners": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "integer", "minimum": 1, "maximum": 65535 },
+          {
+            "type": "object",
+            "required": ["port"],
+            "properties": {
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+            }
+          }
+        ]
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "namespaceSelector": { "type": "object" },
+        "podMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "interval": { "type": "string" }
+          }
+        }
+      }
+    },
+    "otel": {
+      "type": "object",
+      "properties": {
+        "existingSecret": { "type": "string" }
+      }
+    }
+  }
+}

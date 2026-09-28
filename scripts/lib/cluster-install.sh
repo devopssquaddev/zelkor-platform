@@ -7,6 +7,9 @@ cluster_install_die() {
   exit 1
 }
 
+# shellcheck source=gateway-policies.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
+
 cluster_install_need() {
   command -v "$1" >/dev/null 2>&1 || cluster_install_die "missing required command: $1"
 }
@@ -487,7 +490,38 @@ cluster_install_print_or_run() {
   "$@"
 }
 
+cluster_install_export_gateway_policies_env() {
+  if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]]; then
+    export ZELKOR_SKIP_GATEWAY_POLICIES=1
+    return 0
+  fi
+  unset ZELKOR_SKIP_GATEWAY_POLICIES
+  export ZELKOR_GATEWAY_POLICIES_GATEWAY_NAME="$(
+    gateway_policies_gateway_name "$CLUSTER_INSTALL_RELEASE" "$PARENT_REF_NAME"
+  )"
+  export ZELKOR_GATEWAY_POLICIES_GATEWAY_NAMESPACE="$(
+    gateway_policies_gateway_namespace "$CLUSTER_INSTALL_NAMESPACE" "$PARENT_REF_NAMESPACE"
+  )"
+  GATEWAY_POLICIES_HELM_SET_SCAN=()
+  local sets=("${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}")
+  local i=0
+  while [[ $i -lt ${#sets[@]} ]]; do
+    case "${sets[$i]}" in
+      --set)
+        i=$((i + 1))
+        [[ $i -lt ${#sets[@]} ]] && GATEWAY_POLICIES_HELM_SET_SCAN+=("${sets[$i]}")
+        ;;
+      --set=*)
+        GATEWAY_POLICIES_HELM_SET_SCAN+=("${sets[$i]#--set=}")
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  export ZELKOR_GATEWAY_POLICIES_LISTENERS_JSON="$(gateway_policies_listeners_json)"
+}
+
 cluster_install_run_bootstrap_gateway() {
+  cluster_install_export_gateway_policies_env
   local args=()
   while IFS= read -r line; do
     [[ -n "$line" ]] && args+=("$line")
@@ -503,6 +537,7 @@ cluster_install_run_bootstrap_gateway() {
 
 cluster_install_run_helm() {
   local values_file="$1"
+  cluster_install_gateway_policies_preflight "$values_file"
   local cmd=()
   while IFS= read -r line; do
     [[ -n "$line" ]] && cmd+=("$line")
@@ -549,6 +584,41 @@ cluster_install_resolved_pg_instances() {
     echo "$found"
   else
     echo "$CLUSTER_INSTALL_PG_INSTANCES"
+  fi
+}
+
+cluster_install_helm_template_extra_args() {
+  local values_file="$1"
+  local overlay
+  overlay="$(cluster_install_gateway_overlay)"
+  local args=(
+    -f "$values_file"
+    -f "$overlay"
+  )
+  if [[ ${#CLUSTER_INSTALL_HELM_SETS[@]} -gt 0 ]]; then
+    args+=("${CLUSTER_INSTALL_HELM_SETS[@]}")
+  fi
+  printf '%s\n' "${args[@]}"
+}
+
+cluster_install_gateway_policies_preflight() {
+  local values_file="$1"
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]] && return 0
+  if ! helm "${HELM_KUBE_ARGS[@]}" status zelkor-gateway-policies -n envoy-gateway-system >/dev/null 2>&1; then
+    return 0
+  fi
+  local chart="${ZELKOR_REPO_ROOT}/charts/zelkor-platform"
+  local tpl_extra=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && tpl_extra+=("$line")
+  done < <(cluster_install_helm_template_extra_args "$values_file")
+  local expected actual
+  expected="$(gateway_policies_platform_listener_ports \
+    "$chart" "$CLUSTER_INSTALL_NAMESPACE" "$CLUSTER_INSTALL_RELEASE" "${tpl_extra[@]}")" || return 0
+  actual="$(gateway_policies_release_listener_ports "${HELM_KUBE_ARGS[@]}")" || return 0
+  if ! gateway_policies_preflight_match "$expected" "$actual"; then
+    cluster_install_die "gateway listener ports (${expected}) not covered by zelkor-gateway-policies listeners (${actual})"
   fi
 }
 

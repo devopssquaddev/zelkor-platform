@@ -12,6 +12,9 @@ spec:
     - port: 8080
       targetPort: 8080
       name: http
+    - port: 9090
+      targetPort: 9090
+      name: metrics
   selector:
     app.kubernetes.io/component: mcp-aigateway
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -46,7 +49,11 @@ spec:
           command: ["python", "mcp/wrappers/aigateway_server.py"]
           ports:
             - containerPort: 8080
+            - containerPort: 9090
+              name: metrics
           env:
+            - name: MCP_METRICS_PORT
+              value: "9090"
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.aigatewayMCP "name" "zelkor-mcp-aigateway") | nindent 12 }}
             {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
             - name: AI_GATEWAY_URL

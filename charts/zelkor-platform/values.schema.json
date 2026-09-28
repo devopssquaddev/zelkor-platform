@@ -3089,6 +3089,10 @@
             }
           },
           "additionalProperties": false
+        },
+        "monitoringNamespaceSelector": {
+          "type": "object",
+          "description": "Namespace labels for Prometheus scrapes of MCP metrics (port 9090)."
         }
       },
       "additionalProperties": false
@@ -3503,6 +3507,17 @@
       "type": "object",
       "description": "Values under gateway.",
       "properties": {
+        "dataplane": {
+          "type": "object",
+          "description": "Envoy dataplane pod namespace for MCP NetworkPolicy selectors.",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "description": "Value for gateway.dataplane.namespace."
+            }
+          },
+          "additionalProperties": false
+        },
         "enabled": {
           "type": "boolean",
           "description": "Value for gateway.enabled."

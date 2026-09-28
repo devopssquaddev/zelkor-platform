@@ -8,6 +8,8 @@ set -euo pipefail
 ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/bootstrap-ownership.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
+# shellcheck source=lib/gateway-policies.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
 
 ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.1}"
 AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.1.0}"
@@ -104,11 +106,34 @@ _install_gateway_policies() {
     echo "  WARN: ${policies_chart} missing — skip zelkor-gateway-policies"
     return 0
   fi
+  if [[ "${ZELKOR_SKIP_GATEWAY_POLICIES:-0}" == "1" ]]; then
+    echo "skip zelkor-gateway-policies (shared/brownfield)"
+    return 0
+  fi
+  local gw_name gw_ns listeners_json
+  gw_name="${ZELKOR_GATEWAY_POLICIES_GATEWAY_NAME:-zelkor-platform-gateway}"
+  gw_ns="${ZELKOR_GATEWAY_POLICIES_GATEWAY_NAMESPACE:-default}"
+  if [[ -n "${ZELKOR_GATEWAY_POLICIES_LISTENERS_JSON:-}" ]]; then
+    listeners_json="$ZELKOR_GATEWAY_POLICIES_LISTENERS_JSON"
+  else
+    GATEWAY_POLICIES_HELM_SET_SCAN=()
+    listeners_json="$(gateway_policies_listeners_json)"
+  fi
+  local listener_sets=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && listener_sets+=("$line")
+  done < <(LISTENERS_JSON="$listeners_json" python3 -c 'import json, os
+for i, item in enumerate(json.loads(os.environ["LISTENERS_JSON"])):
+    port = item["port"] if isinstance(item, dict) else item
+    print(f"--set listeners[{i}].port={int(port)}")')
   echo "Installing zelkor-gateway-policies (envoy-gateway-system)..."
   helm upgrade --install zelkor-gateway-policies "${policies_chart}" \
     "${HELM_ARGS[@]}" \
     --namespace envoy-gateway-system \
     --create-namespace \
+    --set "gateway.name=${gw_name}" \
+    --set "gateway.namespace=${gw_ns}" \
+    "${listener_sets[@]}" \
     --wait --timeout 3m
 }
 

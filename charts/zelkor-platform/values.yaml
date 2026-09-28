@@ -510,6 +510,7 @@ observability:
     enabled: false
     labels: {}
     interval: 30s
+  monitoringNamespaceSelector: {}
 databases:
   mode: in-cluster-basic
   postgresql:
@@ -582,6 +583,8 @@ security:
   mTLS:
     enabled: false
 gateway:
+  dataplane:
+    namespace: envoy-gateway-system
   enabled: true
   gatewayClassName: eg
   createGatewayClass: true
