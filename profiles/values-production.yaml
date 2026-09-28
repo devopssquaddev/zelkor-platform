@@ -97,8 +97,8 @@ workspace:
         digest: sha256:a9232166b106f5499cc92320f34feb62e61123b0baa7a632937163657b14ea84
   tools:
     image:
-      tag: 1.2.6
-      digest: sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9
+      tag: 2.1.0
+      digest: sha256:236a4b9ff9672647ee8df161e460f3193a70835c657e0f768060239919dc093c
     sandboxMCP:
       workerImage:
         tag: 1.2.6
