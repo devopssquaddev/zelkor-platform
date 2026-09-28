@@ -17,12 +17,26 @@ platform:
   tenants:
     sso:
       enabled: false
-    jwtSecret: ''
-    devTokens:
-      enabled: false
-      prefix: ''
-    trustTenantHeader: false
     orgMappings: {}
+    jwt:
+      issuer: ''
+      audiences: []
+      jwks: ''
+      jwksConfigMap: ''
+      remoteJwksUri: ''
+      jwksEgressCIDRs: []
+      jwksCacheSeconds: 30
+      tenantClaims:
+      - tenant_id
+      - org_id
+      - sub
+      localSigning:
+        enabled: false
+        seedTenant: ''
+        tokenTTL: 1h
+        seedTokenTTL: 24h
+        rotationId: ''
+        privateKey: ''
   telemetry:
     level: INFO
     format: json
@@ -67,7 +81,7 @@ platform:
           seedCode: false
         image:
           repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-          tag: 2.0.0
+          tag: 2.1.0
           digest: ''
       extraProjects: []
       nextauthUrl: ''
@@ -189,7 +203,7 @@ workspace:
       replicaCount: 1
       image:
         repository: ghcr.io/devopssquaddev/zelkor-guardrails
-        tag: 2.0.0
+        tag: 2.1.0
         digest: ''
       configsDir: "/etc/nemoguardrails/configs"
       defaultConfigId: content_safety
@@ -244,41 +258,11 @@ workspace:
     extraBackends: []
     image:
       repository: ghcr.io/devopssquaddev/zelkor-mcp
-      tag: 2.0.0
+      tag: 2.1.0
       digest: ''
-    gateway:
-      replicaCount: 1
-      resources:
-        requests:
-          cpu: 50m
-          memory: 64Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
-      startupProbe:
-        httpGet:
-          path: "/health"
-          port: 8080
-        initialDelaySeconds: 5
-        periodSeconds: 5
-        timeoutSeconds: 3
-        failureThreshold: 12
-      livenessProbe:
-        httpGet:
-          path: "/health"
-          port: 8080
-        periodSeconds: 10
-        timeoutSeconds: 3
-        failureThreshold: 3
-      readinessProbe:
-        httpGet:
-          path: "/health"
-          port: 8080
-        periodSeconds: 5
-        timeoutSeconds: 3
-        failureThreshold: 3
     mcproute:
-      enabled: false
+      nativeRefKind: Backend
+      sharedGatewayAck: false
     postgresMCP:
       enabled: true
       replicaCount: 1
@@ -392,7 +376,7 @@ workspace:
       strictIsolation: false
       workerImage:
         repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-        tag: 2.0.0
+        tag: 2.1.0
         digest: ''
       resources:
         requests:
@@ -478,12 +462,12 @@ workload:
       enabled: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra
-      tag: 2.0.0
+      tag: 2.1.0
       digest: ''
     cli:
       image:
         repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-        tag: 2.0.0
+        tag: 2.1.0
         digest: ''
     resources:
       requests:
@@ -566,6 +550,8 @@ databases:
       host: ''
       port: 6379
 security:
+  mcp:
+    acceptUnprotectedBackends: false
   sandbox:
     enabled: true
     runtimeClass: gvisor

@@ -28,7 +28,6 @@ HA_DEPLOYMENTS = (
     "zelkor-platform-langfuse",
     "zelkor-platform-langfuse-worker",
     "zelkor-platform-nemo",
-    "zelkor-platform-mcp-gateway",
     "zelkor-platform-mcp-postgres",
     "zelkor-platform-mcp-qdrant",
     "zelkor-platform-mcp-aigateway",
@@ -38,7 +37,6 @@ HA_DEPLOYMENTS = (
 SM_SERVICES = (
     "zelkor-platform-aegra",
     "zelkor-platform-nemo",
-    "zelkor-platform-mcp-gateway",
     "zelkor-platform-mcp-postgres",
     "zelkor-platform-mcp-qdrant",
     "zelkor-platform-mcp-aigateway",

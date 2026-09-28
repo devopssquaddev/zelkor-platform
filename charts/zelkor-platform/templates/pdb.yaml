@@ -15,7 +15,6 @@
 {{- $pdbs = append $pdbs (dict "name" (printf "%s-nemo" $fn) "component" "guardrails" "role" "") }}
 {{- end }}
 {{- if .Values.mcp.enabled }}
-{{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-gateway" $fn) "component" "mcp-gateway" "role" "mcp") }}
 {{- if (.Values.mcp.postgresMCP).enabled }}
 {{- $pdbs = append $pdbs (dict "name" (printf "%s-mcp-postgres" $fn) "component" "mcp-postgres" "role" "mcp") }}
 {{- end }}

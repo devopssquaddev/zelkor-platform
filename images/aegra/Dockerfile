@@ -16,6 +16,7 @@ COPY images/aegra/requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 COPY agents/tenant_auth.py /app/tenant_auth.py
+COPY mcp/common/jwt_verifier.py /app/jwt_verifier.py
 COPY images/aegra/aegra.json /app/aegra.json
 COPY images/aegra/auth_inject.py /app/auth_inject.py
 COPY images/aegra/mcp_inject.py /app/mcp_inject.py

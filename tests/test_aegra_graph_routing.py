@@ -213,9 +213,17 @@ def test_nemo_otel_uses_instrument_and_early_sitecustomize():
 
 
 def _helm(*args: str) -> str:
+    helm_args = list(args)
+    if str(LOCAL_VALUES) in helm_args:
+        helm_args.extend(
+            [
+                "--set-json",
+                'platform.tenants.jwt.jwks={"keys":[{"kty":"RSA","kid":"helm-test","use":"sig","alg":"RS256","n":"AQAB","e":"AQAB"}]}',
+            ]
+        )
     try:
         res = subprocess.run(
-            ["helm", *args],
+            ["helm", *helm_args],
             capture_output=True,
             text=True,
             check=False,

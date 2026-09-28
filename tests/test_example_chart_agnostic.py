@@ -16,7 +16,6 @@ FINSERVE_OVERLAY_LOCAL = FINSERVE_CHART / "values-platform-overlay-local.yaml"
 
 KIND_DNS = (
     "zelkor-platform-ai-gateway",
-    "zelkor-platform-mcp-gateway",
     "zelkor-platform-postgresql",
     "zelkor-platform-qdrant",
     "zelkor-platform-langfuse",
@@ -63,7 +62,7 @@ def test_finserve_values_have_no_kind_literals():
 def test_zelkor_agent_values_have_no_kind_urls():
     raw = (AGENT_CHART / "values.yaml").read_text()
     assert "zelkor-platform-ai-gateway" not in raw
-    assert "zelkor-platform-mcp-gateway" not in raw
+    assert "zelkor-platform-mcp-gateway" not in raw  # legacy gateway removed in 2.1
     values = yaml.safe_load(raw)
     assert values["platform"]["openaiBaseUrl"] == ""
     assert values["platform"]["mcpUrl"] == ""
@@ -122,7 +121,7 @@ def test_zelkor_agent_release_name_constructs_urls():
     )
     assert proc.returncode == 0, proc.stderr
     assert "http://my-platform-ai-gateway:80/v1" in proc.stdout
-    assert "http://my-platform-mcp-gateway:8080" in proc.stdout
+    assert "http://my-platform-mcp" in proc.stdout
     assert "my-platform-gateway" in proc.stdout
 
 

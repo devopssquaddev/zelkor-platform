@@ -1,14 +1,20 @@
-"""FinServe demo: bind a single MCP tool without prefix-wide inject (smaller LLM prompt)."""
+"""FinServe demo: bind named MCP tools per run (no import-time tools/list)."""
 from __future__ import annotations
 
-# Block Mode B auto-inject; create_agent passes explicit tools below.
+import os
+
+
 MCP_INJECT_PREFIXES = ("__finserve_no_auto_inject__",)
 
 
 def single_mcp_tool(name: str):
-    from mcp_inject import _load_adapter_tools
+    from mcp_inject import defer_named_mcp_tool
 
-    for tool in _load_adapter_tools() or []:
-        if getattr(tool, "name", "") == name:
-            return tool
-    raise RuntimeError(f"MCP tool {name!r} not available")
+    return defer_named_mcp_tool(name)
+
+
+def tools_from_env():
+    raw = os.getenv("MCP_INJECT_TOOLS", "").strip()
+    if not raw:
+        return []
+    return [single_mcp_tool(n.strip()) for n in raw.split(",") if n.strip()]

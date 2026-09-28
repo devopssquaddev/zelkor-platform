@@ -106,6 +106,14 @@ spec:
               value: {{ ternary "true" "false" (($intent.approval).enabled | default false) | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ .Values.platform.mcpInject | quote }}
+            {{- $mcpTokSec := .Values.platform.mcpAuthTokenSecret | default "" | trim }}
+            {{- if $mcpTokSec }}
+            - name: MCP_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $mcpTokSec | quote }}
+                  key: {{ (.Values.platform.mcpAuthTokenSecretKey | default "token") | quote }}
+            {{- end }}
             {{- if .Values.platform.mcpInjectToolPrefixes }}
             - name: MCP_INJECT_TOOL_PREFIXES
               value: {{ .Values.platform.mcpInjectToolPrefixes | quote }}

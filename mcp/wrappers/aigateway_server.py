@@ -98,13 +98,13 @@ class AIGatewayMCPServer(MCPToolHandler):
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "tenant_id": {"type": "string"},
                         "model": {"type": "string"},
                         "operation": {"type": "string"},
                         "messages": {"type": "array"},
                         "input": {},
                     },
-                    "required": ["tenant_id", "model"],
+                    "required": ["model"],
+                    "additionalProperties": False,
                 },
             }
         ]
@@ -113,9 +113,6 @@ class AIGatewayMCPServer(MCPToolHandler):
         if name != "call":
             raise ValueError(f"Unknown tool: {name}")
         reject_forbidden_args(arguments)
-        arg_tenant = arguments.get("tenant_id")
-        if not arg_tenant or arg_tenant != tenant_id:
-            raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
         model = (arguments.get("model") or "").strip()
         if not model:
             raise ValueError("model is required")

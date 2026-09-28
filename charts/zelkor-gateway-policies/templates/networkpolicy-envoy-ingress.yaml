@@ -1,0 +1,20 @@
+{{- $listeners := .Values.listeners | default list -}}
+{{- if eq (len $listeners) 0 -}}
+{{- fail "zelkor-gateway-policies.listeners must not be empty" -}}
+{{- end -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-envoy-ingress
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: envoy
+  policyTypes:
+    - Ingress
+  ingress:
+{{- range $listeners }}
+    - ports:
+        - port: {{ . }}
+{{- end }}

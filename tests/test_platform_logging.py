@@ -51,7 +51,7 @@ def test_parse_format_rejects_unknown():
 
 def test_json_formatter_required_keys_and_optional_event():
     record = logging.LogRecord(
-        name="zelkor-mcp-gateway",
+        name="zelkor-mcp-postgres",
         level=logging.INFO,
         pathname="",
         lineno=0,
@@ -59,13 +59,13 @@ def test_json_formatter_required_keys_and_optional_event():
         args=(),
         exc_info=None,
     )
-    record.component = "zelkor-mcp-gateway"
+    record.component = "zelkor-mcp-postgres"
     record.event = "startup"
     payload = json.loads(JsonFormatter().format(record))
     assert payload["level"] == "INFO"
-    assert payload["logger"] == "zelkor-mcp-gateway"
+    assert payload["logger"] == "zelkor-mcp-postgres"
     assert payload["message"] == "listening"
-    assert payload["component"] == "zelkor-mcp-gateway"
+    assert payload["component"] == "zelkor-mcp-postgres"
     assert payload["event"] == "startup"
     assert "timestamp" in payload
     assert "Authorization" not in json.dumps(payload)
@@ -89,7 +89,7 @@ def test_configure_honors_error_level(monkeypatch, capsys):
 def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
     monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
     monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
-    configure_logging("zelkor-mcp-gateway", force=True)
+    configure_logging("zelkor-mcp-postgres", force=True)
     log_shutdown()
     log_shutdown()
     rows = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines() if line]
@@ -99,9 +99,9 @@ def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
     start = next(row for row in rows if row["event"] == "startup")
     stop = next(row for row in rows if row["event"] == "shutdown")
     assert start["message"] == "starting"
-    assert start["component"] == "zelkor-mcp-gateway"
+    assert start["component"] == "zelkor-mcp-postgres"
     assert stop["message"] == "stopping"
-    assert stop["component"] == "zelkor-mcp-gateway"
+    assert stop["component"] == "zelkor-mcp-postgres"
     assert "Authorization" not in json.dumps(rows)
 
 
@@ -453,7 +453,7 @@ def test_gateway_list_tools_logs_info(monkeypatch, caplog):
         return {"tools": [{"name": "query"}]}
 
     monkeypatch.setattr(gw, "_rpc_call", fake_rpc)
-    with caplog.at_level(logging.INFO, logger="zelkor-mcp-gateway"):
+    with caplog.at_level(logging.INFO, logger="zelkor-mcp-postgres"):
         tools = gw.GatewayMCPServer().list_tools()
     assert [t["name"] for t in tools] == ["postgres__query"]
     assert "MCP gateway backends=postgres tools=1" in caplog.text

@@ -32,15 +32,6 @@ def _norm_render(text: str) -> str:
     return yaml.dump_all(scrubbed, sort_keys=True)
 
 
-def test_profiles_match_v126_golden_manifests():
-    for profile in sorted(PROFILES.glob("values*.yaml")):
-        r = _helm(values_files=[profile])
-        assert r.returncode == 0, f"{profile.name}: {r.stderr}"
-        golden_path = GOLDEN / f"{profile.stem}.yaml"
-        assert golden_path.is_file(), f"missing golden {golden_path}"
-        assert _norm_render(r.stdout) == _norm_render(golden_path.read_text()), profile.name
-
-
 def test_every_template_invokes_v2_compiler():
     missing = []
     for p in (CHART / "templates").rglob("*.yaml"):

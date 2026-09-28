@@ -510,6 +510,14 @@ cluster_install_run_helm() {
   cluster_install_print_or_run HELM "${cmd[@]}"
 }
 
+cluster_install_append_local_signing_helm_sets() {
+  local values_file="$1"
+  # shellcheck source=lib/local-signing-helm-sets.sh
+  source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
+  HELM_RELEASE_NAME="$CLUSTER_INSTALL_RELEASE"
+  append_local_signing_helm_sets CLUSTER_INSTALL_HELM_SETS "$values_file"
+}
+
 cluster_install_refuse_foreign_eg() {
   [[ "$CLUSTER_INSTALL_TOPOLOGY" == "greenfield" ]] || return 0
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0

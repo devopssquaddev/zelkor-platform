@@ -11,6 +11,7 @@ _workerPlatform: &workerPlatform
   langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
   langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
   otelTargets: "LANGFUSE"
+  mcpAuthTokenSecret: zelkor-platform-mcp-service-token
 
 _auth: &auth
   jwtSecret: "zelkor-local-jwt-secret"

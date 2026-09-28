@@ -32,7 +32,7 @@ def test_network_policies_present_when_enabled(kubecontext):
     names = [item["metadata"]["name"] for item in items]
     if not any("agent-egress" in n for n in names):
         pytest.skip("security.networkPolicies.enabled is off in this cluster")
-    assert any("mcp-gateway-egress" in n for n in names), names
+    assert any("mcp-postgres-egress" in n for n in names), names
     assert any("sandbox-worker-ingress" in n for n in names), names
     assert any("aegra-egress" in n for n in names), names
     aegra = next(i for i in items if "aegra-egress" in i["metadata"]["name"])

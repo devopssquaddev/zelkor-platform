@@ -18,7 +18,6 @@
 {{- $workloads = append $workloads (printf "%s-nemo" $fn) }}
 {{- end }}
 {{- if .Values.mcp.enabled }}
-{{- $workloads = append $workloads (printf "%s-mcp-gateway" $fn) }}
 {{- if (.Values.mcp.postgresMCP).enabled }}
 {{- $workloads = append $workloads (printf "%s-mcp-postgres" $fn) }}
 {{- end }}

@@ -48,8 +48,12 @@ spec:
             - containerPort: 8080
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.postgresMCP "name" "zelkor-mcp-postgres") | nindent 12 }}
-            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
             - name: POSTGRES_MCP_URL
               value: {{ .Values.mcp.postgresMCP.databaseUrl | default (include "zelkor-platform.postgresUrl" (list . "postgres")) | quote }}
+          volumeMounts:
+            {{- include "zelkor-platform.tenantAuthVolumeMount" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.postgresMCP) | nindent 10 }}
+      volumes:
+        {{- include "zelkor-platform.tenantAuthVolume" . | nindent 8 }}
 {{- end }}

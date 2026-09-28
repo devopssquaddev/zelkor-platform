@@ -70,6 +70,7 @@ echo "install-quickstart: LLM providers: ${LLM_PROVIDER_SUMMARY} (DEFAULT_LLM_MO
 echo "install-quickstart: hosts agents=${HOSTS_AGENTS} langfuse=${HOSTS_LANGFUSE}"
 
 cluster_install_run_bootstrap_gateway
+cluster_install_append_local_signing_helm_sets "${ZELKOR_REPO_ROOT}/profiles/values-quickstart.yaml"
 cluster_install_run_helm "${ZELKOR_REPO_ROOT}/profiles/values-quickstart.yaml"
 
 if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then

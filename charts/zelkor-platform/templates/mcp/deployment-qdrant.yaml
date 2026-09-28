@@ -48,7 +48,7 @@ spec:
             - containerPort: 8080
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.qdrantMCP "name" "zelkor-mcp-qdrant") | nindent 12 }}
-            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
             - name: QDRANT_MCP_URL
               value: {{ include "zelkor-platform.qdrantUrl" . | quote }}
             - name: QDRANT_COLLECTION
@@ -57,5 +57,9 @@ spec:
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
             - name: AI_GATEWAY_API_KEY
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+          volumeMounts:
+            {{- include "zelkor-platform.tenantAuthVolumeMount" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.qdrantMCP) | nindent 10 }}
+      volumes:
+        {{- include "zelkor-platform.tenantAuthVolume" . | nindent 8 }}
 {{- end }}

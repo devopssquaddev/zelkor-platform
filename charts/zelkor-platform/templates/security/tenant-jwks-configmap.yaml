@@ -1,0 +1,25 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $rawJwks := $jwt.jwks | default "" -}}
+{{- $inline := "" -}}
+{{- if kindIs "string" $rawJwks -}}
+{{- $inline = $rawJwks | trim -}}
+{{- else if $rawJwks -}}
+{{- $inline = mustToJson $rawJwks -}}
+{{- end -}}
+{{- $ls := ($jwt.localSigning | default dict) -}}
+{{- if and (not ($jwt.jwksConfigMap | default "" | trim)) (or $inline $ls.enabled) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.tenantJwksConfigMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.tenants.jwt") | nindent 4 }}
+  {{- if $ls.enabled }}
+  annotations:
+    zelkor.io/token-ttl: {{ $ls.tokenTTL | default "1h" | quote }}
+  {{- end }}
+data:
+  jwks: {{ if $inline }}{{ $inline | quote }}{{ else if $ls.enabled }}{{ fail "platform.tenants.jwt.jwks is required when localSigning.enabled (set by install wrapper)" }}{{ else }}{"keys":[]}{{ end }}
+{{- end }}

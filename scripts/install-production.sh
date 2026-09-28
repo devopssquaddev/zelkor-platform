@@ -134,6 +134,7 @@ else
 fi
 
 cluster_install_run_bootstrap_gateway
+cluster_install_append_local_signing_helm_sets "${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
 cluster_install_run_helm "${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
 
 if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then

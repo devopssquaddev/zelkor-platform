@@ -805,6 +805,16 @@ if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
   # Playground needs a custom model id on the Zelkor connection (no baked gpt-4o list).
   HELM_EXTRA_ARGS+=(--set-string "platform.telemetry.langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
 fi
+if [[ -n "${IMAGE_TAG:-}" ]]; then
+  HELM_EXTRA_ARGS+=(
+    --set "workspace.tools.image.tag=${IMAGE_TAG}"
+    --set "workspace.tools.sandboxMCP.workerImage.tag=${IMAGE_TAG}"
+    --set "workload.agents.image.tag=${IMAGE_TAG}"
+    --set "workload.agents.cli.image.tag=${IMAGE_TAG}"
+    --set "workspace.policies.nemo.image.tag=${IMAGE_TAG}"
+    --set "platform.telemetry.langfuse.surfaces.image.tag=${IMAGE_TAG}"
+  )
+fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
   HELM_EXTRA_ARGS+=(-f "$FINSERVE_PLATFORM_OVERLAY")
@@ -849,6 +859,10 @@ if [[ -n "$PEEKED_SVC" ]]; then
   log "Using existing Envoy data-plane Service: ${GATEWAY_INTERNAL_URL}"
   append_gateway_url_helm "$GATEWAY_INTERNAL_URL"
 fi
+
+# shellcheck source=lib/local-signing-helm-sets.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
+append_local_signing_helm_sets HELM_EXTRA_ARGS "$VALUES_FILE"
 
 if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then
   helm upgrade --install "$HELM_RELEASE_NAME" "$CHART_PATH" \

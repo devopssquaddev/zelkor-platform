@@ -67,9 +67,6 @@ platform:
   tenants:
     sso:
       enabled: false
-    devTokens:
-      enabled: false
-    trustTenantHeader: false
   telemetry:
     langfuse:
       init:

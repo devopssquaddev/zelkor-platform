@@ -8,6 +8,8 @@ from common.mcp_server import MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
 from sandbox.pool_manager import execute_on_worker
 
+MAX_TIMEOUT = int(os.getenv("SANDBOX_MAX_TIMEOUT_SECONDS", "90"))
+
 
 class SandboxMCPServer(MCPToolHandler):
     def list_tools(self):
@@ -19,10 +21,15 @@ class SandboxMCPServer(MCPToolHandler):
                     "type": "object",
                     "properties": {
                         "code": {"type": "string"},
-                        "tenant_id": {"type": "string"},
                         "environment": {"type": "string", "enum": ["python-base"]},
+                        "timeout": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": MAX_TIMEOUT,
+                        },
                     },
-                    "required": ["code", "tenant_id"],
+                    "required": ["code"],
+                    "additionalProperties": False,
                 },
             }
         ]
@@ -31,12 +38,13 @@ class SandboxMCPServer(MCPToolHandler):
         if name != "execute_python":
             raise ValueError(f"Unknown tool: {name}")
 
-        arg_tenant = arguments.get("tenant_id")
-        if not arg_tenant or arg_tenant != tenant_id:
-            raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
-
         code = arguments.get("code") or ""
-        timeout = int(arguments.get("timeout") or 5)
+        raw_timeout = arguments.get("timeout")
+        timeout = int(raw_timeout) if raw_timeout is not None else 5
+        if timeout < 1:
+            timeout = 1
+        if timeout > MAX_TIMEOUT:
+            timeout = MAX_TIMEOUT
         return execute_on_worker(code, tenant_id, timeout=timeout)
 
 

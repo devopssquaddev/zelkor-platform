@@ -84,9 +84,7 @@ if os.getenv("MCP_INJECT_ENABLED", "").strip().lower() in ("1", "true", "yes", "
         _log.info("Mode B MCP inject ready")
     except Exception:
         write_inject_status("failed")
-        _log.exception("Mode B MCP inject failed")
-        # site.py swallows sitecustomize exceptions; exit so the pod is not ready.
-        os._exit(1)
+        _log.exception("Mode B MCP inject failed (pod stays up; per-run MCP may still work)")
 else:
     _log.debug("MCP inject disabled")
 

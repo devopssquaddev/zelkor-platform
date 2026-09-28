@@ -48,12 +48,16 @@ spec:
             - containerPort: 8080
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.aigatewayMCP "name" "zelkor-mcp-aigateway") | nindent 12 }}
-            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
             - name: AI_GATEWAY_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
             - name: AI_GATEWAY_API_KEY
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
             - name: AIGATEWAY_ALLOWED_MODELS
               value: {{ join "," (.Values.mcp.aigatewayMCP.allowedModels | default list) | quote }}
+          volumeMounts:
+            {{- include "zelkor-platform.tenantAuthVolumeMount" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.aigatewayMCP) | nindent 10 }}
+      volumes:
+        {{- include "zelkor-platform.tenantAuthVolume" . | nindent 8 }}
 {{- end }}

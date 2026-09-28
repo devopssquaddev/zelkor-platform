@@ -107,7 +107,7 @@ app.kubernetes.io/component: aegra
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else if (include "zelkor-agent.platformReleaseName" .) -}}
-{{- printf "http://%s-mcp-gateway:8080" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- printf "http://%s-mcp" (include "zelkor-agent.platformReleaseName" .) -}}
 {{- else -}}
 {{- "" -}}
 {{- end -}}

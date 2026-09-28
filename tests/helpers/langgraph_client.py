@@ -12,6 +12,8 @@ from typing import Any
 
 from langgraph_sdk import get_client, get_sync_client
 
+from tests.helpers.tokens import bearer_for, test_tokens
+
 _DEFAULT_TENANT = "tenant-a"
 
 
@@ -20,12 +22,16 @@ def _gateway_url() -> str:
 
 
 def _request_headers(*, tenant_id: str, graph_id: str | None = None) -> dict[str, str]:
-    token = os.environ.get("AEGRA_AUTH_TOKEN") if tenant_id == _DEFAULT_TENANT else None
+    auth = os.environ.get("AEGRA_AUTH_TOKEN")
+    if not auth:
+        if test_tokens():
+            auth = bearer_for(tenant_id).removeprefix("Bearer ")
+        else:
+            auth = f"dev:{tenant_id}"
     headers = {
-        "Authorization": f"Bearer {token or f'dev:{tenant_id}'}",
+        "Authorization": f"Bearer {auth}",
         "Host": os.environ.get("AGENTS_HOST_HEADER")
         or os.environ.get("AEGRA_HOST_HEADER", "agents.localhost"),
-        "X-Tenant-ID": tenant_id,
     }
     if graph_id:
         headers["X-Graph-ID"] = graph_id

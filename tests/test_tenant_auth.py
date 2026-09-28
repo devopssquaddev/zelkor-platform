@@ -1,116 +1,60 @@
-import pytest
+"""Unit tests for Aegra tenant auth handler (JWKS JWT only, no dev tokens)."""
 import asyncio
-try:
-    import jwt
-except ImportError:
-    jwt = None
 import sys
-import os
+from pathlib import Path
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from agents.tenant_auth import TenantAuth
+import pytest
 
-SECRET_KEY_32 = "zelkor-dev-secret-key-32bytes-min!"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from agents.tenant_auth import TenantAuth  # noqa: E402
+from common.jwt_verifier import validate_startup_config  # noqa: E402
+from tests.helpers.jwt_keys import generate_rsa_keypair, write_jwks_file  # noqa: E402
 
-@pytest.fixture
-def local_auth_env(monkeypatch):
-    monkeypatch.setenv("AUTH_DEV_TOKENS_ENABLED", "true")
-    monkeypatch.setenv("AUTH_DEV_TOKEN_PREFIX", "dev:")
-    monkeypatch.setenv("AUTH_TRUST_TENANT_HEADER", "true")
+pytest.importorskip("cryptography")
 
 
-def test_dev_token_authentication(local_auth_env):
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    headers = {"authorization": "Bearer dev:tenant_a"}
-    result = asyncio.run(auth.authenticate(headers))
+@pytest.fixture()
+def jwt_env(tmp_path, monkeypatch):
+    kp = generate_rsa_keypair("kid-1")
+    jwks_dir = tmp_path / "jwks"
+    jwks_dir.mkdir()
+    write_jwks_file(str(jwks_dir / "jwks"), kp.jwks)
+    monkeypatch.setenv("AUTH_JWKS_PATH", str(jwks_dir))
+    monkeypatch.setenv("AUTH_JWT_ISSUER", "https://test.zelkor.invalid")
+    monkeypatch.setenv("AUTH_JWT_AUDIENCES", '["zelkor"]')
+    monkeypatch.setenv("AUTH_TENANT_CLAIMS", '["tenant_id"]')
+    validate_startup_config()
+    return kp
+
+
+def test_rejects_dev_prefix_token(jwt_env):
+    auth = TenantAuth()
+    result = asyncio.run(auth.authenticate({"authorization": "Bearer dev:tenant_a"}))
+    assert result["is_authenticated"] is False
+
+
+def test_rejects_bare_tenant_header(jwt_env):
+    auth = TenantAuth()
+    result = asyncio.run(auth.authenticate({"x-tenant-id": "tenant_a"}))
+    assert result["is_authenticated"] is False
+
+
+def test_accepts_rs256_tenant_jwt(jwt_env):
+    token = jwt_env.mint(
+        "https://test.zelkor.invalid",
+        ["zelkor"],
+        {"tenant_id": "tenant_a"},
+    )
+    auth = TenantAuth()
+    result = asyncio.run(auth.authenticate({"authorization": f"Bearer {token}"}))
     assert result["is_authenticated"] is True
-    assert result["identity"] == "tenant_a"
     assert result["tenant_id"] == "tenant_a"
-    assert result["mode"] == "dev"
-    assert result["authorization"] == "Bearer dev:tenant_a"
+    assert result["mode"] == "jwt"
 
 
-def test_dev_token_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("AUTH_DEV_TOKENS_ENABLED", raising=False)
-    monkeypatch.delenv("AUTH_DEV_TOKEN_PREFIX", raising=False)
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    headers = {"authorization": "Bearer dev:tenant_a"}
-    result = asyncio.run(auth.authenticate(headers))
-    assert result["is_authenticated"] is False
-
-
-def test_header_fallback_authentication(local_auth_env):
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    headers = {"x-tenant-id": "tenant_b"}
-    result = asyncio.run(auth.authenticate(headers))
-    assert result["is_authenticated"] is True
-    assert result["identity"] == "tenant_b"
-    assert result["tenant_id"] == "tenant_b"
-
-
-def test_header_fallback_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("AUTH_TRUST_TENANT_HEADER", raising=False)
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    headers = {"x-tenant-id": "tenant_b"}
-    result = asyncio.run(auth.authenticate(headers))
-    assert result["is_authenticated"] is False
-
-
-def test_jwt_b2c_tenant_claim():
-    if not jwt:
-        pytest.skip("PyJWT not installed")
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    token = jwt.encode({"tenant_id": "tenant_a", "sub": "user_123"}, SECRET_KEY_32, algorithm="HS256")
-    headers = {"authorization": f"Bearer {token}"}
-    result = asyncio.run(auth.authenticate(headers))
-    assert result["is_authenticated"] is True
-    assert result["identity"] == "tenant_a"
-    assert result["authorization"] == f"Bearer {token}"
-
-
-def test_jwt_b2b_org_mapping(monkeypatch):
-    if not jwt:
-        pytest.skip("PyJWT not installed")
-    monkeypatch.setenv("TENANT_ORG_MAPPINGS", '{"org_beta": "tenant_b"}')
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    token = jwt.encode({"org_id": "org_beta", "sub": "enterprise_user"}, SECRET_KEY_32, algorithm="HS256")
-    headers = {"authorization": f"Bearer {token}"}
-    result = asyncio.run(auth.authenticate(headers))
-    assert result["is_authenticated"] is True
-    assert result["identity"] == "tenant_b"
-
-
-def test_unauthenticated_request():
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    headers = {}
-    result = asyncio.run(auth.authenticate(headers))
+def test_unauthenticated_request(jwt_env):
+    auth = TenantAuth()
+    result = asyncio.run(auth.authenticate({}))
     assert result["is_authenticated"] is False
     assert result["identity"] == "anonymous"
-
-
-def test_jwt_rejects_wrong_signature(monkeypatch):
-    if not jwt:
-        pytest.skip("PyJWT not installed")
-    monkeypatch.delenv("AUTH_DEV_TOKENS_ENABLED", raising=False)
-    monkeypatch.delenv("AUTH_DEV_TOKEN_PREFIX", raising=False)
-    auth = TenantAuth(secret_key=SECRET_KEY_32)
-    token = jwt.encode(
-        {"tenant_id": "tenant_a"},
-        "other-secret-key-32bytes-min!!!",
-        algorithm="HS256",
-    )
-    result = asyncio.run(auth.authenticate({"authorization": f"Bearer {token}"}))
-    assert result["is_authenticated"] is False
-
-
-def test_jwt_requires_secret(monkeypatch):
-    if not jwt:
-        pytest.skip("PyJWT not installed")
-    monkeypatch.delenv("AUTH_JWT_SECRET", raising=False)
-    monkeypatch.delenv("AUTH_DEV_TOKENS_ENABLED", raising=False)
-    auth = TenantAuth(secret_key="")
-    token = jwt.encode({"tenant_id": "tenant_a"}, SECRET_KEY_32, algorithm="HS256")
-    result = asyncio.run(auth.authenticate({"authorization": f"Bearer {token}"}))
-    assert result["is_authenticated"] is False
-    assert "AUTH_JWT_SECRET" in (result.get("error") or "")

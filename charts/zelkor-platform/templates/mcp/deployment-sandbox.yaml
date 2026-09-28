@@ -76,7 +76,7 @@ spec:
             - containerPort: 8080
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.sandboxMCP "name" "zelkor-mcp-sandbox") | nindent 12 }}
-            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
             - name: SANDBOX_WORKER_URLS
               value: {{ $workerUrlsStr | quote }}
             - name: SANDBOX_WORKER_TOKEN
@@ -85,7 +85,11 @@ spec:
                   name: {{ $workerSecret | quote }}
                   key: token
             {{- include "zelkor-platform.sandboxExecutionLogEnv" . | nindent 12 }}
+          volumeMounts:
+            {{- include "zelkor-platform.tenantAuthVolumeMount" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.mcp.sandboxMCP) | nindent 10 }}
+      volumes:
+        {{- include "zelkor-platform.tenantAuthVolume" . | nindent 8 }}
 ---
 {{- range $i := until (int $replicas) }}
 apiVersion: apps/v1

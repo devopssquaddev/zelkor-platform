@@ -7,12 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
 from tests.helpers.mcp_client import MCPGatewayClient
-from wrappers.qdrant_server import QdrantMCPServer, _require_tenant, stamp_upsert_payload
-
-
-def test_require_tenant_rejects_mismatch():
-    with pytest.raises(PermissionError, match="tenant_id mismatch"):
-        _require_tenant({"tenant_id": "tenant_b"}, "tenant_a")
+from wrappers.qdrant_server import QdrantMCPServer, stamp_upsert_payload
 
 
 def test_upsert_document_forces_payload_tenant_id():
@@ -29,11 +24,11 @@ def test_qdrant_lists_upsert_not_inner_store():
     assert "qdrant-store" not in names
 
 
-def test_mcp_qdrant_rejects_tenant_id_mismatch():
-    """qdrant__search_documents rejects when tool arg tenant_id does not match auth header."""
+def test_mcp_qdrant_rejects_stray_tenant_id():
+    """qdrant__search_documents rejects tenant_id in tool arguments."""
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id mismatch"):
+        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
             client.call_tool(
                 "qdrant__search_documents",
                 {"query": "search documents", "tenant_id": "tenant_b"},
@@ -56,10 +51,10 @@ def test_mcp_qdrant_search_does_not_leak_other_tenant():
         assert doc.get("tenant_id") == "tenant_a"
 
 
-def test_mcp_qdrant_upsert_rejects_tenant_id_mismatch():
+def test_mcp_qdrant_upsert_rejects_stray_tenant_id():
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id mismatch"):
+        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
             client.call_tool(
                 "qdrant__upsert_document",
                 {"content": "should fail", "tenant_id": "tenant_b"},

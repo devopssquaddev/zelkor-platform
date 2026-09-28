@@ -1,0 +1,23 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- include "zelkor-platform.mcpRouteValidate" . -}}
+{{- if eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true" }}
+{{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
+{{- if not $targetHost -}}
+{{- fail "aiGateway.inClusterService.targetHost must be set" -}}
+{{- end -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp
+  namespace: {{ include "zelkor-platform.mcpDataplaneNamespace" . }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp") | nindent 4 }}
+    app.kubernetes.io/component: mcp-dataplane
+spec:
+  type: ExternalName
+  externalName: {{ $targetHost }}
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+{{- end }}

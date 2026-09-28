@@ -11,7 +11,6 @@
 {{- $targets = append $targets (dict "name" (printf "%s-nemo" $fn) "component" "guardrails" "port" "http" "path" "/metrics") }}
 {{- end }}
 {{- if .Values.mcp.enabled }}
-{{- $targets = append $targets (dict "name" (printf "%s-mcp-gateway" $fn) "component" "mcp-gateway" "port" "http" "path" "/metrics") }}
 {{- if (.Values.mcp.postgresMCP).enabled }}
 {{- $targets = append $targets (dict "name" (printf "%s-mcp-postgres" $fn) "component" "mcp-postgres" "port" "http" "path" "/metrics") }}
 {{- end }}

@@ -1,43 +1,154 @@
 {{- include "zelkor-platform.compile" . -}}
-{{- if and .Values.mcp.enabled .Values.gateway.enabled .Values.gateway.hosts.mcp }}
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
+{{- include "zelkor-platform.mcpRouteValidate" . -}}
+{{- if eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true" }}
+{{- $fn := include "zelkor-platform.fullname" . -}}
+{{- $hostnames := include "zelkor-platform.mcpHostnames" . | fromJsonArray -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $claims := $jwt.tenantClaims | default (list "tenant_id" "org_id" "sub") -}}
+{{- $cels := list -}}
+{{- range $claims -}}
+{{- $cels = append $cels (printf "has(request.auth.jwt.claims.%s)" .) -}}
+{{- end -}}
+{{- $refKind := (.Values.mcp.mcproute.nativeRefKind | default "Backend") | trim -}}
+{{- $nativeGroup := "" -}}
+{{- $nativeKind := "Service" -}}
+{{- if eq $refKind "Backend" -}}
+{{- $nativeGroup = "gateway.envoyproxy.io" -}}
+{{- $nativeKind = "Backend" -}}
+{{- end -}}
+{{- $resource := printf "http://%s-mcp.%s.svc.cluster.local/mcp" $fn .Release.Namespace -}}
+{{- if .Values.gateway.hosts.mcp -}}
+{{- $resource = printf "https://%s/mcp" .Values.gateway.hosts.mcp -}}
+{{- end -}}
+{{- $jwksCm := include "zelkor-platform.tenantJwksConfigMapName" . -}}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: MCPRoute
 metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway-route
+  name: {{ $fn }}-mcp
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
-    app.kubernetes.io/component: mcp-gateway
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp") | nindent 4 }}
+    app.kubernetes.io/component: mcp-route
 spec:
   parentRefs:
     {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
   hostnames:
-    - {{ .Values.gateway.hosts.mcp | quote }}
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway
-          port: 8080
----
-{{- if .Values.mcp.mcproute.enabled }}
-apiVersion: aigateway.envoyproxy.io/v1beta1
-kind: MCPRoute
-metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-mcproute
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
-    app.kubernetes.io/component: mcp-gateway
-spec:
-  parentRefs:
-    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
-  path: "/mcp"
+{{- range $hostnames }}
+    - {{ . | quote }}
+{{- end }}
+  path: /mcp
+  securityPolicy:
+    oauth:
+      issuer: {{ $jwt.issuer | quote }}
+      audiences:
+{{- range $jwt.audiences }}
+        - {{ . | quote }}
+{{- end }}
+{{- if $jwt.remoteJwksUri | default "" | trim }}
+      jwks:
+        remoteJWKS:
+          uri: {{ $jwt.remoteJwksUri | quote }}
+{{- else }}
+      jwks:
+        localJWKS:
+          type: ValueRef
+          valueRef:
+            group: ""
+            kind: ConfigMap
+            name: {{ $jwksCm | quote }}
+{{- end }}
+      protectedResourceMetadata:
+        resource: {{ $resource | quote }}
+      claimToHeaders:
+{{- range $claims }}
+        - claim: {{ . | quote }}
+          header: {{ if eq . "tenant_id" }}{{ "X-Tenant-ID" | quote }}{{ else if eq . "org_id" }}{{ "X-Zelkor-Claim-Org-Id" | quote }}{{ else if eq . "sub" }}{{ "X-Zelkor-Claim-Sub" | quote }}{{ else }}{{ printf "X-Zelkor-Claim-%s" . | quote }}{{ end }}
+{{- end }}
+    authorization:
+      defaultAction: Deny
+      rules:
+        - cel: {{ join " || " $cels | quote }}
   backendRefs:
-    - name: {{ include "zelkor-platform.fullname" . }}-mcp-gateway
-      kind: Service
+{{- $natives := include "zelkor-platform.mcpNativeBackends" . | fromJsonArray -}}
+{{- range $natives }}
+    - name: {{ if eq $refKind "Service" }}{{ printf "%s-mcp-%s" $fn .name }}{{ else }}{{ .name }}{{ end }}
+{{- if $nativeGroup }}
+      group: {{ $nativeGroup }}
+{{- end }}
+      kind: {{ $nativeKind }}
       port: 8080
+      path: /mcp
+      forwardHeaders:
+        - name: Authorization
+{{- end }}
+{{- range $idx, $item := (.Values.mcp.extraBackends | default list) }}
+    - name: {{ $item.name }}
+{{- $svc := $item.service | default dict -}}
+{{- $fqdn := $item.fqdn | default dict -}}
+{{- if $svc.name }}
+      kind: Service
+      port: {{ $svc.port | default 8080 }}
+{{- else }}
+      group: gateway.envoyproxy.io
+      kind: Backend
+      port: {{ $fqdn.port | default 443 }}
+{{- end }}
+      path: {{ $item.path | default "/mcp" | quote }}
+{{- if $item.forwardHeaders }}
+      forwardHeaders:
+{{- range $item.forwardHeaders }}
+        - name: {{ .name | default . | quote }}
+{{- end }}
+{{- end }}
+{{- if $item.toolSelector }}
+      toolSelector:
+{{- if $item.toolSelector.include }}
+        include:
+{{- range $item.toolSelector.include }}
+          - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- if $item.toolSelector.includeRegex }}
+        includeRegex:
+{{- range $item.toolSelector.includeRegex }}
+          - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if ($item.apiKey).secretRef }}
+      securityPolicy:
+        apiKey:
+          secretRef:
+            name: {{ $item.apiKey.secretRef.name | quote }}
+{{- if $item.apiKey.header }}
+          header: {{ $item.apiKey.header | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range $idx, $item := (.Values.mcp.extraBackends | default list) }}
+{{- $fqdn := $item.fqdn | default dict -}}
+{{- if $fqdn.hostname }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ $item.name }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" (printf "mcp.extra.%s" $item.name)) | nindent 4 }}
+    app.kubernetes.io/component: mcp-extra
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ $fqdn.hostname | quote }}
+        port: {{ $fqdn.port | default 443 }}
+{{- if ($item.tls).caSecretRef }}
+  tls:
+    caCertificateRef:
+      group: ""
+      kind: Secret
+      name: {{ $item.tls.caSecretRef | quote }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}

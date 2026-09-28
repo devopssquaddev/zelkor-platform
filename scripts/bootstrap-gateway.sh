@@ -98,6 +98,55 @@ wait_rollout() {
   kubectl "${KUBECTL_ARGS[@]}" rollout status "deployment/${name}" -n "$ns" --timeout="$ROLLOUT_WAIT_TIMEOUT"
 }
 
+_install_gateway_policies() {
+  local policies_chart="${ZELKOR_REPO_ROOT}/charts/zelkor-gateway-policies"
+  if [[ ! -d "${policies_chart}" ]]; then
+    echo "  WARN: ${policies_chart} missing — skip zelkor-gateway-policies"
+    return 0
+  fi
+  echo "Installing zelkor-gateway-policies (envoy-gateway-system)..."
+  helm upgrade --install zelkor-gateway-policies "${policies_chart}" \
+    "${HELM_ARGS[@]}" \
+    --namespace envoy-gateway-system \
+    --create-namespace \
+    --wait --timeout 3m
+}
+
+_aigw_mcp_seed_from_helm() {
+  helm "${HELM_ARGS[@]}" get values aieg -n envoy-ai-gateway-system -o json 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("mcp") or {}).get("sessionEncryption", {}).get("seed") or "")' \
+    2>/dev/null || true
+}
+
+_ensure_aigw_mcp_session_seed() {
+  if ! deployment_available envoy-ai-gateway-system ai-gateway-controller; then
+    return 0
+  fi
+  local current
+  current="$(_aigw_mcp_seed_from_helm)"
+  if [[ -n "$current" && "$current" != "default-insecure-seed" ]]; then
+    echo "MCP session encryption seed already set on aieg release"
+    return 0
+  fi
+  local seed_file
+  seed_file="$(mktemp)"
+  trap 'rm -f "$seed_file"' RETURN
+  if [[ -n "${ZELKOR_MCP_SESSION_SEED:-}" ]]; then
+    printf '%s' "$ZELKOR_MCP_SESSION_SEED" >"$seed_file"
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32 >"$seed_file"
+  else
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$seed_file"
+  fi
+  echo "Setting MCP session encryption seed on envoy-ai-gateway (aieg) release..."
+  helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+    "${HELM_ARGS[@]}" \
+    --namespace envoy-ai-gateway-system \
+    --reuse-values \
+    --set-file "mcp.sessionEncryption.seed=${seed_file}" \
+    --wait --timeout 5m
+}
+
 EG_CM_BODY=$(cat <<'EOF'
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyGateway
@@ -255,5 +304,8 @@ if [[ "$SKIP_AI_GATEWAY" -eq 0 ]]; then
 else
   echo "skip Envoy AI Gateway (--skip-ai-gateway)"
 fi
+
+_install_gateway_policies
+_ensure_aigw_mcp_session_seed
 
 echo "bootstrap-gateway: done"

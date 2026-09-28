@@ -1,13 +1,10 @@
 # Platform companion to values-tenants.yaml. Apply with values-platform-overlay.yaml.
-# Not used by install.sh. Set jwtSecret to the same secret as FinServe workers.
-# Unsigned identity stays off — kind uses profiles/values-local.yaml.
+# RS256 JWT contract matches the platform release (mint tokens with `zelkor token mint`).
 ---
 platform:
   tenants:
-    jwtSecret: ''
-    devTokens:
-      enabled: false
-      prefix: ''
-    trustTenantHeader: false
+    jwt:
+      issuer: ''
+      audiences: []
 workspace: {}
 workload: {}

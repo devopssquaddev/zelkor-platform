@@ -2,7 +2,7 @@
 {{- $root := . -}}
 {{- $tenants := (.Values.platform.tenants | default dict) -}}
 {{- if and ($tenants.sso).enabled (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "sso")) "true") -}}
-{{- fail "platform.tenants.sso requires Zelkor Pro (OIDC/SAML SSO). On Community Edition use platform.tenants.jwtSecret and mint JWTs from your backend. See docs/helm-install.md." -}}
+{{- fail "platform.tenants.sso requires Zelkor Pro (OIDC/SAML SSO). On Community Edition configure platform.tenants.jwt (issuer, audiences, JWKS) or localSigning for lab profiles. See docs/helm-install.md." -}}
 {{- end -}}
 {{- $mtls := (.Values.platform.mTLS | default dict) -}}
 {{- if and $mtls.enabled (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "mTLS")) "true") -}}

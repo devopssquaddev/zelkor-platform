@@ -72,6 +72,9 @@ platform:
   # Existing platform Valkey Service. Isolate agents with redis.prefix.
   valkeyUrl: ""
   mcpInject: true
+  # Secret with key `token` (RS256 tenant JWT) for startup MCP tools/list when no inbound bearer.
+  mcpAuthTokenSecret: ""
+  mcpAuthTokenSecretKey: token
   # Optional comma-separated MCP tool prefixes when graph modules omit MCP_INJECT_PREFIXES.
   mcpInjectToolPrefixes: ""
   defaultLlmModel: ""
