@@ -47,6 +47,19 @@ def test_module_level_create_agent_returns_factory_without_calling_orig():
     assert factory.__name__ == "zelkor_mode_b_graph"
 
 
+def test_module_level_stack_walk_skips_inject_helper():
+    """Import-time create_agent must be a factory (not tools=[] compile)."""
+    src = (
+        "from mcp_inject import _wrap_agent_factory\n"
+        "def orig(*_a, **_k):\n"
+        "    raise AssertionError('orig must not run at import')\n"
+        "graph = _wrap_agent_factory(orig)('model', tools=[])\n"
+    )
+    ns: dict = {}
+    exec(compile(src, "research_agent.py", "exec"), ns)
+    assert ns["graph"].__name__ == "zelkor_mode_b_graph"
+
+
 def test_patch_langgraph_no_import_time_mcp():
     import mcp_inject
 

@@ -237,9 +237,19 @@ def _caller_agent_module():
 
 
 def _is_module_level_create_agent_call() -> bool:
-    if len(inspect.stack()) < 2:
-        return False
-    return inspect.stack()[1].frame.f_code.co_name == "<module>"
+    """True when ``create_agent`` is invoked at module import (Mode B).
+
+    Skip ``mcp_inject`` frames so the helper itself is not mistaken for the
+    caller (``stack()[1]`` is ``wrapped``, never ``<module>``).
+    """
+    skip = {"mcp_inject"}
+    for frame_info in inspect.stack()[1:]:
+        mod = inspect.getmodule(frame_info.frame)
+        name = getattr(mod, "__name__", "") or ""
+        if name in skip or name.endswith(".mcp_inject"):
+            continue
+        return frame_info.frame.f_code.co_name == "<module>"
+    return False
 
 
 def _cache_key(config: Optional[dict]) -> str:
