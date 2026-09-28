@@ -54,6 +54,83 @@ cluster_install_init() {
   CLUSTER_INSTALL_HELM_SETS=()
   CLUSTER_INSTALL_HELM_EXTRA=()
   CLUSTER_INSTALL_SHIFT=1
+  JWT_ISSUER=""
+  JWT_AUDIENCE=""
+  JWKS_FILE=""
+}
+
+cluster_install_helm_sets_include() {
+  local needle="$1"
+  local sets=("${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}")
+  local i=0 val=""
+  while [[ $i -lt ${#sets[@]} ]]; do
+    case "${sets[$i]}" in
+      --set)
+        i=$((i + 1))
+        [[ $i -lt ${#sets[@]} ]] || break
+        val="${sets[$i]}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+      --set-file)
+        i=$((i + 1))
+        [[ $i -lt ${#sets[@]} ]] || break
+        val="${sets[$i]}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+      --set=*)
+        val="${sets[$i]#--set=}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  return 1
+}
+
+cluster_install_jwt_source_configured() {
+  cluster_install_helm_sets_include "platform.tenants.jwt.jwks=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.jwksConfigMap=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.remoteJwksUri=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.localSigning.enabled=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.localSigning.privateKey=" && return 0
+  return 1
+}
+
+cluster_install_apply_jwt_cli_flags() {
+  if [[ -n "$JWT_ISSUER" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.issuer=${JWT_ISSUER}")
+  fi
+  if [[ -n "$JWT_AUDIENCE" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.audiences[0]=${JWT_AUDIENCE}")
+  fi
+  if [[ -n "$JWKS_FILE" ]]; then
+    [[ -f "$JWKS_FILE" ]] || cluster_install_die "--jwks-file not found: ${JWKS_FILE}"
+    CLUSTER_INSTALL_HELM_SETS+=(--set-file "platform.tenants.jwt.jwks=${JWKS_FILE}")
+  fi
+}
+
+cluster_install_require_external_jwt() {
+  local values_file="$1"
+  if cluster_install_profile_local_signing "$values_file"; then
+    return 0
+  fi
+  cluster_install_helm_sets_include "platform.tenants.jwt.issuer=" || \
+    cluster_install_die "production install requires --jwt-issuer or --set platform.tenants.jwt.issuer (profile has no localSigning)"
+  local aud_ok=0
+  if cluster_install_helm_sets_include "platform.tenants.jwt.audiences[0]="; then
+    aud_ok=1
+  fi
+  if [[ "$aud_ok" -eq 0 ]]; then
+    cluster_install_die "production install requires --jwt-audience or --set platform.tenants.jwt.audiences[0]"
+  fi
+  cluster_install_jwt_source_configured || \
+    cluster_install_die "production install requires --jwks-file or --set platform.tenants.jwt.jwks / jwksConfigMap / remoteJwksUri"
 }
 
 cluster_install_try_common() {

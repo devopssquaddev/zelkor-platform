@@ -20,13 +20,14 @@ OWN = ROOT / "scripts" / "lib" / "bootstrap-ownership.sh"
 GW = ROOT / "scripts" / "bootstrap-gateway.sh"
 OPS = ROOT / "scripts" / "bootstrap-operators.sh"
 
+PROD_JWKS = ROOT / "tests" / "fixtures" / "customer-tenant-jwks.json"
 PROD_JWT_ARGS = (
-    "--set",
-    "platform.tenants.jwt.issuer=https://customer.example",
-    "--set",
-    "platform.tenants.jwt.audiences[0]=zelkor",
-    "--set",
-    "platform.tenants.jwt.jwksConfigMap=customer-tenant-jwks",
+    "--jwt-issuer",
+    "https://customer.example",
+    "--jwt-audience",
+    "zelkor",
+    "--jwks-file",
+    str(PROD_JWKS),
 )
 
 
@@ -207,6 +208,9 @@ def test_production_dry_run_greenfield():
     assert "values-gateway-greenfield.yaml" in out
     assert "values-local.yaml" not in out
     assert "gateway.hosts.agents=agents.example.com" in out
+    assert "platform.tenants.jwt.issuer=https://customer.example" in out
+    assert "platform.tenants.jwt.audiences[0]=zelkor" in out
+    assert "platform.tenants.jwt.jwks=" in out
     assert "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com" in out
     assert "postgresql.auth.password=" in out
     assert "workspace.tools.sandboxMCP.workerToken=" in out
@@ -355,6 +359,19 @@ def test_production_rejects_localhost_hosts():
     )
     assert proc.returncode != 0
     assert "localhost" in proc.stderr
+
+
+def test_production_requires_jwt():
+    proc = _run(
+        PROD,
+        "--dry-run",
+        "--hosts-agents",
+        "agents.example.com",
+        "--hosts-langfuse",
+        "langfuse.example.com",
+    )
+    assert proc.returncode != 0
+    assert "jwt-issuer" in proc.stderr or "localSigning" in proc.stderr
 
 
 def test_production_requires_hosts():

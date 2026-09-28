@@ -1037,6 +1037,9 @@ install_print_access_footer() {
 local lf_host="${INSTALL_DISPLAY_GATEWAY_LANGFUSE_HOST:-platform.telemetry.langfuse.localhost}"
 local aigw_host="${INSTALL_DISPLAY_GATEWAY_AIGW_HOST:-ai-gateway.localhost}"
 local agents_host="${INSTALL_DISPLAY_GATEWAY_AGENTS_HOST:-agents.localhost}"
+local mcp_host="${INSTALL_DISPLAY_GATEWAY_MCP_HOST:-mcp.localhost}"
+local rel="${HELM_RELEASE_NAME:-zelkor-platform}"
+local ns="${ZELKOR_NAMESPACE:-default}"
 LF_UI_EMAIL="${INSTALL_DISPLAY_LANGFUSE_ADMIN_EMAIL:-}"
 LF_UI_PASSWORD="${INSTALL_DISPLAY_LANGFUSE_ADMIN_PASSWORD:-}"
 LF_PUBLIC_KEY="${INSTALL_DISPLAY_LANGFUSE_PUBLIC_KEY:-}"
@@ -1071,7 +1074,7 @@ cat <<EOF
 EOF
 fi
 cat <<EOF
-  Native MCP Gateway      zelkor-platform-mcp-gateway http://mcp.localhost:8088/mcp
+  MCP (MCPRoute / MCP_URL)  Host ${mcp_host}              http://${mcp_host}:8088/mcp
   NeMo Guardrails (CPU)   zelkor-platform-nemo        http://nemo.localhost:8088/v1/rails/configs
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
@@ -1093,7 +1096,6 @@ cat <<EOF
   [Envoy AI Gateway]
     URL:              http://${aigw_host}:8088/v1/chat/completions
     Bearer Token:     ${AIGW_KEY:-<workspace.models.consumerKey in profile>}
-    Tenant Header:    X-Tenant-ID: tenant_a
     LLM Providers:    ${LLM_PROVIDER_SUMMARY}
     Default Model:    ${DEFAULT_LLM_MODEL}
 EOF
@@ -1102,15 +1104,14 @@ cat <<EOF
 
   [FinServe Demo Agent]
     URL:              http://${agents_host}:8088  (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder)
-    Bearer Tokens:    Authorization: Bearer dev:Bank_Alpha
-                      Authorization: Bearer dev:Bank_Beta
+    Tenant JWT:       zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns}
 EOF
 fi
 cat <<EOF
 
   [Aegra Agent Runtime]
     URL:              http://aegra.localhost:8088
-    Bearer Token:     Authorization: Bearer dev:tenant_a
+    Tenant JWT:       zelkor token mint --release ${rel} --tenant tenant-a --namespace ${ns}
 
   [Databases (Internal Cluster / Port-Forward)]
     PostgreSQL:       postgresql://${PG_USER}:${PG_PASS:-<password>}@localhost:5432/${PG_DB}
@@ -1129,22 +1130,22 @@ cat <<EOF
      curl -X POST http://${aigw_host}:8088/v1/chat/completions \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer ${AIGW_KEY:-dev-key}" \\
-       -H "X-Tenant-ID: tenant_a" \\
        -d '{"model":"${DEFAULT_LLM_MODEL}","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
-  2. Test FinServe (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder):
+  2. Test FinServe (Host ${agents_host}; mint a tenant JWT first):
+     TOKEN=\$(zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns})
      curl -X POST http://${agents_host}:8088/threads \\
        -H "Host: ${agents_host}" \\
        -H "Content-Type: application/json" \\
-       -H "Authorization: Bearer dev:Bank_Alpha" \\
+       -H "Authorization: Bearer \${TOKEN}" \\
        -d '{"if_exists":"do_nothing"}'
      curl -X POST http://${agents_host}:8088/runs/wait \\
        -H "Host: ${agents_host}" \\
        -H "Content-Type: application/json" \\
-       -H "Authorization: Bearer dev:Bank_Alpha" \\
+       -H "Authorization: Bearer \${TOKEN}" \\
        -H "X-Graph-ID: finserve-advisor" \\
        -d '{"graph_id":"finserve-advisor","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
 EOF
