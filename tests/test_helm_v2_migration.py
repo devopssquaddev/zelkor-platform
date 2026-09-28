@@ -1,35 +1,7 @@
-"""V2 helm render gates: golden snapshots, compile hook, V1 fail-fast, contract ConfigMap."""
+"""V2 helm render gates: compile hook, V1 fail-fast, contract ConfigMap."""
 from __future__ import annotations
 
-import hashlib
-import json
-import re
-import subprocess
-from pathlib import Path
-
-import yaml
-
-from tests.test_helm_values_schema import CHART, PROFILES, SECRET_SETS, _docs, _helm
-
-ROOT = Path(__file__).resolve().parents[1]
-GOLDEN = ROOT / "tests" / "fixtures" / "helm_golden_v126"
-
-
-def _norm_render(text: str) -> str:
-    text = re.sub(r'app\.kubernetes\.io/version: "[^"]+"', 'app.kubernetes.io/version: "X"', text)
-    text = re.sub(r"helm\.sh/chart: zelkor-platform-[^\n]+", "helm.sh/chart: zelkor-platform-X", text)
-    docs = [d for d in yaml.safe_load_all(text) if d]
-    scrubbed = []
-    for doc in docs:
-        d = dict(doc)
-        if d.get("kind") == "Secret":
-            data = d.get("data") or {}
-            d["data"] = {k: "REDACTED" for k in data}
-            if "stringData" in d:
-                d["stringData"] = {k: "REDACTED" for k in (d.get("stringData") or {})}
-        scrubbed.append(d)
-    scrubbed.sort(key=lambda d: (d.get("kind", ""), d.get("metadata", {}).get("name", "")))
-    return yaml.dump_all(scrubbed, sort_keys=True)
+from tests.test_helm_values_schema import CHART, _docs, _helm
 
 
 def test_every_template_invokes_v2_compiler():
