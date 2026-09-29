@@ -204,7 +204,12 @@ def test_envoyproxy_clusterip_has_no_kind_nodeselector():
 
 
 def test_envoyproxy_local_overlay_keeps_kind_nodeselector():
-    proc = _helm("-f", str(ROOT / "profiles" / "values-local.yaml"))
+    proc = _helm(
+        "-f",
+        str(ROOT / "profiles" / "values-local.yaml"),
+        "--set",
+        "platform.tenants.jwt.remoteJwksUri=",
+    )
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     proxies = _kinds(docs, "EnvoyProxy")
