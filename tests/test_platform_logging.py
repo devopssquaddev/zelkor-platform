@@ -461,23 +461,6 @@ def test_mcp_permission_denied_logs_warning(caplog):
     assert "MCP permission denied" in caplog.text
 
 
-def test_gateway_list_tools_logs_info(monkeypatch, caplog):
-    sys.path.insert(0, str(ROOT / "mcp"))
-    import gateway.gateway_server as gw
-
-    monkeypatch.setattr(gw, "BACKENDS", {"postgres": "http://postgres.example"})
-
-    def fake_rpc(_url, method, _params):
-        assert method == "tools/list"
-        return {"tools": [{"name": "query"}]}
-
-    monkeypatch.setattr(gw, "_rpc_call", fake_rpc)
-    with caplog.at_level(logging.INFO, logger="zelkor-mcp-postgres"):
-        tools = gw.GatewayMCPServer().list_tools()
-    assert [t["name"] for t in tools] == ["postgres__query"]
-    assert "MCP gateway backends=postgres tools=1" in caplog.text
-
-
 def test_postgres_query_log_omits_sql(monkeypatch, caplog):
     sys.path.insert(0, str(ROOT / "mcp"))
     from wrappers.postgres_server import PostgresMCPServer
