@@ -817,10 +817,6 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- $dp.namespace | default "envoy-gateway-system" -}}
 {{- end }}
 
-{{- define "zelkor-platform.mcpDataplaneNamespace" -}}
-{{- include "zelkor-platform.gatewayDataplaneNamespace" . -}}
-{{- end }}
-
 {{- define "zelkor-platform.aiGatewayInternalUrl" -}}
 {{- /* Same Host as AIGatewayRoute (*-ai-gateway). Envoy dataplane FQDN 404s. */ -}}
 {{- if .Values.aiGateway.inClusterService.enabled -}}

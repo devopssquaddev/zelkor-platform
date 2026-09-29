@@ -94,6 +94,24 @@ def test_empty_mcp_hostname_uses_internal_dataplane_hostnames():
     assert any("zelkor-platform-mcp" in h for h in hostnames)
 
 
+def test_mcp_externalname_in_release_namespace():
+    """Short MCP_URL DNS (http://<release>-mcp) resolves from seed/agent pods."""
+    r = _helm()
+    assert r.returncode == 0, r.stderr
+    svcs = [
+        d
+        for d in _docs(r.stdout)
+        if d.get("kind") == "Service"
+        and d.get("metadata", {}).get("name") == "zelkor-platform-mcp"
+    ]
+    assert len(svcs) == 1
+    svc = svcs[0]
+    assert svc["metadata"].get("namespace") == "zelkor"
+    assert svc["spec"]["type"] == "ExternalName"
+    assert svc["spec"]["externalName"]
+    assert "localhost" not in svc["spec"]["externalName"]
+
+
 def test_shared_gateway_requires_ack():
     r = _helm(
         "--set",

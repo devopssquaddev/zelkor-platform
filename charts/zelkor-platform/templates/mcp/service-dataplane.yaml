@@ -10,7 +10,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "zelkor-platform.fullname" . }}-mcp
-  namespace: {{ include "zelkor-platform.mcpDataplaneNamespace" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp") | nindent 4 }}
     app.kubernetes.io/component: mcp-dataplane
