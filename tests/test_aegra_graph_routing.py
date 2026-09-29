@@ -191,6 +191,55 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "NEMO_GUARDRAILS_NO_USAGE_STATS" in off_deploy
 
 
+def test_nemo_otel_instrument_when_langfuse_init_without_capture():
+    from tests.test_helm_values_schema import PROFILES, _helm as helm_schema
+
+    quickstart = PROFILES / "values-quickstart.yaml"
+    deploy = helm_schema(
+        "-s",
+        "templates/guardrails/deployment.yaml",
+        values_files=[quickstart],
+    )
+    assert deploy.returncode == 0, deploy.stderr
+    assert "opentelemetry-instrument" in deploy.stdout
+    cfg = helm_schema(
+        "-s",
+        "templates/guardrails/configmap.yaml",
+        values_files=[quickstart],
+    )
+    assert cfg.returncode == 0, cfg.stderr
+    assert "name: OpenTelemetry" in cfg.stdout
+    assert "enable_content_capture: false" in cfg.stdout
+    langfuse_off = helm_schema(
+        "--set",
+        "platform.telemetry.langfuse.enabled=false",
+        "-s",
+        "templates/guardrails/deployment.yaml",
+        values_files=[quickstart],
+    )
+    assert langfuse_off.returncode == 0, langfuse_off.stderr
+    assert "opentelemetry-instrument" not in langfuse_off.stdout
+    init_off = helm_schema(
+        "--set",
+        "platform.telemetry.langfuse.init.enabled=false",
+        "-s",
+        "templates/guardrails/deployment.yaml",
+        values_files=[quickstart],
+    )
+    assert init_off.returncode == 0, init_off.stderr
+    assert "opentelemetry-instrument" not in init_off.stdout
+    finserve = helm_schema(
+        "-s",
+        "templates/guardrails/configmap.yaml",
+        values_files=[
+            quickstart,
+            ROOT / "examples/finserve/chart/values-platform-overlay.yaml",
+        ],
+    )
+    assert finserve.returncode == 0, finserve.stderr
+    assert "enable_content_capture: true" in finserve.stdout
+
+
 def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     dockerfile = (ROOT / "images/guardrails/Dockerfile").read_text()
     reqs = (ROOT / "images/guardrails/requirements.txt").read_text()

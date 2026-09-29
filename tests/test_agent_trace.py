@@ -45,8 +45,12 @@ def _skip_if_unreachable(exc: BaseException) -> None:
 def test_capture_content_chart_default_off_local_on():
     values = (PLATFORM_CHART / "values.yaml").read_text()
     telemetry = values.split("  telemetry:", 1)[1].split("\nworkspace:", 1)[0]
+    nemo_otel = telemetry.split("nemoOtel:", 1)[1]
+    assert "enabled: true" in nemo_otel.split("langfuse:", 1)[0]
     assert "captureContent: false" in telemetry
     policies = values.split("  policies:", 1)[1].split("\n  tools:", 1)[0]
+    otel = policies.split("otel:", 1)[1]
+    assert "enabled: true" in otel.split("safetyRefusal:", 1)[0]
     assert "captureContent: false" in policies
     local = LOCAL_VALUES.read_text()
     assert "captureContent: true" in local

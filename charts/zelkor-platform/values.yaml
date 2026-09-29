@@ -41,7 +41,7 @@ platform:
     format: json
     aegraOtelTargets: ''
     nemoOtel:
-      enabled: false
+      enabled: true
       captureContent: false
     langfuse:
       enabled: true
@@ -213,7 +213,7 @@ workspace:
         enabled: false
       observability:
         otel:
-          enabled: false
+          enabled: true
           captureContent: false
       safetyRefusal: I can't help with that request.
       complianceRefusal: ''

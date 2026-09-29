@@ -49,15 +49,19 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- $_ := set .Values.workload "agents" $agents -}}
 {{- end -}}
 {{- $no := $tel.nemoOtel | default dict -}}
-{{- if or $no.enabled $no.captureContent -}}
 {{- $pol := (.Values.workspace.policies | default dict) -}}
 {{- $nemo := $pol.nemo | default dict -}}
 {{- $obs := $nemo.observability | default dict -}}
-{{- $_ := set $obs "otel" (dict "enabled" ($no.enabled | default false) "captureContent" ($no.captureContent | default false)) -}}
+{{- $existing := $obs.otel | default dict -}}
+{{- $enabled := $no.enabled | default false -}}
+{{- if hasKey $existing "enabled" -}}
+{{- $enabled = and $enabled $existing.enabled -}}
+{{- end -}}
+{{- $capture := or ($no.captureContent | default false) ($existing.captureContent | default false) -}}
+{{- $_ := set $obs "otel" (dict "enabled" $enabled "captureContent" $capture) -}}
 {{- $_ := set $nemo "observability" $obs -}}
 {{- $_ := set $pol "nemo" $nemo -}}
 {{- $_ := set .Values.workspace "policies" $pol -}}
-{{- end -}}
 {{- if $p.mTLS -}}
 {{- $sec := .Values.security | default dict -}}
 {{- $_ := set $sec "mTLS" $p.mTLS -}}
