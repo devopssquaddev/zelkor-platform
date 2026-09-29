@@ -18,7 +18,8 @@ from zelkor.detect import (  # noqa: E402
     should_attach_as_default,
 )
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
-from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, in_cluster_openai_base_url, main, merge_extra_backends  # noqa: E402
+from zelkor.extra_backends import extra_backend_overlay_snippet, missing_extra_registrations  # noqa: E402
+from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, in_cluster_openai_base_url, main  # noqa: E402
 
 
 def test_detect_deploy_first(tmp_path):
@@ -98,13 +99,40 @@ def test_agent_deployment_name_matches_helm_fullname():
     assert agent_deployment_name("my-zelkor-agent") == "my-zelkor-agent"
 
 
-def test_merge_extra_backends_keeps_existing():
-    merged = merge_extra_backends(
-        [{"name": "one", "url": "http://one:8080"}],
-        [{"name": "two", "url": "http://two:8080"}],
-    )
-    names = {r["name"] for r in merged}
-    assert names == {"one", "two"}
+def test_missing_extra_registrations_detects_unregistered_tools():
+    values = {"workspace": {"tools": {"extraBackends": [{"name": "one", "service": {"name": "one", "port": 8080}}]}}}
+    missing = missing_extra_registrations(({"name": "two", "url": "http://two:8080"},), values)
+    assert len(missing) == 1
+    assert missing[0]["name"] == "two"
+    snippet = extra_backend_overlay_snippet("acme", "http://acme-mcp:8080")
+    assert "name: acme" in snippet
+    assert "name: acme-mcp" in snippet
+
+
+def test_deploy_agent_fails_when_tools_json_extra_not_on_platform(tmp_path):
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    (tmp_path / "tools.json").write_text('[{"name": "acme", "url": "http://acme:8080"}]', encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+
+    def runner(argv, **_kwargs):
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = '[{"name": "zelkor-platform", "chart": "zelkor-platform-2.1.0", "status": "deployed"}]'
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "workspace:\n  tools:\n    extraBackends: []\n"
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    with pytest.raises(RuntimeError, match="does not mutate the platform"):
+        deploy_agent(
+            root=tmp_path,
+            env=env,
+            push=False,
+            skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=runner,
+        )
 
 
 def test_env_add_list_use(tmp_path):
@@ -336,19 +364,18 @@ def test_in_cluster_openai_base_url_uses_ai_gateway_service():
     assert in_cluster_openai_base_url(env, runner=runner) == "http://zelkor-platform-ai-gateway:80/v1"
 
 
-def test_auth_values_copy_platform_wrap_auth():
+def test_auth_values_copy_platform_jwt_contract():
     info = PlatformInfo(
-        jwt_secret="cluster-jwt",
-        auth_dev_tokens_enabled="true",
-        auth_dev_token_prefix="dev:",
-        auth_trust_tenant_header="true",
+        jwt_issuer="https://issuer.example",
+        jwt_audiences=["zelkor"],
+        jwt_jwks_configmap="zelkor-platform-tenant-jwks",
+        jwt_tenant_claims=["tenant_id", "sub"],
     )
     auth = auth_values(info)
-    assert auth["jwtSecret"] == "cluster-jwt"
-    assert auth["devTokens"]["enabled"] is True
-    assert auth["devTokens"]["prefix"] == "dev:"
-    assert auth["trustTenantHeader"] is True
-    assert auth_values(PlatformInfo())["devTokens"]["enabled"] is False
+    assert auth["issuer"] == "https://issuer.example"
+    assert auth["audiences"] == ["zelkor"]
+    assert auth["jwksConfigMap"] == "zelkor-platform-tenant-jwks"
+    assert auth["tenantClaims"] == ["tenant_id", "sub"]
 
 
 def test_upgrade_text_constant():

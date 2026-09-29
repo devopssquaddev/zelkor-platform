@@ -11,7 +11,7 @@ import os
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
-from mcp_tools import MCP_INJECT_PREFIXES, single_mcp_tool
+MCP_INJECT_TOOLS = ("qdrant__search_documents",)
 
 COLLECTION = os.getenv("QDRANT_COLLECTION", "finserve_policies")
 MODEL = os.getenv("DEFAULT_LLM_MODEL", "")
@@ -21,6 +21,6 @@ SYSTEM = f"""FinServe Research. qdrant__search_documents on `{COLLECTION}` only.
 _model = ChatOpenAI(model=MODEL, temperature=0)
 graph = create_agent(
     _model,
-    tools=[single_mcp_tool("qdrant__search_documents")],
+    tools=[],
     system_prompt=SYSTEM,
 )

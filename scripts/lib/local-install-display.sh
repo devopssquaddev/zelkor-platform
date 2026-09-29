@@ -71,6 +71,7 @@ exports = {
     "INSTALL_DISPLAY_GATEWAY_LANGFUSE_HOST": get("gateway", "hosts", "langfuse"),
     "INSTALL_DISPLAY_GATEWAY_AGENTS_HOST": get("gateway", "hosts", "agents"),
     "INSTALL_DISPLAY_GATEWAY_AIGW_HOST": get("gateway", "hosts", "aiGateway"),
+    "INSTALL_DISPLAY_GATEWAY_MCP_HOST": get("gateway", "hosts", "mcp"),
 }
 
 for key, val in exports.items():

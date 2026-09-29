@@ -1,6 +1,6 @@
 # FinServe demo — target-agnostic defaults.
-# Set platform.releaseName (and the same on desk/quant/coder) or explicit URLs
-# to match YOUR Zelkor platform install. Kind/test literals: values-local.yaml only.
+# Workers: graphId(s) + image + platform.releaseName + sharedRoute.host.
+# Kind/test literals: values-local.yaml only.
 global:
   tier: oss
   imagePullPolicy: IfNotPresent
@@ -8,24 +8,11 @@ global:
 
 gateway:
   enabled: false
-  gatewayName: ""
-  namespace: ""
-  host: ""
 
-# Shared worker connection. YAML anchors keep desk/quant/coder in sync.
-_workerPlatform: &workerPlatform
+_platformRelease: &platformRelease
   releaseName: ""
-  openaiBaseUrl: ""
-  consumerKey: ""
-  mcpUrl: ""
-  databaseUrl: ""
-  valkeyUrl: ""
-  mcpInject: true
-  defaultLlmModel: ""
 
-_sharedRoute: &sharedRoute
-  gatewayName: ""
-  gatewayNamespace: ""
+_agentsHost: &agentsHost
   host: ""
 
 desk:
@@ -34,19 +21,18 @@ desk:
     - finserve-advisor
     - finserve-research
   aegraConfig: /app/aegra-desk.json
-  replicaCount: 1
-  autoscaling:
-    enabled: false
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 4096
   sharedRoute:
-    <<: *sharedRoute
-  redis:
-    prefix: aegra:finserve-desk
+    <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
-    tag: "2.0.0"
+    tag: "2.1.0"
     digest: ""
   platform:
-    <<: *workerPlatform
+    <<: *platformRelease
   extraEnv:
     - name: QDRANT_COLLECTION
       value: "finserve_policies"
@@ -56,45 +42,38 @@ quant:
   graphIds:
     - finserve-quant
   aegraConfig: /app/aegra-quant.json
-  replicaCount: 1
-  autoscaling:
-    enabled: false
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 4096
   sharedRoute:
-    <<: *sharedRoute
-  redis:
-    prefix: aegra:finserve-quant
+    <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
-    tag: "2.0.0"
+    tag: "2.1.0"
     digest: ""
   platform:
-    <<: *workerPlatform
-  extraEnv:
-    - name: QDRANT_COLLECTION
-      value: "finserve_policies"
+    <<: *platformRelease
 
 coder:
   fullnameOverride: finserve-coder
   graphId: finserve-coder
   aegraConfig: ""
-  replicaCount: 1
-  autoscaling:
-    enabled: false
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 4096
   sharedRoute:
-    <<: *sharedRoute
-  redis:
-    prefix: aegra:finserve-coder
+    <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve-coder
-    tag: "2.0.0"
+    tag: "2.1.0"
     digest: ""
   platform:
-    <<: *workerPlatform
+    <<: *platformRelease
 
 platform:
-  # Set to the Zelkor platform Helm release name to construct Service DNS.
   releaseName: ""
-  # Set when the platform Postgres is CloudNativePG (operator-cr); empty on in-cluster-basic.
   cnpgClusterName: ""
   postgresHost: ""
   postgresPort: 5432
@@ -118,6 +97,15 @@ langfuseSeed:
     limits:
       cpu: 250m
       memory: 256Mi
+
+extraMcp:
+  enabled: false
+  name: acme
+  port: 8080
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-mcp
+    tag: "2.1.0"
+    digest: ""
 
 dbInit:
   resources:

@@ -67,9 +67,6 @@ platform:
   tenants:
     sso:
       enabled: false
-    devTokens:
-      enabled: false
-    trustTenantHeader: false
   telemetry:
     langfuse:
       init:
@@ -82,12 +79,12 @@ platform:
         llmConnection:
           enabled: true
         tools:
-          seedFromMcp: true
+          seedFromMcp: false
         evaluators:
           seedCode: true
         image:
-          tag: 1.2.6
-          digest: sha256:02fbb3e9c3a7d6d1208b1f91314777a8d460cb3974dd4dd466ea89c74419931f
+          tag: 2.1.0
+          digest: sha256:251781c779f86605d82be6d50ce08b0309d3b184d4053cb8d49fc90119130a8e
   mTLS:
     enabled: false
 workspace:
@@ -96,22 +93,22 @@ workspace:
   policies:
     nemo:
       image:
-        tag: 1.2.6
-        digest: sha256:a9232166b106f5499cc92320f34feb62e61123b0baa7a632937163657b14ea84
+        tag: 2.1.0
+        digest: sha256:701bc9a56282d644b26dc98d2ab5d3ec65fc52d27f2027fc5bfb09e4ca3b941c
   tools:
     image:
-      tag: 1.2.6
-      digest: sha256:a74d6400cf49efd58712b488b8698f364050e35586ad481e56d2aae2a9dfaad9
+      tag: 2.1.0
+      digest: sha256:236a4b9ff9672647ee8df161e460f3193a70835c657e0f768060239919dc093c
     sandboxMCP:
       workerImage:
-        tag: 1.2.6
-        digest: sha256:321e450c9ecdfb1bf8b946fbb5449fade844a2d9459517fd17bd9b007992dad0
+        tag: 2.1.0
+        digest: sha256:cdf05f58947a806e8ef27dcdaef3e1a67904c962317139ab4ef8c9db546d7606
 workload:
   agents:
     image:
-      tag: 1.2.6
-      digest: sha256:e122704ac0451ac7fb03717bb4dfe8ce0503882e25a74e18c5216b5dbd7644ab
+      tag: 2.1.0
+      digest: sha256:c3691cc22254c3c4923420f51a4207a56cccc8cca9bf4e45987c76004e455fab
     cli:
       image:
-        tag: 1.2.6
-        digest: sha256:91c7c30bb465f1d8fb28da255b310ca0eded3edfb29979c567026b0e63e83370
+        tag: 2.1.0
+        digest: sha256:158ae0fc232e95c5aaf0f446ea157c414e77e3325b52c30549eb62106cd26b5d

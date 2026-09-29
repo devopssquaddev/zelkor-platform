@@ -3,8 +3,7 @@
 aiGateway:
   enabled: false
 auth:
-  jwtSecret: ""
-  trustTenantHeader: false
+  enabled: false
 langfuse:
   enabled: false
 aegra:

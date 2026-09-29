@@ -1,18 +1,20 @@
 """Unit tests for MCP HTTP server hardening (no cluster)."""
-import json
 import sys
-import threading
-from http.server import HTTPServer
 from pathlib import Path
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mcp"))
 
-from common.mcp_server import MCPToolHandler, make_handler  # noqa: E402
+pytest.importorskip("starlette")
+from starlette.testclient import TestClient  # noqa: E402
+
+from common.mcp_server import (  # noqa: E402
+    MCPToolHandler,
+    _reject_stray_tenant_id,
+    build_starlette_app,
+)
 
 
 class _StubHandler(MCPToolHandler):
@@ -25,43 +27,76 @@ class _StubHandler(MCPToolHandler):
 
 def test_mcp_rejects_oversized_body(monkeypatch):
     monkeypatch.setattr("common.mcp_server.MAX_BODY_BYTES", 64)
-    handler_cls = make_handler(_StubHandler(), lambda _h: "tenant-a")
-    server = HTTPServer(("127.0.0.1", 0), handler_cls)
-    thread = threading.Thread(target=server.handle_request, daemon=True)
-    thread.start()
-    try:
-        port = server.server_address[1]
-        url = f"http://127.0.0.1:{port}/mcp"
-        payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {}}).encode()
-        oversized = payload + (b"x" * 128)
-        req = Request(
-            url,
-            data=oversized,
-            headers={"Content-Type": "application/json", "Content-Length": str(len(oversized))},
-            method="POST",
+    app = build_starlette_app(_StubHandler(), lambda _h: "tenant-a")
+    with TestClient(app) as client:
+        response = client.post(
+            "/mcp",
+            content=b"x" * 200,
+            headers={"content-type": "application/json"},
         )
-        with pytest.raises(HTTPError) as exc_info:
-            urlopen(req, timeout=3)
-        assert exc_info.value.code == 413
-        thread.join(timeout=5)
-    finally:
-        server.server_close()
+    assert response.status_code == 413
 
 
-def test_mcp_metrics_endpoint():
-    handler_cls = make_handler(_StubHandler(), lambda _h: "tenant-a")
-    server = HTTPServer(("127.0.0.1", 0), handler_cls)
-    thread = threading.Thread(target=server.handle_request, daemon=True)
-    thread.start()
-    try:
-        port = server.server_address[1]
-        try:
-            body = urlopen(f"http://127.0.0.1:{port}/metrics", timeout=3).read().decode("utf-8")
-        except HTTPError as exc:
-            assert exc.code == 501
-            assert b"metrics unavailable" in exc.read()
-            return
-        assert "zelkor_mcp_http_requests_total" in body
-        thread.join(timeout=5)
-    finally:
-        server.server_close()
+def test_mcp_health_endpoint():
+    app = build_starlette_app(_StubHandler(), lambda _h: "tenant-a")
+    with TestClient(app) as client:
+        response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_mcp_exact_path_is_not_redirect():
+    """Starlette Route(\"/mcp\") must not 307/308 to /mcp/."""
+    app = build_starlette_app(_StubHandler(), lambda _h: "tenant-a")
+    with TestClient(app, follow_redirects=False) as client:
+        response = client.post(
+            "/mcp",
+            content=b"{}",
+            headers={"content-type": "application/json", "accept": "application/json"},
+        )
+    assert response.status_code not in (307, 308)
+    assert response.status_code != 404
+
+
+def test_reject_stray_tenant_id():
+    with pytest.raises(PermissionError, match="tenant_id argument is not allowed"):
+        _reject_stray_tenant_id({"sql": "SELECT 1", "tenant_id": "spoof"})
+    _reject_stray_tenant_id({"sql": "SELECT 1"})
+
+
+def test_native_tool_schemas_omit_tenant_id():
+    from wrappers.aigateway_server import AIGatewayMCPServer
+    from wrappers.postgres_server import PostgresMCPServer
+    from wrappers.qdrant_server import QdrantMCPServer
+    from sandbox.server import SandboxMCPServer
+
+    servers = [
+        PostgresMCPServer(),
+        QdrantMCPServer(),
+        AIGatewayMCPServer(allowed_models=[]),
+        SandboxMCPServer(),
+    ]
+    for server in servers:
+        for tool in server.list_tools():
+            schema = tool["inputSchema"]
+            assert "tenant_id" not in schema.get("properties", {}), tool["name"]
+            assert schema.get("additionalProperties") is False, tool["name"]
+
+
+def test_sandbox_timeout_clamped(monkeypatch):
+    from sandbox import server as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod, "MAX_TIMEOUT", 90)
+    captured = {}
+
+    def fake_execute(code, tenant_id, timeout=5):
+        captured["timeout"] = timeout
+        return {"ok": True}
+
+    monkeypatch.setattr(sandbox_mod, "execute_on_worker", fake_execute)
+    sandbox_mod.SandboxMCPServer().call_tool(
+        "execute_python",
+        {"code": "print(1)", "timeout": 999},
+        "tenant-a",
+    )
+    assert captured["timeout"] == 90

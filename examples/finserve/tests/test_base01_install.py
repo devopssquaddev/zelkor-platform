@@ -55,7 +55,7 @@ def test_base01_finserve_pods_healthy(kubecontext):
     assert any("finserve-quant" in name for name in pod_names)
     assert any("finserve-coder" in name for name in pod_names)
     assert any("mcp-sandbox" in name for name in pod_names)
-    assert any("mcp-gateway" in name for name in pod_names)
+    assert any("mcp-postgres" in name or "mcp-qdrant" in name for name in pod_names)
 
 
 @pytest.mark.parametrize("graph_id", GRAPH_IDS)

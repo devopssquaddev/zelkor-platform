@@ -21,6 +21,9 @@ security:
       includeStdoutPreview: true
   networkPolicies:
     enabled: false
+  mcp:
+    # kindnet: cross-namespace ingress NP (control 3) blocks Envoy→native MCP; see values-local.yaml.
+    acceptUnprotectedBackends: true
 gateway:
   enabled: true
   gatewayClassName: eg
@@ -67,11 +70,16 @@ platform:
   tenants:
     sso:
       enabled: false
-    jwtSecret: zelkor-local-jwt-secret
-    devTokens:
-      enabled: true
-      prefix: 'dev:'
-    trustTenantHeader: true
+    jwt:
+      issuer: https://local.zelkor.invalid
+      audiences:
+      - zelkor
+      jwks: '{"keys":[{"kty":"RSA","kid":"kind-lab","use":"sig","alg":"RS256","n":"AQAB","e":"AQAB"}]}'
+      localSigning:
+        enabled: true
+        seedTenant: seed
+        tokenTTL: 24h
+        seedTokenTTL: 24h
   telemetry:
     level: INFO
     format: json

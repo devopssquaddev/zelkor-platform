@@ -805,6 +805,16 @@ if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
   # Playground needs a custom model id on the Zelkor connection (no baked gpt-4o list).
   HELM_EXTRA_ARGS+=(--set-string "platform.telemetry.langfuse.surfaces.llmConnection.models[0]=${DEFAULT_LLM_MODEL}")
 fi
+if [[ -n "${IMAGE_TAG:-}" ]]; then
+  HELM_EXTRA_ARGS+=(
+    --set "workspace.tools.image.tag=${IMAGE_TAG}"
+    --set "workspace.tools.sandboxMCP.workerImage.tag=${IMAGE_TAG}"
+    --set "workload.agents.image.tag=${IMAGE_TAG}"
+    --set "workload.agents.cli.image.tag=${IMAGE_TAG}"
+    --set "workspace.policies.nemo.image.tag=${IMAGE_TAG}"
+    --set "platform.telemetry.langfuse.surfaces.image.tag=${IMAGE_TAG}"
+  )
+fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -f "$FINSERVE_PLATFORM_OVERLAY" ]]; then
   HELM_EXTRA_ARGS+=(-f "$FINSERVE_PLATFORM_OVERLAY")
@@ -849,6 +859,10 @@ if [[ -n "$PEEKED_SVC" ]]; then
   log "Using existing Envoy data-plane Service: ${GATEWAY_INTERNAL_URL}"
   append_gateway_url_helm "$GATEWAY_INTERNAL_URL"
 fi
+
+# shellcheck source=lib/local-signing-helm-sets.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
+append_local_signing_helm_sets HELM_EXTRA_ARGS "$VALUES_FILE"
 
 if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then
   helm upgrade --install "$HELM_RELEASE_NAME" "$CHART_PATH" \
@@ -919,30 +933,22 @@ log "  -> [4/5] Agent Orchestrator (Aegra)..."
 wait_one critical deployment/zelkor-platform-aegra
 step_end rollout_aegra
 
-MCP_WAIT_TARGETS=()
+# shellcheck source=lib/mcp-dataplane-install.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/mcp-dataplane-install.sh"
+MCP_DP_KUBECTL_ARGS=(--context "$KCTX")
+MCP_DP_RELEASE="$HELM_RELEASE_NAME"
+MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
+MCP_DP_KUBE_CONTEXT="$KCTX"
+step_begin rollout_mcp_nemo
 if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
-  MCP_WAIT_TARGETS+=(deployment/zelkor-platform-nemo)
+  wait_one optional deployment/zelkor-platform-nemo
 fi
-if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-gateway >/dev/null 2>&1; then
-  MCP_WAIT_TARGETS+=(
-    deployment/zelkor-platform-mcp-gateway
-    deployment/zelkor-platform-mcp-postgres
-    deployment/zelkor-platform-mcp-qdrant
-  )
-  if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox >/dev/null 2>&1; then
-    MCP_WAIT_TARGETS+=(deployment/zelkor-platform-mcp-sandbox)
-  fi
-  for i in 0 1 2; do
-    if kubectl --context "$KCTX" get deployment/zelkor-platform-mcp-sandbox-worker-$i >/dev/null 2>&1; then
-      MCP_WAIT_TARGETS+=("deployment/zelkor-platform-mcp-sandbox-worker-$i")
-    fi
-  done
+if mcp_dataplane_wait_all; then
+  log "  -> [5/5] MCP dataplane (Gateway, native MCP, MCPRoute) ready"
+else
+  DEGRADED_COMPONENTS+=("mcp dataplane"$'\t'"MCPRoute or native MCP rollout did not become ready in time")
 fi
-if [[ ${#MCP_WAIT_TARGETS[@]} -gt 0 ]]; then
-  step_begin rollout_mcp_nemo
-  wait_group optional "[5/5] Guardrails + native MCP (+ sandbox when enabled)" "${MCP_WAIT_TARGETS[@]}"
-  step_end rollout_mcp_nemo
-fi
+step_end rollout_mcp_nemo
 
 step_begin job_langfuse_bootstrap
 wait_langfuse_bootstrap_job
@@ -1031,6 +1037,9 @@ install_print_access_footer() {
 local lf_host="${INSTALL_DISPLAY_GATEWAY_LANGFUSE_HOST:-platform.telemetry.langfuse.localhost}"
 local aigw_host="${INSTALL_DISPLAY_GATEWAY_AIGW_HOST:-ai-gateway.localhost}"
 local agents_host="${INSTALL_DISPLAY_GATEWAY_AGENTS_HOST:-agents.localhost}"
+local mcp_host="${INSTALL_DISPLAY_GATEWAY_MCP_HOST:-mcp.localhost}"
+local rel="${HELM_RELEASE_NAME:-zelkor-platform}"
+local ns="${ZELKOR_NAMESPACE:-default}"
 LF_UI_EMAIL="${INSTALL_DISPLAY_LANGFUSE_ADMIN_EMAIL:-}"
 LF_UI_PASSWORD="${INSTALL_DISPLAY_LANGFUSE_ADMIN_PASSWORD:-}"
 LF_PUBLIC_KEY="${INSTALL_DISPLAY_LANGFUSE_PUBLIC_KEY:-}"
@@ -1065,7 +1074,7 @@ cat <<EOF
 EOF
 fi
 cat <<EOF
-  Native MCP Gateway      zelkor-platform-mcp-gateway http://mcp.localhost:8088/mcp
+  MCP (MCPRoute / MCP_URL)  Host ${mcp_host}              http://${mcp_host}:8088/mcp
   NeMo Guardrails (CPU)   zelkor-platform-nemo        http://nemo.localhost:8088/v1/rails/configs
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
@@ -1087,7 +1096,6 @@ cat <<EOF
   [Envoy AI Gateway]
     URL:              http://${aigw_host}:8088/v1/chat/completions
     Bearer Token:     ${AIGW_KEY:-<workspace.models.consumerKey in profile>}
-    Tenant Header:    X-Tenant-ID: tenant_a
     LLM Providers:    ${LLM_PROVIDER_SUMMARY}
     Default Model:    ${DEFAULT_LLM_MODEL}
 EOF
@@ -1096,15 +1104,14 @@ cat <<EOF
 
   [FinServe Demo Agent]
     URL:              http://${agents_host}:8088  (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder)
-    Bearer Tokens:    Authorization: Bearer dev:Bank_Alpha
-                      Authorization: Bearer dev:Bank_Beta
+    Tenant JWT:       zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns}
 EOF
 fi
 cat <<EOF
 
   [Aegra Agent Runtime]
     URL:              http://aegra.localhost:8088
-    Bearer Token:     Authorization: Bearer dev:tenant_a
+    Tenant JWT:       zelkor token mint --release ${rel} --tenant tenant-a --namespace ${ns}
 
   [Databases (Internal Cluster / Port-Forward)]
     PostgreSQL:       postgresql://${PG_USER}:${PG_PASS:-<password>}@localhost:5432/${PG_DB}
@@ -1123,22 +1130,22 @@ cat <<EOF
      curl -X POST http://${aigw_host}:8088/v1/chat/completions \\
        -H "Content-Type: application/json" \\
        -H "Authorization: Bearer ${AIGW_KEY:-dev-key}" \\
-       -H "X-Tenant-ID: tenant_a" \\
        -d '{"model":"${DEFAULT_LLM_MODEL}","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
-  2. Test FinServe (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder):
+  2. Test FinServe (Host ${agents_host}; mint a tenant JWT first):
+     TOKEN=\$(zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns})
      curl -X POST http://${agents_host}:8088/threads \\
        -H "Host: ${agents_host}" \\
        -H "Content-Type: application/json" \\
-       -H "Authorization: Bearer dev:Bank_Alpha" \\
+       -H "Authorization: Bearer \${TOKEN}" \\
        -d '{"if_exists":"do_nothing"}'
      curl -X POST http://${agents_host}:8088/runs/wait \\
        -H "Host: ${agents_host}" \\
        -H "Content-Type: application/json" \\
-       -H "Authorization: Bearer dev:Bank_Alpha" \\
+       -H "Authorization: Bearer \${TOKEN}" \\
        -H "X-Graph-ID: finserve-advisor" \\
        -d '{"graph_id":"finserve-advisor","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
 EOF
@@ -1209,6 +1216,11 @@ cat <<EOF
 ======================================================================
 EOF
 fi
+  MCP_DP_LOCAL_SIGNING=1
+  MCP_DP_RELEASE="$HELM_RELEASE_NAME"
+  MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
+  MCP_DP_KUBE_CONTEXT="$KCTX"
+  mcp_dataplane_print_token_banner
 }
 
 if [[ ${#DEGRADED_COMPONENTS[@]} -gt 0 && "$INSTALL_STRICT" == "true" ]]; then

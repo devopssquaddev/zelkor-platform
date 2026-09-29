@@ -1,4 +1,4 @@
-"""Unit tests for Mode B per-graph MCP tool prefix filtering."""
+"""Unit tests for Mode B MCP tool prefix / name filtering."""
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "aegra")
 from mcp_inject import (  # noqa: E402
     _parse_prefixes,
     _prefixes_from_module,
-    _wrap_agent_factory,
+    _select_specs,
     filter_tools_by_prefix,
 )
 
@@ -42,17 +42,7 @@ def test_filter_tools_by_prefix():
     assert [t.name for t in filtered] == ["postgres__query"]
 
 
-def test_wrap_agent_factory_merges_filtered_tools(monkeypatch):
-    monkeypatch.setattr("mcp_inject._inject_prefixes", lambda: ("postgres",))
-    captured = {}
-
-    def factory(model, tools=None, **kwargs):
-        captured["tools"] = tools
-        return "graph"
-
-    wrapped = _wrap_agent_factory(
-        factory,
-        [_tool("postgres__query"), _tool("qdrant__search_documents")],
-    )
-    wrapped("model", tools=["own"])
-    assert captured["tools"] == ["own", _tool("postgres__query")]
+def test_select_specs_prefers_explicit_tool_names():
+    specs = [_tool("postgres__query"), _tool("sandbox__execute_python")]
+    selected = _select_specs(specs, ("postgres",), ("sandbox__execute_python",))
+    assert [s.name for s in selected] == ["sandbox__execute_python"]

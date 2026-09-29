@@ -1,80 +1,94 @@
-"""Helm render tests for workspace.tools.extraBackends compiler."""
+"""Helm render tests for workspace.tools.extraBackends on MCPRoute."""
 from __future__ import annotations
-
-import json
 
 import yaml
 
-from tests.test_helm_values_schema import CHART, SECRET_SETS, _docs, _helm
+from tests.test_helm_values_schema import _docs, _helm
 
 
-def _gateway_deploy(docs: list[dict]) -> dict:
-    for doc in docs:
-        if doc.get("kind") != "Deployment":
-            continue
-        if doc.get("metadata", {}).get("name", "").endswith("-mcp-gateway"):
-            return doc
-    raise AssertionError("mcp-gateway Deployment not found")
+def _mcproute(docs: list[dict]) -> dict:
+    routes = [d for d in docs if d.get("kind") == "MCPRoute"]
+    assert len(routes) == 1, "expected one MCPRoute"
+    return routes[0]
 
 
-def test_extra_backend_compiled_json_has_no_secret_values():
+def test_extra_backend_appears_on_mcproute():
     r = _helm(
+        "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
         "--set",
         "workspace.tools.extraBackends[0].name=acme",
         "--set",
-        "workspace.tools.extraBackends[0].url=http://acme-mcp:8080",
+        "workspace.tools.extraBackends[0].service.name=acme-mcp",
         "--set",
-        "workspace.tools.extraBackends[0].auth.type=bearer",
-        "--set",
-        "workspace.tools.extraBackends[0].auth.secretRef.name=acme-secret",
-        "--set",
-        "workspace.tools.extraBackends[0].auth.secretRef.key=token",
+        "workspace.tools.extraBackends[0].service.port=8080",
     )
     assert r.returncode == 0, r.stderr
-    dep = _gateway_deploy(_docs(r.stdout))
-    env = {e["name"]: e for e in dep["spec"]["template"]["spec"]["containers"][0]["env"]}
-    raw = env["MCP_EXTRA_BACKENDS"]["value"]
-    assert "acme-secret" not in raw
-    parsed = json.loads(raw)
-    assert parsed[0]["name"] == "acme"
-    assert parsed[0]["auth"]["type"] == "bearer"
-    assert "bearerEnv" in parsed[0]["auth"]
-    assert any(e["name"].startswith("ZELKOR_XB_") for e in dep["spec"]["template"]["spec"]["containers"][0]["env"] if "valueFrom" in e)
+    route = _mcproute(_docs(r.stdout))
+    names = [ref.get("name") for ref in route["spec"].get("backendRefs") or []]
+    assert "acme" in names
 
 
-def test_external_url_requires_egress_cidrs_when_network_policies_enabled():
+def test_extra_backend_string_port_compiles():
+    r = _helm(
+        "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
+        "--set",
+        "workspace.tools.extraBackends[0].name=acme",
+        "--set",
+        "workspace.tools.extraBackends[0].service.name=acme-mcp",
+        "--set-string",
+        "workspace.tools.extraBackends[0].service.port=8080",
+    )
+    assert r.returncode == 0, r.stderr
+    names = [ref.get("name") for ref in _mcproute(_docs(r.stdout))["spec"].get("backendRefs") or []]
+    assert "acme" in names
+
+
+def test_external_fqdn_requires_egress_cidrs_when_network_policies_enabled():
     r = _helm(
         "--set",
         "security.networkPolicies.enabled=true",
         "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
+        "--set",
         "workspace.tools.extraBackends[0].name=saas",
         "--set",
-        "workspace.tools.extraBackends[0].url=https://mcp.example.com",
+        "workspace.tools.extraBackends[0].fqdn.hostname=mcp.example.com",
+        "--set",
+        "workspace.tools.extraBackends[0].fqdn.port=443",
     )
     assert r.returncode != 0
     assert "egress.cidrs" in r.stderr
 
 
-def test_external_url_ipblock_when_egress_set():
+def test_extra_backend_unknown_key_fails_render():
     r = _helm(
         "--set",
-        "security.networkPolicies.enabled=true",
+        "gateway.hosts.mcp=mcp.example.com",
         "--set",
-        "workspace.tools.extraBackends[0].name=saas",
+        "platform.tenants.jwt.issuer=https://issuer.example",
         "--set",
-        "workspace.tools.extraBackends[0].url=https://mcp.example.com",
+        "platform.tenants.jwt.audiences[0]=zelkor",
         "--set",
-        "workspace.tools.extraBackends[0].egress.cidrs[0]=203.0.113.0/24",
+        "workspace.tools.extraBackends[0].name=acme",
+        "--set",
+        "workspace.tools.extraBackends[0].url=http://bad",
     )
-    assert r.returncode == 0, r.stderr
-    nps = [d for d in _docs(r.stdout) if d.get("kind") == "NetworkPolicy"]
-    gw_np = next(d for d in nps if d["metadata"]["name"].endswith("-mcp-gateway-egress"))
-    blocks = [
-        rule
-        for rule in gw_np["spec"]["egress"]
-        if rule.get("to") and rule["to"][0].get("ipBlock")
-    ]
-    assert any(b["to"][0]["ipBlock"]["cidr"] == "203.0.113.0/24" for b in blocks)
+    assert r.returncode != 0
+    assert "unknown key" in r.stderr or "url" in r.stderr
 
 
 def test_extra_projects_missing_keys_fail_render():

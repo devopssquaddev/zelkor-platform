@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
 COPY images/langfuse-seed/seed.py /app/seed.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 
-RUN pip install --no-cache-dir "psycopg[binary]==3.2.10" "bcrypt==4.3.0" \
+RUN pip install --no-cache-dir "psycopg[binary]==3.2.10" "bcrypt==4.3.0" "mcp==1.30.0" "httpx==0.28.1" \
     && useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && chown zelkor:zelkor /app/seed.py /app/zelkor_logging.py
 USER 1000

@@ -1,14 +1,20 @@
 """Factory helpers: model rewrite, graph name, sandbox selection (no cluster)."""
+import asyncio
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "aegra-deep"))
 
 from zelkor_deep_factory import (  # noqa: E402
     factory_kwargs,
+    graph,
     graph_id_from_agent,
     model_spec,
+    validate_mcp_servers,
     wants_sandbox,
 )
 from zelkor_gvisor_backend import SKILLS_VIRTUAL_PATH, ZelkorGvisorBackend, wrap_shell_as_python  # noqa: E402
@@ -134,44 +140,58 @@ def test_gvisor_backend_seeds_skills_in_memory(tmp_path):
     assert b"planning" in (downloads[0].content or b"")
 
 
-def test_gvisor_backend_execute_posts_to_mcp_not_workers(monkeypatch):
-    seen = {}
+def test_gvisor_backend_execute_uses_mcp_sdk_not_jsonrpc(monkeypatch):
+    calls: dict = {}
 
-    class FakeResp:
-        def __enter__(self):
-            return self
+    async def fake_call(code: str, environment: str, timeout_sec: int):
+        calls["name"] = "sandbox__execute_python"
+        calls["arguments"] = {
+            "code": code,
+            "environment": environment,
+            "timeout": timeout_sec,
+        }
+        inner = json.dumps({"stdout": "ok", "stderr": "", "exit_code": 0})
+        return SimpleNamespace(isError=False, content=[SimpleNamespace(text=inner)])
 
-        def __exit__(self, *args):
-            return False
-
-        def read(self):
-            inner = json.dumps({"stdout": "ok", "stderr": "", "exit_code": 0})
-            return json.dumps({"jsonrpc": "2.0", "result": {"content": [{"type": "text", "text": inner}]}}).encode()
-
-    def fake_urlopen(req, timeout=None):
-        seen["url"] = req.full_url
-        seen["data"] = json.loads(req.data.decode())
-        return FakeResp()
-
-    monkeypatch.setenv("MCP_URL", "http://zelkor-platform-mcp-gateway:8080")
+    monkeypatch.setenv("MCP_URL", "http://zelkor-platform-mcp")
     monkeypatch.delenv("SANDBOX_WORKER_URLS", raising=False)
-    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    monkeypatch.setattr("zelkor_gvisor_backend._tenant_id", lambda: "tenant-a")
-    monkeypatch.setattr(
-        "zelkor_gvisor_backend._identity_headers",
-        lambda: {"Content-Type": "application/json", "X-Tenant-ID": "tenant-a"},
-    )
+    monkeypatch.setattr("zelkor_gvisor_backend._mcp_bearer", lambda: "Bearer tenant-jwt")
+    monkeypatch.setattr("zelkor_gvisor_backend._call_sandbox_execute", fake_call)
+    monkeypatch.setattr("zelkor_gvisor_backend._run_async", lambda coro: asyncio.run(coro))
     backend = ZelkorGvisorBackend()
     result = backend.execute("echo hi")
-    assert "mcp-gateway" in seen["url"]
-    assert "/mcp" in seen["url"]
-    assert "8081" not in seen["url"]
-    assert seen["data"]["params"]["name"] == "sandbox__execute_python"
-    assert seen["data"]["params"]["arguments"]["tenant_id"] == "tenant-a"
+    assert calls["name"] == "sandbox__execute_python"
+    assert "tenant_id" not in calls["arguments"]
+    assert calls["arguments"]["timeout"] <= 90
     assert result.exit_code == 0
     text = (Path(__file__).resolve().parents[1] / "images/aegra-deep/zelkor_gvisor_backend.py").read_text()
+    assert "urllib.request" not in text
+    assert "_identity_headers" not in text
     assert "SANDBOX_WORKER_URLS" not in text
     assert "from deepagents.backends import FilesystemBackend" not in text
+
+
+def test_deep_graph_factory_signature():
+    assert "config" in graph.__annotations__
+    assert "runtime" in graph.__annotations__
+
+
+def test_validate_mcp_servers_rejects_foreign_url(monkeypatch):
+    monkeypatch.setenv("MCP_URL", "http://zelkor-platform-mcp")
+    with pytest.raises(RuntimeError, match="must use"):
+        validate_mcp_servers([{"name": "acme", "url": "http://acme-mcp.svc:8080/mcp"}])
+
+
+def test_validate_mcp_servers_accepts_platform_url(monkeypatch):
+    monkeypatch.setenv("MCP_URL", "http://zelkor-platform-mcp")
+    validate_mcp_servers([{"name": "platform", "url": "http://zelkor-platform-mcp/mcp"}])
+
+
+def test_deep_factory_source_uses_mcp_url_only():
+    text = (Path(__file__).resolve().parents[1] / "images/aegra-deep/zelkor_deep_factory.py").read_text()
+    assert "_load_mcp_tools" not in text
+    assert "def graph(config" in text
+    assert "MultiServerMCPClient" not in text
 
 
 def test_wrap_shell_as_python_runs_command_string():

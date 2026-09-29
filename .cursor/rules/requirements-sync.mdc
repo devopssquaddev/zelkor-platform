@@ -56,6 +56,7 @@ Update governing requirement and specification documents whenever:
 - **Multi-Tier Roadmap:** `internal/plan/roadmap.md`
 - **FinServe Demo & Workload Scenarios:** `internal/requirements/demo/finserve_ai_demo.md`, `internal/requirements/dev/examples_and_demos.md`
 - **Developer & CI Gates:** `internal/requirements/dev/agent_code_review.md`, `internal/requirements/dev/agent_sdlc_and_tools.md`
+- **Security assurance (promises / S-catalog / S-gate / OWASP map):** `internal/requirements/security-assurance/`
 - **Test-server fail-stop (fix one test at a time):** `internal/.cursor/rules/test-server-fail-stop.mdc`
 - **Langfuse traces after live tests (check ERROR observations):** `internal/.cursor/rules/langfuse-trace-errors.mdc`
 - **Platform vs demo + tests-must-not-shape-chart:** `internal/requirements/dev/examples_and_demos.md`

@@ -1,22 +1,18 @@
-# Customer-agent blueprint: HS256 JWT, no unsigned identity.
-# Set jwtSecret to the SAME value as the platform chart auth.jwtSecret
-# (values-platform-overlay-tenants.yaml). Kind/dev tokens: values-local.yaml only.
-
-_auth: &auth
-  jwtSecret: ""
-  devTokens:
-    enabled: false
-    prefix: ""
-  trustTenantHeader: false
+# Customer-agent blueprint: RS256 JWT (issuer/JWKS from platform release).
+# Mint client tokens with `zelkor token mint` (same issuer/audiences as platform.tenants.jwt).
+# Kind: platform `localSigning` + worker `platform.releaseName`; no HS256 or dev tokens here.
 
 desk:
   auth:
-    <<: *auth
+    issuer: ""
+    audiences: []
 
 quant:
   auth:
-    <<: *auth
+    issuer: ""
+    audiences: []
 
 coder:
   auth:
-    <<: *auth
+    issuer: ""
+    audiences: []

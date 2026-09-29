@@ -28,7 +28,7 @@ sharedRoute:
   asDefault: false
 
 # REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY on the shared platform Valkey.
-# Empty prefix → aegra:<release>. Do not deploy a second Valkey.
+# Empty prefix → aegra:<Deployment fullname>. Do not deploy a second Valkey.
 redis:
   prefix: ""
   channelPrefix: ""
@@ -43,7 +43,7 @@ image:
 replicaCount: 1
 
 autoscaling:
-  enabled: true
+  enabled: false
   minReplicas: 2
   maxReplicas: 8
   cpuUtilization: 70
@@ -61,7 +61,7 @@ terminationGracePeriodSeconds: 35
 
 platform:
   # Platform Helm release name. When set and URLs below are empty, constructs
-  # {release}-ai-gateway / {release}-mcp-gateway / {release}-langfuse and
+  # {release}-ai-gateway / {release}-mcp / {release}-langfuse and
   # sharedRoute {release}-gateway. GitOps workers envFrom {release}-langfuse-otel.
   releaseName: ""
   openaiBaseUrl: ""
@@ -72,6 +72,9 @@ platform:
   # Existing platform Valkey Service. Isolate agents with redis.prefix.
   valkeyUrl: ""
   mcpInject: true
+  # Secret with key `token` (RS256 tenant JWT) for startup MCP tools/list when no inbound bearer.
+  mcpAuthTokenSecret: ""
+  mcpAuthTokenSecretKey: token
   # Optional comma-separated MCP tool prefixes when graph modules omit MCP_INJECT_PREFIXES.
   mcpInjectToolPrefixes: ""
   defaultLlmModel: ""
@@ -81,12 +84,15 @@ platform:
   langfuseSecretKey: ""
   otelTargets: ""
 
+# JWT tenant auth (same contract as platform.tenants.jwt). When releaseName is set,
+# jwksConfigMap defaults to {releaseName}-tenant-jwks in the platform namespace.
 auth:
-  jwtSecret: ""
-  devTokens:
-    enabled: false
-    prefix: ""
-  trustTenantHeader: false
+  issuer: ""
+  audiences: []
+  jwksConfigMap: ""
+  jwksUri: ""
+  tenantClaims: []
+  orgMappings: {}
 
 # Extra container env (e.g. DEFAULT_LLM_MODEL, QDRANT_COLLECTION for a graph prompt).
 extraEnv: []

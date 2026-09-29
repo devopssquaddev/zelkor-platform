@@ -17,8 +17,8 @@ This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent
 | :--- | :--- |
 | Mode B wrap (`OPENAI_BASE_URL`, `MCP_URL`) | `job-db-init`, `job-langfuse-seed` |
 | `sharedRoute` on `gateway.hosts.agents` | CNPG `Database` / `cnpgClusterName` (MCP/app schema only) |
-| Unique `redis.prefix` per Deployment | `values-platform-overlay.yaml` tenant/NeMo blocks |
-| [`values-tenants.yaml`](chart/values-tenants.yaml) (`auth.jwtSecret`, unsigned auth off) | `values-local.yaml` (kind secrets, `*.localhost`, `devTokens`) |
+| `platform.releaseName` + `sharedRoute.host` (inherits checkpointer DSN + JWT from platform) | `values-platform-overlay.yaml` tenant/NeMo blocks |
+| One graph per `zelkor-agent` release when you copy workers | `values-local.yaml` (kind secrets, `*.localhost`, `dev-key` consumer key) |
 
 Minimal customer path: [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
 
@@ -26,37 +26,24 @@ Minimal customer path: [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelk
 
 `chart/values.yaml` ships **empty** connection fields. Point the release at an existing Zelkor install — do not assume release `zelkor-platform`, namespace `default`, or a kind Service name.
 
-**Option A — Helm release name** (in-cluster naming `{release}-{suffix}`):
+**Slim worker** (one `zelkor-agent` alias — copy this shape):
 
 ```yaml
+graphId: my-agent   # or graphIds: [a, b] for a fat image
+image:
+  repository: ghcr.io/org/my-agent
+  tag: "X.Y.Z"
 platform:
-  releaseName: <your-platform-release>   # parent: seed jobs + optional vanity HTTPRoute
-desk:
-  platform:
-    releaseName: <your-platform-release> # constructs AI gateway + MCP URLs
-  sharedRoute:
-    host: <gateway.hosts.agents>
-quant:
-  platform:
-    releaseName: <your-platform-release>
-  sharedRoute:
-    host: <gateway.hosts.agents>
-coder:
-  platform:
-    releaseName: <your-platform-release>
-  sharedRoute:
-    host: <gateway.hosts.agents>
+  releaseName: <your-platform-release>
+sharedRoute:
+  host: <gateway.hosts.agents>
 ```
 
-Postgres host is `{release}-postgresql`, or `{cnpgClusterName}-rw` when `platform.cnpgClusterName` is set. Override `platform.postgresHost` / worker `openaiBaseUrl` / `mcpUrl` when names differ.
+With `platform.releaseName` set, the worker inherits `{release}-aegra-datastore` (checkpointer DSN + Valkey), `{release}-tenant-jwt`, `{release}-tenant-jwks`, `{release}-langfuse-otel`, and constructs AI gateway + MCP URLs. Override `platform.databaseUrl` / `valkeyUrl` / `auth.*` only when names differ.
 
-**Option B — copy from the live platform Aegra Deployment** (same sources as `zelkor deploy`):
+This umbrella chart repeats that block for desk / quant / coder. Parent `platform.releaseName` is for seed jobs only.
 
-```bash
-kubectl -n <ns> get deploy <platform-release>-aegra -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}'
-```
-
-Set worker `platform.databaseUrl`, `valkeyUrl`, `mcpUrl`, `openaiBaseUrl`, and Langfuse keys from that env. Set `sharedRoute.host` from the platform value `gateway.hosts.agents`.
+Postgres host for seeds is `{release}-postgresql`, or `{cnpgClusterName}-rw` when `platform.cnpgClusterName` is set.
 
 ```bash
 helm dependency update examples/finserve/chart
@@ -65,7 +52,7 @@ helm upgrade --install finserve examples/finserve/chart \
   -f your-finserve-overlay.yaml
 ```
 
-On the **platform** chart, apply [values-platform-overlay.yaml](chart/values-platform-overlay.yaml) (collection, tenant mappings, NeMo rails) and set `mcp.postgresMCP.databaseUrl` to **your** FinServe DB DSN. For JWT tenants (customer blueprint), also apply [values-platform-overlay-tenants.yaml](chart/values-platform-overlay-tenants.yaml) and [values-tenants.yaml](chart/values-tenants.yaml) with the **same** `auth.jwtSecret`. Do not apply `values-platform-overlay-local.yaml` or `values-local.yaml` outside kind.
+On the **platform** chart, apply [values-platform-overlay.yaml](chart/values-platform-overlay.yaml) (collection, tenant mappings, NeMo rails) and set `workspace.tools.postgresMCP.databaseUrl` to **your** FinServe MCP DSN. Configure `platform.tenants.jwt` (issuer, audiences, JWKS) on the platform release — workers inherit JWT via `{release}-tenant-jwt`. Mint client tokens with `zelkor token mint`. Do not apply `values-platform-overlay-local.yaml` or `values-local.yaml` outside kind.
 
 ## Kind eval
 
@@ -79,10 +66,11 @@ helm upgrade --install finserve examples/finserve/chart \
 ```
 
 ```bash
+TOKEN="$(zelkor token mint --release zelkor-platform --tenant Bank_Alpha --namespace zelkor)"
 curl -X POST http://127.0.0.1:8088/runs/wait \
   -H "Host: agents.localhost" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev:Bank_Alpha" \
+  -H "Authorization: Bearer ${TOKEN}" \
   -H "X-Graph-ID: finserve-advisor" \
   -d '{
     "graph_id": "finserve-advisor",
@@ -108,7 +96,7 @@ flowchart TD
         Coder["finserve-coder Deep Agent"]
         NeMo["NeMo intercept on /v1"]
         AIGateway["Envoy AI Gateway"]
-        MCP["MCP gateway"]
+        MCP["MCPRoute / MCP_URL"]
         Postgres[("PostgreSQL (Portfolios)")]
         Qdrant[("Qdrant (Semantic Policies)")]
         Langfuse["Langfuse (OTel)"]
@@ -150,8 +138,8 @@ pytest examples/finserve/tests/ -v
 
 ## Mode B MCP
 
-The graph source does not embed an MCP client. At worker process start, Zelkor lists tools from `MCP_URL` and binds them onto `langchain.agents.create_agent`. Each `tools/call` uses the run's tenant (`Authorization` + `X-Tenant-ID`).
+The graph source does not embed an MCP client. Mode B inject lists tools from `MCP_URL` on each run and binds named tools via `MCP_INJECT_TOOLS` on the graph module. Each `tools/call` forwards the run's `Authorization` bearer (JWT tenant).
 
 Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`. Desk/quant specialization is prompt-only. Coder is deploy-first (`examples/finserve/coder/`); it uses Mode B `postgres__*` plus Deep Agents `execute()`.
 
-Customer SaaS MCP is not part of this demo. Register extra servers on the platform overlay (`mcp.extraBackends`).
+Customer SaaS MCP is not part of this demo. Register extra servers on the platform overlay (`workspace.tools.extraBackends`).

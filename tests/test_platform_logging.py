@@ -25,7 +25,6 @@ CHART = ROOT / "charts" / "zelkor-platform"
 AGENT_CHART = ROOT / "charts" / "zelkor-agent"
 FIRST_PARTY_TEMPLATES = [
     CHART / "templates/aegra/deployment.yaml",
-    CHART / "templates/mcp/deployment-gateway.yaml",
     CHART / "templates/mcp/deployment-postgres.yaml",
     CHART / "templates/mcp/deployment-qdrant.yaml",
     CHART / "templates/mcp/deployment-aigateway.yaml",
@@ -51,7 +50,7 @@ def test_parse_format_rejects_unknown():
 
 def test_json_formatter_required_keys_and_optional_event():
     record = logging.LogRecord(
-        name="zelkor-mcp-gateway",
+        name="zelkor-mcp-postgres",
         level=logging.INFO,
         pathname="",
         lineno=0,
@@ -59,13 +58,13 @@ def test_json_formatter_required_keys_and_optional_event():
         args=(),
         exc_info=None,
     )
-    record.component = "zelkor-mcp-gateway"
+    record.component = "zelkor-mcp-postgres"
     record.event = "startup"
     payload = json.loads(JsonFormatter().format(record))
     assert payload["level"] == "INFO"
-    assert payload["logger"] == "zelkor-mcp-gateway"
+    assert payload["logger"] == "zelkor-mcp-postgres"
     assert payload["message"] == "listening"
-    assert payload["component"] == "zelkor-mcp-gateway"
+    assert payload["component"] == "zelkor-mcp-postgres"
     assert payload["event"] == "startup"
     assert "timestamp" in payload
     assert "Authorization" not in json.dumps(payload)
@@ -86,10 +85,19 @@ def test_configure_honors_error_level(monkeypatch, capsys):
     assert line["component"] == "zelkor-test"
 
 
+def test_configure_cli_logs_to_stderr(monkeypatch, capsys):
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
+    configure_logging("zelkor-cli", force=True, stream=sys.stderr)
+    captured = capsys.readouterr()
+    assert "starting" not in captured.out
+    assert "starting" in captured.err
+
+
 def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
     monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
     monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
-    configure_logging("zelkor-mcp-gateway", force=True)
+    configure_logging("zelkor-mcp-postgres", force=True)
     log_shutdown()
     log_shutdown()
     rows = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines() if line]
@@ -99,9 +107,9 @@ def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
     start = next(row for row in rows if row["event"] == "startup")
     stop = next(row for row in rows if row["event"] == "shutdown")
     assert start["message"] == "starting"
-    assert start["component"] == "zelkor-mcp-gateway"
+    assert start["component"] == "zelkor-mcp-postgres"
     assert stop["message"] == "stopping"
-    assert stop["component"] == "zelkor-mcp-gateway"
+    assert stop["component"] == "zelkor-mcp-postgres"
     assert "Authorization" not in json.dumps(rows)
 
 
@@ -191,6 +199,8 @@ def test_first_party_entrypoints_configure_logging():
     for path in files:
         text = path.read_text()
         assert "configure_logging" in text, path.name
+    cli_main = (ROOT / "cli/src/zelkor/main.py").read_text()
+    assert "configure_logging(\"zelkor-cli\", stream=sys.stderr)" in cli_main
     boot = (ROOT / "images/guardrails/boot.py").read_text()
     assert "wrap_uvicorn_run" in boot
 
@@ -266,8 +276,20 @@ def test_vendor_templates_map_level():
 
 
 def _helm(*args: str) -> str:
+    helm_args = list(args)
+    if str(AGENT_CHART) in helm_args and "auth.issuer=" not in " ".join(helm_args):
+        helm_args.extend(
+            [
+                "--set",
+                "auth.issuer=https://issuer.example",
+                "--set",
+                "auth.audiences[0]=zelkor",
+            ]
+        )
+    if str(AGENT_CHART) in helm_args and "platform.releaseName=" not in " ".join(helm_args):
+        helm_args.extend(["--set", "platform.releaseName=zelkor-platform"])
     try:
-        res = subprocess.run(["helm", *args], capture_output=True, text=True, check=False)
+        res = subprocess.run(["helm", *helm_args], capture_output=True, text=True, check=False)
     except FileNotFoundError:
         pytest.skip("helm not installed")
     if res.returncode != 0:
@@ -303,7 +325,7 @@ def test_helm_chart_default_is_info_not_debug():
         "--set",
         "platform.telemetry.level=INFO",
         "-s",
-        "templates/mcp/deployment-gateway.yaml",
+        "templates/mcp/deployment-postgres.yaml",
     )
     block = rendered.split("ZELKOR_LOG_LEVEL", 1)[1][:120]
     assert "value: \"INFO\"" in block
@@ -350,13 +372,36 @@ def test_helm_zelkor_agent_excludes_probe_paths_from_access_logs():
     _assert_aegra_probe_access_log_exclude(rendered)
 
 
+def _mcp_jsonrpc(client, method: str, params: dict | None = None, req_id: int = 1) -> dict:
+    payload = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}}
+    response = client.post(
+        "/mcp",
+        json=payload,
+        headers={"accept": "application/json, text/event-stream"},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _mcp_initialize(client) -> None:
+    body = _mcp_jsonrpc(
+        client,
+        "initialize",
+        {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "pytest", "version": "1"},
+        },
+    )
+    assert "result" in body
+
+
 def test_mcp_tools_list_and_call_log_info(caplog):
     sys.path.insert(0, str(ROOT / "mcp"))
-    import threading
-    import urllib.request
-    from http.server import HTTPServer
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
 
-    from common.mcp_server import MCPToolHandler, make_handler
+    from common.mcp_server import MCPToolHandler, build_starlette_app
 
     class Dummy(MCPToolHandler):
         def list_tools(self):
@@ -365,47 +410,29 @@ def test_mcp_tools_list_and_call_log_info(caplog):
         def call_tool(self, name, arguments, tenant_id):
             return {"ok": True}
 
-    server = HTTPServer(("127.0.0.1", 0), make_handler(Dummy(), lambda _h: "tenant-a"))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    def rpc(method, params=None):
-        payload = json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
-        ).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/mcp",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode())
-
-    try:
+    app = build_starlette_app(Dummy(), lambda _h: "tenant-a")
+    with TestClient(app) as client:
+        _mcp_initialize(client)
         with caplog.at_level(logging.INFO, logger="zelkor-mcp"):
-            listed = rpc("tools/list")
-            called = rpc(
+            listed = _mcp_jsonrpc(client, "tools/list")
+            called = _mcp_jsonrpc(
+                client,
                 "tools/call",
                 {"name": "echo", "arguments": {"secret": "should-not-log"}},
             )
-        assert listed["result"]["tools"][0]["name"] == "echo"
-        assert "ok" in called["result"]["content"][0]["text"]
-        assert "tools/list count=1" in caplog.text
-        assert "tools/call echo" in caplog.text
-        assert "should-not-log" not in caplog.text
-    finally:
-        server.shutdown()
-        server.server_close()
+    assert listed["result"]["tools"][0]["name"] == "echo"
+    assert "ok" in called["result"]["content"][0]["text"]
+    assert "tools/list count=1" in caplog.text
+    assert "tools/call echo" in caplog.text
+    assert "should-not-log" not in caplog.text
 
 
 def test_mcp_permission_denied_logs_warning(caplog):
     sys.path.insert(0, str(ROOT / "mcp"))
-    import threading
-    import urllib.request
-    from http.server import HTTPServer
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
 
-    from common.mcp_server import MCPToolHandler, make_handler
+    from common.mcp_server import MCPToolHandler, build_starlette_app
 
     class Dummy(MCPToolHandler):
         def list_tools(self):
@@ -414,49 +441,24 @@ def test_mcp_permission_denied_logs_warning(caplog):
         def call_tool(self, name, arguments, tenant_id):
             raise AssertionError("must not call")
 
-    server = HTTPServer(("127.0.0.1", 0), make_handler(Dummy(), lambda _h: None))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        payload = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "echo", "arguments": {}},
-            }
-        ).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/mcp",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+    app = build_starlette_app(Dummy(), lambda _h: None)
+    with TestClient(app) as client:
+        _mcp_initialize(client)
         with caplog.at_level(logging.WARNING, logger="zelkor-mcp"):
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = json.loads(resp.read().decode())
-        assert body["error"]["code"] == -32001
-        assert "MCP permission denied" in caplog.text
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-def test_gateway_list_tools_logs_info(monkeypatch, caplog):
-    sys.path.insert(0, str(ROOT / "mcp"))
-    import gateway.gateway_server as gw
-
-    monkeypatch.setattr(gw, "BACKENDS", {"postgres": "http://postgres.example"})
-
-    def fake_rpc(_url, method, _params):
-        assert method == "tools/list"
-        return {"tools": [{"name": "query"}]}
-
-    monkeypatch.setattr(gw, "_rpc_call", fake_rpc)
-    with caplog.at_level(logging.INFO, logger="zelkor-mcp-gateway"):
-        tools = gw.GatewayMCPServer().list_tools()
-    assert [t["name"] for t in tools] == ["postgres__query"]
-    assert "MCP gateway backends=postgres tools=1" in caplog.text
+            body = _mcp_jsonrpc(
+                client,
+                "tools/call",
+                {"name": "echo", "arguments": {}},
+            )
+    err = body.get("error") or {}
+    result = body.get("result") or {}
+    denied = (
+        err.get("code") == -32001
+        or result.get("isError") is True
+        or "permission" in json.dumps(body).lower()
+    )
+    assert denied, body
+    assert "MCP permission denied" in caplog.text
 
 
 def test_postgres_query_log_omits_sql(monkeypatch, caplog):

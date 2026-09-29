@@ -203,12 +203,6 @@ def _scroll_tenant(collection: str, limit: int, tenant_id: str) -> list:
         return []
 
 
-def _require_tenant(arguments: dict, tenant_id: str) -> None:
-    arg_tenant = arguments.get("tenant_id")
-    if not arg_tenant or arg_tenant != tenant_id:
-        raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
-
-
 def stamp_upsert_payload(metadata: Optional[dict], content: str, tenant_id: str) -> dict:
     payload = dict(metadata) if isinstance(metadata, dict) else {}
     payload.pop("tenant_id", None)
@@ -259,32 +253,30 @@ class QdrantMCPServer(MCPToolHandler):
                     "type": "object",
                     "properties": {
                         "query": {"type": "string"},
-                        "tenant_id": {"type": "string"},
                         "collection": {"type": "string"},
                         "limit": {"type": "integer"},
                     },
-                    "required": ["query", "tenant_id"],
+                    "required": ["query"],
+                    "additionalProperties": False,
                 },
             },
             {
                 "name": "upsert_document",
-                "description": "Upsert one document; payload tenant_id forced to caller.",
+                "description": "Upsert one document; payload tenant stamped from verified JWT.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "content": {"type": "string"},
                         "document": {"type": "string"},
-                        "tenant_id": {"type": "string"},
                         "collection": {"type": "string"},
                         "metadata": {"type": "object"},
                     },
-                    "required": ["tenant_id"],
+                    "additionalProperties": False,
                 },
             },
         ]
 
     def call_tool(self, name: str, arguments: dict, tenant_id: str):
-        _require_tenant(arguments, tenant_id)
         collection = arguments.get("collection") or DEFAULT_COLLECTION
         if name == "search_documents":
             query = arguments.get("query") or ""

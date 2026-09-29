@@ -18,15 +18,45 @@ export AGENTS_HOST_HEADER="${AGENTS_HOST_HEADER:-agents.localhost}"
 export AEGRA_HOST_HEADER="${AEGRA_HOST_HEADER:-${AGENTS_HOST_HEADER}}"
 export LANGFUSE_HOST_HEADER="${LANGFUSE_HOST_HEADER:-langfuse.localhost}"
 export DEMO_TOUR=1
+RELEASE="${ZELKOR_PLATFORM_RELEASE:-zelkor-platform}"
+NS="${ZELKOR_NAMESPACE:-zelkor}"
+
+mint_demo_token() {
+  if command -v zelkor >/dev/null 2>&1; then
+    zelkor token mint --release "${RELEASE}" --tenant Bank_Alpha --namespace "${NS}" 2>/dev/null || true
+  fi
+}
+
+export_demo_test_tokens() {
+  local alpha beta
+  alpha="$(mint_demo_token)"
+  beta=""
+  if command -v zelkor >/dev/null 2>&1; then
+    beta="$(zelkor token mint --release "${RELEASE}" --tenant Bank_Beta --namespace "${NS}" 2>/dev/null || true)"
+  fi
+  if [[ -n "${alpha}" ]]; then
+    export ZELKOR_TEST_TOKENS
+    ZELKOR_TEST_TOKENS="$(
+      ALPHA="${alpha}" BETA="${beta:-${alpha}}" python3 -c \
+        'import json, os; print(json.dumps({"Bank_Alpha": os.environ["ALPHA"], "Bank_Beta": os.environ["BETA"]}))'
+    )"
+  fi
+}
 
 wait_for_gateway() {
   local url="${GATEWAY_BASE_URL}/assistants/search"
+  local token
   local i
+  token="$(mint_demo_token)"
+  if [[ -z "${token}" ]]; then
+    echo "[demo-tour] ERROR: could not mint tenant JWT (install CLI: pip install -e ./cli)" >&2
+    return 1
+  fi
   log "waiting for FinServe front door at ${GATEWAY_BASE_URL} (Host: ${AEGRA_HOST_HEADER})..."
   for i in $(seq 1 60); do
     if curl -fsS -o /dev/null \
       -H "Host: ${AEGRA_HOST_HEADER}" \
-      -H "Authorization: Bearer dev:Bank_Alpha" \
+      -H "Authorization: Bearer ${token}" \
       -H "X-Graph-ID: finserve-advisor" \
       -H "Content-Type: application/json" \
       -X POST "${url}" \
@@ -63,6 +93,7 @@ DEMO_TESTS=(
 )
 
 wait_for_gateway
+export_demo_test_tokens
 
 log "running ${#DEMO_TESTS[@]} FinServe showcase tests..."
 log "Langfuse: project Zelkor Platform (pk-lf-zelkor-dev-*); trace names finserve-advisor, finserve-quant (sandbox__execute_python)"

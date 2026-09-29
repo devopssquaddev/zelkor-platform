@@ -20,6 +20,12 @@ SECRET_SETS = [
     "platform.telemetry.langfuse.salt=test-salt-1234567890",
     "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.tenants.jwt.issuer=https://issuer.example",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
+    "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    "security.mcp.acceptUnprotectedBackends=true",
+    "gateway.envoyProxy.enabled=true",
 ]
 
 
@@ -198,7 +204,12 @@ def test_envoyproxy_clusterip_has_no_kind_nodeselector():
 
 
 def test_envoyproxy_local_overlay_keeps_kind_nodeselector():
-    proc = _helm("-f", str(ROOT / "profiles" / "values-local.yaml"))
+    proc = _helm(
+        "-f",
+        str(ROOT / "profiles" / "values-local.yaml"),
+        "--set",
+        "platform.tenants.jwt.remoteJwksUri=",
+    )
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     proxies = _kinds(docs, "EnvoyProxy")

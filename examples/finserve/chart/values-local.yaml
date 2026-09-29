@@ -1,32 +1,8 @@
 # FinServe Demo Local Overrides (kind / ./install.sh only)
 _rel: &rel zelkor-platform
 
-_workerPlatform: &workerPlatform
-  releaseName: *rel
-  consumerKey: "dev-key"
-  databaseUrl: "postgresql://zelkor:zelkor-dev-password@zelkor-platform-postgresql:5432/aegra"
-  valkeyUrl: "redis://:zelkor-valkey-dev-password@zelkor-platform-valkey:6379/0"
-  defaultLlmModel: "gpt-oss:20b"
-  langfuseBaseUrl: "http://zelkor-platform-langfuse:3000"
-  langfusePublicKey: "pk-lf-zelkor-dev-00000000000000000000"
-  langfuseSecretKey: "sk-lf-zelkor-dev-00000000000000000000"
-  otelTargets: "LANGFUSE"
-
-_auth: &auth
-  jwtSecret: "zelkor-local-jwt-secret"
-  devTokens:
-    enabled: true
-    prefix: "dev:"
-  trustTenantHeader: true
-
-_sharedRoute: &sharedRoute
+_agentsHost: &agentsHost
   host: agents.localhost
-
-global:
-  tier: oss
-
-gateway:
-  enabled: false
 
 desk:
   logging:
@@ -35,14 +11,12 @@ desk:
   image:
     tag: "dev"
   sharedRoute:
-    <<: *sharedRoute
-  auth:
-    <<: *auth
+    <<: *agentsHost
   platform:
-    <<: *workerPlatform
-  extraEnv:
-    - name: QDRANT_COLLECTION
-      value: "finserve_policies"
+    releaseName: *rel
+    consumerKey: "dev-key"
+    mcpAuthTokenSecret: zelkor-platform-mcp-service-token
+    defaultLlmModel: "gpt-oss:20b"
 
 quant:
   logging:
@@ -51,14 +25,12 @@ quant:
   image:
     tag: "dev"
   sharedRoute:
-    <<: *sharedRoute
-  auth:
-    <<: *auth
+    <<: *agentsHost
   platform:
-    <<: *workerPlatform
-  extraEnv:
-    - name: QDRANT_COLLECTION
-      value: "finserve_policies"
+    releaseName: *rel
+    consumerKey: "dev-key"
+    mcpAuthTokenSecret: zelkor-platform-mcp-service-token
+    defaultLlmModel: "gpt-oss:20b"
 
 coder:
   logging:
@@ -67,11 +39,18 @@ coder:
   image:
     tag: "dev"
   sharedRoute:
-    <<: *sharedRoute
-  auth:
-    <<: *auth
+    <<: *agentsHost
   platform:
-    <<: *workerPlatform
+    releaseName: *rel
+    consumerKey: "dev-key"
+    mcpAuthTokenSecret: zelkor-platform-mcp-service-token
+    defaultLlmModel: "gpt-oss:20b"
+
+global:
+  tier: oss
+
+gateway:
+  enabled: false
 
 platform:
   releaseName: *rel

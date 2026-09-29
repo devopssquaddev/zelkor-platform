@@ -49,15 +49,19 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- $_ := set .Values.workload "agents" $agents -}}
 {{- end -}}
 {{- $no := $tel.nemoOtel | default dict -}}
-{{- if or $no.enabled $no.captureContent -}}
 {{- $pol := (.Values.workspace.policies | default dict) -}}
 {{- $nemo := $pol.nemo | default dict -}}
 {{- $obs := $nemo.observability | default dict -}}
-{{- $_ := set $obs "otel" (dict "enabled" ($no.enabled | default false) "captureContent" ($no.captureContent | default false)) -}}
+{{- $existing := $obs.otel | default dict -}}
+{{- $enabled := $no.enabled | default false -}}
+{{- if hasKey $existing "enabled" -}}
+{{- $enabled = and $enabled $existing.enabled -}}
+{{- end -}}
+{{- $capture := or ($no.captureContent | default false) ($existing.captureContent | default false) -}}
+{{- $_ := set $obs "otel" (dict "enabled" $enabled "captureContent" $capture) -}}
 {{- $_ := set $nemo "observability" $obs -}}
 {{- $_ := set $pol "nemo" $nemo -}}
 {{- $_ := set .Values.workspace "policies" $pol -}}
-{{- end -}}
 {{- if $p.mTLS -}}
 {{- $sec := .Values.security | default dict -}}
 {{- $_ := set $sec "mTLS" $p.mTLS -}}
@@ -67,7 +71,8 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 
 {{- define "zelkor-platform.compile.tenants" -}}
 {{- $t := (.Values.platform.tenants | default dict) -}}
-{{- $_ := set .Values "auth" (dict "sso" ($t.sso | default dict) "jwtSecret" ($t.jwtSecret | default "") "devTokens" ($t.devTokens | default dict) "trustTenantHeader" ($t.trustTenantHeader | default false)) -}}
+{{- $jwt := ($t.jwt | default dict) -}}
+{{- $_ := set .Values "auth" (dict "sso" ($t.sso | default dict) "jwt" $jwt) -}}
 {{- $agents := (.Values.workload.agents | default dict) -}}
 {{- if $t.orgMappings -}}
 {{- $_ := set $agents "tenantOrgMappings" $t.orgMappings -}}
@@ -95,6 +100,12 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- $tools := (.Values.workspace.tools | default dict) -}}
 {{- if $tools -}}
 {{- $_ := set .Values "mcp" $tools -}}
+{{- end -}}
+{{- $mcp := .Values.mcp | default dict -}}
+{{- $gwMr := (.Values.gateway.mcproute | default dict) -}}
+{{- if $gwMr -}}
+{{- $_ := set $mcp "mcproute" $gwMr -}}
+{{- $_ := set .Values "mcp" $mcp -}}
 {{- end -}}
 {{- include "zelkor-platform.compile.mcpExtraBackends" . -}}
 {{- end }}
@@ -241,19 +252,53 @@ vendor: langfuse | postgres | qdrant | valkey | envoy | clickhouse | seaweedfs
 {{- end }}
 
 {{/*
-Identity env for Aegra and MCP. Dev token shortcuts are off unless a local overlay sets them.
+Tenant JWT verification env for Aegra and native MCP backends (JWKS, iss, aud, claims).
 */}}
-{{- define "zelkor-platform.authEnv" -}}
-- name: AUTH_DEV_TOKENS_ENABLED
-  value: {{ ((.Values.auth.devTokens).enabled | default false) | quote }}
-- name: AUTH_DEV_TOKEN_PREFIX
-  value: {{ ((.Values.auth.devTokens).prefix | default "") | quote }}
-- name: AUTH_TRUST_TENANT_HEADER
-  value: {{ (.Values.auth.trustTenantHeader | default false) | quote }}
-- name: AUTH_JWT_SECRET
-  value: {{ (.Values.auth.jwtSecret | default "") | quote }}
+{{- define "zelkor-platform.tenantJwksConfigMapName" -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $jwt.jwksConfigMap | default (printf "%s-tenant-jwks" (include "zelkor-platform.fullname" .)) -}}
+{{- end }}
+
+{{- define "zelkor-platform.tenantAuthEnv" -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $remote := $jwt.remoteJwksUri | default "" | trim -}}
+{{- if $remote }}
+- name: AUTH_JWKS_URI
+  value: {{ $remote | quote }}
+{{- else }}
+- name: AUTH_JWKS_PATH
+  value: "/etc/zelkor/tenant-jwks"
+{{- end }}
+- name: AUTH_JWT_ISSUER
+  value: {{ $jwt.issuer | default "" | quote }}
+- name: AUTH_JWT_AUDIENCES
+  value: {{ $jwt.audiences | default list | toJson | quote }}
+- name: AUTH_TENANT_CLAIMS
+  value: {{ $jwt.tenantClaims | default (list "tenant_id" "org_id" "sub") | toJson | quote }}
 - name: TENANT_ORG_MAPPINGS
   value: {{ .Values.aegra.tenantOrgMappings | default dict | toJson | quote }}
+- name: AUTH_JWKS_CACHE_SECONDS
+  value: {{ $jwt.jwksCacheSeconds | default 30 | quote }}
+{{- end }}
+
+{{- define "zelkor-platform.tenantAuthVolumeMount" -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $remote := $jwt.remoteJwksUri | default "" | trim -}}
+{{- if not $remote }}
+- name: tenant-jwks
+  mountPath: /etc/zelkor/tenant-jwks
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "zelkor-platform.tenantAuthVolume" -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $remote := $jwt.remoteJwksUri | default "" | trim -}}
+{{- if not $remote }}
+- name: tenant-jwks
+  configMap:
+    name: {{ include "zelkor-platform.tenantJwksConfigMapName" . }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -755,8 +800,25 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- end -}}
 {{- end }}
 
-{{- define "zelkor-platform.mcpGatewayUrl" -}}
-{{- printf "http://%s-mcp-gateway:8080" (include "zelkor-platform.fullname" .) -}}
+{{- define "zelkor-platform.mcpUrl" -}}
+{{- printf "http://%s-mcp" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
+{{- define "zelkor-platform.mcpHostnames" -}}
+{{- $hosts := list -}}
+{{- if .Values.gateway.hosts.mcp -}}
+{{- $hosts = append $hosts .Values.gateway.hosts.mcp -}}
+{{- end -}}
+{{- $short := printf "%s-mcp" (include "zelkor-platform.fullname" .) -}}
+{{- $fqdn := printf "%s.%s.svc.cluster.local" $short .Release.Namespace -}}
+{{- $hosts = append $hosts $short -}}
+{{- $hosts = append $hosts $fqdn -}}
+{{- $hosts | uniq | toJson -}}
+{{- end }}
+
+{{- define "zelkor-platform.gatewayDataplaneNamespace" -}}
+{{- $dp := (.Values.gateway.dataplane | default dict) -}}
+{{- $dp.namespace | default "envoy-gateway-system" -}}
 {{- end }}
 
 {{- define "zelkor-platform.aiGatewayInternalUrl" -}}

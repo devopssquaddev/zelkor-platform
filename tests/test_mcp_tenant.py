@@ -1,69 +1,49 @@
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "mcp")))
-from common.tenant import extract_tenant
+from common.jwt_verifier import validate_startup_config  # noqa: E402
+from common.tenant import extract_tenant  # noqa: E402
+from tests.helpers.jwt_keys import generate_rsa_keypair, write_jwks_file  # noqa: E402
+
+pytest.importorskip("cryptography")
 
 
-def test_extract_tenant_empty_without_config(monkeypatch):
-    monkeypatch.delenv("AUTH_DEV_TOKENS_ENABLED", raising=False)
-    monkeypatch.delenv("AUTH_DEV_TOKEN_PREFIX", raising=False)
-    monkeypatch.delenv("AUTH_TRUST_TENANT_HEADER", raising=False)
-    assert extract_tenant({"Authorization": "Bearer dev:tenant_a"}) is None
-    assert extract_tenant({"X-Tenant-ID": "tenant_a"}) is None
-    assert extract_tenant({"Authorization": "Bearer some-api-key"}) is None
+@pytest.fixture()
+def jwt_env(tmp_path, monkeypatch):
+    kp = generate_rsa_keypair("kid-1")
+    jwks_dir = tmp_path / "jwks"
+    jwks_dir.mkdir()
+    write_jwks_file(str(jwks_dir / "jwks"), kp.jwks)
+    monkeypatch.setenv("AUTH_JWKS_PATH", str(jwks_dir))
+    monkeypatch.setenv("AUTH_JWT_ISSUER", "https://test.zelkor.invalid")
+    monkeypatch.setenv("AUTH_JWT_AUDIENCES", '["zelkor"]')
+    monkeypatch.setenv("AUTH_TENANT_CLAIMS", '["tenant_id"]')
+    validate_startup_config()
+    return kp
 
 
-def test_extract_tenant_configured_prefix(monkeypatch):
-    monkeypatch.setenv("AUTH_DEV_TOKENS_ENABLED", "true")
-    monkeypatch.setenv("AUTH_DEV_TOKEN_PREFIX", "dev:")
-    assert extract_tenant({"Authorization": "Bearer dev:tenant_a"}) == "tenant_a"
-    assert extract_tenant({"Authorization": "Bearer other:tenant_a"}) is None
+def test_extract_tenant_empty_without_jwt(jwt_env):
+    assert extract_tenant({}) is None
+    assert extract_tenant({"Authorization": "Bearer not-a-jwt"}) is None
 
 
-def test_extract_tenant_configured_header(monkeypatch):
-    monkeypatch.setenv("AUTH_TRUST_TENANT_HEADER", "true")
-    assert extract_tenant({"X-Tenant-ID": "tenant_b"}) == "tenant_b"
-
-
-def test_extract_tenant_prefix_required_when_enabled(monkeypatch):
-    monkeypatch.setenv("AUTH_DEV_TOKENS_ENABLED", "true")
-    monkeypatch.setenv("AUTH_DEV_TOKEN_PREFIX", "")
-    assert extract_tenant({"Authorization": "Bearer dev:tenant_a"}) is None
-
-
-def test_extract_tenant_jwt(monkeypatch):
-    jwt = pytest.importorskip("jwt")
-    secret = "zelkor-test-jwt-secret-32bytes-min"
-    monkeypatch.setenv("AUTH_JWT_SECRET", secret)
-    token = jwt.encode({"tenant_id": "tenant_a", "sub": "user_123"}, secret, algorithm="HS256")
+def test_extract_tenant_from_rs256(jwt_env):
+    token = jwt_env.mint(
+        "https://test.zelkor.invalid",
+        ["zelkor"],
+        {"tenant_id": "tenant_a"},
+    )
     assert extract_tenant({"Authorization": f"Bearer {token}"}) == "tenant_a"
 
 
-def test_extract_tenant_jwt_org_mapping(monkeypatch):
-    jwt = pytest.importorskip("jwt")
-    secret = "zelkor-test-jwt-secret-32bytes-min"
-    monkeypatch.setenv("AUTH_JWT_SECRET", secret)
-    monkeypatch.setenv("TENANT_ORG_MAPPINGS", '{"org_beta": "tenant_b"}')
-    token = jwt.encode({"org_id": "org_beta"}, secret, algorithm="HS256")
-    assert extract_tenant({"Authorization": f"Bearer {token}"}) == "tenant_b"
-
-
-def test_extract_tenant_jwt_rejects_wrong_signature(monkeypatch):
-    jwt = pytest.importorskip("jwt")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "zelkor-test-jwt-secret-32bytes-min")
-    token = jwt.encode(
+def test_extract_tenant_rejects_wrong_issuer(jwt_env):
+    token = jwt_env.mint(
+        "https://other.invalid",
+        ["zelkor"],
         {"tenant_id": "tenant_a"},
-        "other-secret-key-32bytes-min!!!",
-        algorithm="HS256",
     )
     assert extract_tenant({"Authorization": f"Bearer {token}"}) is None
-
-
-def test_extract_tenant_jwt_falls_through_to_dev_token(monkeypatch):
-    monkeypatch.setenv("AUTH_JWT_SECRET", "zelkor-test-jwt-secret-32bytes-min")
-    monkeypatch.setenv("AUTH_DEV_TOKENS_ENABLED", "true")
-    monkeypatch.setenv("AUTH_DEV_TOKEN_PREFIX", "dev:")
-    assert extract_tenant({"Authorization": "Bearer dev:tenant_a"}) == "tenant_a"

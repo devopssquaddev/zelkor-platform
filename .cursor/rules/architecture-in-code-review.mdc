@@ -1,0 +1,51 @@
+---
+description: Review Zelkor code for silent architectural decisions; living spec wins over a local convenience
+alwaysApply: false
+---
+
+# Architecture in code review (Zelkor)
+
+User-level rule `architecture-in-code-review` applies. This file adds Zelkor placement and spec checks. Architecture findings outrank style.
+
+## Placement (before the edit)
+
+If every demo under `examples/` were deleted, would this still belong in the platform for a customer who never deploys examples?
+
+- **Yes** → `charts/zelkor-platform/`, `agents/`, `mcp/`, `images/`, `tests/`
+- **No** → `examples/<name>/` or an overlay (`profiles/values-local.yaml`)
+
+`charts/zelkor-platform/` must not reference `examples/`. Tests must not shape the chart.
+
+## Silent decisions that are always wrong here
+
+- Agent or image talks to an LLM provider, SaaS API, or datastore **instead of** Envoy AI Gateway / MCP gateway / the documented ClusterIP
+- New public HTTPRoute, Host, or `*.localhost` / `dev-key` default in the shipped chart or image
+- Demo graph registered onto platform Aegra (`aegra.graphs`) or a vendor MCP name in `values.yaml`
+- Inline Python in a ConfigMap; copy-paste from `vendor/`
+- Kind/test fixture baked into `values.yaml` or a template `| default`
+
+```python
+# BAD — second egress; architecture is MCP gateway only
+resp = httpx.get("https://api.servicenow.com/...")
+
+# GOOD — tool call stays on MCP_URL / gateway backends
+# (customer BYO MCP is workspace.tools / mcp.extraBackends, not a platform image)
+```
+
+## Spec first
+
+Name the hop, then open the governing file (multi-root `internal/plan/`). No file → update spec + revision history before more code.
+
+| Decision in code | Governing spec |
+| :--- | :--- |
+| Install / ingress / Helm knobs | `phase_1_requirements.md`, `architecture_ingress_exposure.md` |
+| Agent intercept / wrap / graph routing | `requirements_drop_in_agent_contract.md`, `architecture_graph_routing_envoy.md` |
+| MCP backends / native wrap | `requirements_native_mcp_servers.md`, `architecture_native_mcp_oss_wrap.md` |
+| MCP / Envoy dataplane | `plan/mcp_envoy_dataplane/` |
+| Logging / traces | `requirements_platform_logging.md`, `requirements_agent_trace.md` |
+| LLM providers / models | Overlay only — `docs/adding-llm-providers-and-models.md` |
+| Platform vs demo vs tests | `internal/requirements/dev/examples_and_demos.md` |
+
+## Review output
+
+For each finding: decision, `file:line`, spec or rule, smallest fix (move layer / update spec / delete bypass). Do not auto-fix architecture unless asked.

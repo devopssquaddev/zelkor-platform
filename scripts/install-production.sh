@@ -30,6 +30,9 @@ Uses profiles/values-production.yaml (operator-cr, HA, NetworkPolicies).
 Required:
   --hosts-agents HOST
   --hosts-langfuse HOST
+  --jwt-issuer URL             Customer IdP issuer (platform.tenants.jwt.issuer)
+  --jwks-file PATH             JWKS JSON file (platform.tenants.jwt.jwks)
+  --jwt-audience AUD           Expected JWT audience (platform.tenants.jwt.audiences[0])
 
 Options:
   --namespace NAME             Release namespace (default: zelkor)
@@ -80,6 +83,21 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --service-monitor) SERVICE_MONITOR=1; shift ;;
+    --jwt-issuer)
+      [[ $# -ge 2 ]] || cluster_install_die "missing value for --jwt-issuer"
+      JWT_ISSUER="$2"
+      shift 2
+      ;;
+    --jwks-file)
+      [[ $# -ge 2 ]] || cluster_install_die "missing value for --jwks-file"
+      JWKS_FILE="$2"
+      shift 2
+      ;;
+    --jwt-audience)
+      [[ $# -ge 2 ]] || cluster_install_die "missing value for --jwt-audience"
+      JWT_AUDIENCE="$2"
+      shift 2
+      ;;
     -h|--help) usage; exit 0 ;;
     *) cluster_install_die "unknown flag: $1" ;;
   esac
@@ -102,6 +120,10 @@ fi
 CLUSTER_INSTALL_NEXTAUTH_SCHEME=https
 CLUSTER_INSTALL_PG_INSTANCES=3
 CLUSTER_INSTALL_EXPECT_HA=1
+
+PRODUCTION_VALUES="${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
+cluster_install_apply_jwt_cli_flags
+cluster_install_require_external_jwt "$PRODUCTION_VALUES"
 
 cluster_install_setup_log
 cluster_install_prepare
@@ -134,7 +156,7 @@ else
 fi
 
 cluster_install_run_bootstrap_gateway
-cluster_install_run_helm "${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
+cluster_install_run_helm "$PRODUCTION_VALUES"
 
 if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then
   echo
@@ -153,9 +175,10 @@ if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
 fi
 
 cluster_install_print_dataplane
+cluster_install_wait_mcp_dataplane
 cluster_install_wait_langfuse
 cluster_install_wait_langfuse_bootstrap
-cluster_install_enable_langfuse_public_route "${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
+cluster_install_enable_langfuse_public_route "$PRODUCTION_VALUES"
 cluster_install_print_secret_howto
 
 echo

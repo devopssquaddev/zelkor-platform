@@ -106,12 +106,6 @@ def _bind_params(sql: str, arguments: dict, tenant_id: str):
     return tuple(params)
 
 
-def _assert_tenant(arguments: dict, tenant_id: str) -> None:
-    arg_tenant = arguments.get("tenant_id")
-    if not arg_tenant or arg_tenant != tenant_id:
-        raise PermissionError(f"tenant_id mismatch: header={tenant_id}, arg={arg_tenant}")
-
-
 def _is_catalog_schema(schema: str) -> bool:
     lowered = schema.lower()
     return lowered in _CATALOG_SCHEMAS or lowered.startswith("pg_")
@@ -149,6 +143,9 @@ def _with_tenant_txn(tenant_id: str, fn):
                     extra={"tenant_id": tenant_id},
                 )
                 conn.rollback()
+                raise PermissionError(
+                    f"tenant isolation failed: could not set app.current_tenant"
+                ) from exc
             result = fn(cur)
             conn.commit()
             return result
@@ -164,45 +161,44 @@ class PostgresMCPServer(MCPToolHandler):
         return [
             {
                 "name": "query",
-                "description": "Read-only SQL; tenant_id must match caller.",
+                "description": "Read-only SQL; tenant from verified JWT.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "sql": {"type": "string"},
-                        "tenant_id": {"type": "string"},
                         "params": {
                             "type": "array",
                             "items": {"type": ["string", "number", "boolean", "null"]},
                         },
                     },
-                    "required": ["sql", "tenant_id"],
+                    "required": ["sql"],
+                    "additionalProperties": False,
                 },
             },
             {
                 "name": "list_tables",
-                "description": "List SELECT-visible relations for tenant_id.",
+                "description": "List SELECT-visible relations for the caller's tenant.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {"tenant_id": {"type": "string"}},
-                    "required": ["tenant_id"],
+                    "properties": {},
+                    "additionalProperties": False,
                 },
             },
             {
                 "name": "get_schema",
-                "description": "Column types for one authorized relation; tenant_id required.",
+                "description": "Column types for one authorized relation.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "name": {"type": "string"},
-                        "tenant_id": {"type": "string"},
                     },
-                    "required": ["name", "tenant_id"],
+                    "required": ["name"],
+                    "additionalProperties": False,
                 },
             },
         ]
 
     def call_tool(self, name: str, arguments: dict, tenant_id: str):
-        _assert_tenant(arguments, tenant_id)
         if name == "query":
             return self._query(arguments, tenant_id)
         if name == "list_tables":

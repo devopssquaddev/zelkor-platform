@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 logger.info("Authorization: %s", headers["Authorization"])
 
 # GOOD
-logger.info("listening", extra={"component": "zelkor-mcp-gateway", "event": "startup"})
+logger.info("listening", extra={"component": "zelkor-mcp-postgres", "event": "startup"})
 logger.debug("health probe")
 logger.warning("MCP tool %s failed: %s", name, exc)
 logger.exception("required dependency down")

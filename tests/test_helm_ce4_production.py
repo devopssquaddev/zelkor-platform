@@ -13,6 +13,11 @@ PRODUCTION = ROOT / "profiles" / "values-production.yaml"
 FINSERVE_VALUES = ROOT / "examples" / "finserve" / "chart" / "values.yaml"
 
 SECRET_SETS = [
+    "platform.tenants.jwt.issuer=https://issuer.example",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
+    "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    "security.mcp.acceptUnprotectedBackends=true",
     "postgresql.auth.password=test-pg",
     "clickhouse.auth.password=test-ch",
     "seaweedfs.auth.accessKey=test-ak",
@@ -28,7 +33,6 @@ HA_DEPLOYMENTS = (
     "zelkor-platform-langfuse",
     "zelkor-platform-langfuse-worker",
     "zelkor-platform-nemo",
-    "zelkor-platform-mcp-gateway",
     "zelkor-platform-mcp-postgres",
     "zelkor-platform-mcp-qdrant",
     "zelkor-platform-mcp-aigateway",
@@ -38,7 +42,6 @@ HA_DEPLOYMENTS = (
 SM_SERVICES = (
     "zelkor-platform-aegra",
     "zelkor-platform-nemo",
-    "zelkor-platform-mcp-gateway",
     "zelkor-platform-mcp-postgres",
     "zelkor-platform-mcp-qdrant",
     "zelkor-platform-mcp-aigateway",
@@ -50,7 +53,17 @@ AGENT_SETS = [
     "graphId=demo-graph",
     "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "platform.valkeyUrl=redis://vk:6379/0",
+    "auth.issuer=https://issuer.example",
+    "auth.audiences[0]=zelkor",
+    "auth.jwksUri=https://issuer.example/.well-known/jwks.json",
 ]
+
+
+def test_platform_publishes_worker_attach_artifacts():
+    proc = _helm()
+    assert proc.returncode == 0, proc.stderr
+    assert "zelkor-platform-aegra-datastore" in proc.stdout
+    assert "zelkor-platform-tenant-jwt" in proc.stdout
 
 
 def _helm(*extra: str) -> subprocess.CompletedProcess[str]:
@@ -211,7 +224,9 @@ def test_service_monitors_opt_in_on_production():
     docs = _docs(proc.stdout)
     sm_names = {d["metadata"]["name"] for d in _kinds(docs, "ServiceMonitor")}
     assert set(SM_SERVICES) <= sm_names
-    assert "zelkor-platform-envoy" in {d["metadata"]["name"] for d in _kinds(docs, "PodMonitor")}
+    assert not _kinds(docs, "PodMonitor")
+    postgres_sm = _named(docs, "ServiceMonitor", "zelkor-platform-mcp-postgres")
+    assert postgres_sm["spec"]["endpoints"][0]["port"] == "metrics"
     aegra = _named(docs, "Deployment", "zelkor-platform-aegra")
     assert _env(aegra, "ENABLE_PROMETHEUS_METRICS") == "true"
     nemo = _named(docs, "Deployment", "zelkor-platform-nemo")
@@ -223,31 +238,31 @@ def test_service_monitors_opt_in_on_production():
     assert "Grafana" not in kinds
 
 
-def test_agent_chart_hpa_default_on():
+def test_agent_chart_hpa_default_off():
     proc = _helm_agent()
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert not _kinds(docs, "HorizontalPodAutoscaler")
+    deploy = _kinds(docs, "Deployment")[0]
+    assert deploy["spec"]["replicas"] == 1
+    assert _env(deploy, "ENABLE_PROMETHEUS_METRICS") == "false"
+
+
+def test_agent_chart_hpa_on_when_enabled():
+    proc = _helm_agent("--set", "autoscaling.enabled=true")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     hpas = _kinds(docs, "HorizontalPodAutoscaler")
     assert len(hpas) == 1
     deploy = _kinds(docs, "Deployment")[0]
     assert "replicas" not in deploy["spec"]
-    assert _env(deploy, "ENABLE_PROMETHEUS_METRICS") == "false"
 
 
-def test_agent_chart_hpa_off_keeps_replicas():
-    proc = _helm_agent("--set", "autoscaling.enabled=false")
-    assert proc.returncode == 0, proc.stderr
-    docs = _docs(proc.stdout)
-    assert not _kinds(docs, "HorizontalPodAutoscaler")
-    deploy = _kinds(docs, "Deployment")[0]
-    assert deploy["spec"]["replicas"] == 1
-
-
-def test_finserve_values_disable_agent_autoscaling():
+def test_finserve_workers_do_not_enable_autoscaling():
     values = yaml.safe_load(FINSERVE_VALUES.read_text())
     for key in ("desk", "quant", "coder"):
-        assert values[key]["autoscaling"]["enabled"] is False
-        assert values[key]["replicaCount"] == 1
+        auto = values[key].get("autoscaling") or {}
+        assert auto.get("enabled") is not True
 
 
 def test_bootstrap_cert_manager_enables_gateway_api():
@@ -260,7 +275,7 @@ def test_metrics_deps_in_images():
     guardrails = (ROOT / "images" / "guardrails" / "requirements.txt").read_text()
     assert "prometheus-fastapi-instrumentator" in guardrails
     mcp = (ROOT / "mcp" / "common" / "mcp_server.py").read_text()
-    assert "/metrics" in mcp
+    assert "start_http_server" in mcp and "METRICS_PORT" in mcp
 
 
 def test_langfuse_public_route_gated_until_enabled():

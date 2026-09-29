@@ -1,0 +1,22 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- if .Values.aegra.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-tenant-jwt
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.tenants.jwt") | nindent 4 }}
+data:
+  {{- $remote := $jwt.remoteJwksUri | default "" | trim }}
+  {{- if $remote }}
+  AUTH_JWKS_URI: {{ $remote | quote }}
+  {{- else }}
+  AUTH_JWKS_PATH: "/etc/zelkor/tenant-jwks"
+  {{- end }}
+  AUTH_JWT_ISSUER: {{ $jwt.issuer | default "" | quote }}
+  AUTH_JWT_AUDIENCES: {{ $jwt.audiences | default list | toJson | quote }}
+  AUTH_TENANT_CLAIMS: {{ $jwt.tenantClaims | default (list "tenant_id" "org_id" "sub") | toJson | quote }}
+  TENANT_ORG_MAPPINGS: {{ .Values.aegra.tenantOrgMappings | default dict | toJson | quote }}
+{{- end }}

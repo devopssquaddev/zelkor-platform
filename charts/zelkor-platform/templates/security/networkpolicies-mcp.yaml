@@ -1,0 +1,63 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $fn := include "zelkor-platform.fullname" . -}}
+{{- $dpNs := include "zelkor-platform.gatewayDataplaneNamespace" . -}}
+{{- $gwName := (.Values.gateway.parentRef).name | default (printf "%s-gateway" $fn) -}}
+{{- $gwNs := (.Values.gateway.parentRef).namespace | default .Release.Namespace -}}
+{{- if and .Values.mcp.enabled (not (.Values.security.mcp).acceptUnprotectedBackends) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-mcp-backend-ingress
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.mcp") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - mcp-postgres
+          - mcp-qdrant
+          - mcp-sandbox
+          - mcp-aigateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $dpNs | quote }}
+          podSelector:
+            matchLabels:
+              gateway.envoyproxy.io/owning-gateway-name: {{ $gwName | quote }}
+              gateway.envoyproxy.io/owning-gateway-namespace: {{ $gwNs | quote }}
+      ports:
+        - port: 8080
+{{- if eq (include "zelkor-platform.serviceMonitorEnabled" .) "true" }}
+{{- $mon := ((.Values.observability).monitoringNamespaceSelector | default dict) }}
+{{- if $mon }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml $mon | nindent 14 }}
+      ports:
+        - port: 9090
+{{- end }}
+{{- end }}
+---
+{{- end }}
+{{- if (.Values.mcp.sandboxMCP).enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-sandbox-worker-egress
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.mcp") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-sandbox-worker
+  policyTypes:
+    - Egress
+  egress: []
+{{- end }}

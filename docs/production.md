@@ -119,17 +119,26 @@ kubectl -n envoy-ai-gateway-system scale deploy/ai-gateway-controller --replicas
 
 ## NeMo guardrails traces in Langfuse
 
-Prerequisites: `platform.telemetry.langfuse.enabled` and `platform.telemetry.langfuse.init.enabled` (install scripts set this on quickstart/production).
+With Langfuse on (`platform.telemetry.langfuse.enabled` and `platform.telemetry.langfuse.init.enabled`), NeMo exports OpenTelemetry spans so Agent Protocol runs join graph + rails in one Langfuse trace. Prompt/completion bodies stay off (`otel.captureContent: false`).
 
-Enable OpenTelemetry export on the NeMo Deployment:
+NeMo loads Langfuse ingest keys from the cluster Secret `{release}-langfuse-otel` (`envFrom`). You do **not** need `platform.telemetry.langfuse.extraProjects` for a single Langfuse project. Use `extraProjects` only when multiple Langfuse projects need NeMo OTLP routing (per-agent public keys).
+
+To record observation input/output (PII):
 
 ```bash
 helm upgrade --install zelkor-platform ./charts/zelkor-platform \
   --namespace zelkor --reuse-values \
-  --set workspace.policies.nemo.observability.otel.enabled=true
+  --set workspace.policies.nemo.observability.otel.captureContent=true
 ```
 
-NeMo loads Langfuse ingest keys from the cluster Secret `{release}-langfuse-otel` (`envFrom`). You do **not** need `platform.telemetry.langfuse.extraProjects` for a single Langfuse project. Use `extraProjects` only when multiple Langfuse projects need NeMo OTLP routing (per-agent public keys). Optional: `workspace.policies.nemo.observability.otel.captureContent=true` for observation input/output (PII).
+To turn NeMo OTEL off:
+
+```bash
+helm upgrade --install zelkor-platform ./charts/zelkor-platform \
+  --namespace zelkor --reuse-values \
+  --set platform.telemetry.nemoOtel.enabled=false \
+  --set workspace.policies.nemo.observability.otel.enabled=false
+```
 
 After a chat completion through NeMo or the AI Gateway intercept, Langfuse should show rails such as `self_check_input` and `guardrails.request`. NeMo logs must not show OTLP export `401 Unauthorized`.
 

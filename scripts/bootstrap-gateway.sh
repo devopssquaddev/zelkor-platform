@@ -8,6 +8,8 @@ set -euo pipefail
 ZELKOR_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=lib/bootstrap-ownership.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
+# shellcheck source=lib/gateway-policies.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
 
 ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.1}"
 AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.1.0}"
@@ -97,6 +99,78 @@ wait_rollout() {
   local ns="$1"
   local name="$2"
   kubectl "${KUBECTL_ARGS[@]}" rollout status "deployment/${name}" -n "$ns" --timeout="$ROLLOUT_WAIT_TIMEOUT"
+}
+
+_install_gateway_policies() {
+  local policies_chart="${ZELKOR_REPO_ROOT}/charts/zelkor-gateway-policies"
+  if [[ ! -d "${policies_chart}" ]]; then
+    echo "  WARN: ${policies_chart} missing — skip zelkor-gateway-policies"
+    return 0
+  fi
+  if [[ "${ZELKOR_SKIP_GATEWAY_POLICIES:-0}" == "1" ]]; then
+    echo "skip zelkor-gateway-policies (shared/brownfield)"
+    return 0
+  fi
+  local gw_name gw_ns listeners_json
+  gw_name="${ZELKOR_GATEWAY_POLICIES_GATEWAY_NAME:-zelkor-platform-gateway}"
+  gw_ns="${ZELKOR_GATEWAY_POLICIES_GATEWAY_NAMESPACE:-default}"
+  if [[ -n "${ZELKOR_GATEWAY_POLICIES_LISTENERS_JSON:-}" ]]; then
+    listeners_json="$ZELKOR_GATEWAY_POLICIES_LISTENERS_JSON"
+  else
+    GATEWAY_POLICIES_HELM_SET_SCAN=()
+    listeners_json="$(gateway_policies_listeners_json)"
+  fi
+  local listener_sets=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && listener_sets+=("$line")
+  done < <(LISTENERS_JSON="$listeners_json" python3 -c 'import json, os
+for i, item in enumerate(json.loads(os.environ["LISTENERS_JSON"])):
+    port = item["port"] if isinstance(item, dict) else item
+    print(f"--set=listeners[{i}].port={int(port)}")')
+  echo "Installing zelkor-gateway-policies (envoy-gateway-system)..."
+  helm upgrade --install zelkor-gateway-policies "${policies_chart}" \
+    "${HELM_ARGS[@]}" \
+    --namespace envoy-gateway-system \
+    --create-namespace \
+    --set "gateway.name=${gw_name}" \
+    --set "gateway.namespace=${gw_ns}" \
+    "${listener_sets[@]}" \
+    --wait --timeout 3m
+}
+
+_aigw_mcp_seed_from_helm() {
+  helm "${HELM_ARGS[@]}" get values aieg -n envoy-ai-gateway-system -o json 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("mcp") or {}).get("sessionEncryption", {}).get("seed") or "")' \
+    2>/dev/null || true
+}
+
+_ensure_aigw_mcp_session_seed() {
+  if ! deployment_available envoy-ai-gateway-system ai-gateway-controller; then
+    return 0
+  fi
+  local current
+  current="$(_aigw_mcp_seed_from_helm)"
+  if [[ -n "$current" && "$current" != "default-insecure-seed" ]]; then
+    echo "MCP session encryption seed already set on aieg release"
+    return 0
+  fi
+  local seed_file
+  seed_file="$(mktemp)"
+  trap 'rm -f "$seed_file"' RETURN
+  if [[ -n "${ZELKOR_MCP_SESSION_SEED:-}" ]]; then
+    printf '%s' "$ZELKOR_MCP_SESSION_SEED" >"$seed_file"
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl rand -hex 32 >"$seed_file"
+  else
+    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$seed_file"
+  fi
+  echo "Setting MCP session encryption seed on envoy-ai-gateway (aieg) release..."
+  helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \
+    "${HELM_ARGS[@]}" \
+    --namespace envoy-ai-gateway-system \
+    --reuse-values \
+    --set-file "mcp.sessionEncryption.seed=${seed_file}" \
+    --wait --timeout 5m
 }
 
 EG_CM_BODY=$(cat <<'EOF'
@@ -259,5 +333,8 @@ if [[ "$SKIP_AI_GATEWAY" -eq 0 ]]; then
 else
   echo "skip Envoy AI Gateway (--skip-ai-gateway)"
 fi
+
+_install_gateway_policies
+_ensure_aigw_mcp_session_seed
 
 echo "bootstrap-gateway: done"

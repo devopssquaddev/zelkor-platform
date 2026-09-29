@@ -27,6 +27,8 @@ from zelkor.detect import (
     should_attach_as_default,
 )
 from zelkor.envfile import Env, add_env, list_envs, load_store, remove_env, resolve_env
+from zelkor.extra_backends import format_missing_extras_error, missing_extra_registrations
+from zelkor.token_cmd import cmd_token_jwks, cmd_token_mint
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
@@ -48,10 +50,10 @@ class PlatformInfo:
     agents_host: str = ""
     gateway_name: str = ""
     gateway_namespace: str = ""
-    jwt_secret: str = ""
-    auth_dev_tokens_enabled: str = ""
-    auth_dev_token_prefix: str = ""
-    auth_trust_tenant_header: str = ""
+    jwt_issuer: str = ""
+    jwt_audiences: list[str] = field(default_factory=list)
+    jwt_jwks_configmap: str = ""
+    jwt_tenant_claims: list[str] = field(default_factory=lambda: ["tenant_id", "org_id", "sub"])
     default_llm_model: str = ""
     langfuse_base_url: str = ""
     langfuse_public_key: str = ""
@@ -158,10 +160,18 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.mcp_url = env_map.get("MCP_URL", "")
         info.consumer_key = env_map.get("OPENAI_API_KEY", "")
         info.redis_url = env_map.get("REDIS_URL", "")
-        info.jwt_secret = env_map.get("AUTH_JWT_SECRET", "")
-        info.auth_dev_tokens_enabled = env_map.get("AUTH_DEV_TOKENS_ENABLED", "")
-        info.auth_dev_token_prefix = env_map.get("AUTH_DEV_TOKEN_PREFIX", "")
-        info.auth_trust_tenant_header = env_map.get("AUTH_TRUST_TENANT_HEADER", "")
+        info.jwt_issuer = env_map.get("AUTH_JWT_ISSUER", "")
+        aud_raw = env_map.get("AUTH_JWT_AUDIENCES", "")
+        if aud_raw.startswith("["):
+            try:
+                info.jwt_audiences = list(json.loads(aud_raw))
+            except json.JSONDecodeError:
+                info.jwt_audiences = []
+        elif aud_raw:
+            info.jwt_audiences = [a.strip() for a in aud_raw.split(",") if a.strip()]
+        claims_raw = env_map.get("AUTH_TENANT_CLAIMS", "tenant_id,org_id,sub")
+        info.jwt_tenant_claims = [c.strip() for c in claims_raw.split(",") if c.strip()]
+        info.jwt_jwks_configmap = f"{info.release}-tenant-jwks"
         info.default_llm_model = default_llm_model_from(env_map, values)
         info.langfuse_base_url = env_map.get("LANGFUSE_BASE_URL", "")
         info.langfuse_public_key = env_map.get("LANGFUSE_PUBLIC_KEY", "")
@@ -231,25 +241,13 @@ def _truthy(val: str) -> bool:
 
 
 def auth_values(info: PlatformInfo) -> dict[str, Any]:
-    """Copy live platform wrap auth onto the worker. Do not invent secrets."""
+    """Copy live platform JWT contract onto the worker. Do not invent secrets."""
     return {
-        "jwtSecret": info.jwt_secret,
-        "devTokens": {
-            "enabled": _truthy(info.auth_dev_tokens_enabled),
-            "prefix": info.auth_dev_token_prefix,
-        },
-        "trustTenantHeader": _truthy(info.auth_trust_tenant_header),
+        "issuer": info.jwt_issuer,
+        "audiences": info.jwt_audiences,
+        "jwksConfigMap": info.jwt_jwks_configmap,
+        "tenantClaims": info.jwt_tenant_claims,
     }
-
-
-def merge_extra_backends(existing: list[Any], extra: list[dict[str, str]]) -> list[dict[str, str]]:
-    by_name: dict[str, dict[str, str]] = {}
-    for row in existing or []:
-        if isinstance(row, dict) and row.get("name") and row.get("url"):
-            by_name[str(row["name"])] = {"name": str(row["name"]), "url": str(row["url"])}
-    for row in extra:
-        by_name[row["name"]] = {"name": row["name"], "url": row["url"]}
-    return list(by_name.values())
 
 
 def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) -> None:
@@ -304,6 +302,13 @@ def deploy_agent(
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
     info = discover_platform(env, runner=runner)
+    platform_values: dict[str, Any] = {}
+    if shape.mcp_servers:
+        values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
+        platform_values = yaml.safe_load(values_raw.stdout or "") or {}
+        missing = missing_extra_registrations(shape.mcp_servers, platform_values)
+        if missing:
+            raise RuntimeError(format_missing_extras_error(missing))
     as_default = should_attach_as_default(info.agent_route_names, release)
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
@@ -372,35 +377,10 @@ def deploy_agent(
             ),
             runner=runner,
         )
-        plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
-        plat_file = ""
         if as_default:
+            plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
             plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
-        if shape.mcp_servers:
-            current = yaml.safe_load(
-                _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner).stdout or ""
-            ) or {}
-            tools = (current.get("workspace") or {}).get("tools") or {}
-            plat = {
-                "workspace": {
-                    "tools": {
-                        "extraBackends": merge_extra_backends(
-                            (tools.get("extraBackends") or []),
-                            list(shape.mcp_servers),
-                        )
-                    }
-                }
-            }
-            with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as pfh:
-                yaml.safe_dump(plat, pfh)
-                plat_file = pfh.name
-            plat_args.extend(["-f", plat_file])
-        if as_default or shape.mcp_servers:
-            try:
-                _run(plat_args, runner=runner)
-            finally:
-                if plat_file:
-                    Path(plat_file).unlink(missing_ok=True)
+            _run(plat_args, runner=runner)
         _run(
             kube_argv(
                 env,
@@ -652,7 +632,7 @@ def _boot_logging() -> None:
         return
     if not os.getenv("ZELKOR_LOG_FORMAT"):
         os.environ["ZELKOR_LOG_FORMAT"] = "text" if sys.stderr.isatty() else "json"
-    configure_logging("zelkor-cli")
+        configure_logging("zelkor-cli", stream=sys.stderr)
 
 
 def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> int:
@@ -688,6 +668,26 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     sub.add_parser("doctor", help="check discovered platform endpoints")
     sub.add_parser("version", help="CLI and platform chart version")
 
+    p_token = sub.add_parser("token", help="mint RS256 tokens from cluster signing key")
+    token_sub = p_token.add_subparsers(dest="token_cmd", required=True)
+    p_mint = token_sub.add_parser("mint", help="mint a tenant JWT")
+    p_mint.add_argument("--release", required=True)
+    p_mint.add_argument("--tenant", required=True)
+    p_mint.add_argument("--namespace", default="")
+    p_mint.add_argument("--kubeconfig", default="")
+    p_mint.add_argument("--context", default="")
+    p_mint.add_argument("--issuer", default="")
+    p_mint.add_argument("--audience", default="")
+    p_mint.add_argument("--ttl", default="")
+    p_mint.add_argument("--out", default="")
+    p_jwks = token_sub.add_parser("jwks", help="write public JWKS to a file")
+    p_jwks.add_argument("--release", required=True)
+    p_jwks.add_argument("--out", required=True)
+    p_jwks.add_argument("--env-file", default="")
+    p_jwks.add_argument("--namespace", default="")
+    p_jwks.add_argument("--kubeconfig", default="")
+    p_jwks.add_argument("--context", default="")
+
     p_env = sub.add_parser("env", help="named kubecontext targets")
     env_sub = p_env.add_subparsers(dest="env_cmd", required=True)
     p_add = env_sub.add_parser("add")
@@ -717,6 +717,12 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     logger.info("cli cmd=%s", args.cmd)
     if args.cmd in PAID:
         print(UPGRADE, file=sys.stderr)
+        return 2
+    if args.cmd == "token":
+        if args.token_cmd == "mint":
+            return cmd_token_mint(args)
+        if args.token_cmd == "jwks":
+            return cmd_token_jwks(args)
         return 2
     if args.cmd == "init":
         return cmd_init(Path(args.directory))

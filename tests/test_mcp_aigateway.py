@@ -39,23 +39,12 @@ def test_gateway_path_and_body():
     assert emb == {"model": "m", "input": "hi"}
 
 
-def test_call_tenant_mismatch():
-    server = AIGatewayMCPServer(allowed_models=[])
-    with pytest.raises(PermissionError, match="tenant_id mismatch"):
-        server.call_tool(
-            "call",
-            {"tenant_id": "tenant_b", "model": "openai/gpt-4o-mini", "messages": []},
-            "tenant_a",
-        )
-
-
 def test_call_rejects_disallowed_model():
     server = AIGatewayMCPServer(allowed_models=["allowed/model"])
     with pytest.raises(PermissionError, match="not allowed"):
         server.call_tool(
             "call",
             {
-                "tenant_id": "tenant_a",
                 "model": "other/model",
                 "messages": [{"role": "user", "content": "hi"}],
             },
@@ -102,10 +91,10 @@ def test_mcp_aigateway_rejects_url_arg():
         pytest.skip(str(exc))
 
 
-def test_mcp_aigateway_rejects_tenant_mismatch():
+def test_mcp_aigateway_rejects_stray_tenant_id():
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id mismatch"):
+        with pytest.raises(RuntimeError, match="(?i)tenant_id"):
             client.call_tool(
                 "aigateway__call",
                 {

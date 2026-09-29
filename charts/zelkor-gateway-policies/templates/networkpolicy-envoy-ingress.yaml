@@ -1,0 +1,38 @@
+{{- $gwName := required "gateway.name is required" .Values.gateway.name -}}
+{{- $gwNs := required "gateway.namespace is required" .Values.gateway.namespace -}}
+{{- $listeners := .Values.listeners | default list -}}
+{{- if eq (len $listeners) 0 -}}
+{{- fail "zelkor-gateway-policies.listeners must not be empty" -}}
+{{- end -}}
+{{- $mon := .Values.monitoring.namespaceSelector | default dict -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-envoy-ingress
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      gateway.envoyproxy.io/owning-gateway-name: {{ $gwName | quote }}
+      gateway.envoyproxy.io/owning-gateway-namespace: {{ $gwNs | quote }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+{{- range $listeners }}
+        - port: {{ include "zelkor-gateway-policies.containerPort" (include "zelkor-gateway-policies.listenerPort" .) | int }}
+          protocol: TCP
+{{- end }}
+        - port: 19003
+          protocol: TCP
+{{- if $mon }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml $mon | nindent 14 }}
+      ports:
+        - port: 19001
+          protocol: TCP
+        - port: 1064
+          protocol: TCP
+{{- end }}

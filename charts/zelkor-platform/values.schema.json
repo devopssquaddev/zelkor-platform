@@ -83,34 +83,104 @@
               },
               "additionalProperties": false
             },
-            "jwtSecret": {
-              "type": "string",
-              "description": "Value for platform.tenants.jwtSecret."
-            },
-            "devTokens": {
-              "type": "object",
-              "description": "Values under platform.tenants.devTokens.",
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "description": "Value for platform.tenants.devTokens.enabled."
-                },
-                "prefix": {
-                  "type": "string",
-                  "description": "Value for platform.tenants.devTokens.prefix."
-                }
-              },
-              "additionalProperties": false
-            },
-            "trustTenantHeader": {
-              "type": "boolean",
-              "description": "Value for platform.tenants.trustTenantHeader."
-            },
             "orgMappings": {
               "type": "object",
               "description": "Values under platform.tenants.orgMappings.",
               "properties": {
               }
+            },
+            "jwt": {
+              "type": "object",
+              "description": "Values under platform.tenants.jwt.",
+              "properties": {
+                "issuer": {
+                  "type": "string",
+                  "description": "Value for platform.tenants.jwt.issuer."
+                },
+                "audiences": {
+                  "type": "array",
+                  "description": "List at platform.tenants.jwt.audiences.",
+                  "items": {
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                },
+                "jwks": {
+                  "type": "string",
+                  "description": "Value for platform.tenants.jwt.jwks."
+                },
+                "jwksConfigMap": {
+                  "type": "string",
+                  "description": "Value for platform.tenants.jwt.jwksConfigMap."
+                },
+                "remoteJwksUri": {
+                  "type": "string",
+                  "description": "Value for platform.tenants.jwt.remoteJwksUri."
+                },
+                "jwksEgressCIDRs": {
+                  "type": "array",
+                  "description": "List at platform.tenants.jwt.jwksEgressCIDRs.",
+                  "items": {
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
+                  }
+                },
+                "jwksCacheSeconds": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for platform.tenants.jwt.jwksCacheSeconds."
+                },
+                "tenantClaims": {
+                  "type": "array",
+                  "description": "List at platform.tenants.jwt.tenantClaims.",
+                  "items": {
+                    "type": "string",
+                    "description": "Value for platform.tenants.jwt.tenantClaims.0."
+                  }
+                },
+                "localSigning": {
+                  "type": "object",
+                  "description": "Values under platform.tenants.jwt.localSigning.",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Value for platform.tenants.jwt.localSigning.enabled."
+                    },
+                    "seedTenant": {
+                      "type": "string",
+                      "description": "Value for platform.tenants.jwt.localSigning.seedTenant."
+                    },
+                    "tokenTTL": {
+                      "type": "string",
+                      "description": "Value for platform.tenants.jwt.localSigning.tokenTTL."
+                    },
+                    "seedTokenTTL": {
+                      "type": "string",
+                      "description": "Value for platform.tenants.jwt.localSigning.seedTokenTTL."
+                    },
+                    "rotationId": {
+                      "type": "string",
+                      "description": "Value for platform.tenants.jwt.localSigning.rotationId."
+                    },
+                    "privateKey": {
+                      "type": "string",
+                      "description": "Install-time PEM via --set-file (local-signing-helm-sets.sh); not stored in git."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
@@ -1339,76 +1409,59 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "description": "Backend name prefix for MCP gateway routing."
+                    "description": "Backend name prefix for MCPRoute tool routing."
                   },
-                  "url": {
-                    "type": "string",
-                    "description": "MCP base URL (in-cluster or external HTTPS)."
-                  },
-                  "path": {
-                    "type": "string",
-                    "description": "JSON-RPC path (default /mcp)."
-                  },
-                  "timeoutSeconds": {
-                    "type": [
-                      "integer",
-                      "string"
-                    ],
-                    "description": "Outbound RPC timeout."
-                  },
-                  "forwardAuthorization": {
-                    "type": "boolean",
-                    "description": "Forward caller Zelkor Bearer (default true; false when backend auth sets Authorization)."
-                  },
-                  "forwardTenantHeader": {
-                    "type": "boolean",
-                    "description": "Send X-Tenant-ID (default true)."
-                  },
-                  "injectTenantArg": {
-                    "type": "boolean",
-                    "description": "Default args.tenant_id on tools/call (default true)."
-                  },
-                  "isolation": {
-                    "type": "string",
-                    "description": "Enterprise: hardware for Kata (Ent only)."
-                  },
-                  "auth": {
+                  "service": {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                      "type": {
-                        "type": "string",
-                        "enum": [
-                          "none",
-                          "bearer",
-                          "basic",
-                          "header"
-                        ]
-                      },
-                      "secretRef": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ]
-                      },
-                      "headerName": {
+                      "name": {
                         "type": "string"
                       },
-                      "usernameSecretRef": {
+                      "port": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "port"
+                    ]
+                  },
+                  "fqdn": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "hostname": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": [
+                          "integer",
+                          "string"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "hostname",
+                      "port"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "MCP path on the backend (default /mcp)."
+                  },
+                  "apiKey": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "secretRef": {
                         "type": "object",
+                        "additionalProperties": false,
                         "properties": {
                           "name": {
-                            "type": "string"
-                          },
-                          "key": {
                             "type": "string"
                           }
                         },
@@ -1416,43 +1469,55 @@
                           "name"
                         ]
                       },
-                      "passwordSecretRef": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ]
+                      "header": {
+                        "type": "string",
+                        "description": "Empty or Authorization for Bearer; else custom header name."
+                      }
+                    },
+                    "required": [
+                      "secretRef"
+                    ]
+                  },
+                  "tls": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "caSecretRef": {
+                        "type": "string",
+                        "description": "Secret name for CA cert (FQDN backends)."
                       }
                     }
                   },
-                  "headers": {
+                  "toolSelector": {
                     "type": "object",
-                    "additionalProperties": {
-                      "type": "string"
+                    "additionalProperties": false,
+                    "properties": {
+                      "include": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "includeRegex": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
                     }
                   },
-                  "headersFrom": {
+                  "forwardHeaders": {
                     "type": "array",
                     "items": {
-                      "type": "object",
-                      "properties": {
-                        "header": {
+                      "oneOf": [
+                        {
                           "type": "string"
                         },
-                        "secretRef": {
+                        {
                           "type": "object",
+                          "additionalProperties": false,
                           "properties": {
                             "name": {
-                              "type": "string"
-                            },
-                            "key": {
                               "type": "string"
                             }
                           },
@@ -1460,34 +1525,13 @@
                             "name"
                           ]
                         }
-                      },
-                      "required": [
-                        "header",
-                        "secretRef"
                       ]
-                    }
-                  },
-                  "tls": {
-                    "type": "object",
-                    "properties": {
-                      "caSecretRef": {
-                        "type": "object",
-                        "properties": {
-                          "name": {
-                            "type": "string"
-                          },
-                          "key": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "name"
-                        ]
-                      }
-                    }
+                    },
+                    "description": "Client headers to forward; Authorization is forbidden."
                   },
                   "egress": {
                     "type": "object",
+                    "additionalProperties": false,
                     "properties": {
                       "cidrs": {
                         "type": "array",
@@ -1508,8 +1552,7 @@
                   }
                 },
                 "required": [
-                  "name",
-                  "url"
+                  "name"
                 ]
               }
             },
@@ -1528,209 +1571,6 @@
                 "digest": {
                   "type": "string",
                   "description": "Value for workspace.tools.image.digest."
-                }
-              },
-              "additionalProperties": false
-            },
-            "gateway": {
-              "type": "object",
-              "description": "Values under workspace.tools.gateway.",
-              "properties": {
-                "replicaCount": {
-                  "type": [
-                    "integer",
-                    "string"
-                  ],
-                  "description": "Value for workspace.tools.gateway.replicaCount."
-                },
-                "resources": {
-                  "type": "object",
-                  "description": "Values under workspace.tools.gateway.resources.",
-                  "properties": {
-                    "requests": {
-                      "type": "object",
-                      "description": "Values under workspace.tools.gateway.resources.requests.",
-                      "properties": {
-                        "cpu": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.resources.requests.cpu."
-                        },
-                        "memory": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.resources.requests.memory."
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "limits": {
-                      "type": "object",
-                      "description": "Values under workspace.tools.gateway.resources.limits.",
-                      "properties": {
-                        "cpu": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.resources.limits.cpu."
-                        },
-                        "memory": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.resources.limits.memory."
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  }
-                },
-                "startupProbe": {
-                  "type": "object",
-                  "description": "Values under workspace.tools.gateway.startupProbe.",
-                  "properties": {
-                    "httpGet": {
-                      "type": "object",
-                      "description": "Values under workspace.tools.gateway.startupProbe.httpGet.",
-                      "properties": {
-                        "path": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.startupProbe.httpGet.path."
-                        },
-                        "port": {
-                          "type": [
-                            "integer",
-                            "string"
-                          ],
-                          "description": "Value for workspace.tools.gateway.startupProbe.httpGet.port."
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "initialDelaySeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.startupProbe.initialDelaySeconds."
-                    },
-                    "periodSeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.startupProbe.periodSeconds."
-                    },
-                    "timeoutSeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.startupProbe.timeoutSeconds."
-                    },
-                    "failureThreshold": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.startupProbe.failureThreshold."
-                    }
-                  }
-                },
-                "livenessProbe": {
-                  "type": "object",
-                  "description": "Values under workspace.tools.gateway.livenessProbe.",
-                  "properties": {
-                    "httpGet": {
-                      "type": "object",
-                      "description": "Values under workspace.tools.gateway.livenessProbe.httpGet.",
-                      "properties": {
-                        "path": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.livenessProbe.httpGet.path."
-                        },
-                        "port": {
-                          "type": [
-                            "integer",
-                            "string"
-                          ],
-                          "description": "Value for workspace.tools.gateway.livenessProbe.httpGet.port."
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "periodSeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.livenessProbe.periodSeconds."
-                    },
-                    "timeoutSeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.livenessProbe.timeoutSeconds."
-                    },
-                    "failureThreshold": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.livenessProbe.failureThreshold."
-                    }
-                  }
-                },
-                "readinessProbe": {
-                  "type": "object",
-                  "description": "Values under workspace.tools.gateway.readinessProbe.",
-                  "properties": {
-                    "httpGet": {
-                      "type": "object",
-                      "description": "Values under workspace.tools.gateway.readinessProbe.httpGet.",
-                      "properties": {
-                        "path": {
-                          "type": "string",
-                          "description": "Value for workspace.tools.gateway.readinessProbe.httpGet.path."
-                        },
-                        "port": {
-                          "type": [
-                            "integer",
-                            "string"
-                          ],
-                          "description": "Value for workspace.tools.gateway.readinessProbe.httpGet.port."
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "periodSeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.readinessProbe.periodSeconds."
-                    },
-                    "timeoutSeconds": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.readinessProbe.timeoutSeconds."
-                    },
-                    "failureThreshold": {
-                      "type": [
-                        "integer",
-                        "string"
-                      ],
-                      "description": "Value for workspace.tools.gateway.readinessProbe.failureThreshold."
-                    }
-                  }
-                }
-              },
-              "additionalProperties": false
-            },
-            "mcproute": {
-              "type": "object",
-              "description": "Values under workspace.tools.mcproute.",
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "description": "Value for workspace.tools.mcproute.enabled."
                 }
               },
               "additionalProperties": false
@@ -3253,6 +3093,10 @@
             }
           },
           "additionalProperties": false
+        },
+        "monitoringNamespaceSelector": {
+          "type": "object",
+          "description": "Namespace labels for Prometheus scrapes of MCP metrics (port 9090)."
         }
       },
       "additionalProperties": false
@@ -3459,6 +3303,17 @@
       "type": "object",
       "description": "Values under security.",
       "properties": {
+        "mcp": {
+          "type": "object",
+          "description": "Values under security.mcp.",
+          "properties": {
+            "acceptUnprotectedBackends": {
+              "type": "boolean",
+              "description": "Value for security.mcp.acceptUnprotectedBackends."
+            }
+          },
+          "additionalProperties": false
+        },
         "sandbox": {
           "type": "object",
           "description": "Values under security.sandbox.",
@@ -3656,6 +3511,17 @@
       "type": "object",
       "description": "Values under gateway.",
       "properties": {
+        "dataplane": {
+          "type": "object",
+          "description": "Envoy dataplane pod namespace for MCP NetworkPolicy selectors.",
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "description": "Value for gateway.dataplane.namespace."
+            }
+          },
+          "additionalProperties": false
+        },
         "enabled": {
           "type": "boolean",
           "description": "Value for gateway.enabled."
@@ -3671,6 +3537,21 @@
         "createGateway": {
           "type": "boolean",
           "description": "Value for gateway.createGateway."
+        },
+        "mcproute": {
+          "type": "object",
+          "description": "Values under gateway.mcproute.",
+          "properties": {
+            "nativeRefKind": {
+              "type": "string",
+              "description": "Value for gateway.mcproute.nativeRefKind."
+            },
+            "sharedGatewayAck": {
+              "type": "boolean",
+              "description": "Value for gateway.mcproute.sharedGatewayAck."
+            }
+          },
+          "additionalProperties": false
         },
         "parentRef": {
           "type": "object",
@@ -4744,13 +4625,9 @@
       "type": "object",
       "description": "REMOVED in V2 — use platform.* / workspace.* / workload.*. Supplying values fails at render.",
       "properties": {
-        "jwtSecret": {
-          "type": "string",
-          "description": "Value for auth.jwtSecret."
-        },
-        "trustTenantHeader": {
+        "enabled": {
           "type": "boolean",
-          "description": "Value for auth.trustTenantHeader."
+          "description": "Value for auth.enabled."
         }
       },
       "additionalProperties": false

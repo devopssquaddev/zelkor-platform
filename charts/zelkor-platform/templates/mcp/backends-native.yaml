@@ -1,0 +1,26 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- if eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true" }}
+{{- $refKind := (.Values.mcp.mcproute.nativeRefKind | default "Backend") | trim -}}
+{{- if eq $refKind "Backend" }}
+{{- $root := . -}}
+{{- $natives := include "zelkor-platform.mcpNativeBackends" . | fromJsonArray -}}
+{{- range $i, $nb := $natives }}
+{{- if $i }}
+---
+{{- end }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ $nb.name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $root "intent" (printf "mcp.%s" $nb.name)) | nindent 4 }}
+    app.kubernetes.io/component: mcp-native
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ $nb.hostname }}
+        port: 8080
+{{- end }}
+{{- end }}
+{{- end }}

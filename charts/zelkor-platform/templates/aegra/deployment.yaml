@@ -82,7 +82,7 @@ spec:
             {{- include "zelkor-platform.aegraOtelEnv" . | nindent 12 }}
             - name: LOG_EXCLUDE_PATHS
               value: "/health,/live,/ready"
-            {{- include "zelkor-platform.authEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
             - name: DATABASE_URL
               value: {{ include "zelkor-platform.postgresUrl" (list . "aegra") | quote }}
             - name: REDIS_URL
@@ -112,7 +112,7 @@ spec:
             - name: AI_GATEWAY_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
             - name: MCP_URL
-              value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+              value: {{ printf "%s/mcp" (include "zelkor-platform.mcpUrl" .) | quote }}
             - name: ZELKOR_RUN_TIMEOUT
               value: {{ ($intent.timeout | default "") | quote }}
             - name: ZELKOR_MAX_TOKENS
@@ -123,8 +123,6 @@ spec:
               value: {{ ternary "true" "false" (($intent.approval).enabled | default false) | quote }}
             - name: MCP_INJECT_ENABLED
               value: {{ ((.Values.aegra.mcpInject).enabled | default false) | quote }}
-            - name: ZELKOR_TENANT_HEADER
-              value: "X-Tenant-ID"
             - name: QDRANT_URL
               value: "http://{{ include "zelkor-platform.fullname" . }}-qdrant:6333"
             - name: ENABLE_PROMETHEUS_METRICS
@@ -142,6 +140,7 @@ spec:
             - name: graph-modules
               mountPath: {{ .Values.aegra.graphModules.mountPath | default "/app/graphs" | quote }}
             {{- end }}
+            {{- include "zelkor-platform.tenantAuthVolumeMount" . | nindent 12 }}
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.aegra) | nindent 10 }}
       volumes:
         - name: agents-auth
@@ -152,4 +151,5 @@ spec:
           configMap:
             name: {{ .Values.aegra.graphModules.configMapName | quote }}
         {{- end }}
+        {{- include "zelkor-platform.tenantAuthVolume" . | nindent 8 }}
 {{- end }}

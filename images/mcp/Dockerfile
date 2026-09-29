@@ -20,4 +20,4 @@ RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
 USER 1000
 
 EXPOSE 8080
-CMD ["python", "mcp/gateway/gateway_server.py"]
+CMD ["python", "mcp/wrappers/postgres_server.py"]

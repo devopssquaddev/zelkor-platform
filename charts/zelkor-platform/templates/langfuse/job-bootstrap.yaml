@@ -112,13 +112,13 @@ spec:
             - name: SEED_CODE_EVALUATORS
               value: {{ $evals.seedCode | quote }}
             - name: MCP_URL
-              value: {{ include "zelkor-platform.mcpGatewayUrl" . | quote }}
+              value: {{ printf "%s/mcp" (include "zelkor-platform.mcpUrl" .) | quote }}
             - name: MCP_SEED_TENANT
               value: {{ $tools.seedTenant | default "seed" | quote }}
             - name: MCP_AUTH_TOKEN
               value: {{ $tools.authToken | default "" | quote }}
             - name: MCP_EXTRA_BACKENDS
-              value: {{ .Values.__mcpExtraBackendJson | default "[]" | quote }}
+              value: {{ .Values.__mcpExtraBackendSeedJson | default "[]" | quote }}
             - name: LANGFUSE_EXTRA_PROJECTS
               value: {{ $extraProjects | toJson | quote }}
             - name: VALKEY_HOST

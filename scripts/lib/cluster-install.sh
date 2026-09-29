@@ -7,6 +7,11 @@ cluster_install_die() {
   exit 1
 }
 
+# shellcheck source=gateway-policies.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
+# shellcheck source=mcp-dataplane-install.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/mcp-dataplane-install.sh"
+
 cluster_install_need() {
   command -v "$1" >/dev/null 2>&1 || cluster_install_die "missing required command: $1"
 }
@@ -49,6 +54,83 @@ cluster_install_init() {
   CLUSTER_INSTALL_HELM_SETS=()
   CLUSTER_INSTALL_HELM_EXTRA=()
   CLUSTER_INSTALL_SHIFT=1
+  JWT_ISSUER=""
+  JWT_AUDIENCE=""
+  JWKS_FILE=""
+}
+
+cluster_install_helm_sets_include() {
+  local needle="$1"
+  local sets=("${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}")
+  local i=0 val=""
+  while [[ $i -lt ${#sets[@]} ]]; do
+    case "${sets[$i]}" in
+      --set)
+        i=$((i + 1))
+        [[ $i -lt ${#sets[@]} ]] || break
+        val="${sets[$i]}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+      --set-file)
+        i=$((i + 1))
+        [[ $i -lt ${#sets[@]} ]] || break
+        val="${sets[$i]}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+      --set=*)
+        val="${sets[$i]#--set=}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  return 1
+}
+
+cluster_install_jwt_source_configured() {
+  cluster_install_helm_sets_include "platform.tenants.jwt.jwks=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.jwksConfigMap=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.remoteJwksUri=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.localSigning.enabled=" && return 0
+  cluster_install_helm_sets_include "platform.tenants.jwt.localSigning.privateKey=" && return 0
+  return 1
+}
+
+cluster_install_apply_jwt_cli_flags() {
+  if [[ -n "$JWT_ISSUER" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.issuer=${JWT_ISSUER}")
+  fi
+  if [[ -n "$JWT_AUDIENCE" ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.audiences[0]=${JWT_AUDIENCE}")
+  fi
+  if [[ -n "$JWKS_FILE" ]]; then
+    [[ -f "$JWKS_FILE" ]] || cluster_install_die "--jwks-file not found: ${JWKS_FILE}"
+    CLUSTER_INSTALL_HELM_SETS+=(--set-file "platform.tenants.jwt.jwks=${JWKS_FILE}")
+  fi
+}
+
+cluster_install_require_external_jwt() {
+  local values_file="$1"
+  if cluster_install_profile_local_signing "$values_file"; then
+    return 0
+  fi
+  cluster_install_helm_sets_include "platform.tenants.jwt.issuer=" || \
+    cluster_install_die "production install requires --jwt-issuer or --set platform.tenants.jwt.issuer (profile has no localSigning)"
+  local aud_ok=0
+  if cluster_install_helm_sets_include "platform.tenants.jwt.audiences[0]="; then
+    aud_ok=1
+  fi
+  if [[ "$aud_ok" -eq 0 ]]; then
+    cluster_install_die "production install requires --jwt-audience or --set platform.tenants.jwt.audiences[0]"
+  fi
+  cluster_install_jwt_source_configured || \
+    cluster_install_die "production install requires --jwks-file or --set platform.tenants.jwt.jwks / jwksConfigMap / remoteJwksUri"
 }
 
 cluster_install_try_common() {
@@ -491,7 +573,38 @@ cluster_install_print_or_run() {
   "$@"
 }
 
+cluster_install_export_gateway_policies_env() {
+  if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]]; then
+    export ZELKOR_SKIP_GATEWAY_POLICIES=1
+    return 0
+  fi
+  unset ZELKOR_SKIP_GATEWAY_POLICIES
+  export ZELKOR_GATEWAY_POLICIES_GATEWAY_NAME="$(
+    gateway_policies_gateway_name "$CLUSTER_INSTALL_RELEASE" "$PARENT_REF_NAME"
+  )"
+  export ZELKOR_GATEWAY_POLICIES_GATEWAY_NAMESPACE="$(
+    gateway_policies_gateway_namespace "$CLUSTER_INSTALL_NAMESPACE" "$PARENT_REF_NAMESPACE"
+  )"
+  GATEWAY_POLICIES_HELM_SET_SCAN=()
+  local sets=("${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}")
+  local i=0
+  while [[ $i -lt ${#sets[@]} ]]; do
+    case "${sets[$i]}" in
+      --set)
+        i=$((i + 1))
+        [[ $i -lt ${#sets[@]} ]] && GATEWAY_POLICIES_HELM_SET_SCAN+=("${sets[$i]}")
+        ;;
+      --set=*)
+        GATEWAY_POLICIES_HELM_SET_SCAN+=("${sets[$i]#--set=}")
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  export ZELKOR_GATEWAY_POLICIES_LISTENERS_JSON="$(gateway_policies_listeners_json)"
+}
+
 cluster_install_run_bootstrap_gateway() {
+  cluster_install_export_gateway_policies_env
   local args=()
   while IFS= read -r line; do
     [[ -n "$line" ]] && args+=("$line")
@@ -503,15 +616,82 @@ cluster_install_run_bootstrap_gateway() {
     cluster_install_print_or_run BOOTSTRAP_GATEWAY \
       "${ZELKOR_REPO_ROOT}/scripts/bootstrap-gateway.sh"
   fi
+  cluster_install_envoy_enable_backend_preflight
+}
+
+cluster_install_helm_template_preflight() {
+  local values_file="$1"
+  [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]] && return 0
+  local chart="${ZELKOR_REPO_ROOT}/charts/zelkor-platform"
+  local tpl_extra=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && tpl_extra+=("$line")
+  done < <(cluster_install_helm_template_extra_args "$values_file")
+  local err_file
+  err_file="$(mktemp)"
+  if ! helm template "$CLUSTER_INSTALL_RELEASE" "$chart" \
+    --namespace "$CLUSTER_INSTALL_NAMESPACE" \
+    --disable-openapi-validation \
+    "${tpl_extra[@]}" >"${err_file}" 2>&1; then
+    cluster_install_die "helm template failed: $(tail -n 3 "${err_file}")"
+  fi
+  rm -f "${err_file}"
+}
+
+cluster_install_profile_local_signing() {
+  local values_file="$1"
+  # shellcheck source=local-signing-helm-sets.sh
+  source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
+  HELM_RELEASE_NAME="$CLUSTER_INSTALL_RELEASE"
+  local cfg
+  cfg="$(_local_signing_read_config "$values_file" 2>/dev/null || true)"
+  [[ -n "$cfg" ]]
+}
+
+cluster_install_envoy_enable_backend_preflight() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  local native_ref=""
+  local arg
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    case "$arg" in
+      mcp.mcproute.nativeRefKind=*) native_ref="${arg#mcp.mcproute.nativeRefKind=}" ;;
+      gateway.mcproute.nativeRefKind=*) native_ref="${arg#gateway.mcproute.nativeRefKind=}" ;;
+    esac
+  done
+  if [[ -z "$native_ref" ]]; then
+    native_ref="Backend"
+  fi
+  if [[ "$native_ref" != "Backend" ]]; then
+    return 0
+  fi
+  if ! kubectl "${KUBECTL_ARGS[@]}" get configmap envoy-gateway-config -n envoy-gateway-system >/dev/null 2>&1; then
+    return 0
+  fi
+  local body
+  body="$(kubectl "${KUBECTL_ARGS[@]}" get configmap envoy-gateway-config -n envoy-gateway-system \
+    -o jsonpath='{.data.envoy-gateway\.yaml}' 2>/dev/null || true)"
+  if [[ "$body" != *"enableBackend: true"* ]]; then
+    cluster_install_die "Envoy Gateway extensionApis.enableBackend must be true for MCPRoute Backend refs (re-run scripts/bootstrap-gateway.sh)"
+  fi
 }
 
 cluster_install_run_helm() {
   local values_file="$1"
+  cluster_install_helm_template_preflight "$values_file"
+  cluster_install_gateway_policies_preflight "$values_file"
   local cmd=()
   while IFS= read -r line; do
     [[ -n "$line" ]] && cmd+=("$line")
   done < <(cluster_install_helm_cmd "$values_file")
   cluster_install_print_or_run HELM "${cmd[@]}"
+}
+
+cluster_install_append_local_signing_helm_sets() {
+  local values_file="$1"
+  # shellcheck source=lib/local-signing-helm-sets.sh
+  source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
+  HELM_RELEASE_NAME="$CLUSTER_INSTALL_RELEASE"
+  append_local_signing_helm_sets CLUSTER_INSTALL_HELM_SETS "$values_file"
 }
 
 cluster_install_refuse_foreign_eg() {
@@ -545,6 +725,41 @@ cluster_install_resolved_pg_instances() {
     echo "$found"
   else
     echo "$CLUSTER_INSTALL_PG_INSTANCES"
+  fi
+}
+
+cluster_install_helm_template_extra_args() {
+  local values_file="$1"
+  local overlay
+  overlay="$(cluster_install_gateway_overlay)"
+  local args=(
+    -f "$values_file"
+    -f "$overlay"
+  )
+  if [[ ${#CLUSTER_INSTALL_HELM_SETS[@]} -gt 0 ]]; then
+    args+=("${CLUSTER_INSTALL_HELM_SETS[@]}")
+  fi
+  printf '%s\n' "${args[@]}"
+}
+
+cluster_install_gateway_policies_preflight() {
+  local values_file="$1"
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]] && return 0
+  if ! helm "${HELM_KUBE_ARGS[@]}" status zelkor-gateway-policies -n envoy-gateway-system >/dev/null 2>&1; then
+    return 0
+  fi
+  local chart="${ZELKOR_REPO_ROOT}/charts/zelkor-platform"
+  local tpl_extra=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && tpl_extra+=("$line")
+  done < <(cluster_install_helm_template_extra_args "$values_file")
+  local expected actual
+  expected="$(gateway_policies_platform_listener_ports \
+    "$chart" "$CLUSTER_INSTALL_NAMESPACE" "$CLUSTER_INSTALL_RELEASE" "${tpl_extra[@]}")" || return 0
+  actual="$(gateway_policies_release_listener_ports "${HELM_KUBE_ARGS[@]}")" || return 0
+  if ! gateway_policies_preflight_match "$expected" "$actual"; then
+    cluster_install_die "gateway listener ports (${expected}) not covered by zelkor-gateway-policies listeners (${actual})"
   fi
 }
 
@@ -666,6 +881,27 @@ cluster_install_wait_langfuse_bootstrap() {
   kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
     wait "job/${job}" --for=condition=complete --timeout=20m || \
     cluster_install_warn_or_fail "Langfuse bootstrap Job did not complete"
+}
+
+cluster_install_wait_mcp_dataplane() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  MCP_DP_KUBECTL_ARGS=("${KUBECTL_ARGS[@]}")
+  MCP_DP_RELEASE="$CLUSTER_INSTALL_RELEASE"
+  MCP_DP_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
+  MCP_DP_KUBE_CONTEXT="${KUBE_CONTEXT:-}"
+  mcp_dataplane_wait_all
+}
+
+cluster_install_print_mcp_token_banner() {
+  local values_file="$1"
+  MCP_DP_LOCAL_SIGNING=0
+  if cluster_install_profile_local_signing "$values_file"; then
+    MCP_DP_LOCAL_SIGNING=1
+  fi
+  MCP_DP_RELEASE="$CLUSTER_INSTALL_RELEASE"
+  MCP_DP_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
+  MCP_DP_KUBE_CONTEXT="${KUBE_CONTEXT:-}"
+  mcp_dataplane_print_token_banner
 }
 
 cluster_install_enable_langfuse_public_route() {

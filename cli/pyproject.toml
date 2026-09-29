@@ -11,6 +11,7 @@ requires-python = ">=3.9"
 dependencies = [
   "PyYAML>=6.0",
   "langgraph-sdk==0.4.2",
+  "PyJWT[crypto]>=2.8.0",
 ]
 
 [project.scripts]

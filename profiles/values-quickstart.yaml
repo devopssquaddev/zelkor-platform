@@ -36,9 +36,17 @@ platform:
   tenants:
     sso:
       enabled: false
-    devTokens:
-      enabled: false
-    trustTenantHeader: false
+    jwt:
+      issuer: https://quickstart.zelkor.invalid
+      audiences:
+      - zelkor
+      # Lab placeholder JWKS; install-quickstart.sh may replace before upgrade.
+      jwks: '{"keys":[{"kty":"RSA","kid":"quickstart-lab","use":"sig","alg":"RS256","n":"AQAB","e":"AQAB"}]}'
+      localSigning:
+        enabled: true
+        seedTenant: quickstart-seed
+        tokenTTL: 24h
+        seedTokenTTL: 24h
   telemetry:
     langfuse:
       init:

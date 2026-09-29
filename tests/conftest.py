@@ -1,7 +1,18 @@
 import os
 import subprocess
 import json
+import sys
+from pathlib import Path
+
 import pytest
+
+# Mirror Aegra image layout: flat `jwt_verifier` beside `tenant_auth`.
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT / "mcp") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "mcp"))
+import common.jwt_verifier as _jwt_verifier_module  # noqa: E402
+
+sys.modules.setdefault("jwt_verifier", _jwt_verifier_module)
 
 @pytest.fixture(scope="session")
 def kubecontext():

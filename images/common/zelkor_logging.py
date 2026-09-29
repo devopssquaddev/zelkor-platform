@@ -209,8 +209,17 @@ def install_lifecycle_hooks() -> None:
             pass
 
 
-def configure_logging(component: Optional[str] = None, *, force: bool = False) -> str:
-    """Configure the root logger. Returns the component name used."""
+def configure_logging(
+    component: Optional[str] = None,
+    *,
+    force: bool = False,
+    stream: object | None = None,
+) -> str:
+    """Configure the root logger. Returns the component name used.
+
+    Cluster processes use stdout (default). The ``zelkor`` CLI uses stderr so
+    machine-readable command output (tokens, JSON) stays on stdout.
+    """
     if getattr(configure_logging, "_done", False) and not force:
         return getattr(configure_logging, "_component", component or "zelkor")
 
@@ -222,7 +231,7 @@ def configure_logging(component: Optional[str] = None, *, force: bool = False) -
     level = parse_level()
     fmt = parse_format()
 
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
     if fmt == "json":
         handler.setFormatter(JsonFormatter())
     else:

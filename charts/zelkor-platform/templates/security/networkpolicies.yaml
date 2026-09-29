@@ -30,13 +30,6 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: mcp-gateway
-      ports:
-        - protocol: TCP
-          port: 8080
-    - to:
-        - podSelector:
-            matchLabels:
               app.kubernetes.io/component: ai-gateway
       ports:
         - protocol: TCP
@@ -117,13 +110,6 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/component: mcp-gateway
-      ports:
-        - protocol: TCP
-          port: 8080
-    - to:
-        - podSelector:
-            matchLabels:
               app.kubernetes.io/component: ai-gateway
       ports:
         - protocol: TCP
@@ -155,81 +141,6 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ $fullname }}-mcp-gateway-egress
-  namespace: {{ $ns }}
-  labels:
-    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/component: mcp-gateway
-  policyTypes:
-    - Egress
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: mcp-postgres
-      ports:
-        - protocol: TCP
-          port: 8080
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: mcp-qdrant
-      ports:
-        - protocol: TCP
-          port: 8080
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: mcp-sandbox
-      ports:
-        - protocol: TCP
-          port: 8080
-    {{- if and .Values.mcp.aigatewayMCP .Values.mcp.aigatewayMCP.enabled }}
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: mcp-aigateway
-      ports:
-        - protocol: TCP
-          port: 8080
-    {{- end }}
-    {{- if .Values.mcp.extraBackends }}
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: TCP
-          port: 80
-        - protocol: TCP
-          port: 8080
-        - protocol: TCP
-          port: 443
-    {{- end }}
-    {{- range .Values.__mcpExtraBackendIpBlocks | default list }}
-    - to:
-        - ipBlock:
-            cidr: {{ .cidr | quote }}
-      ports:
-        {{- range .ports | default (list 443) }}
-        - protocol: TCP
-          port: {{ . }}
-        {{- end }}
-    {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -467,12 +378,14 @@ spec:
         - protocol: TCP
           port: 6379
     - to:
-        - podSelector:
+        - namespaceSelector:
             matchLabels:
-              app.kubernetes.io/component: mcp-gateway
+              kubernetes.io/metadata.name: {{ (.Values.gateway.dataplane).namespace | default "envoy-gateway-system" | quote }}
       ports:
         - protocol: TCP
-          port: 8080
+          port: 80
+        - protocol: TCP
+          port: 10080
     - to:
         - podSelector:
             matchLabels:

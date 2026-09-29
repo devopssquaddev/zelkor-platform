@@ -57,6 +57,16 @@ ADMIN_EMAIL = os.getenv("LANGFUSE_ADMIN_EMAIL", "").strip()
 ADMIN_PASSWORD = os.getenv("LANGFUSE_ADMIN_PASSWORD", "")
 ADMIN_NAME = os.getenv("LANGFUSE_ADMIN_NAME", "Admin").strip() or "Admin"
 MCP_URL = os.getenv("MCP_URL", "").rstrip("/")
+
+
+def mcp_streamable_http_url() -> str:
+    """POST target for MCP streamable HTTP (job may set MCP_URL with or without /mcp suffix)."""
+    base = MCP_URL.rstrip("/")
+    if not base:
+        return ""
+    if base.endswith("/mcp"):
+        return base
+    return f"{base}/mcp"
 TOOL_NAME_OK = re.compile(r"^[a-zA-Z0-9._-]+$")
 MCP_TENANT = os.getenv("MCP_SEED_TENANT", "seed")
 MCP_AUTH_TOKEN = os.getenv("MCP_AUTH_TOKEN", "").strip()
@@ -289,20 +299,35 @@ def seed_connection(project: Dict[str, str]) -> None:
 
 
 def mcp_tools_list() -> List[Dict[str, Any]]:
-    if not MCP_URL:
+    endpoint = mcp_streamable_http_url()
+    if not endpoint:
         return []
-    headers = {
-        "Content-Type": "application/json",
-        "X-Tenant-ID": MCP_TENANT,
-    }
+
+    import asyncio
+
+    import httpx
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamable_http_client
+
+    headers = {"Accept": "application/json, text/event-stream"}
     if MCP_AUTH_TOKEN:
-        token = MCP_AUTH_TOKEN if MCP_AUTH_TOKEN.lower().startswith("bearer ") else f"Bearer {MCP_AUTH_TOKEN}"
+        token = (
+            MCP_AUTH_TOKEN
+            if MCP_AUTH_TOKEN.lower().startswith("bearer ")
+            else f"Bearer {MCP_AUTH_TOKEN}"
+        )
         headers["Authorization"] = token
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode("utf-8")
-    req = urllib.request.Request(f"{MCP_URL}/mcp", data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    return (data.get("result") or {}).get("tools") or []
+
+    async def _run() -> List[Dict[str, Any]]:
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as http_client:
+            async with streamable_http_client(endpoint, http_client=http_client) as streams:
+                read_stream, write_stream, _ = streams
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    result = await session.list_tools()
+                    return [t.model_dump(mode="json") for t in result.tools]
+
+    return asyncio.run(_run())
 
 
 def load_mcp_tools() -> List[Dict[str, Any]]:

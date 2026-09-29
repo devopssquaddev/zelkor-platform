@@ -3,6 +3,9 @@ import pytest
 import httpx
 import uuid
 
+from tests.helpers.tokens import bearer_for
+from tests.helpers.tokens import test_tokens as minted_tokens
+
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 AGENTS_HOST_HEADER = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get(
     "AEGRA_HOST_HEADER", "agents.localhost"
@@ -21,11 +24,13 @@ def test_aegra_runtime_health():
 
 def test_aegra_thread_create_without_graph():
     """Threads persist via Aegra's checkpointer; the platform chart ships no graph."""
+    if not minted_tokens():
+        pytest.skip("ZELKOR_TEST_TOKENS not set")
     thread_id = f"test-thread-{uuid.uuid4().hex[:8]}"
     headers = {
         "Host": AGENTS_HOST_HEADER,
         "Content-Type": "application/json",
-        "Authorization": "Bearer dev:tenant_a",
+        "Authorization": bearer_for("tenant_a"),
     }
     try:
         create = httpx.post(

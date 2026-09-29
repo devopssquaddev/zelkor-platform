@@ -191,6 +191,55 @@ def test_nemo_content_safety_passthrough_for_tools():
     assert "NEMO_GUARDRAILS_NO_USAGE_STATS" in off_deploy
 
 
+def test_nemo_otel_instrument_when_langfuse_init_without_capture():
+    from tests.test_helm_values_schema import PROFILES, _helm as helm_schema
+
+    quickstart = PROFILES / "values-quickstart.yaml"
+    deploy = helm_schema(
+        "-s",
+        "templates/guardrails/deployment.yaml",
+        values_files=[quickstart],
+    )
+    assert deploy.returncode == 0, deploy.stderr
+    assert "opentelemetry-instrument" in deploy.stdout
+    cfg = helm_schema(
+        "-s",
+        "templates/guardrails/configmap.yaml",
+        values_files=[quickstart],
+    )
+    assert cfg.returncode == 0, cfg.stderr
+    assert "name: OpenTelemetry" in cfg.stdout
+    assert "enable_content_capture: false" in cfg.stdout
+    langfuse_off = helm_schema(
+        "--set",
+        "platform.telemetry.langfuse.enabled=false",
+        "-s",
+        "templates/guardrails/deployment.yaml",
+        values_files=[quickstart],
+    )
+    assert langfuse_off.returncode == 0, langfuse_off.stderr
+    assert "opentelemetry-instrument" not in langfuse_off.stdout
+    init_off = helm_schema(
+        "--set",
+        "platform.telemetry.langfuse.init.enabled=false",
+        "-s",
+        "templates/guardrails/deployment.yaml",
+        values_files=[quickstart],
+    )
+    assert init_off.returncode == 0, init_off.stderr
+    assert "opentelemetry-instrument" not in init_off.stdout
+    finserve = helm_schema(
+        "-s",
+        "templates/guardrails/configmap.yaml",
+        values_files=[
+            quickstart,
+            ROOT / "examples/finserve/chart/values-platform-overlay.yaml",
+        ],
+    )
+    assert finserve.returncode == 0, finserve.stderr
+    assert "enable_content_capture: true" in finserve.stdout
+
+
 def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     dockerfile = (ROOT / "images/guardrails/Dockerfile").read_text()
     reqs = (ROOT / "images/guardrails/requirements.txt").read_text()
@@ -213,9 +262,22 @@ def test_nemo_otel_uses_instrument_and_early_sitecustomize():
 
 
 def _helm(*args: str) -> str:
+    helm_args = list(args)
+    if str(AGENT_CHART) in helm_args and "auth.issuer=" not in " ".join(helm_args):
+        # helm template cannot lookup the platform contract ConfigMap
+        helm_args.extend(
+            [
+                "--set",
+                "auth.issuer=https://issuer.example",
+                "--set",
+                "auth.audiences[0]=zelkor",
+            ]
+        )
+    if str(AGENT_CHART) in helm_args and "platform.releaseName=" not in " ".join(helm_args):
+        helm_args.extend(["--set", "platform.releaseName=zelkor-platform"])
     try:
         res = subprocess.run(
-            ["helm", *args],
+            ["helm", *helm_args],
             capture_output=True,
             text=True,
             check=False,
@@ -377,8 +439,9 @@ def test_agent_chart_redis_prefix_and_shared_route():
     kinds = {d["kind"]: d for d in docs}
     deploy = kinds["Deployment"]
     env = {e["name"]: e.get("value") for e in deploy["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert env["REDIS_CHANNEL_PREFIX"] == "aegra:fraud:run:"
-    assert env["WORKER_QUEUE_KEY"] == "aegra:fraud:jobs"
+    # Default redis.prefix empty → isolate on Deployment fullname (not graphId alone).
+    assert env["REDIS_CHANNEL_PREFIX"] == "aegra:fraud-zelkor-agent:run:"
+    assert env["WORKER_QUEUE_KEY"] == "aegra:fraud-zelkor-agent:jobs"
     assert env["REDIS_BROKER_ENABLED"] == "true"
     assert "AEGRA_WORKERS" not in env
     route = kinds["HTTPRoute"]

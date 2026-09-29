@@ -1,0 +1,6 @@
+# Offline helm tests: inline JWKS string (no remoteJwksUri).
+platform:
+  tenants:
+    jwt:
+      remoteJwksUri: ""
+      jwks: '{"keys":[]}'

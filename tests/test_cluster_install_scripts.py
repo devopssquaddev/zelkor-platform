@@ -14,10 +14,21 @@ QS = ROOT / "scripts" / "install-quickstart.sh"
 PROD = ROOT / "scripts" / "install-production.sh"
 UNINSTALL = ROOT / "scripts" / "uninstall.sh"
 LIB = ROOT / "scripts" / "lib" / "cluster-install.sh"
+MCP_DP = ROOT / "scripts" / "lib" / "mcp-dataplane-install.sh"
 INSTALL_LOG = ROOT / "scripts" / "lib" / "install-log.sh"
 OWN = ROOT / "scripts" / "lib" / "bootstrap-ownership.sh"
 GW = ROOT / "scripts" / "bootstrap-gateway.sh"
 OPS = ROOT / "scripts" / "bootstrap-operators.sh"
+
+PROD_JWKS = ROOT / "tests" / "fixtures" / "customer-tenant-jwks.json"
+PROD_JWT_ARGS = (
+    "--jwt-issuer",
+    "https://customer.example",
+    "--jwt-audience",
+    "zelkor",
+    "--jwks-file",
+    str(PROD_JWKS),
+)
 
 
 def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -40,7 +51,7 @@ def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subproc
 
 
 def test_scripts_bash_n():
-    for path in (LIB, INSTALL_LOG, OWN, QS, PROD, UNINSTALL, GW, OPS):
+    for path in (LIB, MCP_DP, INSTALL_LOG, OWN, QS, PROD, UNINSTALL, GW, OPS):
         proc = subprocess.run(["bash", "-n", str(path)], check=False, capture_output=True, text=True)
         assert proc.returncode == 0, f"{path}: {proc.stderr}"
 
@@ -194,6 +205,7 @@ def test_production_dry_run_greenfield():
         "--hosts-langfuse",
         "langfuse.example.com",
         "--generate-passwords",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
@@ -204,6 +216,9 @@ def test_production_dry_run_greenfield():
     assert "values-gateway-greenfield.yaml" in out
     assert "values-local.yaml" not in out
     assert "gateway.hosts.agents=agents.example.com" in out
+    assert "platform.tenants.jwt.issuer=https://customer.example" in out
+    assert "platform.tenants.jwt.audiences[0]=zelkor" in out
+    assert "platform.tenants.jwt.jwks=" in out
     assert "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com" in out
     assert "postgresql.auth.password=" in out
     assert "workspace.tools.sandboxMCP.workerToken=" in out
@@ -229,6 +244,7 @@ def test_production_generated_url_secrets_are_hex():
         "--hosts-langfuse",
         "langfuse.example.com",
         "--generate-passwords",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     for name in (
@@ -263,6 +279,7 @@ def test_production_dry_run_skip_operators_and_tls():
         "--cluster-issuer",
         "letsencrypt-prod",
         "--service-monitor",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
@@ -284,6 +301,7 @@ def test_production_image_pull_secret_quoted():
         "--generate-passwords",
         "--image-pull-secret",
         "private-registry",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     assert "global.imagePullSecrets[0].name=private-registry" in proc.stdout
@@ -334,6 +352,7 @@ def test_production_dry_run_generates_secrets_without_flag():
         "agents.example.com",
         "--hosts-langfuse",
         "langfuse.example.com",
+        *PROD_JWT_ARGS,
     )
     assert proc.returncode == 0, proc.stderr
     assert "postgresql.auth.password=" in proc.stdout
@@ -354,6 +373,19 @@ def test_production_rejects_localhost_hosts():
     )
     assert proc.returncode != 0
     assert "localhost" in proc.stderr
+
+
+def test_production_requires_jwt():
+    proc = _run(
+        PROD,
+        "--dry-run",
+        "--hosts-agents",
+        "agents.example.com",
+        "--hosts-langfuse",
+        "langfuse.example.com",
+    )
+    assert proc.returncode != 0
+    assert "jwt-issuer" in proc.stderr or "localSigning" in proc.stderr
 
 
 def test_production_requires_hosts():
