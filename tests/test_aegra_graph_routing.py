@@ -214,6 +214,18 @@ def test_nemo_otel_uses_instrument_and_early_sitecustomize():
 
 def _helm(*args: str) -> str:
     helm_args = list(args)
+    if str(AGENT_CHART) in helm_args and "auth.issuer=" not in " ".join(helm_args):
+        # helm template cannot lookup the platform contract ConfigMap
+        helm_args.extend(
+            [
+                "--set",
+                "auth.issuer=https://issuer.example",
+                "--set",
+                "auth.audiences[0]=zelkor",
+            ]
+        )
+    if str(AGENT_CHART) in helm_args and "platform.releaseName=" not in " ".join(helm_args):
+        helm_args.extend(["--set", "platform.releaseName=zelkor-platform"])
     try:
         res = subprocess.run(
             ["helm", *helm_args],
