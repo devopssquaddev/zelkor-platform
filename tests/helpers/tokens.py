@@ -26,11 +26,15 @@ def _jwt_line(raw: str) -> str:
     return raw.strip()
 
 
-def bearer_for(tenant_key: str = "tenant-a") -> str:
+def token_for(tenant_key: str = "tenant-a") -> str:
     tokens = test_tokens()
     if tenant_key in tokens:
-        return f"Bearer {tokens[tenant_key]}"
+        return tokens[tenant_key]
     alt = tenant_key.replace("_", "-") if "_" in tenant_key else tenant_key.replace("-", "_")
     if alt in tokens:
-        return f"Bearer {tokens[alt]}"
+        return tokens[alt]
     raise KeyError(tenant_key)
+
+
+def bearer_for(tenant_key: str = "tenant-a") -> str:
+    return f"Bearer {token_for(tenant_key)}"

@@ -99,4 +99,11 @@ class MCPGatewayClient:
                     return json.loads(content[0].text)
                 return result
 
-        return asyncio.run(_run())
+        try:
+            return asyncio.run(_run())
+        except BaseExceptionGroup as exc:
+            # anyio TaskGroup wraps tool RuntimeError; admission tests assert RuntimeError.
+            cur: BaseException = exc
+            while isinstance(cur, BaseExceptionGroup) and len(cur.exceptions) == 1:
+                cur = cur.exceptions[0]
+            raise cur from exc

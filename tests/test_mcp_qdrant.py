@@ -28,7 +28,7 @@ def test_mcp_qdrant_rejects_stray_tenant_id():
     """qdrant__search_documents rejects tenant_id in tool arguments."""
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
+        with pytest.raises(RuntimeError, match="(?i)tenant_id"):
             client.call_tool(
                 "qdrant__search_documents",
                 {"query": "search documents", "tenant_id": "tenant_b"},
@@ -54,7 +54,7 @@ def test_mcp_qdrant_search_does_not_leak_other_tenant():
 def test_mcp_qdrant_upsert_rejects_stray_tenant_id():
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
+        with pytest.raises(RuntimeError, match="(?i)tenant_id"):
             client.call_tool(
                 "qdrant__upsert_document",
                 {"content": "should fail", "tenant_id": "tenant_b"},

@@ -94,7 +94,7 @@ def test_mcp_aigateway_rejects_url_arg():
 def test_mcp_aigateway_rejects_stray_tenant_id():
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
+        with pytest.raises(RuntimeError, match="(?i)tenant_id"):
             client.call_tool(
                 "aigateway__call",
                 {

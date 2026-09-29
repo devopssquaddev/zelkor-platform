@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from tests.helpers.mcp_client import GATEWAY_BASE_URL, MCP_HOST_HEADER, MCPGatewayClient
-from tests.helpers.tokens import test_tokens
+from tests.helpers.tokens import test_tokens, token_for
 
 pytestmark = pytest.mark.skipif(
     not test_tokens(),
@@ -27,9 +27,7 @@ async def _post_json(url: str, headers: dict, payload: dict) -> httpx.Response:
 
 
 def test_l2_tenant_jwt_wins_over_forged_tenant_header(mcp_url):
-    tokens = test_tokens()
-    token = tokens.get("tenant-a")
-    assert token
+    token = token_for("tenant-a")
     headers = {
         "Host": MCP_HOST_HEADER,
         "Authorization": f"Bearer {token}",

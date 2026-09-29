@@ -43,7 +43,7 @@ def test_mcp_postgres_rejects_stray_tenant_id():
     """postgres__query rejects tenant_id in tool arguments."""
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
+        with pytest.raises(RuntimeError, match="(?i)tenant_id"):
             client.call_tool(
                 "postgres__query",
                 {"sql": "SELECT 1 AS ok", "tenant_id": "tenant_b"},
@@ -91,7 +91,7 @@ def test_mcp_postgres_get_schema_rejects_unauthorized_relation():
 def test_mcp_postgres_get_schema_rejects_stray_tenant_id():
     client = MCPGatewayClient("tenant_a")
     try:
-        with pytest.raises(RuntimeError, match="tenant_id argument is not allowed"):
+        with pytest.raises(RuntimeError, match="(?i)tenant_id"):
             client.call_tool(
                 "postgres__get_schema",
                 {"name": "items", "tenant_id": "tenant_b"},

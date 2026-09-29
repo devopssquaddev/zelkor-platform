@@ -3,7 +3,7 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,6 +26,22 @@ def _runtime(access_context: str) -> SimpleNamespace:
 
 def _fake_orig(*_args, tools=None, **_kwargs):
     return SimpleNamespace(tools=tools or [], kind="compiled")
+
+
+@pytest.fixture
+def stub_langchain_mcp_adapters():
+    """Kind/dev venv has no langchain-mcp-adapters; inner import still needs a module."""
+    pkg = ModuleType("langchain_mcp_adapters")
+    tools = ModuleType("langchain_mcp_adapters.tools")
+
+    def _unused(_session, _spec):
+        raise AssertionError("stub convert must be patched")
+
+    tools.convert_mcp_tool_to_langchain_tool = _unused
+    pkg.tools = tools
+    sys.modules.setdefault("langchain_mcp_adapters", pkg)
+    sys.modules.setdefault("langchain_mcp_adapters.tools", tools)
+    yield
 
 
 @pytest.fixture
@@ -81,7 +97,9 @@ def test_non_run_access_context_no_session(reset_spec_cache):
         mock_sess.assert_not_called()
 
 
-def test_create_run_opens_one_session_lifecycle(reset_spec_cache, monkeypatch):
+def test_create_run_opens_one_session_lifecycle(
+    reset_spec_cache, stub_langchain_mcp_adapters, monkeypatch
+):
     import mcp_inject
 
     monkeypatch.setenv("MCP_URL", "http://mcp.test")
@@ -123,7 +141,7 @@ def test_create_run_opens_one_session_lifecycle(reset_spec_cache, monkeypatch):
         assert asyncio.run(run()) == 1
 
 
-def test_create_run_forwards_bearer(reset_spec_cache, monkeypatch):
+def test_create_run_forwards_bearer(reset_spec_cache, stub_langchain_mcp_adapters, monkeypatch):
     import mcp_inject
 
     monkeypatch.setenv("MCP_URL", "http://mcp.test")
@@ -157,7 +175,9 @@ async def _consume(ctx):
         pass
 
 
-def test_mcp_inject_tools_filters_names(reset_spec_cache, monkeypatch):
+def test_mcp_inject_tools_filters_names(
+    reset_spec_cache, stub_langchain_mcp_adapters, monkeypatch
+):
     import mcp_inject
 
     monkeypatch.setenv("MCP_URL", "http://mcp.test")

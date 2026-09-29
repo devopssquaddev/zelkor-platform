@@ -25,7 +25,6 @@ CHART = ROOT / "charts" / "zelkor-platform"
 AGENT_CHART = ROOT / "charts" / "zelkor-agent"
 FIRST_PARTY_TEMPLATES = [
     CHART / "templates/aegra/deployment.yaml",
-    CHART / "templates/mcp/deployment-gateway.yaml",
     CHART / "templates/mcp/deployment-postgres.yaml",
     CHART / "templates/mcp/deployment-qdrant.yaml",
     CHART / "templates/mcp/deployment-aigateway.yaml",
@@ -277,8 +276,20 @@ def test_vendor_templates_map_level():
 
 
 def _helm(*args: str) -> str:
+    helm_args = list(args)
+    if str(AGENT_CHART) in helm_args and "auth.issuer=" not in " ".join(helm_args):
+        helm_args.extend(
+            [
+                "--set",
+                "auth.issuer=https://issuer.example",
+                "--set",
+                "auth.audiences[0]=zelkor",
+            ]
+        )
+    if str(AGENT_CHART) in helm_args and "platform.releaseName=" not in " ".join(helm_args):
+        helm_args.extend(["--set", "platform.releaseName=zelkor-platform"])
     try:
-        res = subprocess.run(["helm", *args], capture_output=True, text=True, check=False)
+        res = subprocess.run(["helm", *helm_args], capture_output=True, text=True, check=False)
     except FileNotFoundError:
         pytest.skip("helm not installed")
     if res.returncode != 0:
@@ -314,7 +325,7 @@ def test_helm_chart_default_is_info_not_debug():
         "--set",
         "platform.telemetry.level=INFO",
         "-s",
-        "templates/mcp/deployment-gateway.yaml",
+        "templates/mcp/deployment-postgres.yaml",
     )
     block = rendered.split("ZELKOR_LOG_LEVEL", 1)[1][:120]
     assert "value: \"INFO\"" in block
