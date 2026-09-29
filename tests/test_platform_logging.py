@@ -86,6 +86,15 @@ def test_configure_honors_error_level(monkeypatch, capsys):
     assert line["component"] == "zelkor-test"
 
 
+def test_configure_cli_logs_to_stderr(monkeypatch, capsys):
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
+    configure_logging("zelkor-cli", force=True, stream=sys.stderr)
+    captured = capsys.readouterr()
+    assert "starting" not in captured.out
+    assert "starting" in captured.err
+
+
 def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):
     monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
     monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
@@ -191,6 +200,8 @@ def test_first_party_entrypoints_configure_logging():
     for path in files:
         text = path.read_text()
         assert "configure_logging" in text, path.name
+    cli_main = (ROOT / "cli/src/zelkor/main.py").read_text()
+    assert "configure_logging(\"zelkor-cli\", stream=sys.stderr)" in cli_main
     boot = (ROOT / "images/guardrails/boot.py").read_text()
     assert "wrap_uvicorn_run" in boot
 

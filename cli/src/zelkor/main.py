@@ -632,7 +632,7 @@ def _boot_logging() -> None:
         return
     if not os.getenv("ZELKOR_LOG_FORMAT"):
         os.environ["ZELKOR_LOG_FORMAT"] = "text" if sys.stderr.isatty() else "json"
-    configure_logging("zelkor-cli")
+        configure_logging("zelkor-cli", stream=sys.stderr)
 
 
 def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> int:
