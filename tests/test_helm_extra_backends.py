@@ -33,6 +33,26 @@ def test_extra_backend_appears_on_mcproute():
     assert "acme" in names
 
 
+def test_extra_backend_string_port_compiles():
+    r = _helm(
+        "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
+        "--set",
+        "workspace.tools.extraBackends[0].name=acme",
+        "--set",
+        "workspace.tools.extraBackends[0].service.name=acme-mcp",
+        "--set-string",
+        "workspace.tools.extraBackends[0].service.port=8080",
+    )
+    assert r.returncode == 0, r.stderr
+    names = [ref.get("name") for ref in _mcproute(_docs(r.stdout))["spec"].get("backendRefs") or []]
+    assert "acme" in names
+
+
 def test_external_fqdn_requires_egress_cidrs_when_network_policies_enabled():
     r = _helm(
         "--set",

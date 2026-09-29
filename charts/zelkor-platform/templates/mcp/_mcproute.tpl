@@ -53,8 +53,10 @@ false
 {{- if has $name $reserved -}}{{- fail (printf "workspace.tools.extraBackends[%d].name %q is reserved" $idx $name) -}}{{- end -}}
 {{- $svc := $item.service | default dict -}}
 {{- $fqdn := $item.fqdn | default dict -}}
-{{- $hasSvc := and ($svc.name | default "") (ne ($svc.port | default 0) 0) -}}
-{{- $hasFqdn := and ($fqdn.hostname | default "") (ne ($fqdn.port | default 0) 0) -}}
+{{- $svcPort := $svc.port | default 0 | int -}}
+{{- $fqdnPort := $fqdn.port | default 0 | int -}}
+{{- $hasSvc := and ($svc.name | default "") (ne $svcPort 0) -}}
+{{- $hasFqdn := and ($fqdn.hostname | default "") (ne $fqdnPort 0) -}}
 {{- if and $hasSvc $hasFqdn -}}{{- fail (printf "workspace.tools.extraBackends[%d]: set exactly one of service or fqdn" $idx) -}}{{- end -}}
 {{- if not (or $hasSvc $hasFqdn) -}}{{- fail (printf "workspace.tools.extraBackends[%d]: service or fqdn is required" $idx) -}}{{- end -}}
 {{- range $fh := $item.forwardHeaders | default list -}}
