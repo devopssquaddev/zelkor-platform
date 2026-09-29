@@ -372,13 +372,36 @@ def test_helm_zelkor_agent_excludes_probe_paths_from_access_logs():
     _assert_aegra_probe_access_log_exclude(rendered)
 
 
+def _mcp_jsonrpc(client, method: str, params: dict | None = None, req_id: int = 1) -> dict:
+    payload = {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}}
+    response = client.post(
+        "/mcp",
+        json=payload,
+        headers={"accept": "application/json, text/event-stream"},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _mcp_initialize(client) -> None:
+    body = _mcp_jsonrpc(
+        client,
+        "initialize",
+        {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "pytest", "version": "1"},
+        },
+    )
+    assert "result" in body
+
+
 def test_mcp_tools_list_and_call_log_info(caplog):
     sys.path.insert(0, str(ROOT / "mcp"))
-    import threading
-    import urllib.request
-    from http.server import HTTPServer
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
 
-    from common.mcp_server import MCPToolHandler, make_handler
+    from common.mcp_server import MCPToolHandler, build_starlette_app
 
     class Dummy(MCPToolHandler):
         def list_tools(self):
@@ -387,47 +410,29 @@ def test_mcp_tools_list_and_call_log_info(caplog):
         def call_tool(self, name, arguments, tenant_id):
             return {"ok": True}
 
-    server = HTTPServer(("127.0.0.1", 0), make_handler(Dummy(), lambda _h: "tenant-a"))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    def rpc(method, params=None):
-        payload = json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
-        ).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/mcp",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return json.loads(resp.read().decode())
-
-    try:
+    app = build_starlette_app(Dummy(), lambda _h: "tenant-a")
+    with TestClient(app) as client:
+        _mcp_initialize(client)
         with caplog.at_level(logging.INFO, logger="zelkor-mcp"):
-            listed = rpc("tools/list")
-            called = rpc(
+            listed = _mcp_jsonrpc(client, "tools/list")
+            called = _mcp_jsonrpc(
+                client,
                 "tools/call",
                 {"name": "echo", "arguments": {"secret": "should-not-log"}},
             )
-        assert listed["result"]["tools"][0]["name"] == "echo"
-        assert "ok" in called["result"]["content"][0]["text"]
-        assert "tools/list count=1" in caplog.text
-        assert "tools/call echo" in caplog.text
-        assert "should-not-log" not in caplog.text
-    finally:
-        server.shutdown()
-        server.server_close()
+    assert listed["result"]["tools"][0]["name"] == "echo"
+    assert "ok" in called["result"]["content"][0]["text"]
+    assert "tools/list count=1" in caplog.text
+    assert "tools/call echo" in caplog.text
+    assert "should-not-log" not in caplog.text
 
 
 def test_mcp_permission_denied_logs_warning(caplog):
     sys.path.insert(0, str(ROOT / "mcp"))
-    import threading
-    import urllib.request
-    from http.server import HTTPServer
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
 
-    from common.mcp_server import MCPToolHandler, make_handler
+    from common.mcp_server import MCPToolHandler, build_starlette_app
 
     class Dummy(MCPToolHandler):
         def list_tools(self):
@@ -436,32 +441,24 @@ def test_mcp_permission_denied_logs_warning(caplog):
         def call_tool(self, name, arguments, tenant_id):
             raise AssertionError("must not call")
 
-    server = HTTPServer(("127.0.0.1", 0), make_handler(Dummy(), lambda _h: None))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        payload = json.dumps(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {"name": "echo", "arguments": {}},
-            }
-        ).encode()
-        req = urllib.request.Request(
-            f"http://127.0.0.1:{server.server_address[1]}/mcp",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+    app = build_starlette_app(Dummy(), lambda _h: None)
+    with TestClient(app) as client:
+        _mcp_initialize(client)
         with caplog.at_level(logging.WARNING, logger="zelkor-mcp"):
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                body = json.loads(resp.read().decode())
-        assert body["error"]["code"] == -32001
-        assert "MCP permission denied" in caplog.text
-    finally:
-        server.shutdown()
-        server.server_close()
+            body = _mcp_jsonrpc(
+                client,
+                "tools/call",
+                {"name": "echo", "arguments": {}},
+            )
+    err = body.get("error") or {}
+    result = body.get("result") or {}
+    denied = (
+        err.get("code") == -32001
+        or result.get("isError") is True
+        or "permission" in json.dumps(body).lower()
+    )
+    assert denied, body
+    assert "MCP permission denied" in caplog.text
 
 
 def test_gateway_list_tools_logs_info(monkeypatch, caplog):

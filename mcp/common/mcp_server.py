@@ -62,34 +62,62 @@ def build_starlette_app(
         max_request_body_size=MAX_BODY_BYTES,
     )
 
+    def _headers() -> Dict[str, str]:
+        ctx = mcp_server.request_context
+        return {k.decode(): v.decode() for k, v in ctx.request.headers.raw}
+
     @mcp_server.list_tools()
     async def _list_tools() -> list:
+        tools = tool_handler.list_tools()
+        tenant_id = tenant_extractor(_headers())
+        logger.info(
+            "tools/list count=%s",
+            len(tools),
+            extra={"event": "tools_list", "tenant_id": tenant_id or ""},
+        )
         return [
             types.Tool(
                 name=t["name"],
                 description=t.get("description", ""),
                 inputSchema=t.get("inputSchema") or {"type": "object", "properties": {}},
             )
-            for t in tool_handler.list_tools()
+            for t in tools
         ]
 
     @mcp_server.call_tool()
     async def _call_tool(name: str, arguments: dict | None) -> list:
-        ctx = mcp_server.request_context
-        headers = {k.decode(): v.decode() for k, v in ctx.request.headers.raw}
-        tenant_id = tenant_extractor(headers)
+        tenant_id = tenant_extractor(_headers())
         if not tenant_id:
-            raise PermissionError("Missing tenant identity in Authorization")
-        args = dict(arguments or {})
-        _reject_stray_tenant_id(args)
-        with anyio.fail_after(TOOL_DEADLINE_S):
-            result = await anyio.to_thread.run_sync(
-                tool_handler.call_tool,
-                name,
-                args,
-                tenant_id,
-                limiter=limiter,
+            exc = PermissionError("Missing tenant identity in Authorization")
+            logger.warning(
+                "MCP permission denied: %s",
+                exc,
+                extra={"event": "tools_call", "tenant_id": ""},
             )
+            raise exc
+        args = dict(arguments or {})
+        try:
+            _reject_stray_tenant_id(args)
+            with anyio.fail_after(TOOL_DEADLINE_S):
+                result = await anyio.to_thread.run_sync(
+                    tool_handler.call_tool,
+                    name,
+                    args,
+                    tenant_id,
+                    limiter=limiter,
+                )
+        except PermissionError as exc:
+            logger.warning(
+                "MCP permission denied: %s",
+                exc,
+                extra={"event": "tools_call", "tenant_id": tenant_id or ""},
+            )
+            raise
+        logger.info(
+            "tools/call %s",
+            name,
+            extra={"event": "tools_call", "tenant_id": tenant_id},
+        )
         text = json.dumps(result) if not isinstance(result, str) else result
         return [types.TextContent(type="text", text=text)]
 
