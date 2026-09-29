@@ -3,7 +3,8 @@ import os
 import httpx
 import pytest
 
-from tests.helpers.tokens import bearer_for, test_tokens
+from tests.helpers.tokens import bearer_for
+from tests.helpers.tokens import test_tokens as minted_tokens
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 AEGRA_HOST_HEADER = os.environ.get("AGENTS_HOST_HEADER") or os.environ.get(
@@ -13,7 +14,7 @@ WORKER_GRAPH_ID = os.environ.get("AEGRA_WORKER_GRAPH_ID", "")
 
 
 def _headers(extra=None):
-    if not test_tokens():
+    if not minted_tokens():
         pytest.skip("ZELKOR_TEST_TOKENS not set")
     headers = {
         "Host": AEGRA_HOST_HEADER,

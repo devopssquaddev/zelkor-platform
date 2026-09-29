@@ -21,12 +21,21 @@ SECRET_SETS = [
     "platform.telemetry.langfuse.salt=test-salt-1234567890",
     "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.tenants.jwt.issuer=https://issuer.example",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
+    "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    "security.mcp.acceptUnprotectedBackends=true",
+    "gateway.envoyProxy.enabled=true",
 ]
 
 AGENT_SETS = [
     "graphId=demo-graph",
     "platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "platform.valkeyUrl=redis://vk:6379/0",
+    "auth.issuer=https://issuer.example",
+    "auth.audiences[0]=zelkor",
+    "platform.releaseName=zelkor-platform",
 ]
 
 FINSERVE_PLATFORM_SETS = [
@@ -40,6 +49,14 @@ FINSERVE_PLATFORM_SETS = [
     "coder.platform.releaseName=zelkor-platform",
     "coder.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
     "coder.platform.valkeyUrl=redis://vk:6379/0",
+    "auth.issuer=https://issuer.example",
+    "auth.audiences[0]=zelkor",
+    "desk.auth.issuer=https://issuer.example",
+    "desk.auth.audiences[0]=zelkor",
+    "quant.auth.issuer=https://issuer.example",
+    "quant.auth.audiences[0]=zelkor",
+    "coder.auth.issuer=https://issuer.example",
+    "coder.auth.audiences[0]=zelkor",
 ]
 
 EXPECTED = {
