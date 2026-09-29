@@ -390,8 +390,9 @@ def test_agent_chart_redis_prefix_and_shared_route():
     kinds = {d["kind"]: d for d in docs}
     deploy = kinds["Deployment"]
     env = {e["name"]: e.get("value") for e in deploy["spec"]["template"]["spec"]["containers"][0]["env"]}
-    assert env["REDIS_CHANNEL_PREFIX"] == "aegra:fraud:run:"
-    assert env["WORKER_QUEUE_KEY"] == "aegra:fraud:jobs"
+    # Default redis.prefix empty → isolate on Deployment fullname (not graphId alone).
+    assert env["REDIS_CHANNEL_PREFIX"] == "aegra:fraud-zelkor-agent:run:"
+    assert env["WORKER_QUEUE_KEY"] == "aegra:fraud-zelkor-agent:jobs"
     assert env["REDIS_BROKER_ENABLED"] == "true"
     assert "AEGRA_WORKERS" not in env
     route = kinds["HTTPRoute"]

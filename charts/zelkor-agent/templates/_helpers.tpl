@@ -46,7 +46,7 @@ app.kubernetes.io/component: aegra
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else -}}
-{{- printf "aegra:%s" .Release.Name -}}
+{{- printf "aegra:%s" (include "zelkor-agent.fullname" .) -}}
 {{- end -}}
 {{- end }}
 
@@ -173,6 +173,36 @@ OTEL env. Explicit platform.langfuse* wins over envFrom of {release}-langfuse-ot
   value: "zelkor-aegra"
 {{- end }}
 
+{{- define "zelkor-agent.aegraDatastoreSecretName" -}}
+{{- $rel := include "zelkor-agent.platformReleaseName" . -}}
+{{- if $rel -}}
+{{- printf "%s-aegra-datastore" $rel -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.tenantJwtConfigMapName" -}}
+{{- $rel := include "zelkor-agent.platformReleaseName" . -}}
+{{- if $rel -}}
+{{- printf "%s-tenant-jwt" $rel -}}
+{{- else -}}
+{{- "" -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.validateDatastoreAttach" -}}
+{{- $db := ((.Values.platform).databaseUrl | default "") | toString | trim -}}
+{{- $vk := ((.Values.platform).valkeyUrl | default "") | toString | trim -}}
+{{- $rel := include "zelkor-agent.platformReleaseName" . -}}
+{{- if and (not $db) (not $rel) -}}
+{{- fail "platform.databaseUrl must be set, or platform.releaseName set to inherit {release}-aegra-datastore" -}}
+{{- end -}}
+{{- if and (not $vk) (not $rel) -}}
+{{- fail "platform.valkeyUrl must be set, or platform.releaseName set to inherit {release}-aegra-datastore" -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-agent.tenantJwksConfigMapName" -}}
 {{- $auth := .Values.auth | default dict -}}
 {{- $explicit := ($auth.jwksConfigMap | default "") | trim -}}
@@ -188,15 +218,18 @@ OTEL env. Explicit platform.langfuse* wins over envFrom of {release}-langfuse-ot
 {{- define "zelkor-agent.tenantAuthEnv" -}}
 {{- $auth := .Values.auth | default dict -}}
 {{- $issuer := ($auth.issuer | default "") | trim -}}
+{{- if not $issuer -}}
+{{- $rel := include "zelkor-agent.platformReleaseName" . | trim -}}
+{{- if not $rel -}}
+{{- fail "auth.issuer must be set, or platform.releaseName set to inherit {release}-tenant-jwt" -}}
+{{- end -}}
+{{- else -}}
 {{- $audiences := $auth.audiences | default list -}}
 {{- $claims := $auth.tenantClaims | default list -}}
 {{- if eq (len $claims) 0 -}}
 {{- $claims = list "tenant_id" "org_id" "sub" -}}
 {{- end -}}
 {{- $remote := ($auth.jwksUri | default "") | trim -}}
-{{- if not $issuer -}}
-{{- fail "auth.issuer must be set (or set platform.releaseName and inherit from the platform contract ConfigMap)" -}}
-{{- end -}}
 {{- if eq (len $audiences) 0 -}}
 {{- fail "auth.audiences must be a non-empty list" -}}
 {{- end -}}
@@ -218,6 +251,7 @@ OTEL env. Explicit platform.langfuse* wins over envFrom of {release}-langfuse-ot
   value: {{ $claims | toJson | quote }}
 - name: TENANT_ORG_MAPPINGS
   value: {{ ($auth.orgMappings | default dict) | toJson | quote }}
+{{- end }}
 {{- end }}
 
 {{- define "zelkor-agent.tenantAuthVolumeMount" -}}

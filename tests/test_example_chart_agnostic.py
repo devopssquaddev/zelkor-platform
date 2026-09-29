@@ -51,12 +51,15 @@ def test_finserve_values_have_no_kind_literals():
     values = yaml.safe_load(raw)
     assert values["platform"]["releaseName"] == ""
     assert values["platform"]["postgresHost"] == ""
-    assert values["gateway"]["namespace"] == ""
+    assert values["gateway"]["enabled"] is False
     for key in ("desk", "quant", "coder"):
-        assert values[key]["platform"]["openaiBaseUrl"] == ""
-        assert values[key]["platform"]["mcpUrl"] == ""
-        assert values[key]["sharedRoute"]["gatewayNamespace"] == ""
-        assert values[key]["platform"]["defaultLlmModel"] == ""
+        plat = values[key]["platform"]
+        assert plat.get("openaiBaseUrl", "") == ""
+        assert plat.get("mcpUrl", "") == ""
+        assert "databaseUrl" not in plat
+        assert "valkeyUrl" not in plat
+        assert values[key]["sharedRoute"].get("host", "") == ""
+        assert "gatewayNamespace" not in values[key]["sharedRoute"]
 
 
 def test_zelkor_agent_values_have_no_kind_urls():
@@ -102,6 +105,23 @@ def test_finserve_helm_values_local_emits_kind_dns():
     assert "zelkor-platform-ai-gateway" in out
     assert "agents.localhost" in out
     assert "pk-lf-zelkor-dev" not in (FINSERVE_CHART / "templates" / "job-langfuse-seed.yaml").read_text()
+
+
+def test_zelkor_agent_inherit_release_name_without_dsn_or_auth():
+    proc = _helm(
+        AGENT_CHART,
+        "demo-agent",
+        "--set",
+        "graphId=demo-graph",
+        "--set",
+        "platform.releaseName=my-platform",
+        "--set",
+        "sharedRoute.host=agents.example.com",
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "my-platform-aegra-datastore" in proc.stdout
+    assert "my-platform-tenant-jwt" in proc.stdout
+    assert "http://my-platform-mcp" in proc.stdout
 
 
 def test_zelkor_agent_release_name_constructs_urls():

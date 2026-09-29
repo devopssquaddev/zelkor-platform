@@ -41,22 +41,11 @@ AGENT_SETS = [
 FINSERVE_PLATFORM_SETS = [
     "platform.releaseName=zelkor-platform",
     "desk.platform.releaseName=zelkor-platform",
-    "desk.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
-    "desk.platform.valkeyUrl=redis://vk:6379/0",
+    "desk.sharedRoute.host=agents.example.com",
     "quant.platform.releaseName=zelkor-platform",
-    "quant.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
-    "quant.platform.valkeyUrl=redis://vk:6379/0",
+    "quant.sharedRoute.host=agents.example.com",
     "coder.platform.releaseName=zelkor-platform",
-    "coder.platform.databaseUrl=postgres://zelkor:x@pg:5432/aegra",
-    "coder.platform.valkeyUrl=redis://vk:6379/0",
-    "auth.issuer=https://issuer.example",
-    "auth.audiences[0]=zelkor",
-    "desk.auth.issuer=https://issuer.example",
-    "desk.auth.audiences[0]=zelkor",
-    "quant.auth.issuer=https://issuer.example",
-    "quant.auth.audiences[0]=zelkor",
-    "coder.auth.issuer=https://issuer.example",
-    "coder.auth.audiences[0]=zelkor",
+    "coder.sharedRoute.host=agents.example.com",
 ]
 
 EXPECTED = {

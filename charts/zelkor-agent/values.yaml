@@ -28,7 +28,7 @@ sharedRoute:
   asDefault: false
 
 # REDIS_CHANNEL_PREFIX + WORKER_QUEUE_KEY on the shared platform Valkey.
-# Empty prefix → aegra:<release>. Do not deploy a second Valkey.
+# Empty prefix → aegra:<Deployment fullname>. Do not deploy a second Valkey.
 redis:
   prefix: ""
   channelPrefix: ""
@@ -43,7 +43,7 @@ image:
 replicaCount: 1
 
 autoscaling:
-  enabled: true
+  enabled: false
   minReplicas: 2
   maxReplicas: 8
   cpuUtilization: 70

@@ -59,6 +59,13 @@ AGENT_SETS = [
 ]
 
 
+def test_platform_publishes_worker_attach_artifacts():
+    proc = _helm()
+    assert proc.returncode == 0, proc.stderr
+    assert "zelkor-platform-aegra-datastore" in proc.stdout
+    assert "zelkor-platform-tenant-jwt" in proc.stdout
+
+
 def _helm(*extra: str) -> subprocess.CompletedProcess[str]:
     cmd = ["helm", "template", "zelkor-platform", str(CHART), "--namespace", "zelkor"]
     for item in SECRET_SETS:
@@ -231,31 +238,31 @@ def test_service_monitors_opt_in_on_production():
     assert "Grafana" not in kinds
 
 
-def test_agent_chart_hpa_default_on():
+def test_agent_chart_hpa_default_off():
     proc = _helm_agent()
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert not _kinds(docs, "HorizontalPodAutoscaler")
+    deploy = _kinds(docs, "Deployment")[0]
+    assert deploy["spec"]["replicas"] == 1
+    assert _env(deploy, "ENABLE_PROMETHEUS_METRICS") == "false"
+
+
+def test_agent_chart_hpa_on_when_enabled():
+    proc = _helm_agent("--set", "autoscaling.enabled=true")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     hpas = _kinds(docs, "HorizontalPodAutoscaler")
     assert len(hpas) == 1
     deploy = _kinds(docs, "Deployment")[0]
     assert "replicas" not in deploy["spec"]
-    assert _env(deploy, "ENABLE_PROMETHEUS_METRICS") == "false"
 
 
-def test_agent_chart_hpa_off_keeps_replicas():
-    proc = _helm_agent("--set", "autoscaling.enabled=false")
-    assert proc.returncode == 0, proc.stderr
-    docs = _docs(proc.stdout)
-    assert not _kinds(docs, "HorizontalPodAutoscaler")
-    deploy = _kinds(docs, "Deployment")[0]
-    assert deploy["spec"]["replicas"] == 1
-
-
-def test_finserve_values_disable_agent_autoscaling():
+def test_finserve_workers_do_not_enable_autoscaling():
     values = yaml.safe_load(FINSERVE_VALUES.read_text())
     for key in ("desk", "quant", "coder"):
-        assert values[key]["autoscaling"]["enabled"] is False
-        assert values[key]["replicaCount"] == 1
+        auto = values[key].get("autoscaling") or {}
+        assert auto.get("enabled") is not True
 
 
 def test_bootstrap_cert_manager_enables_gateway_api():

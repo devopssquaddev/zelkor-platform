@@ -1,5 +1,14 @@
 {{- $graphId := include "zelkor-agent.primaryGraphId" . }}
 {{- $intent := .Values.workload.intent | default dict }}
+{{- include "zelkor-agent.validateDatastoreAttach" . }}
+{{- $dbUrl := ((.Values.platform).databaseUrl | default "") | toString | trim }}
+{{- $valkeyUrl := ((.Values.platform).valkeyUrl | default "") | toString | trim }}
+{{- $auth := .Values.auth | default dict }}
+{{- $authIssuer := ($auth.issuer | default "") | trim }}
+{{- $dsSecret := include "zelkor-agent.aegraDatastoreSecretName" . | trim }}
+{{- $jwtCm := include "zelkor-agent.tenantJwtConfigMapName" . | trim }}
+{{- $otelSecret := include "zelkor-agent.langfuseOtelSecretName" . | trim }}
+{{- $useEnvFrom := or (and $otelSecret (not .Values.platform.langfuseBaseUrl)) (and $dsSecret (not $dbUrl)) (and $jwtCm (not $authIssuer)) }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -47,22 +56,37 @@ spec:
           ports:
             - containerPort: 8000
               name: http
-          {{- $otelSecret := include "zelkor-agent.langfuseOtelSecretName" . -}}
-          {{- if and $otelSecret (not .Values.platform.langfuseBaseUrl) }}
+          {{- if $useEnvFrom }}
           envFrom:
+            {{- if and $otelSecret (not .Values.platform.langfuseBaseUrl) }}
             - secretRef:
                 name: {{ $otelSecret | quote }}
                 optional: true
+            {{- end }}
+            {{- if and $dsSecret (not $dbUrl) }}
+            - secretRef:
+                name: {{ $dsSecret | quote }}
+                optional: true
+            {{- end }}
+            {{- if and $jwtCm (not $authIssuer) }}
+            - configMapRef:
+                name: {{ $jwtCm | quote }}
+                optional: true
+            {{- end }}
           {{- end }}
           env:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             - name: LOG_EXCLUDE_PATHS
               value: "/health,/live,/ready"
             {{- include "zelkor-agent.tenantAuthEnv" . | nindent 12 }}
+            {{- if $dbUrl }}
             - name: DATABASE_URL
-              value: {{ required "platform.databaseUrl must be set (shared Aegra checkpointer DSN)" .Values.platform.databaseUrl | quote }}
+              value: {{ $dbUrl | quote }}
+            {{- end }}
+            {{- if $valkeyUrl }}
             - name: REDIS_URL
-              value: {{ .Values.platform.valkeyUrl | quote }}
+              value: {{ $valkeyUrl | quote }}
+            {{- end }}
             - name: REDIS_BROKER_ENABLED
               value: "true"
             - name: REDIS_CHANNEL_PREFIX

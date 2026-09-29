@@ -91,7 +91,7 @@ Aegra stores threads, checkpoints, and runs in Postgres. That is why the chart r
 | :--- | :--- | :--- |
 | `platform.databaseUrl` | Existing platform Aegra DB (typically `{release}-postgresql:5432/aegra`) | Create a CloudNativePG `Database`, a new cluster, or a per-agent schema |
 | `platform.valkeyUrl` | Existing platform Valkey Service | Deploy another Valkey |
-| `redis.prefix` | Unique key namespace (`aegra:<release>` if empty) | Share default `aegra:jobs` / `aegra:run:` across Deployments |
+| `redis.prefix` | Unique key namespace (`aegra:<Deployment name>` from `fullnameOverride` or release if empty) | Share one queue across multiple workers in the same Helm release |
 
 `charts/zelkor-agent` has no CNPG resources. Demo charts (FinServe) may create a CNPG `Database` for **application / MCP** data — that is not the Aegra checkpointer and is not part of this chart.
 
@@ -107,10 +107,11 @@ Required values (see `charts/zelkor-agent/values.yaml`):
 | :--- | :--- |
 | `graphId` or `graphIds[]` | Routing key(s) |
 | `image.repository` / tag / digest | `FROM zelkor-aegra` or `zelkor-aegra-deep` |
-| `platform.databaseUrl`, `platform.valkeyUrl` | Existing platform Aegra DSN + Valkey (see Persistence) |
-| `platform.releaseName` or MCP / AI gateway / Langfuse URLs | `{release}-mcp` / `{release}-ai-gateway` / `{release}-langfuse` + envFrom `{release}-langfuse-otel`, or copy from platform Aegra env |
+| `platform.releaseName` | **Default attach:** envFrom `{release}-aegra-datastore` (checkpointer DSN + Valkey), `{release}-tenant-jwt`, `{release}-tenant-jwks`, `{release}-langfuse-otel`; constructs MCP / AI gateway / Langfuse URLs and `{release}-gateway` |
 | `sharedRoute.host`, `gatewayName`, `gatewayNamespace`, `asDefault` | Register on shared agents host. Empty `gatewayName` + `releaseName` → `{release}-gateway`. |
-| `redis.prefix` | Isolate Valkey keys per Deployment (sets channel + job queue) |
+| `platform.databaseUrl`, `platform.valkeyUrl` | Optional override when Service names or DSN differ from the platform release |
+| `auth.issuer`, `auth.audiences`, … | Optional override; omit when `platform.releaseName` is set to inherit `{release}-tenant-jwt` |
+| `redis.prefix` | Optional; empty → `aegra:<Deployment name>` (isolates channel + job queue per worker) |
 
 Chart can emit HTTPRoute when `sharedRoute` is set; otherwise add routes via GitOps.
 
@@ -135,14 +136,10 @@ helm upgrade --install my-agent charts/zelkor-agent \
   --set platform.releaseName=<platform-release> \
   --set sharedRoute.host=agents.example.com \
   --set sharedRoute.gatewayNamespace=zelkor \
-  --set image.repository=ghcr.io/org/my-agent \
-  --set platform.databaseUrl='postgresql://USER:PASS@<platform-release>-postgresql:5432/aegra' \
-  --set platform.valkeyUrl='redis://:PASS@<platform-release>-valkey:6379/0' \
-  --set redis.prefix=aegra:my-agent \
-  ...
+  --set image.repository=ghcr.io/org/my-agent
 ```
 
-`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl` (`http://{release}-mcp`), `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `{release}-langfuse` / `{release}-gateway`. The runtime appends `/mcp` when calling the dataplane. Workers inject `{release}-langfuse-otel` (optional Secret the platform chart writes from `platform.telemetry.langfuse.init`). Override those fields when Service names differ. Copy `databaseUrl` / `valkeyUrl` from the live platform Aegra Deployment (or `zelkor deploy`). Do not put Langfuse keys in the customer overlay.
+`platform.releaseName` fills `openaiBaseUrl`, `mcpUrl` (`http://{release}-mcp`), `langfuseBaseUrl`, and `sharedRoute.gatewayName` as `{release}-ai-gateway` / `{release}-langfuse` / `{release}-gateway`. The runtime appends `/mcp` when calling the dataplane. Workers envFrom `{release}-aegra-datastore`, `{release}-tenant-jwt`, `{release}-tenant-jwks`, and `{release}-langfuse-otel` when you do not paste DSN/JWT/Langfuse keys. Override `platform.databaseUrl`, `valkeyUrl`, or `auth.*` when Service names differ. `zelkor deploy` copies the same env from the live platform Aegra Deployment instead of using Helm inherit.
 
 ### MCP tool inject (Mode B)
 
@@ -161,7 +158,7 @@ export AUTH_JWT_ISSUER=https://local.zelkor.invalid   # match platform.tenants.j
 zelkor token mint --release <platform-release> --tenant <tenant_id> --namespace <ns>
 ```
 
-On `charts/zelkor-agent`, set `auth.issuer` / `auth.audiences` or rely on `{release}-tenant-jwks` when `platform.releaseName` is set. Blueprint: `examples/finserve/chart/values-tenants.yaml` + `values-platform-overlay-tenants.yaml`.
+On `charts/zelkor-agent`, set `auth.issuer` / `auth.audiences` only when overriding platform JWT; otherwise set `platform.releaseName` and inherit `{release}-tenant-jwt` + `{release}-tenant-jwks`.
 
 ---
 
