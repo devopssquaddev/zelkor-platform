@@ -182,6 +182,14 @@ def test_s11_ingress_inventory_no_public_mcp_nemo_db(kubecontext):
     public_ok = {h for h in (agents, langfuse) if h}
     if not public_ok:
         pytest.skip("AGENTS_HOST_HEADER / LANGFUSE_HOST_HEADER unset")
+    overlay_hosts = [
+        h
+        for route in items
+        for h in (route.get("spec", {}).get("hostnames") or [])
+        if str(h).endswith(".localhost")
+    ]
+    if overlay_hosts:
+        pytest.skip(f"kind overlay publishes {sorted(set(overlay_hosts))}")
 
     forbidden_public_needles = (
         "mcp",
