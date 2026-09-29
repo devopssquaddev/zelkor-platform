@@ -24,6 +24,11 @@ SECRET_SETS = [
     "platform.telemetry.langfuse.salt=test-salt-1234567890",
     "platform.telemetry.langfuse.encryptionKey=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com",
+    "platform.tenants.jwt.issuer=https://issuer.example",
+    "platform.tenants.jwt.audiences[0]=zelkor",
+    "platform.tenants.jwt.remoteJwksUri=https://issuer.example/.well-known/jwks.json",
+    "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    "gateway.envoyProxy.enabled=true",
 ]
 
 PLATFORM_NAMESPACE = os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "default")
