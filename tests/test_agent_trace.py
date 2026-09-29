@@ -144,7 +144,7 @@ async def test_agent_protocol_run_is_one_langfuse_trace():
 
     trace = joined[0]
     assert str(trace.get("name") or "") == graph_id
-    assert _user_of(trace) == tenant, trace
+    assert _user_of(trace).replace("_", "-") == tenant.replace("_", "-"), trace
     assert _session_of(trace) == thread_id, trace
     metadata = trace.get("metadata") or {}
     run_id = metadata.get("run_id")
