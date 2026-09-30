@@ -14,6 +14,7 @@ This page details how an external chat or run request flows through Zelkor to th
 
 The core advantage is enforced on this path: the agent you already wrote is sandboxed, and provider keys stay on the gateway.
 
+*How a client call reaches the model: The call is routed to the agent, which then makes an intercepted call through the AI Gateway.*
 ```mermaid
 ---
 config:
@@ -33,7 +34,6 @@ flowchart LR
   AIGateway <-->|"Check Policies"| NeMo
   AIGateway -- "Inject Real Key" --> Provider
 ```
-*How a client call reaches the model: The call is routed to the agent, which then makes an intercepted call through the AI Gateway.*
 
 ## The Boundary
 

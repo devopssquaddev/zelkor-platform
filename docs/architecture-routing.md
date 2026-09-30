@@ -12,10 +12,17 @@ edition: all
 
 Zelkor routes incoming Agent Protocol traffic to the correct agent deployment using Envoy Gateway. This ensures that a single public endpoint can serve many independently released agents.
 
+The core advantage: the agent you already wrote is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+
+* **Community Edition** is the self-hosted runtime.
+* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
+
 ## How a client call reaches a graph
 
 When a client makes a request to the public Agent Protocol host, Envoy uses the `X-Graph-ID` header or `?graph_id=` query parameter to route the call to the specific agent's ClusterIP service.
 
+*How a client call reaches a graph: Envoy matches the graph ID and routes to the corresponding worker deployment.*
 ```mermaid
 ---
 config:
@@ -33,7 +40,6 @@ flowchart LR
   Envoy -- "Match fraud-triage" --> WorkerB
   Envoy -- "Unmatched" --> PlatformAegra
 ```
-*How a client call reaches a graph: Envoy matches the graph ID and routes to the corresponding worker deployment.*
 
 ### The Routing Contract
 

@@ -14,6 +14,7 @@ Zelkor provides 100% observability into your agent's behavior. One Agent Protoco
 
 The core advantage: your agent is sandboxed and under observation without relying on the agent code to self-report reliably.
 
+*What one run looks like: The graph, the AI Gateway intercept, and the tool calls all share the same trace context.*
 ```mermaid
 ---
 config:
@@ -36,7 +37,6 @@ sequenceDiagram
     MCP-->>Aegra: Tool result
     Aegra->>Aegra: End Run
 ```
-*What one run looks like: The graph, the AI Gateway intercept, and the tool calls all share the same trace context.*
 
 ## The Boundary
 

@@ -2,25 +2,13 @@
 
 FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.** You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster.
 
-The demo consists of three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) plus one deploy-first Deep Agent (`agent.json` + `AGENTS.md`, `FROM zelkor-aegra-deep`). Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
-
-| Graph id | Deployment | Role |
-| :--- | :--- | :--- |
-| `finserve-advisor` | `finserve-desk` | Portfolio SQL + synthesis |
-| `finserve-research` | `finserve-desk` (same process) | Policy RAG |
-| `finserve-quant` | `finserve-quant` | Sandbox projections |
-| `finserve-coder` | `finserve-coder` | Custom Python on portfolio data (`execute()`) |
-
-## Editions
-
-FinServe AI runs across all Zelkor editions:
-- **Community Edition**: Self-hosted runtime (gateway, tools, sandbox, traces).
-- **Pro**: Adds SSO, team controls (budgets and approvals), and production HA / GitOps.
-- **Enterprise**: Adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
-
 ## What to copy
 
-This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent) plus demo seed jobs. Customer agents should copy the **worker** pattern (image + `sharedRoute` + platform connection), not the demo extras.
+This demo is not the way you learn how to deploy the platform or ship your own agents. It is a full reference application with seed jobs and multiple workers. 
+
+Minimal customer path: deploy a worker via [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
+
+This umbrella chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent) plus demo seed jobs. Customer agents should copy the **worker** pattern (image + `sharedRoute` + platform connection), not the demo extras.
 
 | Copy | Do not copy onto `zelkor-agent` |
 | :--- | :--- |
@@ -28,8 +16,6 @@ This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent
 | `sharedRoute` on `gateway.hosts.agents` | CNPG `Database` / `cnpgClusterName` (MCP/app schema only) |
 | `platform.releaseName` + `sharedRoute.host` (inherits checkpointer DSN + JWT from platform) | `values-platform-overlay.yaml` tenant/NeMo blocks |
 | One graph per `zelkor-agent` release when you copy workers | `values-local.yaml` (kind secrets, `*.localhost`, `dev-key` consumer key) |
-
-Minimal customer path: [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
 
 ## Connect to your platform
 
@@ -63,7 +49,18 @@ helm upgrade --install finserve examples/finserve/chart \
 
 On the **platform** chart, apply [values-platform-overlay.yaml](chart/values-platform-overlay.yaml) (collection, tenant mappings, NeMo rails) and set `workspace.tools.postgresMCP.databaseUrl` to **your** FinServe MCP DSN. Configure `platform.tenants.jwt` (issuer, audiences, JWKS) on the platform release — workers inherit JWT via `{release}-tenant-jwt`. Mint client tokens with `zelkor token mint`. Do not apply `values-platform-overlay-local.yaml` or `values-local.yaml` outside kind.
 
-## Kind eval
+## Demo Contents
+
+The demo consists of three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) plus one deploy-first Deep Agent (`agent.json` + `AGENTS.md`, `FROM zelkor-aegra-deep`). Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
+
+| Graph id | Deployment | Role |
+| :--- | :--- | :--- |
+| `finserve-advisor` | `finserve-desk` | Portfolio SQL + synthesis |
+| `finserve-research` | `finserve-desk` (same process) | Policy RAG |
+| `finserve-quant` | `finserve-quant` | Sandbox projections |
+| `finserve-coder` | `finserve-coder` | Custom Python on portfolio data (`execute()`) |
+
+## Editions
 
 `./install.sh` (with `INSTALL_EXAMPLES=true`) applies the platform overlays and this chart with `values-local.yaml`. Manual:
 

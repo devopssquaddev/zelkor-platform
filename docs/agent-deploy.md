@@ -1,7 +1,7 @@
 ---
 title: Deploy an Agent (Agent Guide)
 description: How to deploy and remove a customer agent on the Zelkor platform.
-type: tutorial
+type: how-to
 sidebar_group: Agents
 sidebar_order: 2
 audience: agent
@@ -26,9 +26,12 @@ The recommended way to deploy a customer agent is using the `zelkor-agent` Helm 
 ```yaml
 graphId: "my-agent-id"
 
+sharedRoute:
+  host: "agents.example.com"
+
 image:
   repository: my-registry/my-agent
-  tag: "1.0.0"
+  tag: "2.1.1"
 
 platform:
   # The name of the platform Helm release (e.g., zelkor-platform).
@@ -40,6 +43,8 @@ redis:
   prefix: "aegra:my-agent"
 ```
 
+> **Note on Keys:** Do not supply provider API keys (e.g. `OPENAI_API_KEY`) in the agent values. Actual provider keys belong in the platform's AI Gateway configuration (`workspace.models.providers...`), not on the agent worker.
+
 3. **Install the Helm release.**
 
 ```bash
@@ -48,7 +53,7 @@ helm upgrade --install my-agent charts/zelkor-agent \
   --values agent-values.yaml
 ```
 
-The agent will self-register with the platform's Envoy Gateway. Clients must pass `X-Graph-ID: my-agent-id` to reach this worker.
+The agent will self-register with the platform's Envoy Gateway on `agents.example.com`. Clients must pass `X-Graph-ID: my-agent-id` to reach this worker. For a complete example of a worker values file, see the [FinServe slim-worker overlay](../examples/finserve/chart/values.yaml).
 
 ## Deploying via CLI
 
@@ -64,6 +69,31 @@ zelkor deploy --timeout 60s
 ```
 
 The `deploy` command builds the image, pushes it to the registry, and runs `helm upgrade` on the `zelkor-agent` chart. It automatically copies the platform's Langfuse OTEL configuration so your traces appear in the Langfuse UI, and it wires up the platform's MCP gateway so your agent can use native tools or registered extra backends.
+
+## Run Your Agent
+
+To test your deployed agent, use the `zelkor run` CLI command or a direct curl.
+
+```bash
+zelkor run --graph-id my-agent-id --input "What is my portfolio valuation?"
+```
+
+Or via curl to the Envoy front door (requires a valid JWT or dev token):
+
+```bash
+curl -X POST https://agents.example.com/runs/wait \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-token>" \
+  -H "X-Graph-ID: my-agent-id" \
+  -d '{
+    "graph_id": "my-agent-id",
+    "input": {
+      "messages": [{"role": "human", "content": "What is my portfolio valuation?"}]
+    }
+  }'
+```
+
+After the run completes, visit the Langfuse UI (`langfuse.example.com`) to inspect the trace.
 
 ## Removing an Agent
 

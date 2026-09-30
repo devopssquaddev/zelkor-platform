@@ -22,11 +22,14 @@ Configuration in `values.yaml`:
 platform:
   tenants:
     jwt:
-      issuer: "https://your-idp.example.com"
-      audience: "zelkor-platform"
-      jwksUrl: "https://your-idp.example.com/.well-known/jwks.json"
-      # Claim to use for the tenant ID (default: "org_id")
-      tenantClaim: "org_id"
+      audiences:
+        - "zelkor-platform"
+      remoteJwksUri: "https://your-idp.example.com/.well-known/jwks.json"
+      # Claims to use for the tenant ID (default: ["tenant_id", "org_id", "sub"])
+      tenantClaims:
+        - "tenant_id"
+        - "org_id"
+        - "sub"
     # Optional mapping from IDP org names to internal tenant IDs
     orgMappings:
       "idp-org-uuid-1": "tenant-a"
@@ -37,10 +40,10 @@ platform:
 
 Zelkor uses standard JWKS (JSON Web Key Set) validation. It integrates with any Identity Management (IDM) system that issues signed JWTs:
 
-- **Okta / Auth0:** Set `jwksUrl` to your authorization server's `.well-known/jwks.json`. Use a custom claim (e.g., `org_id`) for `tenantClaim`.
-- **Microsoft Entra ID (Azure AD):** Use the v2.0 endpoint for `issuer` and `jwksUrl`. The `tenantClaim` is typically `tid` (tenant ID) or a mapped app role.
-- **Keycloak:** Point `jwksUrl` to the realm's certs endpoint (`/realms/<realm>/protocol/openid-connect/certs`).
-- **Custom IDP:** Serve a static JWKS endpoint. If your IDP issues opaque UUIDs but your agent expects readable names, use `orgMappings` to translate them (e.g., `b2f4...: Bank_Alpha`).
+- **Okta / Auth0:** Set `issuer` and `remoteJwksUri` to your authorization server's endpoints (e.g. `.well-known/jwks.json`). Use a custom claim (e.g., `org_id`) in `tenantClaims`.
+- **Microsoft Entra ID (Azure AD):** Use the v2.0 endpoint for `issuer` and `remoteJwksUri`. The `tenantClaims` is typically `tid` (tenant ID) or a mapped app role.
+- **Keycloak:** Point `remoteJwksUri` to the realm's certs endpoint (`/realms/<realm>/protocol/openid-connect/certs`).
+- **Custom IDP:** Serve a static JWKS endpoint. If your IDP issues opaque UUIDs but your agent expects readable names, use `orgMappings` to translate them (e.g., `b2f4...: tenant-a`).
 
 ## Tool Filtering vs. Forwarding
 
@@ -65,10 +68,10 @@ For local development and testing, you can mint valid JWTs using the CLI. These 
 
 ```bash
 # Mint a token for a specific tenant
-zelkor token mint --tenant "Bank_Alpha"
+zelkor token mint --release zelkor-platform --tenant "tenant-a"
 
-# Mint a token with an expiration (default 1h)
-zelkor token mint --tenant "Squad_Alpha" --expires "24h"
+# Mint a token with a specific time-to-live (default 1h)
+zelkor token mint --release zelkor-platform --tenant "tenant-b" --ttl "24h"
 ```
 
 The resulting token can be passed in the `Authorization: Bearer <token>` header to the AI Gateway or agent endpoints.

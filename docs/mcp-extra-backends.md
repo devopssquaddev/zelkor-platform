@@ -113,12 +113,12 @@ Both modes see native and extra tools on the same gateway. Details: [Drop-In Age
 From a pod that may reach the MCP gateway (or via port-forward to the gateway Service):
 
 ```bash
-curl -sS "http://zelkor-platform-mcp-gateway:8080/mcp" \
+curl -sS "http://zelkor-platform-mcp:80/mcp" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-Expect tool names including your prefix alongside `postgres__query`, `sandbox__execute_code`, etc.
+Expect tool names including your prefix alongside `postgres__query`, `sandbox__execute_python`, etc.
 
 ## Identity and isolation
 

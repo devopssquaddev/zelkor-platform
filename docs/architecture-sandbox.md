@@ -10,6 +10,8 @@ edition: all
 
 # Sandbox Isolation
 
+*Where generated code runs: The agent delegates execution to a separate pod running a hardened sandbox runtime.*
+
 When an agent needs to execute generated Python code or manipulate files, it does not do so in its own container. Zelkor isolates code execution to protect the cluster and the agent itself.
 
 The core advantage: the agent you wrote is sandboxed, and any code it generates cannot break out or compromise the system.
@@ -28,13 +30,12 @@ flowchart TB
     subgraph SandboxPod[Sandbox Pod]
       gVisor[gVisor / Kata Runtime]
       Worker[Code Execution Worker]
-      gVisor --- Worker
+      gVisor -- "isolates" --> Worker
     end
   end
 
   Agent -- "MCP Execute" --> Worker
 ```
-*Where generated code runs: The agent delegates execution to a separate pod running a hardened sandbox runtime.*
 
 ## The Boundary
 

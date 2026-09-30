@@ -24,7 +24,9 @@ Zelkor ships with several native MCP servers that provide essential infrastructu
 | :--- | :--- | :--- |
 | **Postgres** | `postgres__query` | Executes a SQL query against the platform's Postgres database. Tenant context is injected automatically. |
 | **Postgres** | `postgres__list_tables` | Lists available tables in the database, restricted to what the tenant is authorized to see. |
+| **Postgres** | `postgres__get_schema` | Retrieves the schema of a specific table. |
 | **Qdrant** | `qdrant__search_documents` | Performs a vector similarity search. The query is automatically wrapped in a `tenant_id` payload filter. |
+| **Qdrant** | `qdrant__upsert_document` | Inserts or updates a document in Qdrant with tenant payload context. |
 | **Sandbox** | `sandbox__execute_python` | Executes arbitrary Python code in a secure, ephemeral gVisor container. Used for dynamic data analysis or generating charts. |
 
 ## Tool Prefixes
@@ -35,7 +37,9 @@ To prevent naming collisions, the gateway prefixes tool names based on the serve
 | :--- | :--- | :--- |
 | **Postgres (Native)** | `query` | `postgres__query` |
 | **Postgres (Native)** | `list_tables` | `postgres__list_tables` |
+| **Postgres (Native)** | `get_schema` | `postgres__get_schema` |
 | **Qdrant (Native)** | `search_documents` | `qdrant__search_documents` |
+| **Qdrant (Native)** | `upsert_document` | `qdrant__upsert_document` |
 | **Sandbox (Native)** | `execute_python` | `sandbox__execute_python` |
 | **Extra (e.g., `jira`)** | `create_issue` | `jira__create_issue` |
 
@@ -57,9 +61,4 @@ Agents interact with the MCP Gateway using standard JSON-RPC 2.0 messages. The i
 
 You configure custom SaaS MCP servers in `values.yaml` under `workspace.tools.extraBackends`.
 
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `name` | string | Yes | The prefix applied to all tools from this backend (e.g., `jira`). Must be lowercase alphanumeric. |
-| `url` | string | Yes | The HTTP/SSE endpoint of the backend (e.g., `http://my-jira-mcp:8000/sse`). |
-| `forwardHeaders` | list | No | Headers to forward from the agent's request to the backend (e.g., `["Authorization"]`). Essential for passing the Tenant JWT to the backend for identity enforcement. |
-| `secretRef` | string | No | The name of a Kubernetes Secret containing the backend's API key. The gateway injects this into the request. |
+For instructions on adding your own servers, see [Register extra MCP backends](../mcp-extra-backends.md) and the `values.schema.json`.
