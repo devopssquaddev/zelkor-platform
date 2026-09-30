@@ -51,7 +51,18 @@ def _run(script: Path, *args: str, env: dict[str, str] | None = None) -> subproc
 
 
 def test_scripts_bash_n():
-    for path in (LIB, MCP_DP, INSTALL_LOG, OWN, QS, PROD, UNINSTALL, GW, OPS):
+    for path in (
+        LIB,
+        MCP_DP,
+        INSTALL_LOG,
+        OWN,
+        QS,
+        PROD,
+        UNINSTALL,
+        GW,
+        OPS,
+        ROOT / "scripts" / "lib" / "local-signing-helm-sets.sh",
+    ):
         proc = subprocess.run(["bash", "-n", str(path)], check=False, capture_output=True, text=True)
         assert proc.returncode == 0, f"{path}: {proc.stderr}"
 
@@ -62,6 +73,49 @@ def test_bootstrap_operators_skips_on_helm_deployed_not_crd_only():
     assert "skip CNPG: CRD" not in text
     assert "Helm release cnpg already deployed" in text
     assert "HELM_INSTALL_TIMEOUT" in GW.read_text()
+
+
+def test_local_signing_append_applies_auth_token_for_kind_profile(tmp_path):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        """
+platform:
+  tenants:
+    jwt:
+      issuer: https://local.zelkor.invalid
+      audiences: [zelkor]
+      localSigning:
+        enabled: true
+        seedTenant: seed
+        seedTokenTTL: 24h
+""",
+        encoding="utf-8",
+    )
+    env = {
+        "ZELKOR_REPO_ROOT": str(ROOT),
+        "HELM_RELEASE_NAME": "zelkor-platform-test",
+        "ZELKOR_JWT_STATE_DIR": str(tmp_path / "jwt-state"),
+        "HOME": str(tmp_path),
+    }
+    script = ROOT / "scripts" / "lib" / "local-signing-helm-sets.sh"
+    proc = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f'source "{script}"; HELM_EXTRA_ARGS=(); append_local_signing_helm_sets HELM_EXTRA_ARGS "{values}"; '
+            f'printf "%s\\n" "${{HELM_EXTRA_ARGS[@]}}"',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env={**__import__("os").environ, **env, "INSTALL_LOG_FILE": "off"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout + proc.stderr
+    assert "platform.tenants.jwt.localSigning.privateKey=" in out
+    assert "platform.telemetry.langfuse.surfaces.tools.authToken=" in out
+
 
 
 def test_quickstart_dry_run_greenfield():

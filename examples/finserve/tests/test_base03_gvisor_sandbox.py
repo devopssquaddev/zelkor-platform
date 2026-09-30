@@ -82,7 +82,7 @@ def test_base03_sandbox_trace_contains_tool(kubecontext):
     """E2E smoke: finserve-quant run emits sandbox__execute_python in Langfuse waterfall."""
     if not sandbox_mcp_deployed(kubecontext):
         pytest.skip("mcp-sandbox not deployed (sandboxMCP.enabled=false)")
-    marker = f"zelkor-sandbox-{int(time.time())}"
+    marker = f"quant-trace-{int(time.time())}"
     result = run_finserve(
         f"{PROMPT_QUANT_ONE_SANDBOX} [{marker}]",
         timeout=120.0,

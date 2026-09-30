@@ -7,10 +7,24 @@ import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import jwt
-import yaml
+
+
+def _resolve_context(args_context: str) -> str:
+    if args_context:
+        return args_context
+    return os.environ.get("KUBE_CONTEXT", "") or os.environ.get("KUBECONTEXT", "")
+
+
+def _kubectl_cmd(kubeconfig: str, context: str) -> list[str]:
+    cmd = ["kubectl"]
+    if kubeconfig:
+        cmd.extend(["--kubeconfig", kubeconfig])
+    if context:
+        cmd.extend(["--context", context])
+    return cmd
 
 
 def _kube_get_secret(
@@ -19,9 +33,8 @@ def _kube_get_secret(
     namespace: str,
     name: str,
 ) -> dict[str, str]:
-    cmd = ["kubectl", "--context", context, "-n", namespace, "get", "secret", name, "-o", "json"]
-    if kubeconfig:
-        cmd[1:1] = ["--kubeconfig", kubeconfig]
+    cmd = _kubectl_cmd(kubeconfig, context)
+    cmd.extend(["-n", namespace, "get", "secret", name, "-o", "json"])
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
         raise RuntimeError(f"cannot read secret {name}: {res.stderr or res.stdout}")
@@ -35,13 +48,32 @@ def _kube_get_configmap(
     namespace: str,
     name: str,
 ) -> dict[str, str]:
-    cmd = ["kubectl", "--context", context, "-n", namespace, "get", "configmap", name, "-o", "json"]
-    if kubeconfig:
-        cmd[1:1] = ["--kubeconfig", kubeconfig]
+    obj = _kube_get_configmap_object(kubeconfig, context, namespace, name)
+    return obj.get("data") or {}
+
+
+def _kube_get_configmap_object(
+    kubeconfig: str,
+    context: str,
+    namespace: str,
+    name: str,
+) -> dict[str, Any]:
+    cmd = _kubectl_cmd(kubeconfig, context)
+    cmd.extend(["-n", namespace, "get", "configmap", name, "-o", "json"])
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
         raise RuntimeError(f"cannot read configmap {name}: {res.stderr or res.stdout}")
-    return json.loads(res.stdout).get("data") or {}
+    return json.loads(res.stdout)
+
+
+def _parse_audiences(raw: str) -> list[str]:
+    raw = (raw or "").strip()
+    if not raw:
+        return ["zelkor"]
+    if raw.startswith("["):
+        parsed = json.loads(raw)
+        return [str(a) for a in parsed]
+    return [a.strip() for a in raw.split(",") if a.strip()]
 
 
 def _parse_ttl(raw: str) -> timedelta:
@@ -57,26 +89,32 @@ def _parse_ttl(raw: str) -> timedelta:
 
 def cmd_token_mint(args: Any) -> int:
     release = args.release
-    namespace = args.namespace or "zelkor"
+    namespace = args.namespace or "default"
     kubeconfig = args.kubeconfig or os.environ.get("KUBECONFIG", "")
-    context = args.context or os.environ.get("KUBE_CONTEXT", "")
+    context = _resolve_context(args.context or "")
     tenant = args.tenant
-    ttl = _parse_ttl(args.ttl or "1h")
     signing = f"{release}-tenant-jwt-signing"
     jwks_cm = f"{release}-tenant-jwks"
+    jwt_cm = f"{release}-tenant-jwt"
     sec = _kube_get_secret(kubeconfig, context, namespace, signing)
     priv_pem = sec.get("privateKey", "").encode()
     kid = sec.get("kid", "1")
-    cm = _kube_get_configmap(kubeconfig, context, namespace, jwks_cm)
-    jwks = json.loads(cm.get("jwks", "{}"))
-    issuer = args.issuer or os.environ.get("AUTH_JWT_ISSUER", "")
-    audiences = args.audience or os.environ.get("AUTH_JWT_AUDIENCES", "zelkor")
-    if audiences.startswith("["):
-        aud = json.loads(audiences)
+    jwks_obj = _kube_get_configmap_object(kubeconfig, context, namespace, jwks_cm)
+    jwt_data = _kube_get_configmap(kubeconfig, context, namespace, jwt_cm)
+    annotations = (jwks_obj.get("metadata") or {}).get("annotations") or {}
+    if args.ttl:
+        ttl = _parse_ttl(args.ttl)
     else:
-        aud = [a.strip() for a in audiences.split(",") if a.strip()]
+        ttl = _parse_ttl(annotations.get("zelkor.io/token-ttl", "1h"))
+    issuer = args.issuer or os.environ.get("AUTH_JWT_ISSUER", "") or jwt_data.get("AUTH_JWT_ISSUER", "")
+    audiences_raw = (
+        args.audience
+        or os.environ.get("AUTH_JWT_AUDIENCES", "")
+        or jwt_data.get("AUTH_JWT_AUDIENCES", "")
+    )
+    aud = _parse_audiences(audiences_raw)
     if not issuer:
-        raise SystemExit("set --issuer or AUTH_JWT_ISSUER")
+        raise SystemExit("set --issuer or AUTH_JWT_ISSUER (or deploy platform tenant-jwt ConfigMap)")
     now = datetime.now(timezone.utc)
     token = jwt.encode(
         {
@@ -99,9 +137,9 @@ def cmd_token_mint(args: Any) -> int:
 
 def cmd_token_jwks(args: Any) -> int:
     release = args.release
-    namespace = args.namespace or "zelkor"
+    namespace = args.namespace or "default"
     kubeconfig = args.kubeconfig or os.environ.get("KUBECONFIG", "")
-    context = args.context or os.environ.get("KUBE_CONTEXT", "")
+    context = _resolve_context(args.context or "")
     jwks_cm = f"{release}-tenant-jwks"
     cm = _kube_get_configmap(kubeconfig, context, namespace, jwks_cm)
     jwks = cm.get("jwks", "{}")
