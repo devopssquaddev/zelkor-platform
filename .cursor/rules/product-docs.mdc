@@ -1,0 +1,24 @@
+---
+description: Write Zelkor user and product docs (Diátaxis, git-as-CMS, website frontmatter). Use when writing or editing README, docs/, tutorials, KB, or user-facing guides.
+globs: docs/**/*.md, README.md, examples/**/*.md
+alwaysApply: false
+---
+
+# Product documentation
+
+Published corpus: `docs/**`, root `README.md`, example READMEs. The website publishes this tree.
+
+Authoring contract and persona review live in the **internal** workspace (multi-root: `zelkor-dev.code-workspace`). Do not copy them into this repo.
+
+| Need | Location (internal repo) |
+| :--- | :--- |
+| Living spec | `internal/requirements/dev/product_documentation.md` |
+| Write procedure | `internal/.cursor/skills/write-product-docs/SKILL.md` |
+| Persona review | `internal/.cursor/skills/review-product-docs/SKILL.md` |
+| Cursor rule (full) | `internal/.cursor/rules/product-docs.mdc` |
+
+## Do not (public pages)
+
+- Paste `internal/` specs, Path A/B, lab hosts, pricing/GTM, or strategy jargon into `docs/` or commit messages.
+- Treat `profiles/values-local.yaml` as a customer production recipe.
+- Duplicate docs in a separate CMS.
