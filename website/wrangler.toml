@@ -1,0 +1,7 @@
+# website/wrangler.toml
+name = "zelkor-platform"
+compatibility_date = "2026-09-30"
+
+[assets]
+directory = "./.vitepress/dist"
+not_found_handling = "404-page"
