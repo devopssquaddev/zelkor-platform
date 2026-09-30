@@ -1,0 +1,82 @@
+---
+title: Deploy an Agent (Agent Guide)
+description: How to deploy and remove a customer agent on the Zelkor platform.
+type: tutorial
+sidebar_group: Agents
+sidebar_order: 2
+audience: agent
+edition: ce
+---
+
+# Deploy an Agent (Agent Guide)
+
+This guide is for coding agents. It explains how to deploy and remove a customer agent on the Zelkor platform.
+
+Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.**
+
+Zelkor uses a **ClusterIP** worker pattern. Each independently released agent is its own Kubernetes Deployment, built from the Zelkor Aegra runtime image. The platform's Envoy Gateway routes incoming Agent Protocol calls to the correct worker based on the `X-Graph-ID` header.
+
+## Deploying via GitOps (Helm)
+
+The recommended way to deploy a customer agent is using the `zelkor-agent` Helm chart. This chart creates the ClusterIP Deployment and registers it with the platform's front door.
+
+1. **Build the agent image.** The image must extend `ghcr.io/devopssquaddev/zelkor-aegra` (or `zelkor-aegra-deep` for deploy-first Deep Agents).
+2. **Create a values file** (e.g., `agent-values.yaml`) for the `zelkor-agent` release.
+
+```yaml
+graphId: "my-agent-id"
+
+image:
+  repository: my-registry/my-agent
+  tag: "1.0.0"
+
+platform:
+  # The name of the platform Helm release (e.g., zelkor-platform).
+  # This allows the agent to inherit the platform's checkpointer, Valkey, and Langfuse OTEL config.
+  releaseName: "zelkor-platform"
+
+# Isolate the agent's job queue and SSE channels on the shared Valkey.
+redis:
+  prefix: "aegra:my-agent"
+```
+
+3. **Install the Helm release.**
+
+```bash
+helm upgrade --install my-agent charts/zelkor-agent \
+  --namespace zelkor \
+  --values agent-values.yaml
+```
+
+The agent will self-register with the platform's Envoy Gateway. Clients must pass `X-Graph-ID: my-agent-id` to reach this worker.
+
+## Deploying via CLI
+
+The `zelkor` CLI provides a streamlined way to build and deploy agents without writing Helm values.
+
+```bash
+# Ensure the CLI is pointed at the correct cluster and namespace
+zelkor env add production --kube-context my-context --namespace zelkor
+zelkor env use production
+
+# Build and deploy the agent
+zelkor deploy --timeout 60s
+```
+
+The `deploy` command builds the image, pushes it to the registry, and runs `helm upgrade` on the `zelkor-agent` chart. It automatically copies the platform's Langfuse OTEL configuration so your traces appear in the Langfuse UI, and it wires up the platform's MCP gateway so your agent can use native tools or registered extra backends.
+
+## Removing an Agent
+
+To remove an agent deployed via Helm:
+
+```bash
+helm uninstall my-agent --namespace zelkor
+```
+
+To remove an agent deployed via the CLI:
+
+```bash
+zelkor undeploy
+```
+
+This removes the agent's Deployment and its HTTPRoute registration, restoring the platform's default routing behavior for that graph ID.

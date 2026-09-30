@@ -1,6 +1,8 @@
 # FinServe AI: Multi-Tenant Wealth Management Reference Agents
 
-FinServe AI is the reference **drop-in** demo for the Zelkor Platform: three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) plus one deploy-first Deep Agent (`agent.json` + `AGENTS.md`, `FROM zelkor-aegra-deep`). Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
+FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.** You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster.
+
+The demo consists of three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) plus one deploy-first Deep Agent (`agent.json` + `AGENTS.md`, `FROM zelkor-aegra-deep`). Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
 
 | Graph id | Deployment | Role |
 | :--- | :--- | :--- |
@@ -8,6 +10,13 @@ FinServe AI is the reference **drop-in** demo for the Zelkor Platform: three Mod
 | `finserve-research` | `finserve-desk` (same process) | Policy RAG |
 | `finserve-quant` | `finserve-quant` | Sandbox projections |
 | `finserve-coder` | `finserve-coder` | Custom Python on portfolio data (`execute()`) |
+
+## Editions
+
+FinServe AI runs across all Zelkor editions:
+- **Community Edition**: Self-hosted runtime (gateway, tools, sandbox, traces).
+- **Pro**: Adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+- **Enterprise**: Adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 ## What to copy
 

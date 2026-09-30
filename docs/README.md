@@ -33,6 +33,8 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 
 | Page | Job |
 | :--- | :--- |
+| [Install the Platform (Agent Guide)](agent-install.md) | How coding agents install/uninstall the platform |
+| [Deploy an Agent (Agent Guide)](agent-deploy.md) | How coding agents deploy/remove customer agents |
 | [Use the zelkor CLI](cli.md) | Env targets, deploy, run, logs, doctor |
 | [Register extra MCP backends](mcp-extra-backends.md) | BYO ClusterIP MCP on the unified gateway |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
