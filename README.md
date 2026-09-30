@@ -31,26 +31,7 @@ After the local install, point the [`zelkor` CLI](cli/README.md) at the cluster,
 
 What wraps the agent you already wrote:
 
-```mermaid
----
-config:
-  theme: neutral
----
-flowchart TB
-  client[Your client]
-  subgraph cluster [Your Kubernetes cluster]
-    subgraph tenant [One tenant]
-      subgraph wrap [Sandboxed]
-        agent[Your agent]
-      end
-      wrap -->|prompts verified, budget| model[Model]
-      wrap -->|tenant-scoped tools| tools[Tools]
-      wrap -->|generated code stays here| code[Isolated runtime]
-      wrap -->|always recorded| trace[Trace]
-    end
-  end
-  client -->|authenticated run| agent
-```
+![What wraps the agent you already wrote](docs/assets/sandbox-postcard.svg)
 
 Those four arrows are the only paths out of the agent. It cannot reach another network, another tenant’s data, or run generated code in its own process. The run, the tools, and the trace share one verified tenant identity; the agent cannot choose a different tenant. Full hops: [Architecture Hub](docs/architecture.md) and [Tenant Isolation](docs/architecture-tenants.md).
 

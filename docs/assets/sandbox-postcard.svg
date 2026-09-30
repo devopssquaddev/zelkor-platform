@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 580" width="800" height="580" role="img" aria-labelledby="title desc">
+  <title id="title">What wraps the agent you already wrote</title>
+  <desc id="desc">Your client sends an authenticated run to your agent. The agent sits in a Sandboxed box inside One tenant on Your Kubernetes cluster. The only paths out are Model (prompts verified, budget), Tools (tenant-scoped tools), Isolated runtime (generated code stays here), and Trace (always recorded).</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <!-- Lucide-style 24px stroke icons -->
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="8" r="4"/>
+      <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"/>
+    </symbol>
+    <symbol id="i-hexagon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2 20 7v10l-8 5-8-5V7z"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="9" cy="8" r="3"/>
+      <path d="M3 20c0-2.8 2.7-5 6-5s6 2.2 6 5"/>
+      <circle cx="17" cy="9" r="2.5"/>
+      <path d="M16 20c0-2 1.3-3.6 3.2-4.3"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3 5 6v6c0 4.2 2.8 7.2 7 9 4.2-1.8 7-4.8 7-9V6z"/>
+    </symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="6" width="12" height="12" rx="2"/>
+      <rect x="9" y="9" width="6" height="6"/>
+      <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>
+    </symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3 13.5 8.5 19 10 13.5 11.5 12 17 10.5 11.5 5 10 10.5 8.5z"/>
+      <path d="M19 15 20 17.5 22.5 18.5 20 19.5 19 22 18 19.5 15.5 18.5 18 17.5z"/>
+    </symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.7 6.3a4 4 0 0 1 5 5L15 16l-2-2-4.7 4.7a2 2 0 0 1-2.8-2.8L10 11l-2-2 4.7-4.7z"/>
+    </symbol>
+    <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3 21 8v8l-9 5-9-5V8z"/>
+      <path d="M12 13V3M21 8 12 13 3 8"/>
+    </symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+  </defs>
+  <rect width="800" height="580" rx="12" fill="#f8fafc"/>
+
+  <rect x="278" y="16" width="244" height="44" rx="8" fill="#ffffff" stroke="#475569" stroke-width="1.5"/>
+  <g color="#0f172a"><use href="#i-user" x="292" y="24" width="24" height="24"/></g>
+  <text x="414" y="43" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="600" fill="#0f172a">Your client</text>
+
+  <line x1="490" y1="60" x2="490" y2="250" stroke="#334155" stroke-width="1.75" marker-end="url(#arrow)"/>
+  <rect x="412" y="68" width="156" height="22" rx="6" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="490" y="83" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" fill="#334155">authenticated run</text>
+
+  <rect x="20" y="128" width="760" height="432" rx="14" fill="#eef2ff" stroke="#3730a3" stroke-width="2"/>
+  <g color="#3730a3"><use href="#i-hexagon" x="36" y="136" width="18" height="18"/></g>
+  <text x="60" y="150" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" fill="#3730a3">Your Kubernetes cluster</text>
+
+  <rect x="44" y="168" width="712" height="372" rx="12" fill="#f0fdfa" stroke="#0f766e" stroke-width="2"/>
+  <g color="#0f766e"><use href="#i-users" x="60" y="176" width="18" height="18"/></g>
+  <text x="84" y="190" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="700" fill="#0f766e">One tenant</text>
+
+  <rect x="270" y="216" width="260" height="88" rx="10" fill="#fef3c7" stroke="#b45309" stroke-width="2"/>
+  <g color="#b45309"><use href="#i-shield" x="282" y="224" width="18" height="18"/></g>
+  <text x="304" y="238" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="700" fill="#b45309">Sandboxed</text>
+  <rect x="300" y="250" width="200" height="40" rx="8" fill="#f59e0b" stroke="#92400e" stroke-width="1.5"/>
+  <g color="#1c1917"><use href="#i-cpu" x="316" y="258" width="24" height="24"/></g>
+  <text x="420" y="276" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="15" font-weight="700" fill="#1c1917">Your agent</text>
+
+  <rect x="56" y="476" width="158" height="44" rx="8" fill="#ddd6fe" stroke="#6d28d9" stroke-width="1.5"/>
+  <g color="#4c1d95"><use href="#i-sparkles" x="68" y="486" width="24" height="24"/></g>
+  <text x="148" y="503" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#4c1d95">Model</text>
+
+  <rect x="232" y="476" width="158" height="44" rx="8" fill="#bbf7d0" stroke="#15803d" stroke-width="1.5"/>
+  <g color="#14532d"><use href="#i-wrench" x="244" y="486" width="24" height="24"/></g>
+  <text x="328" y="503" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#14532d">Tools</text>
+
+  <rect x="408" y="476" width="176" height="44" rx="8" fill="#fed7aa" stroke="#c2410c" stroke-width="1.5"/>
+  <g color="#7c2d12"><use href="#i-box" x="416" y="486" width="24" height="24"/></g>
+  <text x="510" y="503" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" font-weight="600" fill="#7c2d12">Isolated runtime</text>
+
+  <rect x="604" y="476" width="128" height="44" rx="8" fill="#e9d5ff" stroke="#7e22ce" stroke-width="1.5"/>
+  <g color="#581c87"><use href="#i-eye" x="614" y="486" width="24" height="24"/></g>
+  <text x="682" y="503" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="14" font-weight="600" fill="#581c87">Trace</text>
+
+  <line x1="320" y1="304" x2="135" y2="476" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="370" y1="304" x2="311" y2="476" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="430" y1="304" x2="496" y2="476" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="480" y1="304" x2="668" y2="476" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <rect x="86" y="368" width="130" height="36" rx="6" fill="#f0fdfa" stroke="#99f6e4"/>
+  <text x="151" y="382" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#115e59">
+    <tspan x="151" dy="0">prompts verified,</tspan>
+    <tspan x="151" dy="14">budget</tspan>
+  </text>
+
+  <rect x="248" y="368" width="116" height="36" rx="6" fill="#f0fdfa" stroke="#99f6e4"/>
+  <text x="306" y="382" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#115e59">
+    <tspan x="306" dy="0">tenant-scoped</tspan>
+    <tspan x="306" dy="14">tools</tspan>
+  </text>
+
+  <rect x="430" y="360" width="132" height="36" rx="6" fill="#f0fdfa" stroke="#99f6e4"/>
+  <text x="496" y="374" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#115e59">
+    <tspan x="496" dy="0">generated code</tspan>
+    <tspan x="496" dy="14">stays here</tspan>
+  </text>
+
+  <rect x="590" y="368" width="116" height="22" rx="6" fill="#f0fdfa" stroke="#99f6e4"/>
+  <text x="648" y="383" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#115e59">always recorded</text>
+</svg>
