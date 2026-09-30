@@ -1,6 +1,8 @@
 # FinServe AI: Multi-Tenant Wealth Management Reference Agents
 
-FinServe AI is the reference **drop-in** demo for the Zelkor Platform: three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) plus one deploy-first Deep Agent (`agent.json` + `AGENTS.md`, `FROM zelkor-aegra-deep`). Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
+FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.** You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster.
+
+The demo consists of three Mode B `langchain.agents.create_agent` graphs (`FROM zelkor-aegra`) plus one deploy-first Deep Agent (`agent.json` + `AGENTS.md`, `FROM zelkor-aegra-deep`). Clients use the **platform Aegra** Agent Protocol host. Guardrails, LLM routing, and MCP tools come from wrap + intercept + inject.
 
 | Graph id | Deployment | Role |
 | :--- | :--- | :--- |
@@ -8,6 +10,13 @@ FinServe AI is the reference **drop-in** demo for the Zelkor Platform: three Mod
 | `finserve-research` | `finserve-desk` (same process) | Policy RAG |
 | `finserve-quant` | `finserve-quant` | Sandbox projections |
 | `finserve-coder` | `finserve-coder` | Custom Python on portfolio data (`execute()`) |
+
+## Editions
+
+FinServe AI runs across all Zelkor editions:
+- **Community Edition**: Self-hosted runtime (gateway, tools, sandbox, traces).
+- **Pro**: Adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+- **Enterprise**: Adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 ## What to copy
 
@@ -84,42 +93,53 @@ There is no `finserve.localhost` HTTPRoute by default. Langfuse on kind: `http:/
 
 ## Architecture
 
+Envoy routes by `X-Graph-ID` / `?graph_id=` to ClusterIP graph Deployments. LLM and MCP stay on the platform.
+
 ```mermaid
-flowchart TD
-    UserAlpha["User (Bank_Alpha)"]
-    UserBeta["User (Bank_Beta)"]
+flowchart LR
+  subgraph clients["Clients"]
+    user["Tenant JWT"]
+  end
+  subgraph ns["FinServe + platform"]
+    front["Envoy\nagents Host"]
+    desk["finserve-desk"]
+    quant["finserve-quant"]
+    coder["finserve-coder"]
+  end
+  user --> front
+  front -->|"advisor / research"| desk
+  front -->|quant| quant
+  front -->|coder| coder
+```
 
-    subgraph platform ["Zelkor Platform"]
-        Front["Envoy (X-Graph-ID / ?graph_id=)"]
-        Desk["finserve-desk advisor plus research"]
-        Quant["finserve-quant"]
-        Coder["finserve-coder Deep Agent"]
-        NeMo["NeMo intercept on /v1"]
-        AIGateway["Envoy AI Gateway"]
-        MCP["MCPRoute / MCP_URL"]
-        Postgres[("PostgreSQL (Portfolios)")]
-        Qdrant[("Qdrant (Semantic Policies)")]
-        Langfuse["Langfuse (OTel)"]
-        CodeExec["Sandbox workers (gVisor)"]
-    end
-
-    UserAlpha --> Front
-    UserBeta --> Front
-    Front -->|"advisor or research"| Desk
-    Front -->|quant| Quant
-    Front -->|coder| Coder
-    Desk -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
-    Quant -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
-    Coder -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
-    AIGateway --> NeMo
-    Desk -->|"Mode B inject MCP_URL"| MCP
-    Quant -->|"Mode B inject MCP_URL"| MCP
-    Coder -->|"Mode B inject MCP_URL"| MCP
-    Coder -->|"execute()"| CodeExec
-    MCP --> Postgres
-    MCP --> Qdrant
-    MCP --> CodeExec
-    AIGateway -.->|"OTel"| Langfuse
+```mermaid
+flowchart LR
+  subgraph agents["Graph Deployments"]
+    desk["desk"]
+    quant["quant"]
+    coder["coder"]
+  end
+  subgraph plat["Platform ClusterIP"]
+    aigw["AI Gateway /v1"]
+    nemo["NeMo"]
+    mcp["MCP"]
+    exec["Sandbox workers\ngVisor"]
+    pg[("PostgreSQL")]
+    qd[("Qdrant")]
+    lf["Langfuse"]
+  end
+  desk --> aigw
+  quant --> aigw
+  coder --> aigw
+  aigw --> nemo
+  desk --> mcp
+  quant --> mcp
+  coder --> mcp
+  coder -->|execute| exec
+  mcp --> pg
+  mcp --> qd
+  mcp --> exec
+  aigw -.->|"OTel"| lf
 ```
 
 ## Validation

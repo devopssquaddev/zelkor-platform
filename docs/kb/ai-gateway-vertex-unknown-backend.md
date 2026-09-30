@@ -1,3 +1,13 @@
+---
+title: Vertex gemini unknown backend
+description: AI Gateway returns 500 unknown backend for Vertex gemini-* models.
+type: kb
+sidebar_group: KB
+sidebar_order: 10
+audience: both
+edition: ce
+---
+
 # AI Gateway: Vertex `gemini-*` returns 500 `unknown backend`
 
 ## Symptom

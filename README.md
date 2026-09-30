@@ -1,83 +1,71 @@
 # Zelkor Platform
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?logo=kubernetes&logoColor=white)](https://kubernetes.io/)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Chart](https://img.shields.io/badge/chart-2.1.1-informational)](charts/zelkor-platform/Chart.yaml)
 
-Self-hosted infrastructure to deploy, test, govern, and run AI agents in production.
+You get a **self-hosted agent runtime on your Kubernetes cluster**: bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
-Zelkor wraps battle-tested open-source components — **Aegra**, **Envoy AI Gateway**, **Langfuse**, **NeMo Guardrails**, and **Qdrant** — into a unified Kubernetes deployment. It is an open-source alternative to LangGraph Platform and LangSmith for teams that need to run agents on their own infrastructure.
+You configure three things — a **model**, a **tool**, and an **agent**. The laptop install and a shared cluster use the same objects and the same Helm charts. Community Edition is Apache-2.0 and runs from this repository without a sales step.
 
-## Quick Start
+## Run Community Edition on your laptop
 
-Get a local instance running on your laptop in under 5 minutes using Docker and `kind`.
-
-**Prerequisites:** Docker, `kind`, `helm`, `kubectl`, and one LLM provider key (e.g., OpenAI).
+Needs Docker running, `kind`, `helm`, `kubectl`, and one LLM provider key.
 
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
 cd zelkor-platform
-OPENAI_API_KEY="sk-..." ./install.sh
+OPENAI_API_KEY=sk-... ./install.sh
 ```
 
-For full details, see the [Local Quickstart Guide](docs/quickstart.md).
+`./install.sh` creates a local kind cluster, installs Zelkor Community Edition (chart `2.1.1`), and prints URLs when it finishes. Full prerequisites, other providers, and the first verification call: [Local Quickstart](docs/quickstart.md).
 
-## Deployment Options
+## What you set
 
-Zelkor Community Edition can be deployed in three ways:
+| You declare | Platform job |
+| :--- | :--- |
+| **Model** | Routes chat and embeddings through one gateway; injects the upstream key from a cluster secret |
+| **Tool** | Exposes tools over MCP (Model Context Protocol) — SQL, vectors, sandbox, your own backends — without putting secrets in agent code |
+| **Agent** | Deploys your LangGraph or Deep Agents workload; you run it and open the trace |
 
-1. **Local Quickstart:** Laptop `kind` via `./install.sh`. See [docs/quickstart.md](docs/quickstart.md).
-2. **Existing Cluster:** Evaluate CE in a namespace with `./scripts/install-quickstart.sh`. See [docs/helm-install.md](docs/helm-install.md).
-3. **Production Deployment:** HA operators via `./scripts/install-production.sh`. See [docs/production.md](docs/production.md).
+After the local install, point the [`zelkor` CLI](cli/README.md) at the cluster, `zelkor deploy` your project, `zelkor run`, then open the trace UI the install prints (Langfuse). A worked demo lives under [`examples/finserve/`](examples/finserve/README.md) if you want a sample agent — it is not required to learn the platform.
 
-Gateway setup depends on your cluster — greenfield, layered behind existing ingress, or shared Envoy infrastructure. See [docs/envoy-gateway-topologies.md](docs/envoy-gateway-topologies.md).
-
-## What's Included
-
-Zelkor provides all the core pillars needed for an agentic runtime:
-
-| Component | Role |
-|-----------|------|
-| **Aegra** | Stateful agent orchestrator (LangGraph alternative) |
-| **Envoy AI Gateway** | LLM API gateway, MCP router, and OTel GenAI telemetry |
-| **NeMo Guardrails** | CPU-native conversational boundaries and dialog rails |
-| **Langfuse** | Observability, tracing, and evaluations |
-| **Qdrant** | Semantic memory and vector search |
-| **PostgreSQL / Valkey / ClickHouse** | Databases for state, cache, and analytics |
-
-Baseline sandboxing is provided via **gVisor** (`runsc`) for untrusted code execution workloads.
-
-## Architecture
+How a request reaches your agent (postcard):
 
 ```mermaid
-graph TD
-    subgraph k8s [Kubernetes Cluster]
-        Aegra[Aegra Runtime]
-        Envoy[Envoy AI Gateway]
-        Langfuse[Langfuse Observability]
-        
-        Aegra --- DBs
-        Envoy --- DBs
-        Langfuse --- DBs
-        
-        subgraph DBs [Datastores]
-            PG[(PostgreSQL)]
-            Valkey[(Valkey)]
-            CH[(ClickHouse)]
-            Qdrant[(Qdrant)]
-        end
-    end
+flowchart LR
+  laptop[Your laptop]
+  subgraph cluster [Your cluster]
+    model[Model]
+    tools[Tools]
+    agent[Your agent]
+    trace[Run trace]
+  end
+  laptop -->|chat / run| model
+  laptop -->|run| agent
+  agent --> model
+  agent --> tools
+  agent --> trace
 ```
 
-## 🏢 For Enterprise
+For the full request path and trust boundaries, see [Architecture: Drop-In Agent Contract](docs/architecture-agent-contract.md).
 
-Need SSO/SAML, hardware sandboxing (Kata Containers), mTLS, audit logging, or HIPAA/PCI DSS compliance packs?
+## Editions
 
-Contact us for **Zelkor Enterprise** — self-hosted Helm charts with operational SLAs and dedicated support.
+| Edition | What you get |
+| :--- | :--- |
+| **Community Edition** | The self-hosted runtime in this repo: gateway, tools, sandbox, traces, Helm install |
+| **Pro** | SSO, team controls (budgets and approvals), and production HA / GitOps on top of CE |
+| **Enterprise** | Isolation and compliance on Pro: hardware sandbox, mTLS, retained audit, BAA |
 
-## License
+CE is enough to evaluate and to run production-shaped installs. Pro and Enterprise add control-plane and compliance layers — not a different product story.
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+🏢 **For Enterprise** — isolation, audit retention, and BAA on the same platform shape. Start with [Local Quickstart](docs/quickstart.md); talk to us when CE is running on a shared cluster.
 
-## Contributing
+## Docs
 
-See [AGENTS.md](AGENTS.md) and [docs/quickstart.md](docs/quickstart.md).
+| Start here | Job |
+| :--- | :--- |
+| [Local Quickstart](docs/quickstart.md) | Install CE on kind and prove a model call + a trace |
+| [Documentation index](docs/README.md) | Map of every published page |
+| [`zelkor` CLI](cli/README.md) | Point at a cluster, deploy your agent, run, inspect |
+| [FinServe example](examples/finserve/README.md) | Optional reference agents on top of the platform |

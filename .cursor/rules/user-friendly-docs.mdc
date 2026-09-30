@@ -7,7 +7,7 @@ alwaysApply: false
 # User-Friendly Documentation
 
 ## Directives
-When writing or updating documentation for external users, prioritize clarity, progressive disclosure, and the "Happy Path".
+When writing or updating documentation for external users, prioritize clarity, progressive disclosure, and the "Happy Path". Structure, frontmatter, and website ingest: `product-docs.mdc`.
 
 ## Core Constraints
 1. **No Internal Jargon:** Do not expose internal script mechanics (e.g., `INSTALL_PROFILE=fast`, `WAIT_RECHECK_GRACE`), internal routing logic, or development-specific terminology (e.g., "Path A", "Path B") unless absolutely necessary. Translate these into user-centric concepts (e.g., "Quickstart", "Production Deployment").

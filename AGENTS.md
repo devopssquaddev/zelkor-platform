@@ -1,116 +1,37 @@
-# Zelkor Platform — Contributor Guide
+# Zelkor Platform — AI Agent Instructions
 
-This is the **public open-source repository**. Product code lives here.
+This is the **public open-source repository** for the Zelkor platform. Product code, Helm charts, and public documentation live here.
+
+Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.**
 
 ## Repository Layout
 
-```
-zelkor-platform/
-├── install.sh                  # Local bootstrap (kind + Helm)
-├── cli/                        # `zelkor` CLI (pip install -e ./cli)
-├── scripts/build-images.sh     # Build/push first-party images (GHCR; kind load deprecated)
-├── images/                     # Dockerfiles for Aegra runtime, Aegra-deep, Aegra CLI, MCP, guardrails, sandbox, FinServe
-├── profiles/
-│   └── values-local.yaml       # Kind overlay — secrets/hosts; not in the production chart
-├── charts/zelkor-platform/     # Unified Helm chart (platform only)
-│   └── values.yaml             # Production defaults — no passwords, localhost, or demo knobs
-├── examples/                   # Demo apps — separate Helm charts (not in the platform chart)
-│   └── finserve/               # FinServe demo (see internal/requirements/demo/)
-│       ├── chart/              # Standalone Helm release
-│       └── tests/
-├── agents/                     # Platform auth handlers (tenant isolation)
-├── mcp/                        # Native MCP servers (copied into zelkor-mcp image)
-├── tests/                      # Platform integration tests (env-agnostic)
-├── docs/quickstart.md          # Getting started
-└── .cursor/rules/              # AI engineering role rules
-```
+- `charts/zelkor-platform/`: Unified Helm chart for the platform. Production defaults only (no dev passwords or `*.localhost`).
+- `charts/zelkor-agent/`: Helm chart for deploying customer agents as ClusterIP workers.
+- `profiles/`: Local overlays (e.g., `values-local.yaml`) for kind/dev environments.
+- `images/`: Dockerfiles for first-party images (Aegra runtime, MCP, guardrails, sandbox).
+- `agents/`: Platform auth handlers for tenant isolation.
+- `mcp/`: Native MCP servers (thin Postgres, Qdrant library wrap).
+- `examples/`: Demo applications (e.g., FinServe) with standalone Helm charts.
+- `scripts/`: Install and uninstall scripts (`install-production.sh`, `install-quickstart.sh`, `uninstall.sh`).
+- `cli/`: The `zelkor` CLI source code.
+- `docs/`: Public product documentation (published to the website).
+- `tests/`: Env-agnostic platform integration tests.
 
-## Upstream reference (local workspace only)
+## Engineering Rules for Agents
 
-A sibling `vendor/` folder (not in this repo) may hold pinned OSS checkouts such as Aegra. Those trees are read-only reference. Never edit them or copy their source into this repository. See `.cursor/rules/upstream-oss-reference.mdc`.
+1. **Gateway API Standard:** Never use `ingress-nginx`. All ingress and routing must use Kubernetes Gateway API (`gateway.networking.k8s.io/v1`) with Envoy Gateway.
+2. **No Dev Defaults in Platform:** Do not bake `*.localhost`, `dev-key`, or local passwords into `charts/zelkor-platform/values.yaml` or templates. Use `profiles/values-local.yaml` for dev overrides.
+3. **Platform vs Demo Boundary:** Demos (`examples/`) are separate Helm charts. Do not put demo-shaped defaults or fixture tenants into the platform chart. Platform tests must pass with `INSTALL_EXAMPLES=false`.
+4. **Agent Deployment (Drop-In Contract):** Customer agents are deployed as separate ClusterIP Deployments (`charts/zelkor-agent`), not merged into the platform's `aegra.graphs`. Envoy routes traffic by `X-Graph-ID` or `?graph_id=`.
+5. **LLM Routing:** All LLM calls route through the Envoy AI Gateway `/v1` endpoint. Do not connect agents directly to providers. Add providers via Helm overlays.
+6. **No Inline Python in Helm:** Do not paste application Python into ConfigMaps. App modules live in container images; config files live in `files/`.
+7. **Component Versions:** Pin to exact stable semver tags for third-party components. Re-baseline related pins together.
+8. **Platform Logging:** All processes must log to stdout in JSON format at the Helm-controlled level (`ZELKOR_LOG_LEVEL`). Do not log secrets or health probes at INFO.
+9. **Git Workflow:** Commit to feature branches (`feat/`, `fix/`, `chore/`) and open a PR. Never commit directly to `main`. Use Conventional Commits.
+10. **Documentation:** Write user-friendly, progressive-disclosure documentation in `docs/`. No internal jargon. Provide complete, copy-pasteable commands.
 
-## Examples (demo applications)
+## Installing and Deploying
 
-Demo workloads validate the platform but are **not** bundled into the production chart.
-
-- Each demo lives under `examples/<name>/` with its own chart at `examples/<name>/chart/`.
-- Platform chart + `tests/` must work with `INSTALL_EXAMPLES=false` then `pytest tests/`.
-- No demo-shaped defaults in `charts/zelkor-platform/values.yaml`. Local kind secrets/hosts live in `profiles/values-local.yaml`. Demos overlay from `examples/<name>/chart/`. Example `values.yaml` is target-agnostic (`platform.releaseName` or explicit URLs); do not copy `values-local.yaml` as a customer recipe.
-- Do not reference `examples/` from `charts/zelkor-platform/`.
-- Production deploys: platform chart only. Local/test: `install.sh` runs platform + example charts (two Helm releases).
-- Combined platform+demo tasks: implement platform first and stop; then overlay the demo. See `.cursor/rules/platform-demo-boundary.mdc`.
-- Customer/demo agents are **separate ClusterIP Deployments** (`FROM zelkor-aegra`, or `FROM zelkor-aegra-deep` for deploy-first Deep Agents). Default is one independently released graph per Deployment; a fat multi-graph image is allowed when graphs ship as one app (FinServe desk). FinServe also ships `finserve-coder` as deploy-first. Do not register them on platform Aegra via `aegra.graphs`. Envoy routes by `X-Graph-ID` / `?graph_id=` on the shared Aegra host; vanity HTTPRoutes are opt-in only.
-- **BYO MCP:** Do not add vendor MCP images (ServiceNow, Jira, …) to the platform chart. Extra servers register via generic `mcp.extraBackends: []` (customer overlay). Native MCP lives under `mcp/`. Postgres is a **thin first-party** server (`query` + discovery); do not wrap DBA Postgres MCPs. Qdrant **imports** official `mcp-server-qdrant` as a library (do not paste sources into `mcp/wrappers/`). See `internal/plan/architecture_native_mcp_oss_wrap.md` and `internal/plan/requirements_native_mcp_servers.md` §2.1 / §2.3 (multi-root).
-- Full layout: documented in `internal/requirements/dev/examples_and_demos.md` (read from multi-root workspace).
-
-## Installing Zelkor (coding agents)
-
-| Task | Document |
-| :--- | :--- |
-| Platform install / uninstall (kind, existing cluster, greenfield/brownfield) | [docs/agent-install.md](docs/agent-install.md) |
-| Deploy customer agents (`zelkor deploy`, `charts/zelkor-agent`) | [docs/agent-deploy.md](docs/agent-deploy.md) |
-| Add LLM provider or default model (GitOps, demo, agent) | [docs/adding-llm-providers-and-models.md](docs/adding-llm-providers-and-models.md) |
-
-Read the relevant doc before running install scripts or Helm. Multi-root workspace: also read `internal/requirements/dev/agent_zelkor_install.md`.
-
-## Local Development
-
-```bash
-./install.sh
-```
-
-Prerequisites: Docker, `kind`, `helm`, `kubectl`.
-
-## Engineering Rules
-
-- All LLM calls route through **Envoy AI Gateway** — never connect agents directly to providers. New providers/models: **Helm overlays** (`aiGateway.providers`, `openaiCompat`, `defaultModel`) — do not rewrite `charts/zelkor-platform` ai-gateway or NeMo templates for one project ([adding-llm-providers-and-models.md](docs/adding-llm-providers-and-models.md), `.cursor/rules/add-llm-via-overlays.mdc`).
-- **Gateway API Standard (No Ingress-NGINX):** Never use `ingress-nginx` (retired in 2026). Ingress and external routing must use **Kubernetes Gateway API (`gateway.networking.k8s.io/v1`)** with **Envoy Gateway**
-- **Requirements & Living Spec Synchronization:** Any functional, architectural, configuration, or test change must be synchronized with governing requirements in `internal/plan/` or `internal/requirements/` with an updated `## Revision History`.
-- **Deprecation & Lifecycle Policy:** Always verify all third-party components, base images, and libraries are actively maintained and not deprecated or EOL
-- **Component Version Policy:** Pin latest **stable** releases at each Zelkor semver release; hold pins until the next release. Choose Postgres/ClickHouse/Valkey/etc. from **Langfuse + Aegra compatibility**; pin operators to the latest stable release that supports those datastore versions. See `.cursor/rules/component-versions.mdc` and `internal/plan/component_compatibility_matrix.md`.
-- **Langfuse** tracing must be enabled on all agent executions
-- **Platform logging:** Every process logs to stdout at a Helm-controlled level (default INFO JSON). Spec (multi-root): `internal/plan/requirements_platform_logging.md`. Rule: `.cursor/rules/platform-logging.mdc`. Do not hardcode log level, `print()` operational events, or log secrets. Traces are not a substitute.
-- Untrusted workloads use **gVisor** (`RuntimeClass: gvisor`)
-- Tenant isolation via Aegra `@auth.authenticate` handlers
-- No `kubectl apply` — all deployments are Helm/GitOps declarative
-- **No inline Python in ConfigMaps:** App modules live in container images (`images/`, `ghcr.io/devopssquaddev/zelkor-*`). Helm `files/` is for config (SQL, Colang, `aegra.json`), not application source. See `.cursor/rules/helm-python-packaging.mdc`.
-- **Necessary length:** Chat and new docs stay as short as the task needs. See `.cursor/rules/necessary-length.mdc`.
-- **Tests must not shape the platform:** Do not bake kind hosts, fixture tenants, or pytest-only Services/Routes into `charts/zelkor-platform/`. Tests env-override; kind values stay in `profiles/values-local.yaml`. After each substantial change, run the checklist in `.cursor/rules/tests-do-not-shape-platform.mdc`.
-- **Git Commit & Tagging Standard:** Commit major milestones with Conventional Commits; create annotated tags (`git tag -a`) for release points and major architectural milestones.
-
-## Branching
-
-Trunk-based development: `main` is the always-mergeable trunk. Use short-lived feature branches — no long-lived `develop`, `release`, or `phase/*` branches.
-
-| Layer | Strategy |
-|-------|----------|
-| **`zelkor-platform` (this repo)** | Feature branches → PR → squash merge to `main`; tag semver CE releases |
-| **`internal` (private)** | Local-only planning; commit to local `main`; never pushed |
-| **`zelkor-platform-enterprise` (Phase 2+)** | Separate private repo; overlay tags pinned to CE semver |
-
-**Branch naming:** `feat/<scope>-<description>`, `fix/<scope>-<description>`, `chore/<scope>-<description>`
-
-Scopes: `install`, `helm`, `agents`, `finserve`, `ci`
-
-**Phases** (1–4 in `internal/plan/`) are planning milestones and semver tags — not git branches.
-
-**CE release tags on `main`:** annotated `vX.Y.Z-ce`. Git tag, Helm chart, and first-party image tags are the same triple (multi-root: `internal/plan/requirements_ce_versioning.md`; rule: `.cursor/rules/ce-versioning.mdc`). After `v1.0.0-ce`, default PATCH. Do not tag while images stay on the previous triple. Historical: `v0.1.0-alpha`, `v0.2.0-alpha`, `v0.3.0`, `v1.0.0-ce`, `v1.0.1-ce`, `v1.1.0-ce`, `v1.1.1-ce`, `v1.2.0-ce`, `v1.2.1-ce`, `v1.2.2-ce`, `v1.2.3-ce`, `v1.2.4-ce`, `v1.2.5-ce`. Default next is PATCH `1.2.6`.
-
-## Pull Requests
-
-1. Branch from `main`
-2. Complete the **Minimal PR checklist** (multi-root workspace: `internal/requirements/dev/agent_code_review.md`):
-   - [ ] Bugbot on branch changes — no open Critical/High findings
-   - [ ] Security Review if Helm, Terraform, auth, or security paths changed
-   - [ ] Phase requirements checked when the change maps to a roadmap phase
-   - [ ] Tests added/updated for behavior changes; tests did not shape chart defaults (see `tests-do-not-shape-platform`)
-   - [ ] CE tag/chart/first-party image pins lockstep when cutting a release (see `ce-versioning`)
-   - [ ] Platform logging: new/changed processes honor `ZELKOR_LOG_LEVEL`; no secrets or probe INFO; DEBUG not in chart defaults (see `platform-logging`)
-   - [ ] CI green (GitHub Actions evals are parked; skipped `ai-red-team-eval` is not a merge gate)
-   - [ ] Test-server validation via `internal/dev/` after merge
-3. Squash merge after CI passes and review
-4. Keep PRs focused — one feature or fix per PR
-
-## License
-
-Apache 2.0 — see [LICENSE](LICENSE).
+- **Platform Install:** See `docs/agent-install.md` for instructions on running `install-production.sh` or `install-quickstart.sh`.
+- **Agent Deploy:** See `docs/agent-deploy.md` for instructions on deploying agents via `charts/zelkor-agent` or the `zelkor` CLI.

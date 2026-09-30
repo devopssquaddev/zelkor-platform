@@ -1,182 +1,56 @@
-# Production Deployment
+---
+title: Production Install
+description: Deploy the highly available production shape of Zelkor Community Edition.
+type: how-to
+sidebar_group: Install
+sidebar_order: 30
+audience: human
+edition: ce
+---
 
-Deploy Zelkor Community Edition to a production Kubernetes environment.
+# Production Install
 
-Unlike the evaluation install, production uses operators for HA datastores, enables NetworkPolicies, and pins first-party images by digest.
+Deploy the production shape of Zelkor Community Edition. This runs databases via Kubernetes operators (CloudNativePG, ClickHouse Operator) and enables High Availability (HA) and NetworkPolicies. The workload is a normal Helm release.
+
+**Zelkor sandboxes the agent you already wrote.** It wraps the agent in a comprehensive security and operational perimeter without a rewrite. The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
+
+* **Community Edition** is the self-hosted runtime.
+* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 ## Prerequisites
 
-- Kubernetes v1.28+ with a default StorageClass
-- At least **3 Ready worker nodes** (required for PostgreSQL HA)
-- `kubectl` v1.28+ and `helm` v3.10+
-- **metrics-server** (for Horizontal Pod Autoscaling)
-- *(Optional)* S3 bucket for PostgreSQL backups (Barman), cert-manager `ClusterIssuer` for TLS, Prometheus Operator CRDs for monitoring.
+- Kubernetes v1.28+ with at least 3 worker nodes.
+- Default StorageClass with dynamic provisioning.
+- `metrics-server` installed (required for HPA).
+- A JWT Identity Provider (IdP) for tenant authentication, with a downloaded JWKS JSON file.
 
-Do not use `*.localhost` domains, `dev-key` tokens, or unsigned authentication.
+## Deploy with the production script
 
-Envoy Gateway topologies: [Gateway Topologies](envoy-gateway-topologies.md). Greenfield is the default (Zelkor installs Envoy when missing). If Envoy Gateway is already running, use `--topology layered` (Zelkor ClusterIP Gateway behind your ingress) or `--topology shared` (attach to their Gateway). CE first-party images on GHCR are **public** — no `imagePullSecret` is required. `--image-pull-secret` is optional (private mirror or a later licensed image). `--strict` fails the install on preflight warnings (StorageClass, node count vs Postgres instances, metrics-server).
-
-## Install
+The `install-production.sh` script bootstraps the required operators, installs Envoy Gateway, and deploys the platform using the `values-production.yaml` profile.
 
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
 cd zelkor-platform
 
-OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
+# Replace placeholders with your actual hosts, keys, and JWT settings
+OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
   --namespace zelkor \
-  --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com
+  --hosts-agents agents.example.com \
+  --hosts-langfuse langfuse.example.com \
+  --jwt-issuer "https://your-idp.example.com" \
+  --jwt-audience "zelkor" \
+  --jwks-file "./path/to/jwks.json" \
+  --generate-passwords
 ```
 
-The script runs `bootstrap-operators.sh` and `bootstrap-gateway.sh`, then Helm with `profiles/values-production.yaml`. It waits for the Langfuse bootstrap Job, then runs a second Helm upgrade with `platform.telemetry.langfuse.publicHttpRoute.enabled=true` so the public Langfuse UI route is not exposed until the first admin exists. Datastore, sandbox worker, AI Gateway consumer key, and Langfuse crypto secrets are generated when unset and stored in cluster Secrets. The profile creates default Langfuse project **Zelkor Platform**; ingest keys live in `{release}-langfuse-otel`. Auto-generated `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `VALKEY_PASSWORD`, and `SEAWEEDFS_*` are hex (URL-safe for Langfuse migration URLs). If you set `CLICKHOUSE_PASSWORD` yourself, use a URL-safe value (no `+`, `/`, `=`, `@`, `&`, etc.). Override with `POSTGRES_PASSWORD`, `CLICKHOUSE_PASSWORD`, `VALKEY_PASSWORD`, `SEAWEEDFS_*`, `WORKER_TOKEN`, or `LANGFUSE_*`. `--generate-passwords` also prints them once. GitOps without the installer: keep `platform.telemetry.langfuse.publicHttpRoute.enabled` false until `{release}-langfuse-bootstrap` completes.
+Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script will configure Envoy Gateway using a standard LoadBalancer by default. If you have an existing Ingress controller, you can use the `--topology layered` option.
 
-```bash
-# Existing ingress (NGINX, Traefik, ALB) — also valid when EG is already running
-OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
-  --topology layered \
-  --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com
+## Optional configurations
 
-# Then point that ingress at Service zelkor-zelkor-platform-dataplane
-# in envoy-gateway-system (port 80) and preserve the Host header.
+- **TLS**: Use `--tls --cluster-issuer letsencrypt-prod` to attach a cert-manager ClusterIssuer to the Gateway.
+- **ServiceMonitor**: Use `--service-monitor` to enable Prometheus metrics scraping.
 
-# Existing Envoy Gateway
-OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
-  --topology shared \
-  --gateway-class your-gateway-class \
-  --parent-ref-name your-gateway \
-  --parent-ref-namespace your-gateway-namespace \
-  --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com
+## Next steps
 
-# TLS + Prometheus (optional)
-OPENAI_API_KEY="sk-..." ./scripts/install-production.sh \
-  --hosts-agents agents.yourdomain.com \
-  --hosts-langfuse langfuse.yourdomain.com \
-  --tls --cluster-issuer letsencrypt-prod \
-  --service-monitor
-```
-
-Skip operators when you already have CNPG / ClickHouse Operator / cert-manager: `--skip-operators`.
-
-## Manual Helm
-
-### Layer 1: Operators
-
-```bash
-./scripts/bootstrap-operators.sh
-```
-
-Skip when using managed databases (`databases.mode: external`).
-
-### Layer 1b: Gateways
-
-```bash
-./scripts/bootstrap-gateway.sh
-```
-
-Layered routing: `./scripts/bootstrap-gateway.sh --skip-envoy-gateway` when EG already exists (no ConfigMap patch), then `-f profiles/values-gateway-layered.yaml`. Point your ingress at `{namespace}-{release}-dataplane` in `envoy-gateway-system`.
-Existing Envoy attach: `./scripts/bootstrap-gateway.sh --skip-envoy-gateway --skip-ai-gateway` and `-f profiles/values-gateway-shared.yaml`. `--patch-extension-manager` only when you explicitly want to mutate their EG ConfigMap.
-
-### Layer 2: Platform
-
-```bash
-kubectl create namespace zelkor
-
-helm upgrade --install zelkor-platform charts/zelkor-platform \
-  --namespace zelkor \
-  -f profiles/values-production.yaml \
-  -f profiles/values-gateway-greenfield.yaml \
-  --set postgresql.auth.password="secure-pg-password" \
-  --set clickhouse.auth.password="secure-ch-password" \
-  --set seaweedfs.auth.accessKey="secure-s3-access" \
-  --set seaweedfs.auth.secretKey="secure-s3-secret" \
-  --set platform.telemetry.langfuse.nextauthSecret="$(openssl rand -base64 32)" \
-  --set platform.telemetry.langfuse.salt="$(openssl rand -base64 32)" \
-  --set platform.telemetry.langfuse.encryptionKey="$(openssl rand -hex 32)" \
-  --set platform.telemetry.langfuse.nextauthUrl="https://langfuse.yourdomain.com" \
-  --set gateway.hosts.agents="agents.yourdomain.com" \
-  --set gateway.hosts.langfuse="langfuse.yourdomain.com"
-```
-
-### Production profile
-
-- `databases.mode: operator-cr`
-- CloudNativePG instances: 3
-- `highAvailability.enabled: true`
-- NetworkPolicies enabled
-
-**TLS:** `--set gateway.tls.enabled=true --set gateway.tls.clusterIssuer=letsencrypt-prod`
-
-**Monitoring:** `--set observability.serviceMonitor.enabled=true`
-
-**Scale Envoy controllers:**
-
-```bash
-kubectl -n envoy-gateway-system scale deploy/envoy-gateway --replicas=2
-kubectl -n envoy-ai-gateway-system scale deploy/ai-gateway-controller --replicas=2
-```
-
-## NeMo guardrails traces in Langfuse
-
-With Langfuse on (`platform.telemetry.langfuse.enabled` and `platform.telemetry.langfuse.init.enabled`), NeMo exports OpenTelemetry spans so Agent Protocol runs join graph + rails in one Langfuse trace. Prompt/completion bodies stay off (`otel.captureContent: false`).
-
-NeMo loads Langfuse ingest keys from the cluster Secret `{release}-langfuse-otel` (`envFrom`). You do **not** need `platform.telemetry.langfuse.extraProjects` for a single Langfuse project. Use `extraProjects` only when multiple Langfuse projects need NeMo OTLP routing (per-agent public keys).
-
-To record observation input/output (PII):
-
-```bash
-helm upgrade --install zelkor-platform ./charts/zelkor-platform \
-  --namespace zelkor --reuse-values \
-  --set workspace.policies.nemo.observability.otel.captureContent=true
-```
-
-To turn NeMo OTEL off:
-
-```bash
-helm upgrade --install zelkor-platform ./charts/zelkor-platform \
-  --namespace zelkor --reuse-values \
-  --set platform.telemetry.nemoOtel.enabled=false \
-  --set workspace.policies.nemo.observability.otel.enabled=false
-```
-
-After a chat completion through NeMo or the AI Gateway intercept, Langfuse should show rails such as `self_check_input` and `guardrails.request`. NeMo logs must not show OTLP export `401 Unauthorized`.
-
-## Verifying the Deployment
-
-```bash
-kubectl -n zelkor get secret zelkor-platform-langfuse-admin \
-  -o jsonpath='{.data.email}' | base64 -d; echo
-
-kubectl -n zelkor get secret zelkor-platform-langfuse-admin \
-  -o jsonpath='{.data.password}' | base64 -d; echo
-
-kubectl -n zelkor get secret zelkor-platform-langfuse-otel \
-  -o jsonpath='{.data.LANGFUSE_PUBLIC_KEY}' | base64 -d; echo
-
-kubectl get cluster,clickhouseinstallation -n zelkor
-```
-
-## Deploying Agents
-
-```bash
-zelkor env add production --kube-context your-prod-context --namespace zelkor
-zelkor deploy
-```
-
-The first worker is the catch-all (Topology 1). Later agents need `X-Graph-ID`. `zelkor logs` / `zelkor undeploy` target that agent release only.
-
-GitOps (already-built image): `helm upgrade --install` `charts/zelkor-agent` with `platform.releaseName` set. Langfuse OTEL is inherited from `{release}-langfuse-otel`. Do not paste keys. Do not run `zelkor deploy` — it rebuilds and pushes a CLI image. Details: [agent-deploy.md](agent-deploy.md#cli-vs-gitops).
-
-Do not provision a Postgres cluster or CloudNativePG `Database` for the agent. Point `platform.databaseUrl` / `platform.valkeyUrl` at the existing platform Aegra DB and Valkey (the CLI copies them). Isolate Deployments with `redis.prefix`. A dedicated checkpointer DSN is optional. See [agent-deploy.md](agent-deploy.md#persistence-do-not-provision-a-database).
-
-## Uninstall
-
-```bash
-./scripts/uninstall.sh --namespace zelkor
-./scripts/uninstall.sh --namespace zelkor --purge-gateway --purge-operators
-# cert-manager is often pre-installed; only with an extra flag:
-./scripts/uninstall.sh --purge-cert-manager
-```
-
-`--purge-*` removes only components Zelkor recorded at bootstrap (`kube-system/zelkor-bootstrap-ownership`). Use `--force-purge` for installs from before that record existed. `--delete-namespace` drops the release namespace (and PVCs).
+- Read about [Gateway Topologies](./topologies.md) to integrate with existing Traefik, NGINX, or ALB setups.

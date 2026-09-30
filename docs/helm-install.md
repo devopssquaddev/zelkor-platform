@@ -1,117 +1,67 @@
-# Existing Cluster Deployment (Non-Production)
+---
+title: Install on an Existing Cluster
+description: Evaluate Zelkor Community Edition on any Kubernetes cluster.
+type: how-to
+sidebar_group: Install
+sidebar_order: 20
+audience: human
+edition: ce
+---
 
-Evaluate Zelkor Community Edition on a cluster you already have (EKS, GKE, AKS, or a shared development cluster) without operators or HA.
+# Install on an Existing Cluster
 
-This path uses `databases.mode: in-cluster-basic` (in-chart StatefulSets). For a laptop `kind` cluster, see [Local Quickstart](quickstart.md). For HA production, see [Production Deployment](production.md).
+Evaluate Zelkor Community Edition on an existing Kubernetes cluster. This guide installs the evaluation shape (`in-cluster-basic`), which runs stateful components as simple StatefulSets without operators. The workload is a normal Helm release.
+
+**Zelkor sandboxes the agent you already wrote.** It wraps the agent in a comprehensive security and operational perimeter without a rewrite. The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
+
+* **Community Edition** is the self-hosted runtime.
+* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 ## Prerequisites
+- Kubernetes v1.28+ cluster.
+- `kubectl` and `helm` v3.10+ installed.
+- One LLM API key (e.g., OpenAI, Anthropic).
 
-- An existing Kubernetes cluster (v1.28+)
-- `kubectl` and `helm` installed and configured for that cluster
-- An LLM provider API key (OpenAI, Anthropic, Gemini, Ollama, or vLLM)
+## Install using the quickstart script
 
-Envoy Gateway and Envoy AI Gateway are installed automatically when missing (greenfield). Greenfield **refuses** when Envoy Gateway is already running and was not installed by Zelkor. **Layered** is the path when you already have an ingress (or EG) and want Zelkor to create its own ClusterIP Gateway — it does not replace `envoy-gateway-config`. **Shared** attaches routes to **your** Gateway CR. See [Gateway Topologies](envoy-gateway-topologies.md). `--patch-extension-manager` is an explicit, cluster-wide mutate.
-
-## Install
+The `install-quickstart.sh` script deploys Envoy Gateway, AI Gateway, and the Zelkor platform.
 
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
 cd zelkor-platform
 
-OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --namespace zelkor-play
+# Replace with your actual LLM provider key
+OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh \
+  --namespace zelkor \
+  --hosts-agents agents.example.com \
+  --hosts-langfuse langfuse.example.com
 ```
 
-The script bootstraps Envoy (if needed), generates install secrets (datastores, sandbox worker token, AI Gateway consumer key, Langfuse crypto) into cluster Secrets, and deploys `profiles/values-quickstart.yaml`. That profile creates the default Langfuse project **Zelkor Platform** and stores ingest keys in `{release}-langfuse-otel`. Override with `POSTGRES_PASSWORD`, `WORKER_TOKEN`, `AI_GATEWAY_CONSUMER_KEY`, `LANGFUSE_*`, and the other env names listed in `install-production.sh`. Default play hosts are `agents.<namespace>.zelkor.local` and `langfuse.<namespace>.zelkor.local`. Override with `--hosts-agents` / `--hosts-langfuse`. CE GHCR images are public; `--image-pull-secret` is optional.
+The script will output the commands to retrieve the generated Langfuse admin password.
 
-```bash
-# Layered behind existing ingress (NGINX, Traefik, ALB)
-OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --topology layered
+## Install using Helm directly
 
-# Attach to an existing Envoy Gateway
-OPENAI_API_KEY="sk-..." ./scripts/install-quickstart.sh --topology shared \
-  --gateway-class your-gateway-class \
-  --parent-ref-name your-gateway \
-  --parent-ref-namespace your-gateway-namespace
-```
-
-## Validate your values
-
-The platform chart ships `values.schema.json`. Typos fail at `helm template` or `helm upgrade` with the unknown key name:
-
-```text
-Error: values don't meet the specifications of the schema(s) in the following chart(s):
-zelkor-platform:
-- (root): Additional property aiGatway is not allowed
-```
-
-Run `helm template` with your overlay before applying GitOps syncs.
-
-## Add raw resources (`extraManifests`)
-
-When you need a Kubernetes object the chart does not model (custom Envoy filter, extra ConfigMap, team-specific Service), add it under `extraManifests` in your values overlay. Objects render alongside generated manifests and survive chart upgrades:
-
-```yaml
-extraManifests:
-  - apiVersion: v1
-    kind: ConfigMap
-    metadata:
-      name: my-team-hooks
-    data:
-      note: "coexists with zelkor-platform output"
-```
-
-## Find what generated an object
-
-Generated resources include `zelkor.io/intent` on `metadata.labels`, naming the values path that produced them (for example `workspace.models.providers.openai`). After install:
-
-```bash
-kubectl get deploy,sts,svc -n your-namespace -l 'zelkor.io/intent=workspace.models.providers.openai'
-```
-
-Reserved Pro and Enterprise keys (`platform.tenants.sso`, `platform.mTLS`, `workspace.policies.llamaGuard`, `workspace.policies.presidio`, non-`oss` `global.tier`) fail install on CE with a message that names the tier and the CE alternative.
-
-## Manual Helm
+If you prefer to run Helm manually, first install the Gateway API and Envoy Gateway (see [Gateway Topologies](./topologies.md) for options):
 
 ```bash
 ./scripts/bootstrap-gateway.sh
+```
 
-# Prefer install-quickstart.sh (generates datastore + worker + Langfuse secrets).
-# Manual Helm still requires those --set values (or existing cluster Secrets on upgrade).
+Then, install the platform using the quickstart profile:
 
+```bash
+kubectl create namespace zelkor
 helm upgrade --install zelkor-platform charts/zelkor-platform \
+  --namespace zelkor \
   -f profiles/values-quickstart.yaml \
   -f profiles/values-gateway-greenfield.yaml \
-  --set workspace.models.providers.openai.apiKey="sk-your-llm-api-key" \
-  --set gateway.hosts.agents=agents.zelkor.local \
-  --set gateway.hosts.langfuse=langfuse.zelkor.local \
-  --set postgresql.auth.password="..." \
-  --set clickhouse.auth.password="..." \
-  --set seaweedfs.auth.accessKey="..." --set seaweedfs.auth.secretKey="..." \
-  --set platform.telemetry.langfuse.nextauthSecret="..." --set platform.telemetry.langfuse.salt="..." \
-  --set platform.telemetry.langfuse.encryptionKey="$(openssl rand -hex 32)"
+  --set aiGateway.providers.openai.apiKey="sk-..." \
+  --set gateway.hosts.agents=agents.example.com \
+  --set gateway.hosts.langfuse=langfuse.example.com
 ```
 
-Use `--set workspace.models.providers.openai.apiKey` (or anthropic / gemini / ollamaCloud / azure / bedrock / vertex / cohere). Extra OpenAI-compat hosts: `workspace.models.providers.openaiCompat`. Model ids are prefix-namespaced where providers share a pattern (`azure/*`, `bedrock/*`, `cohere/*`). Vertex-only installs use bare `gemini-*` (Envoy `GCPVertexAI`); use `vertex/*` when both `providers.gemini.apiKey` and `providers.vertex` are set. For Vertex with `existingSecret`, the Secret must use data key `service_account.json`. Do not put the upstream provider key in `workspace.models.consumerKey`.
+## Next steps
 
-NeMo pinned rails (`workspace.policies.nemo.model` / self-check) default from the first enabled provider when `workspace.models.defaultModel` is empty (same model ids as `install-quickstart.sh`). With **multiple** providers, set `workspace.models.defaultModel` explicitly (install scripts set it from `DEFAULT_LLM_MODEL`).
-
-Full matrix (providers, demos, agents, forbidden core edits): [adding-llm-providers-and-models.md](adding-llm-providers-and-models.md).
-
-## Next Steps
-
-```bash
-pip install -e ./cli
-zelkor env add my-cluster --kube-context your-kube-context --namespace zelkor-play
-```
-
-Point DNS or `/etc/hosts` at the Envoy dataplane Service `{namespace}-{release}-dataplane` in `envoy-gateway-system` (printed by the script). For layered installs, point your existing ingress at that ClusterIP Service and preserve the Host header. Zelkor does not create Ingress objects.
-
-## Uninstall
-
-```bash
-./scripts/uninstall.sh --namespace zelkor-play
-# Also remove Zelkor-owned Envoy (only if this install created it):
-./scripts/uninstall.sh --namespace zelkor-play --delete-namespace --purge-gateway
-```
-
-Default is Helm uninstall only. `--purge-gateway` / `--purge-operators` skip components Zelkor did not record as installed, unless `--force-purge`. cert-manager is never removed by `--purge-operators`. Missing Helm releases are skipped (no `helm uninstall --ignore-not-found`; Helm 3.10+).
+- To deploy a highly available shape with Kubernetes operators, see the [Production Install](./production.md).
+- To understand how Envoy Gateway integrates with your cluster, see [Gateway Topologies](./topologies.md).

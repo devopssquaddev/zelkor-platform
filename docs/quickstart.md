@@ -1,132 +1,120 @@
+---
+title: Local Quickstart
+description: Install Zelkor Community Edition on kind, call a model, and open a run trace.
+type: tutorial
+sidebar_group: Get started
+sidebar_order: 10
+audience: human
+edition: ce
+---
+
 # Local Quickstart
 
-Deploy Zelkor Community Edition locally on your laptop using `kind`. This guide gets you a fully functional, self-hosted agentic runtime in under 5 minutes.
+You get Community Edition on your own laptop cluster. Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. This tutorial installs that runtime on kind, proves a model call, and opens the matching trace — then points you at the CLI for your own agent.
 
-For an existing cluster (no kind), use `./scripts/install-quickstart.sh` — see [Existing Cluster Deployment](helm-install.md). For production, see [Production Deployment](production.md).
+Community Edition is the self-hosted runtime in this repo. Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps. Enterprise adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA). You do not need Pro or Enterprise to finish this page.
 
 ## Prerequisites
 
-- macOS (Docker Desktop / OrbStack), Linux, or Windows (WSL2)
-- [Docker](https://docs.docker.com/get-docker/) **installed and running** (Desktop or Engine — start it before running the install script)
-- [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
-- [Helm](https://helm.sh/docs/intro/install/) 3.x
-- [kubectl](https://kubernetes.io/docs/tasks/tools/)
-- **One LLM provider API key** (e.g., OpenAI, Anthropic, Gemini)
+Install and leave running:
 
-## Installation
+- Docker Desktop, Docker Engine, or OrbStack
+- [`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
+- [`helm`](https://helm.sh/docs/intro/install/) v3.10+
+- [`kubectl`](https://kubernetes.io/docs/tasks/tools/) v1.28+
 
-Clone the repository and run the install script, providing your LLM API key as an environment variable.
+You also need **one** LLM provider credential (or a local Ollama). The install refuses to start without it. Upstream keys go into the cluster secret; client calls use a local consumer token (`dev-key` on this tutorial).
+
+Pick one:
+
+| Provider | Env when you install | Default model the install picks |
+| :--- | :--- | :--- |
+| OpenAI | `OPENAI_API_KEY` | `openai/gpt-4o-mini` |
+| Ollama Cloud | `OLLAMA_API_KEY` | `gpt-oss:20b` |
+| Ollama on the host | `OLLAMA_LOCAL_HOST=http://host.docker.internal:11434` | `ollama/llama3.2` |
+| Anthropic | `ANTHROPIC_API_KEY` | `anthropic/claude-3-5-sonnet` |
+| Gemini | `GEMINI_API_KEY` | `gemini/gemini-2.0-flash` |
+| vLLM | `VLLM_BACKEND_URL` | `vllm/default` |
+
+You can set more than one provider; the first match in the table above wins for `DEFAULT_LLM_MODEL` unless you override it.
+
+## Install Community Edition
+
+From a clone of this repository:
 
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
 cd zelkor-platform
-
-# Example using OpenAI (Recommended)
-OPENAI_API_KEY="sk-..." ./install.sh
+OPENAI_API_KEY=sk-... ./install.sh
 ```
 
-**Supported Providers:**
-
-| Provider | Install Command | Default Model |
-| :--- | :--- | :--- |
-| **OpenAI** | `OPENAI_API_KEY="sk-..." ./install.sh` | `openai/gpt-4o-mini` |
-| **Anthropic** | `ANTHROPIC_API_KEY="sk-ant-..." ./install.sh` | `anthropic/claude-3-5-sonnet` |
-| **Gemini** | `GEMINI_API_KEY="..." ./install.sh` | `gemini/gemini-2.0-flash` |
-| **Ollama Cloud** | `OLLAMA_API_KEY="..." ./install.sh` | `gpt-oss:20b` |
-| **Ollama Local** | `OLLAMA_LOCAL_HOST="http://host.docker.internal:11434" ./install.sh` | `ollama/llama3.2` |
-| **vLLM** | `VLLM_BACKEND_URL="http://host:8000/v1" ./install.sh` | `vllm/default` |
-| **Azure OpenAI** | `AZURE_OPENAI_API_KEY="..." AZURE_OPENAI_ENDPOINT="https://res.openai.azure.com" ./install.sh` | `azure/gpt-4o-mini` |
-| **AWS Bedrock** | `AWS_ACCESS_KEY_ID="..." AWS_SECRET_ACCESS_KEY="..." AWS_REGION="us-east-1" ./install.sh` | `bedrock/amazon.titan-text-lite-v1` |
-| **Vertex AI** | `VERTEX_PROJECT="..." VERTEX_REGION="us-central1" ./install.sh` | `gemini-2.0-flash` (use `vertex/gemini-*` only when AI Studio `GEMINI_API_KEY` is also set) |
-| **Cohere** | `COHERE_API_KEY="..." ./install.sh` | `cohere/command-r` |
-
-The script pulls the **released** Community Edition images that match this checkout’s chart version. It first downloads those images, then starts the installation timer.
-
-## Verifying Access
-
-Once the installation completes, you can verify the deployment:
+Other providers use the same script — substitute the env var from the table. Example with Ollama Cloud:
 
 ```bash
-kubectl --context kind-zelkor get pods -A
-helm --kube-context kind-zelkor list
+OLLAMA_API_KEY=... ./install.sh
 ```
 
-All services and Web UIs are accessible via the Kubernetes Gateway API on port `8088`:
+What `./install.sh` does (you do not run these by hand):
 
-| Component | URL | Auth |
-| :--- | :--- | :--- |
-| **Langfuse Observability** | [http://langfuse.localhost:8088](http://langfuse.localhost:8088) | Admin user/password from `profiles/values-local.yaml` (kind overlay only) |
-| **Envoy AI Gateway** | [http://ai-gateway.localhost:8088](http://ai-gateway.localhost:8088) | `Authorization: Bearer <consumerKey>` — `workspace.models.consumerKey` in the kind overlay (gateway credential, not tenant identity) |
-| **Agent Protocol** | [http://agents.localhost:8088](http://agents.localhost:8088) | `Authorization: Bearer <tenant JWT>` — mint with `zelkor token mint` (see below) |
-| **MCP (Envoy MCPRoute)** | [http://mcp.localhost:8088/mcp](http://mcp.localhost:8088/mcp) | Same tenant JWT as Agent Protocol |
+1. Checks Docker, kind, helm, and kubectl
+2. Creates kind cluster `zelkor` with host port `8088`
+3. Installs the gVisor runtime on the kind node for sandboxed code
+4. Deploys Envoy Gateway, Envoy AI Gateway, and the Zelkor platform Helm chart (`appVersion` / image tag `2.1.1`)
+5. Deploys the optional FinServe example agents by default
+6. Prints service URLs and a ready curl when everything is healthy
 
-Kind installs enable **`platform.tenants.jwt.localSigning`** in `profiles/values-local.yaml` (applied by `./install.sh`). That is lab-only; production uses your IdP JWKS via `install-production.sh` (`--jwt-issuer`, `--jwks-file`, `--jwt-audience`). Agents reach native tools at in-cluster `http://<release>-mcp` (`MCP_URL`); the public MCP host above is optional debugging.
+First create is typically under five minutes when Docker is already warm and image pulls are not bandwidth-bound. Re-runs skip work that is already ready.
 
-### Mint a tenant JWT (kind)
+**Success:** the script ends with `Done. Zelkor Platform deployed on kind cluster: zelkor` and a footer of localhost URLs on port `8088`.
 
-```bash
-pip install -e ./cli
-export AUTH_JWT_ISSUER=https://local.zelkor.invalid
-TOKEN=$(zelkor token mint --release zelkor-platform --tenant seed --namespace default --context kind-zelkor)
-```
+## Call a model
 
-Use `--tenant` matching your workload (`seed` is the default lab tenant in the kind overlay). Set `--namespace` to the namespace where you installed the platform release.
+Use the consumer token `dev-key`. The `model` must match the provider you configured at install.
 
-### Quick Test
-
-Test the AI Gateway with the overlay consumer key only (no tenant header). Harmful prompts are refused by NeMo Guardrails on the default route:
+OpenAI install:
 
 ```bash
 curl -X POST http://ai-gateway.localhost:8088/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer dev-key" \
-  -d '{"model":"openai/gpt-4o-mini","messages":[{"role":"user","content":"Hello from Zelkor!"}]}'
+  -d '{
+    "model": "openai/gpt-4o-mini",
+    "messages": [{"role": "user", "content": "Hello from Zelkor"}]
+  }'
 ```
 
-*(Replace `dev-key` with your overlay `workspace.models.consumerKey` if you changed it. Ensure the `model` matches your provider.)*
+Ollama Cloud install — change the model to `gpt-oss:20b`. Ollama on the host — use `ollama/llama3.2`. Anthropic — `anthropic/claude-3-5-sonnet`. Gemini — `gemini/gemini-2.0-flash`.
 
-Call MCP or Agent Protocol with the minted JWT:
+**Success:** HTTP 200 and a completion in the JSON body. If you see `no healthy upstream`, the model id does not match the provider you installed with.
+
+## Open a trace
+
+1. Open [http://langfuse.localhost:8088](http://langfuse.localhost:8088)
+2. Sign in with the credentials the install footer printed (local defaults: `admin@zelkor.local` / `Zelkor-dev1!`)
+3. Open project **Zelkor Platform** → **Traces**
+4. Find the gateway call from the curl above
+
+**Success:** a new trace appears for that completion. Later agent runs land in the same project as one waterfall per run.
+
+## Deploy your own agent (next)
+
+You already write LangGraph or Deep Agents graphs. After this install, the platform path is:
 
 ```bash
-curl -sS http://mcp.localhost:8088/mcp \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
-
-## Deploying an Agent
-
-Zelkor includes a CLI to easily deploy your own agents.
-
-```bash
-# Install the CLI
-pip install -e ./cli
-
-# Configure the environment
+pip install -e cli/
 zelkor env add local --kube-context kind-zelkor --namespace default
-
-# Initialize a new agent project
-zelkor init my-agent
-cd my-agent
-
-# Deploy to the cluster
-zelkor deploy
-
-# Run the agent
-zelkor run --input "hello"
-
-# View logs
-zelkor logs --no-follow --tail 50
-
-# Remove the agent
-zelkor undeploy
+zelkor env use local
 ```
 
-`zelkor deploy` copies the platform Postgres and Valkey URLs. Do not provision a new database for the agent. Isolation between agents is `redis.prefix` on the shared Valkey. If CI already builds the image, use a Helm overlay with `platform.releaseName` instead of `zelkor deploy` — [agent-deploy.md](agent-deploy.md#cli-vs-gitops). Persistence: [agent-deploy.md](agent-deploy.md#persistence-do-not-provision-a-database).
+Then from your agent project directory: `zelkor init` (if needed), `zelkor deploy` (or `zelkor dev` on kind), `zelkor run`, and refresh Langfuse Traces.
 
-## Uninstalling
+Command reference: [`cli/README.md`](../cli/README.md). Keep provider keys in the platform; your agent talks to the gateway and tools the cluster already exposes.
 
-On an existing (non-kind) cluster use `./scripts/uninstall.sh` — see [Existing Cluster Deployment](helm-install.md). To remove a local kind cluster and all data:
+## Optional: try the FinServe sample
+
+`./install.sh` also deploys a wealth-management sample under [`examples/finserve/`](../examples/finserve/README.md). Use it when you want a ready-made agent — not as the way you learn how to ship your own. The install footer prints sample curl commands and how to mint a tenant token with `zelkor token mint`.
+
+## Tear down
 
 ```bash
 helm --kube-context kind-zelkor uninstall finserve --ignore-not-found
@@ -134,43 +122,13 @@ helm --kube-context kind-zelkor uninstall zelkor-platform --ignore-not-found
 kind delete cluster --name zelkor
 ```
 
----
+## Where to go next
 
-## Advanced Configuration
+| Goal | Page |
+| :--- | :--- |
+| Ship your agent on this cluster | [`cli/README.md`](../cli/README.md) |
+| Read the FinServe sample | [`examples/finserve/README.md`](../examples/finserve/README.md) |
+| Docs map | [Documentation index](README.md) |
+| Vertex `gemini-*` 500 `unknown backend` | [KB](kb/ai-gateway-vertex-unknown-backend.md) |
 
-### Installation Profiles
-
-The install script uses a "fast" profile by default. You can upgrade an existing installation to the "full" profile, which includes NetworkPolicies, Langfuse evaluator seeds, and DEBUG logging.
-
-```bash
-# Run on an existing cluster that was installed with the default profile
-INSTALL_PROFILE=full OPENAI_API_KEY="..." ./install.sh
-```
-
-### Installation Options
-
-You can customize the installation behavior using environment variables:
-
-- `PREFETCH_IMAGES=false`: Skip the initial image download phase (kubelet pulls on demand).
-- `LOCAL_REGISTRY=false`: Pull directly from upstream registries instead of using local proxies.
-- `INSTALL_STRICT=true`: Exit non-zero if any component degrades during installation.
-- `INSTALL_EXAMPLES=false`: Skip installing the FinServe demo application.
-- `RUN_DEMO_TOUR=false`: Skip the automated FinServe e2e smoke tests.
-- `DEFAULT_LLM_MODEL="..."`: Override the default model for your provider.
-
-### Bring Your Own MCP (SaaS)
-
-Zelkor native MCP provides infrastructure tools (Postgres, Qdrant, sandbox). To connect SaaS tools (ServiceNow, Jira, etc.):
-
-1. Deploy your MCP image as a ClusterIP workload in the cluster.
-2. Register it in your local values overlay (`profiles/values-local.yaml`) under `workspace.tools.extraBackends`.
-
-Full recipes (bearer auth, private CA, egress CIDRs): [mcp-extra-backends.md](mcp-extra-backends.md).
-
-```yaml
-workspace:
-  tools:
-    extraBackends:
-      - name: acme
-        url: http://acme-mcp-servicenow.acme-tools.svc:8080
-```
+Shared-cluster and production install pages ship in a later docs pass. The objects you set here — model, tool, agent — are the same ones you keep when you move off kind.
