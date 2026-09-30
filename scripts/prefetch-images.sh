@@ -13,7 +13,7 @@
 # Env:
 #   VALUES_FILE        passed to install-images.sh
 #   IMAGE_REGISTRY     default ghcr.io/devopssquaddev
-#   IMAGE_TAG          default dev
+#   IMAGE_TAG          default Chart.yaml appVersion (not :dev)
 #   INSTALL_EXAMPLES   default true
 #   KIND_CLUSTER       default zelkor
 #   PREFETCH_JOBS      parallel workers (default 3)
@@ -31,8 +31,10 @@ docker_platform() {
   esac
 }
 
+# shellcheck source=scripts/lib/first-party-image-tag.sh
+source "${ROOT}/scripts/lib/first-party-image-tag.sh"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
-IMAGE_TAG="${IMAGE_TAG:-dev}"
+IMAGE_TAG="${IMAGE_TAG:-$(zelkor_chart_app_version "$ROOT/charts/zelkor-platform/Chart.yaml")}"
 KIND_CLUSTER="${KIND_CLUSTER:-zelkor}"
 INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
 PREFETCH_JOBS="${PREFETCH_JOBS:-3}"

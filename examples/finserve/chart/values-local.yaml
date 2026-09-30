@@ -8,8 +8,6 @@ desk:
   logging:
     level: DEBUG
     format: json
-  image:
-    tag: "dev"
   sharedRoute:
     <<: *agentsHost
   platform:
@@ -22,8 +20,6 @@ quant:
   logging:
     level: DEBUG
     format: json
-  image:
-    tag: "dev"
   sharedRoute:
     <<: *agentsHost
   platform:
@@ -36,8 +32,6 @@ coder:
   logging:
     level: DEBUG
     format: json
-  image:
-    tag: "dev"
   sharedRoute:
     <<: *agentsHost
   platform:

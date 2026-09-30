@@ -141,6 +141,42 @@ def test_production_overlay_uses_semver_not_dev():
     assert "zelkor-mcp:dev" not in proc.stdout
 
 
+def _chart_app_version() -> str:
+    for line in (CHART / "Chart.yaml").read_text().splitlines():
+        if line.startswith("appVersion:"):
+            return line.split(":", 1)[1].strip().strip('"').strip("'")
+    raise AssertionError("Chart.yaml appVersion missing")
+
+
+def test_kind_profiles_inherit_release_image_tags():
+    tag = _chart_app_version()
+    for name in ("values-local.yaml", "values-local-fast.yaml"):
+        raw = (ROOT / "profiles" / name).read_text()
+        assert "tag: dev" not in raw
+    finserve_local = ROOT / "examples" / "finserve" / "chart" / "values-local.yaml"
+    assert "tag: dev" not in finserve_local.read_text()
+    proc = _helm("-f", str(ROOT / "profiles" / "values-local-fast.yaml"))
+    assert proc.returncode == 0, proc.stderr
+    assert "zelkor-aegra:dev" not in proc.stdout
+    assert "zelkor-mcp:dev" not in proc.stdout
+    assert f"zelkor-aegra:{tag}" in proc.stdout
+
+
+def test_install_images_default_uses_chart_tag():
+    tag = _chart_app_version()
+    proc = subprocess.run(
+        ["./scripts/install-images.sh"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert f"zelkor-aegra:{tag}" in proc.stdout
+    assert "zelkor-aegra:dev" not in proc.stdout
+    assert "zelkor-mcp:dev" not in proc.stdout
+
+
 def test_production_overlay_emits_hpa_and_envoy_hpa():
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr

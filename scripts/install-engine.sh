@@ -40,8 +40,10 @@ LOCAL_REGISTRY_DOCKER_PORT="${LOCAL_REGISTRY_DOCKER_PORT:-5000}"
 LOCAL_REGISTRY_GHCR_PORT="${LOCAL_REGISTRY_GHCR_PORT:-5001}"
 LOCAL_REGISTRY_BIND="${LOCAL_REGISTRY_BIND:-127.0.0.1}"
 INSTALL_TIMINGS_FILE="${INSTALL_TIMINGS_FILE:-/tmp/zelkor-install-timings.tsv}"
+# shellcheck source=scripts/lib/first-party-image-tag.sh
+source "${ZELKOR_REPO_ROOT}/scripts/lib/first-party-image-tag.sh"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
-IMAGE_TAG="${IMAGE_TAG:-dev}"
+IMAGE_TAG="${IMAGE_TAG:-$(zelkor_chart_app_version)}"
 HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-zelkor-platform}"
 GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-default}"
 # Pinned gVisor point release for kind sandbox bootstrap (see internal/plan/component_compatibility_matrix.md)
@@ -557,6 +559,7 @@ download_components() {
   Downloading components
 ======================================================================
   Fetching ${count} container images (${PREFETCH_JOBS:-3} at a time) into local registries.
+  First-party Zelkor images: :${IMAGE_TAG} (set IMAGE_TAG=dev only for unreleased local builds).
   This step is a one-time download and is not counted in the install timer.
 ======================================================================
 
@@ -966,6 +969,13 @@ if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   log "Applying FinServe demo chart from $FINSERVE_CHART_PATH..."
   helm dependency update "$FINSERVE_CHART_PATH" >/dev/null
   FINSERVE_HELM_ARGS=()
+  if [[ -n "${IMAGE_TAG:-}" ]]; then
+    FINSERVE_HELM_ARGS+=(
+      --set "desk.image.tag=${IMAGE_TAG}"
+      --set "quant.image.tag=${IMAGE_TAG}"
+      --set "coder.image.tag=${IMAGE_TAG}"
+    )
+  fi
   if [[ -n "${DEFAULT_LLM_MODEL:-}" ]]; then
     FINSERVE_HELM_ARGS+=(--set-string "desk.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
     FINSERVE_HELM_ARGS+=(--set-string "quant.platform.defaultLlmModel=${DEFAULT_LLM_MODEL}")
