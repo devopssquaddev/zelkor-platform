@@ -15,6 +15,10 @@ Zelkor enforces zero-trust boundaries around your agent workload. It uses strict
 The core advantage: your agent is sandboxed and cannot reach unauthorized data or dial out to the internet directly.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart TB
   subgraph Internet[Internet]
     SaaS[External SaaS / APIs]

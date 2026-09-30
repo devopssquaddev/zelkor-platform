@@ -15,6 +15,10 @@ This page details how an external chat or run request flows through Zelkor to th
 The core advantage is enforced on this path: the agent you already wrote is sandboxed, and provider keys stay on the gateway.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   Client[Client / User]
   Envoy[Envoy Gateway\nGateway]

@@ -32,6 +32,10 @@ After the local install, point the [`zelkor` CLI](cli/README.md) at the cluster,
 How a request reaches your agent (postcard):
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   laptop[Your laptop]
   subgraph cluster [Your cluster]

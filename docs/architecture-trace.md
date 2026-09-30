@@ -15,6 +15,10 @@ Zelkor provides 100% observability into your agent's behavior. One Agent Protoco
 The core advantage: your agent is sandboxed and under observation without relying on the agent code to self-report reliably.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 sequenceDiagram
     participant Aegra as Graph Worker
     participant AIGW as AI Gateway

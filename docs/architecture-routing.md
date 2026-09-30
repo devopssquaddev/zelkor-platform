@@ -17,6 +17,10 @@ Zelkor routes incoming Agent Protocol traffic to the correct agent deployment us
 When a client makes a request to the public Agent Protocol host, Envoy uses the `X-Graph-ID` header or `?graph_id=` query parameter to route the call to the specific agent's ClusterIP service.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   Client[Client SDK]
   Envoy[Envoy Gateway\nGateway]

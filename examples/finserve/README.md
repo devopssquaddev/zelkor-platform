@@ -96,6 +96,10 @@ There is no `finserve.localhost` HTTPRoute by default. Langfuse on kind: `http:/
 Envoy routes by `X-Graph-ID` / `?graph_id=` to ClusterIP graph Deployments. LLM and MCP stay on the platform.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   subgraph clients["Clients"]
     user["Tenant JWT"]
@@ -113,6 +117,10 @@ flowchart LR
 ```
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   subgraph agents["Graph Deployments"]
     desk["desk"]

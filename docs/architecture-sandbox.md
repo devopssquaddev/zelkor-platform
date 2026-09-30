@@ -15,6 +15,10 @@ When an agent needs to execute generated Python code or manipulate files, it doe
 The core advantage: the agent you wrote is sandboxed, and any code it generates cannot break out or compromise the system.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart TB
   subgraph Node[Kubernetes Node]
     subgraph AgentPod[Agent Pod]

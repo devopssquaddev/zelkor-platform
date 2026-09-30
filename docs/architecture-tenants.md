@@ -15,6 +15,10 @@ A **tenant** is the logical boundary for data and access. Depending on your busi
 Zelkor isolates these tenants across the platform. One verified identity scopes the run, the tools, and the trace. The agent cannot choose a different tenant. Another tenant’s rows, vectors, and traces are not reachable from this run.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 sequenceDiagram
     participant Client as Client JWT
     box Trust Boundary

@@ -15,6 +15,10 @@ Zelkor compiles your intent into a distributed system that sandboxes the agent y
 This hub maps the hops and boundaries that enforce that sandbox.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   laptop[Your laptop / Client]
   subgraph cluster [Your cluster]

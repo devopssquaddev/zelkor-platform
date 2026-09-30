@@ -15,6 +15,10 @@ Zelkor unifies access to databases and SaaS tools via the Model Context Protocol
 The core advantage: your agent is sandboxed, and tool secrets (like SaaS tokens or database passwords) are never exposed to the agent process.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   Agent[Agent Worker\nClusterIP]
   MCPGateway[MCP Gateway\nClusterIP]

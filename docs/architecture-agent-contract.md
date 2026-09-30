@@ -19,6 +19,10 @@ The agent is sandboxed across multiple dimensions: it cannot break out of its ru
 Zelkor applies three planes of governance to your agent. Only **Intercept** and **Wrap** require zero source changes. **MCP** is an opt-in tool protocol.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart TB
   subgraph Wrap [Aegra Wrap]
     Agent[Agent Worker\nClusterIP]
