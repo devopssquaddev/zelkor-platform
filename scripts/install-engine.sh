@@ -862,7 +862,14 @@ fi
 
 # shellcheck source=lib/local-signing-helm-sets.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
-append_local_signing_helm_sets HELM_EXTRA_ARGS "$VALUES_FILE"
+append_local_signing_helm_sets HELM_EXTRA_ARGS "$VALUES_FILE" || {
+  log "ERROR: localSigning Helm sets failed (see messages above). Gate A kind profiles require seed JWT for Langfuse MCP bootstrap."
+  exit 1
+}
+verify_local_signing_helm_sets "$VALUES_FILE" "${HELM_EXTRA_ARGS[@]}" || {
+  log "ERROR: localSigning enabled in ${VALUES_FILE} but signing key or MCP authToken was not passed to Helm."
+  exit 1
+}
 
 if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then
   helm upgrade --install "$HELM_RELEASE_NAME" "$CHART_PATH" \
@@ -1004,7 +1011,7 @@ if [[ "$INSTALL_PROFILE" == "fast" && "$INSTALL_EXAMPLES" == "true" && "$RUN_DEM
   step_begin demo_tour
   log "Running FinServe showcase e2e smokes (sample Langfuse traces in Zelkor Platform project)..."
   DEMO_TOUR_FAILED=false
-  if ! KUBECONTEXT="$KCTX" DEFAULT_LLM_MODEL="${DEFAULT_LLM_MODEL:-}" DEMO_TOUR=1 \
+  if ! KUBECONTEXT="$KCTX" ZELKOR_NAMESPACE="${ZELKOR_NAMESPACE:-default}" DEFAULT_LLM_MODEL="${DEFAULT_LLM_MODEL:-}" DEMO_TOUR=1 \
     ./scripts/demo-tour.sh; then
     DEMO_TOUR_FAILED=true
     DEGRADED_COMPONENTS+=("demo tour")

@@ -1,4 +1,5 @@
 """Zelkor sandbox MCP — warm pool orchestrator with execute_python tool."""
+import logging
 import os
 import sys
 
@@ -9,6 +10,7 @@ from common.tenant import extract_tenant
 from sandbox.pool_manager import execute_on_worker
 
 MAX_TIMEOUT = int(os.getenv("SANDBOX_MAX_TIMEOUT_SECONDS", "90"))
+logger = logging.getLogger("zelkor-mcp-sandbox")
 
 
 class SandboxMCPServer(MCPToolHandler):
@@ -21,7 +23,14 @@ class SandboxMCPServer(MCPToolHandler):
                     "type": "object",
                     "properties": {
                         "code": {"type": "string"},
-                        "environment": {"type": "string", "enum": ["python-base"]},
+                        "environment": {
+                            "type": "string",
+                            "default": "python-base",
+                            "description": (
+                                "Runtime image name; only python-base is supported. "
+                                "Do not pass trace markers or worker ids here."
+                            ),
+                        },
                         "timeout": {
                             "type": "integer",
                             "minimum": 1,
@@ -39,6 +48,13 @@ class SandboxMCPServer(MCPToolHandler):
             raise ValueError(f"Unknown tool: {name}")
 
         code = arguments.get("code") or ""
+        raw_env = (arguments.get("environment") or "").strip()
+        if raw_env and raw_env != "python-base":
+            logger.warning(
+                "ignoring invalid sandbox environment %r (using python-base)",
+                raw_env,
+                extra={"component": "zelkor-mcp-sandbox", "event": "environment_coerce"},
+            )
         raw_timeout = arguments.get("timeout")
         timeout = int(raw_timeout) if raw_timeout is not None else 5
         if timeout < 1:

@@ -117,3 +117,31 @@ def test_mcp_sandbox_passwd_probe():
         pytest.skip(str(exc))
 
     assert "stdout" in result or "stderr" in result
+
+
+def test_sandbox_mcp_coerces_invalid_environment(monkeypatch):
+    """LLM must not fail tool validation when environment is a trace marker, not python-base."""
+    import sys
+    from pathlib import Path
+
+    mcp_root = Path(__file__).resolve().parents[1] / "mcp"
+    sys.path.insert(0, str(mcp_root))
+    from sandbox.server import SandboxMCPServer
+
+    captured: dict[str, str] = {}
+
+    def fake_execute(code: str, tenant_id: str, timeout: int = 5):
+        captured["code"] = code
+        captured["tenant_id"] = tenant_id
+        return {"stdout": "ok", "stderr": ""}
+
+    monkeypatch.setattr("sandbox.server.execute_on_worker", fake_execute)
+    srv = SandboxMCPServer()
+    out = srv.call_tool(
+        "execute_python",
+        {"code": "print('sandbox-ok')", "environment": "zelkor-sandbox-1790708813"},
+        "Bank_Alpha",
+    )
+    assert captured["code"] == "print('sandbox-ok')"
+    assert captured["tenant_id"] == "Bank_Alpha"
+    assert out["stdout"] == "ok"

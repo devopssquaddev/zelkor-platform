@@ -19,21 +19,45 @@ export AEGRA_HOST_HEADER="${AEGRA_HOST_HEADER:-${AGENTS_HOST_HEADER}}"
 export LANGFUSE_HOST_HEADER="${LANGFUSE_HOST_HEADER:-langfuse.localhost}"
 export DEMO_TOUR=1
 RELEASE="${ZELKOR_PLATFORM_RELEASE:-zelkor-platform}"
-NS="${ZELKOR_NAMESPACE:-zelkor}"
+NS="${ZELKOR_NAMESPACE:-default}"
+ZELKOR_BIN="${ROOT}/.venv/bin/zelkor"
+
+ensure_venv_and_cli() {
+  if [[ ! -d .venv ]]; then
+    log "creating Python venv for demo smokes..."
+    python3 -m venv .venv
+    .venv/bin/pip install --upgrade pip >/dev/null
+    .venv/bin/pip install -r requirements-dev.txt >/dev/null
+  fi
+  if [[ -x "${ZELKOR_BIN}" ]]; then
+    log "CLI already installed (skipped)"
+    return 0
+  fi
+  local start end
+  start=$(date +%s)
+  log "installing Zelkor CLI (pip install -e ./cli)..."
+  .venv/bin/pip install -e ./cli >/dev/null
+  end=$(date +%s)
+  log "CLI install took $((end - start))s"
+}
 
 mint_demo_token() {
-  if command -v zelkor >/dev/null 2>&1; then
-    zelkor token mint --release "${RELEASE}" --tenant Bank_Alpha --namespace "${NS}" 2>/dev/null || true
+  local tenant="${1:-Bank_Alpha}"
+  if [[ ! -x "${ZELKOR_BIN}" ]]; then
+    echo "[demo-tour] ERROR: missing ${ZELKOR_BIN} (CLI not installed)" >&2
+    return 1
   fi
+  "${ZELKOR_BIN}" token mint \
+    --release "${RELEASE}" \
+    --tenant "${tenant}" \
+    --namespace "${NS}" \
+    --context "${KUBECONTEXT}"
 }
 
 export_demo_test_tokens() {
   local alpha beta
-  alpha="$(mint_demo_token)"
-  beta=""
-  if command -v zelkor >/dev/null 2>&1; then
-    beta="$(zelkor token mint --release "${RELEASE}" --tenant Bank_Beta --namespace "${NS}" 2>/dev/null || true)"
-  fi
+  alpha="$(mint_demo_token Bank_Alpha)"
+  beta="$(mint_demo_token Bank_Beta || true)"
   if [[ -n "${alpha}" ]]; then
     export ZELKOR_TEST_TOKENS
     ZELKOR_TEST_TOKENS="$(
@@ -47,9 +71,8 @@ wait_for_gateway() {
   local url="${GATEWAY_BASE_URL}/assistants/search"
   local token
   local i
-  token="$(mint_demo_token)"
-  if [[ -z "${token}" ]]; then
-    echo "[demo-tour] ERROR: could not mint tenant JWT (install CLI: pip install -e ./cli)" >&2
+  if ! token="$(mint_demo_token Bank_Alpha)"; then
+    echo "[demo-tour] ERROR: could not mint tenant JWT" >&2
     return 1
   fi
   log "waiting for FinServe front door at ${GATEWAY_BASE_URL} (Host: ${AEGRA_HOST_HEADER})..."
@@ -70,12 +93,7 @@ wait_for_gateway() {
   return 1
 }
 
-if [[ ! -d .venv ]]; then
-  log "creating Python venv for demo smokes..."
-  python3 -m venv .venv
-  .venv/bin/pip install --upgrade pip >/dev/null
-  .venv/bin/pip install -r requirements-dev.txt >/dev/null
-fi
+ensure_venv_and_cli
 
 PYTEST=(.venv/bin/pytest)
 

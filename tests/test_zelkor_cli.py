@@ -20,6 +20,7 @@ from zelkor.detect import (  # noqa: E402
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
 from zelkor.extra_backends import extra_backend_overlay_snippet, missing_extra_registrations  # noqa: E402
 from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, in_cluster_openai_base_url, main  # noqa: E402
+from zelkor import token_cmd  # noqa: E402
 
 
 def test_detect_deploy_first(tmp_path):
@@ -420,3 +421,91 @@ def test_cli_deploy_overlay_has_no_sandbox_worker_urls():
     text = (ROOT / "cli" / "src" / "zelkor" / "main.py").read_text(encoding="utf-8")
     assert "SANDBOX_WORKER_URLS" not in text
     assert "sandbox_worker_urls" not in text
+
+
+def test_token_mint_reads_issuer_audiences_and_ttl_from_cluster(monkeypatch, capsys):
+    import base64
+
+    import jwt as pyjwt
+
+    from tests.helpers.jwt_keys import generate_rsa_keypair
+
+    kp = generate_rsa_keypair("1")
+
+    def fake_run(cmd, **_kwargs):
+        target = " ".join(cmd)
+        if " secret " in f" {target} " and "tenant-jwt-signing" in target:
+            stdout = json.dumps(
+                {
+                    "data": {
+                        "privateKey": base64.b64encode(kp.private_pem).decode(),
+                        "kid": base64.b64encode(b"1").decode(),
+                    }
+                }
+            )
+        elif " configmap " in f" {target} " and "tenant-jwks" in target:
+            stdout = json.dumps(
+                {
+                    "metadata": {"annotations": {"zelkor.io/token-ttl": "24h"}},
+                    "data": {"jwks": json.dumps(kp.jwks)},
+                }
+            )
+        elif " configmap " in f" {target} " and "tenant-jwt" in target and "tenant-jwks" not in target:
+            stdout = json.dumps(
+                {
+                    "data": {
+                        "AUTH_JWT_ISSUER": "https://local.zelkor.invalid",
+                        "AUTH_JWT_AUDIENCES": json.dumps(["zelkor"]),
+                    }
+                }
+            )
+        else:
+            return SimpleNamespace(returncode=1, stdout="", stderr=f"unexpected kubectl: {target}")
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(token_cmd.subprocess, "run", fake_run)
+    args = SimpleNamespace(
+        release="zelkor-platform",
+        namespace="default",
+        kubeconfig="",
+        context="",
+        tenant="Bank_Alpha",
+        issuer="",
+        audience="",
+        ttl="",
+        out="",
+    )
+    monkeypatch.setenv("KUBECONTEXT", "kind-zelkor")
+    monkeypatch.delenv("KUBE_CONTEXT", raising=False)
+    assert token_cmd.cmd_token_mint(args) == 0
+    token = capsys.readouterr().out.strip()
+    assert token.startswith("eyJ")
+    claims = pyjwt.decode(token, options={"verify_signature": False})
+    assert claims["iss"] == "https://local.zelkor.invalid"
+    assert claims["aud"] == ["zelkor"]
+    assert claims["tenant_id"] == "Bank_Alpha"
+
+
+def test_token_mint_uses_default_namespace_when_unset(monkeypatch):
+    seen_ns: list[str] = []
+
+    def fake_run(cmd, **_kwargs):
+        if "-n" in cmd:
+            seen_ns.append(cmd[cmd.index("-n") + 1])
+        return SimpleNamespace(returncode=1, stdout="", stderr="fail")
+
+    monkeypatch.setattr(token_cmd.subprocess, "run", fake_run)
+    args = SimpleNamespace(
+        release="zelkor-platform",
+        namespace="",
+        kubeconfig="",
+        context="kind-zelkor",
+        tenant="t",
+        issuer="https://issuer.example",
+        audience="zelkor",
+        ttl="1h",
+        out="",
+    )
+    with pytest.raises(RuntimeError):
+        token_cmd.cmd_token_mint(args)
+    assert seen_ns and seen_ns[0] == "default"
