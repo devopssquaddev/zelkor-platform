@@ -47,7 +47,7 @@ flowchart LR
   agent --> trace
 ```
 
-For the full request path and trust boundaries, see [Architecture: Drop-In Agent Contract](docs/architecture-agent-contract.md).
+For the full request path and trust boundaries, see the [Architecture Hub](docs/architecture.md).
 
 ## Editions
 
