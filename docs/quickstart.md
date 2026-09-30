@@ -10,7 +10,7 @@ edition: ce
 
 # Local Quickstart
 
-You get Community Edition on your own laptop cluster. Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. This tutorial installs that runtime on kind, proves a model call, and opens the matching trace — then points you at the CLI for your own agent.
+You get Community Edition on your own laptop cluster. Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated ([see the tenant hop](architecture-tenants.md)). This tutorial installs that runtime on kind, proves a model call, and opens the matching trace — then points you at the CLI for your own agent.
 
 Community Edition is the self-hosted runtime in this repo. Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps. Enterprise adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA). You do not need Pro or Enterprise to finish this page.
 
@@ -112,7 +112,7 @@ Command reference: [`cli/README.md`](../cli/README.md). Keep provider keys in th
 
 ## Optional: try the FinServe sample
 
-`./install.sh` also deploys a wealth-management sample under [`examples/finserve/`](../examples/finserve/README.md). Use it when you want a ready-made agent — not as the way you learn how to ship your own. The install footer prints sample curl commands and how to mint a tenant token with `zelkor token mint`.
+`./install.sh` also deploys a wealth-management sample under [`examples/finserve/`](../examples/finserve/README.md). Use it when you want a ready-made agent — not as the way you learn how to ship your own. The install footer prints sample curl commands and how to mint a tenant token with `zelkor token mint` (that token is the tenant, see [Tenant Isolation](architecture-tenants.md)).
 
 ## Tear down
 

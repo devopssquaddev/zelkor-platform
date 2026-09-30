@@ -12,7 +12,7 @@ edition: all
 
 Zelkor’s core advantage is **"Bring Your Own Agent, We Provide the Armor."** You drop your LangChain, LangGraph, or Aegra agent onto the platform, and Zelkor sandboxes it without requiring you to rewrite your code. 
 
-The agent is sandboxed across multiple dimensions: it cannot break out of its runtime, it cannot reach unauthorized data or networks, its prompts are verified, its budget is controlled, and every action is under observation.
+The agent is sandboxed across multiple dimensions: it cannot break out of its runtime, it cannot reach unauthorized data or networks, its prompts are verified, its budget is controlled, and every action is under observation; [tenants stay isolated](architecture-tenants.md) (the agent cannot pick another tenant).
 
 ## The Three Planes of Governance
 

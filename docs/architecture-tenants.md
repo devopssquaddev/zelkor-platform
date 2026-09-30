@@ -1,0 +1,61 @@
+---
+title: Tenant Isolation
+description: How one tenant identity is applied on a run.
+type: explanation
+sidebar_group: Architecture
+sidebar_order: 35
+audience: human
+edition: all
+---
+
+# Tenant Isolation
+
+A **tenant** is the logical boundary for data and access. Depending on your business, a tenant might be a customer organization (`Acme_Corp`, `Bank_Alpha`) in a B2B platform, an internal department (`HR`, `Engineering`) in an enterprise tool, or an individual user (`user_123`) in a B2C app.
+
+Zelkor isolates these tenants across the platform. One verified identity scopes the run, the tools, and the trace. The agent cannot choose a different tenant. Another tenant’s rows, vectors, and traces are not reachable from this run.
+
+```mermaid
+sequenceDiagram
+    participant Client as Client JWT
+    box Trust Boundary
+        participant Wrap as Agent Worker
+        participant MCP as MCP Gateway
+        participant Store as Native Store
+    end
+
+    Client->>Wrap: POST /run (Bearer token)
+    Note over Wrap: JWT verified.<br/>Thread gets tenant_id.
+    
+    Wrap->>MCP: tools/call (no tenant arg)
+    Note over MCP: Tenant identity passed<br/>via headers.
+    
+    MCP->>Store: execute query
+    Note over Store: RLS/filters applied<br/>using tenant_id.
+    Store-->>MCP: data
+    MCP-->>Wrap: tools/call result
+    Wrap-->>Client: response
+```
+
+*How a tenant identity scopes a run. The agent code never supplies the `tenant_id` to the tools; it is enforced by the platform.*
+
+## One Identity Per Run
+
+The platform extracts the tenant identity from a verified JWT at the front door. This identity is injected into the agent worker's thread state. The agent code does not parse the token, and it cannot forge a different identity.
+
+**No Default Tenant:** To ensure strict isolation, Zelkor does not have a "default" or "fallback" tenant. If a request lacks a valid JWT, or if the token is missing the required tenant claim, the platform fails closed and rejects the request. There is no global tenant that can access all data.
+
+## Tool Governance
+
+When the agent calls a tool via the Model Context Protocol (MCP), it cannot pass a `tenant_id` argument. If an agent tries to supply one, the `tools/call` request fails closed. The MCP Gateway receives the tenant identity from the platform's internal headers, ensuring the agent cannot spoof another tenant.
+
+## Native Store Filtering
+
+Native MCP servers (like Postgres and Qdrant) apply this tenant identity directly to their queries. 
+- In **Postgres**, queries are scoped using Row-Level Security (RLS) or explicit `WHERE tenant_id = ...` clauses injected by the MCP server.
+- In **Qdrant**, vector searches include a strict payload filter for the tenant.
+
+Extra MCP backends (Bring Your Own) receive the tenant identity in headers but are responsible for applying their own filters (see [Extra Backends](mcp-extra-backends.md)).
+
+## Langfuse Tracing
+
+Every run trace emitted to Langfuse is tagged with the user identity derived from the JWT. Traces are naturally partitioned, and one tenant cannot query or view traces belonging to another.
