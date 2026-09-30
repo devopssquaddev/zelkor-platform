@@ -6,8 +6,10 @@
 #   helm upgrade --install zelkor-platform charts/zelkor-platform \
 #     -f profiles/values-quickstart.yaml \
 #     -f profiles/values-gateway-greenfield.yaml \
-#     --set aiGateway.providers.openai.apiKey=... \
-#     --set langfuse.nextauthSecret=... --set langfuse.salt=... --set langfuse.encryptionKey=...
+#     --set workspace.models.providers.openai.apiKey=... \
+#     --set platform.telemetry.langfuse.nextauthSecret=... \
+#     --set platform.telemetry.langfuse.salt=... \
+#     --set platform.telemetry.langfuse.encryptionKey=...
 #
 # ./install.sh stays on profiles/values-local.yaml (kind).
 ---
