@@ -33,7 +33,7 @@ Model ids must match a route the chart created for your enabled providers (see t
 
 ## Enable a named provider
 
-Use `workspace.models.providers.<name>`. Empty strings in chart defaults mean “disabled until you set a credential.”
+Use `workspace.models.providers.&lt;name&gt;`. Empty strings in chart defaults mean “disabled until you set a credential.”
 
 **OpenAI**
 

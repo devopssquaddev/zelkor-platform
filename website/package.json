@@ -1,0 +1,21 @@
+{
+  "name": "zelkor-website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "dependencies": {
+    "@vue/server-renderer": "3.5.43",
+    "gray-matter": "4.0.3",
+    "mermaid": "11.17.2",
+    "vitepress": "1.6.4",
+    "vue": "3.5.43"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

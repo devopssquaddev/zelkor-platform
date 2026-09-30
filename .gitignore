@@ -26,6 +26,11 @@ build/
 **/*.trace
 red-team-report.xml
 
+# Website
+website/.vitepress/cache/
+website/.vitepress/dist/
+website/node_modules/
+
 # Local kind/kubeconfig overrides
 kubeconfig
 *.kubeconfig
