@@ -36,6 +36,14 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [`zelkor` CLI](../cli/README.md) | Point the CLI at a cluster, deploy your agent, run, inspect |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
 
+## Architecture
+
+| Page | Job |
+| :--- | :--- |
+| [Drop-In Agent Contract](architecture-agent-contract.md) | How Zelkor sandboxes and governs your agent (Intercept, Wrap, MCP) |
+| [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |
+| [North-South Exposure](architecture-exposure.md) | What Zelkor publishes to the internet versus what stays inside the cluster |
+
 ## Troubleshooting
 
 | Page | Job |
