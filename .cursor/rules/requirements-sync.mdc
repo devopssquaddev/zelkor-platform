@@ -60,7 +60,8 @@ Update governing requirement and specification documents whenever:
 - **Test-server fail-stop (fix one test at a time):** `internal/.cursor/rules/test-server-fail-stop.mdc`
 - **Langfuse traces after live tests (check ERROR observations):** `internal/.cursor/rules/langfuse-trace-errors.mdc`
 - **Platform vs demo + tests-must-not-shape-chart:** `internal/requirements/dev/examples_and_demos.md`
-- **Quickstart & User Documentation:** `internal/requirements/quickstart/`, `zelkor-platform/docs/quickstart.md`
+- **Quickstart & User Documentation:** `internal/requirements/quickstart/`, `docs/` (nav: `docs/README.md`)
+- **Product docs authoring (Diátaxis, website frontmatter):** `internal/requirements/dev/product_documentation.md` (multi-root; rule: `product-docs.mdc`; skill: `write-product-docs`)
 - **Agent platform install (greenfield/brownfield):** `docs/agent-install.md`, `internal/requirements/dev/agent_zelkor_install.md` (multi-root)
 - **Agent deploy / routing:** `docs/agent-deploy.md` (+ living specs in `internal/plan/`)
 

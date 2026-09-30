@@ -84,42 +84,53 @@ There is no `finserve.localhost` HTTPRoute by default. Langfuse on kind: `http:/
 
 ## Architecture
 
+Envoy routes by `X-Graph-ID` / `?graph_id=` to ClusterIP graph Deployments. LLM and MCP stay on the platform.
+
 ```mermaid
-flowchart TD
-    UserAlpha["User (Bank_Alpha)"]
-    UserBeta["User (Bank_Beta)"]
+flowchart LR
+  subgraph clients["Clients"]
+    user["Tenant JWT"]
+  end
+  subgraph ns["FinServe + platform"]
+    front["Envoy\nagents Host"]
+    desk["finserve-desk"]
+    quant["finserve-quant"]
+    coder["finserve-coder"]
+  end
+  user --> front
+  front -->|"advisor / research"| desk
+  front -->|quant| quant
+  front -->|coder| coder
+```
 
-    subgraph platform ["Zelkor Platform"]
-        Front["Envoy (X-Graph-ID / ?graph_id=)"]
-        Desk["finserve-desk advisor plus research"]
-        Quant["finserve-quant"]
-        Coder["finserve-coder Deep Agent"]
-        NeMo["NeMo intercept on /v1"]
-        AIGateway["Envoy AI Gateway"]
-        MCP["MCPRoute / MCP_URL"]
-        Postgres[("PostgreSQL (Portfolios)")]
-        Qdrant[("Qdrant (Semantic Policies)")]
-        Langfuse["Langfuse (OTel)"]
-        CodeExec["Sandbox workers (gVisor)"]
-    end
-
-    UserAlpha --> Front
-    UserBeta --> Front
-    Front -->|"advisor or research"| Desk
-    Front -->|quant| Quant
-    Front -->|coder| Coder
-    Desk -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
-    Quant -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
-    Coder -->|"ChatOpenAI OPENAI_BASE_URL"| AIGateway
-    AIGateway --> NeMo
-    Desk -->|"Mode B inject MCP_URL"| MCP
-    Quant -->|"Mode B inject MCP_URL"| MCP
-    Coder -->|"Mode B inject MCP_URL"| MCP
-    Coder -->|"execute()"| CodeExec
-    MCP --> Postgres
-    MCP --> Qdrant
-    MCP --> CodeExec
-    AIGateway -.->|"OTel"| Langfuse
+```mermaid
+flowchart LR
+  subgraph agents["Graph Deployments"]
+    desk["desk"]
+    quant["quant"]
+    coder["coder"]
+  end
+  subgraph plat["Platform ClusterIP"]
+    aigw["AI Gateway /v1"]
+    nemo["NeMo"]
+    mcp["MCP"]
+    exec["Sandbox workers\ngVisor"]
+    pg[("PostgreSQL")]
+    qd[("Qdrant")]
+    lf["Langfuse"]
+  end
+  desk --> aigw
+  quant --> aigw
+  coder --> aigw
+  aigw --> nemo
+  desk --> mcp
+  quant --> mcp
+  coder --> mcp
+  coder -->|execute| exec
+  mcp --> pg
+  mcp --> qd
+  mcp --> exec
+  aigw -.->|"OTel"| lf
 ```
 
 ## Validation

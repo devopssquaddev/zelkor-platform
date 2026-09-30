@@ -21,7 +21,7 @@ zelkor-platform/
 ├── agents/                     # Platform auth handlers (tenant isolation)
 ├── mcp/                        # Native MCP servers (copied into zelkor-mcp image)
 ├── tests/                      # Platform integration tests (env-agnostic)
-├── docs/quickstart.md          # Getting started
+├── docs/                       # Product docs (website publishes this tree; nav: docs/README.md)
 └── .cursor/rules/              # AI engineering role rules
 ```
 
@@ -75,6 +75,7 @@ Prerequisites: Docker, `kind`, `helm`, `kubectl`.
 - No `kubectl apply` — all deployments are Helm/GitOps declarative
 - **No inline Python in ConfigMaps:** App modules live in container images (`images/`, `ghcr.io/devopssquaddev/zelkor-*`). Helm `files/` is for config (SQL, Colang, `aegra.json`), not application source. See `.cursor/rules/helm-python-packaging.mdc`.
 - **Necessary length:** Chat and new docs stay as short as the task needs. See `.cursor/rules/necessary-length.mdc`.
+- **Product docs:** `docs/` is git-as-CMS for GitHub and the website. Follow `.cursor/rules/product-docs.mdc`, `.cursor/skills/write-product-docs/SKILL.md`, and `.cursor/skills/review-product-docs/SKILL.md`. One Diátaxis type per page; YAML frontmatter on `docs/**/*.md`. Persona review before calling a page done.
 - **Tests must not shape the platform:** Do not bake kind hosts, fixture tenants, or pytest-only Services/Routes into `charts/zelkor-platform/`. Tests env-override; kind values stay in `profiles/values-local.yaml`. After each substantial change, run the checklist in `.cursor/rules/tests-do-not-shape-platform.mdc`.
 - **Git Commit & Tagging Standard:** Commit major milestones with Conventional Commits; create annotated tags (`git tag -a`) for release points and major architectural milestones.
 
