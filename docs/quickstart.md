@@ -40,7 +40,7 @@ OPENAI_API_KEY="sk-..." ./install.sh
 | **Vertex AI** | `VERTEX_PROJECT="..." VERTEX_REGION="us-central1" ./install.sh` | `gemini-2.0-flash` (use `vertex/gemini-*` only when AI Studio `GEMINI_API_KEY` is also set) |
 | **Cohere** | `COHERE_API_KEY="..." ./install.sh` | `cohere/command-r` |
 
-*Note: The script will first download necessary container images before starting the installation timer.*
+The script pulls the **released** Community Edition images that match this checkout’s chart version. It first downloads those images, then starts the installation timer.
 
 ## Verifying Access
 

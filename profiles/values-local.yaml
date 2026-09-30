@@ -91,8 +91,6 @@ platform:
       startupProbe:
         initialDelaySeconds: 5
       surfaces:
-        image:
-          tag: dev
         llmConnection:
           enabled: true
         tools:
@@ -132,28 +130,17 @@ workspace:
   policies:
     nemo:
       enabled: true
-      image:
-        tag: dev
       observability:
         otel:
           enabled: true
           captureContent: true
   tools:
     enabled: true
-    image:
-      tag: dev
     sandboxMCP:
       warmPool:
         replicas: 1
-      workerImage:
-        tag: dev
       workerToken: zelkor-local-sandbox-worker-token
 workload:
   agents:
     enabled: true
     replicaCount: 1
-    image:
-      tag: dev
-    cli:
-      image:
-        tag: dev

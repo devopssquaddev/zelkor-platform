@@ -11,7 +11,7 @@
 #   VALUES_FILE        default profiles/values-local-fast.yaml
 #   INSTALL_EXAMPLES   default true
 #   IMAGE_REGISTRY     default ghcr.io/devopssquaddev
-#   IMAGE_TAG          default dev
+#   IMAGE_TAG          default Chart.yaml appVersion (not :dev)
 #   KIND_CLUSTER       default zelkor (for --capture)
 #   KIND_NODE_IMAGE    base node (for --capture subtraction)
 
@@ -22,8 +22,10 @@ cd "$ROOT"
 
 VALUES_FILE="${VALUES_FILE:-profiles/values-local-fast.yaml}"
 INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
+# shellcheck source=scripts/lib/first-party-image-tag.sh
+source "${ROOT}/scripts/lib/first-party-image-tag.sh"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
-IMAGE_TAG="${IMAGE_TAG:-dev}"
+IMAGE_TAG="${IMAGE_TAG:-$(zelkor_chart_app_version "$ROOT/charts/zelkor-platform/Chart.yaml")}"
 KIND_CLUSTER="${KIND_CLUSTER:-zelkor}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-}"
 BOOTSTRAP_FILE="${BOOTSTRAP_FILE:-images/install/bootstrap-images.txt}"

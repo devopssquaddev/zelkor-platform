@@ -19,8 +19,10 @@ docker_platform() {
 
 VALUES_FILE="${VALUES_FILE:-profiles/values-local-fast.yaml}"
 INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-true}"
+# shellcheck source=scripts/lib/first-party-image-tag.sh
+source "${ROOT}/scripts/lib/first-party-image-tag.sh"
 IMAGE_REGISTRY="${IMAGE_REGISTRY:-ghcr.io/devopssquaddev}"
-IMAGE_TAG="${IMAGE_TAG:-dev}"
+IMAGE_TAG="${IMAGE_TAG:-$(zelkor_chart_app_version "$ROOT/charts/zelkor-platform/Chart.yaml")}"
 PREFETCH_JOBS="${PREFETCH_JOBS:-3}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-$(docker_platform)}"
 LOCAL_REGISTRY_BIND="${LOCAL_REGISTRY_BIND:-127.0.0.1}"

@@ -4,6 +4,7 @@
 # Usage:
 #   OPENAI_API_KEY=sk-... ./install.sh
 #   OLLAMA_API_KEY=... ./install.sh
+#   IMAGE_TAG=dev ./install.sh            # unreleased local builds only; default is Chart.yaml appVersion
 #   INSTALL_UX=plain ./install.sh          # raw engine logs (same as scripts/install-engine.sh)
 #   INSTALL_LOG_FILE=/tmp/zelkor-install.log ./install.sh   # default; set off to disable
 #   (Same env on scripts/install-production.sh and scripts/install-quickstart.sh.)
