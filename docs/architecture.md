@@ -50,3 +50,4 @@ Each page answers one specific architectural question about how traffic flows an
 | [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |
 | [Drop-In Agent Contract](architecture-agent-contract.md) | How Zelkor sandboxes your agent (Intercept, Wrap, MCP) |
 | [Tenant Isolation](architecture-tenants.md) | How one tenant identity is applied on a run |
+| [Agent Datastores](architecture-datastores.md) | Stateful infrastructure (Postgres, Qdrant) and BYO options |

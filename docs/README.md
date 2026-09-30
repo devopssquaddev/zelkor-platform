@@ -60,6 +60,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |
 | [North-South Exposure](architecture-exposure.md) | What Zelkor publishes to the internet versus what stays inside the cluster |
 | [Tenant Isolation](architecture-tenants.md) | How one tenant identity is applied on a run |
+| [Agent Datastores](architecture-datastores.md) | Stateful infrastructure (Postgres, Qdrant) and BYO options |
 
 ## Troubleshooting
 
