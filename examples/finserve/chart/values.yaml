@@ -29,7 +29,7 @@ desk:
     <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
-    tag: "2.1.0"
+    tag: "2.1.1"
     digest: ""
   platform:
     <<: *platformRelease
@@ -50,7 +50,7 @@ quant:
     <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve
-    tag: "2.1.0"
+    tag: "2.1.1"
     digest: ""
   platform:
     <<: *platformRelease
@@ -67,7 +67,7 @@ coder:
     <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-finserve-coder
-    tag: "2.1.0"
+    tag: "2.1.1"
     digest: ""
   platform:
     <<: *platformRelease
@@ -104,7 +104,7 @@ extraMcp:
   port: 8080
   image:
     repository: ghcr.io/devopssquaddev/zelkor-mcp
-    tag: "2.1.0"
+    tag: "2.1.1"
     digest: ""
 
 dbInit:

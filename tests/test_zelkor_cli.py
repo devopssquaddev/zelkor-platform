@@ -119,7 +119,7 @@ def test_deploy_agent_fails_when_tools_json_extra_not_on_platform(tmp_path):
     def runner(argv, **_kwargs):
         stdout = ""
         if "helm" in argv and "list" in argv:
-            stdout = '[{"name": "zelkor-platform", "chart": "zelkor-platform-2.1.0", "status": "deployed"}]'
+            stdout = '[{"name": "zelkor-platform", "chart": "zelkor-platform-2.1.1", "status": "deployed"}]'
         elif "helm" in argv and "get" in argv and "values" in argv:
             stdout = "workspace:\n  tools:\n    extraBackends: []\n"
         return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
