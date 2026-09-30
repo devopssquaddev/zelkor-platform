@@ -29,7 +29,7 @@ OPENAI_API_KEY=sk-... ./install.sh
 
 After the local install, point the [`zelkor` CLI](cli/README.md) at the cluster, `zelkor deploy` your project, `zelkor run`, then open the trace UI the install prints (Langfuse). A worked demo lives under [`examples/finserve/`](examples/finserve/README.md) if you want a sample agent — it is not required to learn the platform.
 
-How a request reaches your agent (postcard):
+What wraps the agent you already wrote:
 
 ```mermaid
 ---
@@ -37,21 +37,24 @@ config:
   theme: neutral
 ---
 flowchart LR
-  laptop[Your laptop]
-  subgraph cluster [Your cluster]
+  client[Your client]
+  subgraph cluster [Your Kubernetes cluster]
+    subgraph tenant [One tenant]
+      agent[Your agent]
+      code[Isolated code]
+    end
     model[Model]
     tools[Tools]
-    agent[Your agent]
-    trace[Run trace]
+    trace[Trace]
   end
-  laptop -->|chat / run| model
-  laptop -->|run| agent
-  agent --> model
-  agent --> tools
-  agent --> trace
+  client -->|authenticated run| agent
+  agent -->|cannot break out| code
+  agent -->|prompts verified, budget| model
+  agent -->|no unauthorized data or networks| tools
+  agent -->|under observation| trace
 ```
 
-For the full request path and trust boundaries, see the [Architecture Hub](docs/architecture.md). Tenants stay isolated on that request path; one verified identity scopes the run, the tools, and the trace. The agent cannot choose a different tenant. Another tenant’s rows, vectors, and traces are not reachable from this run. See the [Tenant Isolation hop](docs/architecture-tenants.md) for how this works.
+The run, the tools, and the trace share one verified tenant identity. The agent cannot choose a different tenant. Another tenant’s rows, vectors, and traces are not reachable from this run. Full hops: [Architecture Hub](docs/architecture.md) and [Tenant Isolation](docs/architecture-tenants.md).
 
 ## Editions
 
