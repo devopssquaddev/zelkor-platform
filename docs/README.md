@@ -33,8 +33,16 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 
 | Page | Job |
 | :--- | :--- |
-| [`zelkor` CLI](../cli/README.md) | Point the CLI at a cluster, deploy your agent, run, inspect |
+| [Use the zelkor CLI](cli.md) | Env targets, deploy, run, logs, doctor |
+| [Register extra MCP backends](mcp-extra-backends.md) | BYO ClusterIP MCP on the unified gateway |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
+
+## Reference
+
+| Page | Job |
+| :--- | :--- |
+| [Add LLM providers and models](adding-llm-providers-and-models.md) | Helm overlays for AI Gateway backends and model ids |
+| [Helm values reference](reference/helm-values.md) | `platform` / `workspace` / `workload` namespaces and schema |
 
 ## Architecture
 
@@ -50,4 +58,4 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | :--- | :--- |
 | [Vertex `gemini-*` unknown backend](kb/ai-gateway-vertex-unknown-backend.md) | Fix AI Gateway 500 when Vertex auth rotation skips the backend |
 
-Honest POC path: finish [Local Quickstart](quickstart.md), then run the same CE charts on a shared cluster. Production Helm topologies and architecture pages are not published yet — use the CLI and examples above until they are.
+Honest POC path: finish [Local Quickstart](quickstart.md), then [Install on an Existing Cluster](helm-install.md) or [Production install](production.md) on a shared cluster.

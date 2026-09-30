@@ -7,7 +7,7 @@ zelkor --help
 
 One packager for LangGraph / Aegra and Deep Agents. Named envs are kubecontext + namespace only — no hosts, tokens, or DSNs in the env file.
 
-Requires a live Zelkor platform (`./install.sh` on kind, or [Path B](../docs/path-b.md) on customer Kubernetes). Does not install the platform.
+Requires a live Zelkor platform ([Local Quickstart](../docs/quickstart.md) or [Install on a cluster](../docs/helm-install.md)). Full command reference: [Use the zelkor CLI](../docs/cli.md). Does not install the platform.
 
 ```bash
 zelkor init my-agent
