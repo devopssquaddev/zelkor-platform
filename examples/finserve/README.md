@@ -20,7 +20,11 @@ FinServe AI runs across all Zelkor editions:
 
 ## What to copy
 
-This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent) plus demo seed jobs. Customer agents should copy the **worker** pattern (image + `sharedRoute` + platform connection), not the demo extras.
+This demo is not the way you learn how to deploy the platform or ship your own agents. It is a full reference application with seed jobs and multiple workers. 
+
+Minimal customer path: deploy a worker via [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
+
+This umbrella chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent) plus demo seed jobs. Customer agents should copy the **worker** pattern (image + `sharedRoute` + platform connection), not the demo extras.
 
 | Copy | Do not copy onto `zelkor-agent` |
 | :--- | :--- |
@@ -28,8 +32,6 @@ This chart is three aliases of [`charts/zelkor-agent`](../../charts/zelkor-agent
 | `sharedRoute` on `gateway.hosts.agents` | CNPG `Database` / `cnpgClusterName` (MCP/app schema only) |
 | `platform.releaseName` + `sharedRoute.host` (inherits checkpointer DSN + JWT from platform) | `values-platform-overlay.yaml` tenant/NeMo blocks |
 | One graph per `zelkor-agent` release when you copy workers | `values-local.yaml` (kind secrets, `*.localhost`, `dev-key` consumer key) |
-
-Minimal customer path: [docs/agent-deploy.md](../../docs/agent-deploy.md) (`zelkor deploy` or a single `zelkor-agent` release).
 
 ## Connect to your platform
 

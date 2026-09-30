@@ -17,8 +17,8 @@ The public Agent Protocol front door (`gateway.hosts.agents`) routes standard La
 Envoy uses the `X-Graph-ID` header or the `graph_id` query parameter to route traffic to the correct ClusterIP agent deployment.
 
 1. **Match:** Envoy inspects the request for `X-Graph-ID: <id>` or `?graph_id=<id>`.
-2. **Route:** If a match is found, Envoy proxies the request to the Kubernetes Service named `<release>-agent-<id>`.
-3. **Fallback:** If no graph ID is provided, or the ID does not match any registered route, Envoy forwards the request to the default backend (`<release>-aegra`).
+2. **Route:** If a match is found, Envoy proxies the request to the Kubernetes Service via HTTPRoute `backendRefs`, matching the Helm release fullname of your agent deployment.
+3. **Fallback:** If no graph ID is provided, or the ID does not match any registered HTTPRoute, Envoy forwards the request to the default backend (`<release>-aegra`).
 
 *Note: Envoy does not parse the JSON body to find the graph ID.*
 

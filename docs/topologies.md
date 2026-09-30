@@ -82,6 +82,23 @@ To use this with the install scripts, pass `--topology layered`.
 
 Use this when you already have Envoy Gateway installed in your cluster and you want Zelkor to attach its routes to your existing `GatewayClass` and `Gateway`.
 
+```mermaid
+---
+config:
+  theme: neutral
+---
+flowchart TB
+  subgraph Internet
+    Client
+  end
+  
+  subgraph Cluster
+    Client -- "Host: agents.example.com" --> ExistingGW[Existing Envoy Gateway\nLoadBalancer]
+    ExistingGW -- "HTTPRoute\nparentRef" --> EG[Zelkor Route]
+    EG -- "X-Graph-ID" --> Workers[Agent Workers\nClusterIP]
+  end
+```
+
 In this scenario, Zelkor skips installing the Envoy Gateway controller and instead relies on your existing Envoy infrastructure. You provide the name of your existing `Gateway` and `GatewayClass` so Zelkor can bind its `HTTPRoute` and `AIGatewayRoute` resources to it.
 
 To use this with the install scripts, pass `--topology shared` along with `--parent-ref-name`, `--parent-ref-namespace`, and `--gateway-class`.

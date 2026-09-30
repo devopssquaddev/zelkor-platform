@@ -131,4 +131,4 @@ kind delete cluster --name zelkor
 | Docs map | [Documentation index](README.md) |
 | Vertex `gemini-*` 500 `unknown backend` | [KB](kb/ai-gateway-vertex-unknown-backend.md) |
 
-Shared-cluster and production install pages ship in a later docs pass. The objects you set here — model, tool, agent — are the same ones you keep when you move off kind.
+Read [Install on an Existing Cluster](helm-install.md) and [Production Install](production.md) to move off kind. The objects you set here — model, tool, agent — are the same ones you keep.

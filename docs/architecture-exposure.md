@@ -12,10 +12,17 @@ edition: all
 
 Zelkor is designed to govern your agents securely. To achieve this, it strictly limits what is exposed to the internet (north-south traffic). Everything that agents, Langfuse, NeMo, or MCP call in-cluster stays as a ClusterIP service.
 
+The core advantage: the agent you already wrote is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+
+* **Community Edition** is the self-hosted runtime.
+* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
+
 ## What is published vs ClusterIP
 
 Zelkor uses Envoy Gateway as its AI and graph data plane. It publishes only the necessary product surfaces.
 
+*What is published vs ClusterIP: Only the Agent Protocol front door and Langfuse UI are exposed by default.*
 ```mermaid
 ---
 config:
@@ -46,7 +53,6 @@ flowchart TB
     Workers -- "State" --> Datastores
   end
 ```
-*What is published vs ClusterIP: Only the Agent Protocol front door and Langfuse UI are exposed by default.*
 
 ### Published Endpoints
 

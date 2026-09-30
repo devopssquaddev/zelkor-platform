@@ -32,31 +32,8 @@ git clone https://github.com/devopssquaddev/zelkor-platform.git
 cd zelkor-platform
 
 # Replace with your actual LLM provider key
+# Replace with your actual LLM provider key
 OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh \
-  --namespace zelkor \
-  --hosts-agents agents.example.com \
-  --hosts-langfuse langfuse.example.com
-```
-
-The script will output the commands to retrieve the generated Langfuse admin password.
-
-## Install using Helm directly
-
-If you prefer to run Helm manually, first install the Gateway API and Envoy Gateway (see [Gateway Topologies](./topologies.md) for options):
-
-```bash
-./scripts/bootstrap-gateway.sh
-```
-
-Then, install the platform using the quickstart profile:
-
-```bash
-kubectl create namespace zelkor
-helm upgrade --install zelkor-platform charts/zelkor-platform \
-  --namespace zelkor \
-  -f profiles/values-quickstart.yaml \
-  -f profiles/values-gateway-greenfield.yaml \
-  --set aiGateway.providers.openai.apiKey="sk-..." \
   --set gateway.hosts.agents=agents.example.com \
   --set gateway.hosts.langfuse=langfuse.example.com
 ```

@@ -14,6 +14,7 @@ Zelkor unifies access to databases and SaaS tools via the Model Context Protocol
 
 The core advantage: your agent is sandboxed, and tool secrets (like SaaS tokens or database passwords) are never exposed to the agent process.
 
+*How a tool call is isolated: The agent calls the gateway with its tenant identity; the gateway attaches the secret and routes the call.*
 ```mermaid
 ---
 config:
@@ -29,7 +30,6 @@ flowchart LR
   MCPGateway -- "Inject DB Creds" --> Native
   MCPGateway -- "Inject API Key" --> Extra
 ```
-*How a tool call is isolated: The agent calls the gateway with its tenant identity; the gateway attaches the secret and routes the call.*
 
 ## The Boundary
 

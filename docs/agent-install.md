@@ -30,7 +30,7 @@ OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh \
   --namespace zelkor
 ```
 
-The script will generate passwords and output the Envoy dataplane services.
+The script has default `*.localhost` hosts built-in for local testing. If you want to use real domains, provide `--hosts-agents` and `--hosts-langfuse`. The script will generate passwords and output the Envoy dataplane services.
 
 ## Install (Production)
 
@@ -40,6 +40,9 @@ To install the platform in a production shape (operator-cr, HA, NetworkPolicies)
 OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
   --hosts-agents agents.example.com \
   --hosts-langfuse langfuse.example.com \
+  --jwt-issuer "https://your-idp.example.com" \
+  --jwt-audience "zelkor-platform" \
+  --jwks-file "./path/to/jwks.json" \
   --namespace zelkor
 ```
 

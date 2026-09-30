@@ -14,6 +14,7 @@ Zelkor enforces zero-trust boundaries around your agent workload. It uses strict
 
 The core advantage: your agent is sandboxed and cannot reach unauthorized data or dial out to the internet directly.
 
+*Who may talk to whom: NetworkPolicies drop all outbound traffic from the agent except to the platform gateways.*
 ```mermaid
 ---
 config:
@@ -48,7 +49,6 @@ flowchart TB
   AIGateway --> SaaS
   MCPGateway --> Postgres
 ```
-*Who may talk to whom: NetworkPolicies drop all outbound traffic from the agent except to the platform gateways.*
 
 ## The Boundary
 

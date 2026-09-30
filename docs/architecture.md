@@ -10,6 +10,8 @@ edition: all
 
 # Architecture Hub
 
+*High-level flow: You deploy an agent. It communicates strictly through governed model and tool gateways, emitting a trace.*
+
 Zelkor compiles your intent into a distributed system that sandboxes the agent you already wrote. The agent cannot break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.
 
 This hub maps the hops and boundaries that enforce that sandbox.
@@ -27,13 +29,11 @@ flowchart LR
     agent[Your agent]
     trace[Run trace]
   end
-  laptop -->|chat / run| model
   laptop -->|run| agent
   agent --> model
   agent --> tools
   agent --> trace
 ```
-*High-level flow: You deploy an agent. It communicates strictly through governed model and tool gateways, emitting a trace.*
 
 ## Deep Dives
 

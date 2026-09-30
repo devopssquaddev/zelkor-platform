@@ -41,19 +41,22 @@ You configure this in your Helm values during installation:
 ```yaml
 databases:
   mode: external
-  
+  postgresql:
+    external:
+      host: "my-rds-instance.eu-central-1.rds.amazonaws.com"
+      port: 5432
+      # Authentication provided via external Secret
+  qdrant:
+    external:
+      url: "https://my-cluster.aws.cloud.qdrant.io:6333"
+      # API key provided via external Secret
+
+# Disable in-cluster components (root keys)
 postgresql:
-  enabled: false # Disable in-cluster Postgres
-  external:
-    host: "my-rds-instance.eu-central-1.rds.amazonaws.com"
-    port: 5432
-    # Authentication provided via external Secret
+  enabled: false
 
 qdrant:
-  enabled: false # Disable in-cluster Qdrant
-  external:
-    url: "https://my-cluster.aws.cloud.qdrant.io:6333"
-    # API key provided via external Secret
+  enabled: false
 ```
 
-When using external databases, Zelkor's native MCP servers still act as the governed gateway, ensuring that your agents access your external data securely and with strict tenant isolation.
+When using external databases, Zelkor's native MCP servers still act as the governed gateway, ensuring that your agents access your external data securely and with strict tenant isolation. For full schema details, see the [Helm values reference](reference/helm-values.md).
