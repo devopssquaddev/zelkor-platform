@@ -66,7 +66,20 @@ The identity is forwarded as an HTTP header (e.g., `X-Tenant-ID`) to the extra b
 
 For local development, testing, or fully air-gapped deployments without an IdP, you can enable Zelkor's native `localSigning` fallback feature. This allows the platform to act as its own signer. 
 
-When enabled (which is the default in `profiles/values-local.yaml` used by the quickstart script), you can mint valid JWTs using the CLI:
+Configuration in `values.yaml` for a single-tenant isolated environment:
+
+```yaml
+platform:
+  tenants:
+    jwt:
+      localSigning:
+        enabled: true
+        # Automatically generate a long-lived token for this tenant at install
+        seedTenant: "tenant-a"
+        seedTokenTTL: "24h"
+```
+
+When enabled (which is the default in `profiles/values-local.yaml` used by the quickstart script), you can also mint valid JWTs using the CLI:
 
 ```bash
 # Mint a token for a specific tenant
