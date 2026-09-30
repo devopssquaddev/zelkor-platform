@@ -36,25 +36,23 @@ What wraps the agent you already wrote:
 config:
   theme: neutral
 ---
-flowchart LR
+flowchart TB
   client[Your client]
   subgraph cluster [Your Kubernetes cluster]
     subgraph tenant [One tenant]
-      agent[Your agent]
-      code[Isolated code]
+      subgraph wrap [Sandboxed]
+        agent[Your agent]
+      end
+      wrap -->|prompts verified, budget| model[Model]
+      wrap -->|tenant-scoped tools| tools[Tools]
+      wrap -->|generated code stays here| code[Isolated runtime]
+      wrap -->|always recorded| trace[Trace]
     end
-    model[Model]
-    tools[Tools]
-    trace[Trace]
   end
   client -->|authenticated run| agent
-  agent -->|cannot break out| code
-  agent -->|prompts verified, budget| model
-  agent -->|no unauthorized data or networks| tools
-  agent -->|under observation| trace
 ```
 
-The run, the tools, and the trace share one verified tenant identity. The agent cannot choose a different tenant. Another tenant’s rows, vectors, and traces are not reachable from this run. Full hops: [Architecture Hub](docs/architecture.md) and [Tenant Isolation](docs/architecture-tenants.md).
+Those four arrows are the only paths out of the agent. It cannot reach another network, another tenant’s data, or run generated code in its own process. The run, the tools, and the trace share one verified tenant identity; the agent cannot choose a different tenant. Full hops: [Architecture Hub](docs/architecture.md) and [Tenant Isolation](docs/architecture-tenants.md).
 
 ## Editions
 
