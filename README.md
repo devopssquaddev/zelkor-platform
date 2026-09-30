@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Chart](https://img.shields.io/badge/chart-2.1.1-informational)](charts/zelkor-platform/Chart.yaml)
 
-You get a **self-hosted agent runtime on your Kubernetes cluster**: bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+You get a **self-hosted agent runtime on your Kubernetes cluster**: bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.
 
 You configure three things — a **model**, a **tool**, and an **agent**. The laptop install and a shared cluster use the same objects and the same Helm charts. Community Edition is Apache-2.0 and runs from this repository without a sales step.
 
@@ -32,6 +32,10 @@ After the local install, point the [`zelkor` CLI](cli/README.md) at the cluster,
 How a request reaches your agent (postcard):
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart LR
   laptop[Your laptop]
   subgraph cluster [Your cluster]
@@ -47,7 +51,7 @@ flowchart LR
   agent --> trace
 ```
 
-For the full request path and trust boundaries, see [Architecture: Drop-In Agent Contract](docs/architecture-agent-contract.md).
+For the full request path and trust boundaries, see the [Architecture Hub](docs/architecture.md). Tenants stay isolated on that request path; one verified identity scopes the run, the tools, and the trace. The agent cannot choose a different tenant. Another tenant’s rows, vectors, and traces are not reachable from this run. See the [Tenant Isolation hop](docs/architecture-tenants.md) for how this works.
 
 ## Editions
 

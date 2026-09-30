@@ -17,6 +17,10 @@ Zelkor is designed to govern your agents securely. To achieve this, it strictly 
 Zelkor uses Envoy Gateway as its AI and graph data plane. It publishes only the necessary product surfaces.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart TB
   subgraph Internet
     Client[External Client]

@@ -10,7 +10,7 @@ edition: all
 
 # Documentation
 
-Zelkor is a self-hosted runtime for AI agents on Kubernetes. You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster. Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+Zelkor is a self-hosted runtime for AI agents on Kubernetes. You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster. Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated (the agent cannot pick another tenant, see the [tenant hop](architecture-tenants.md)).
 
 ## Editions
 
@@ -45,14 +45,22 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | :--- | :--- |
 | [Add LLM providers and models](adding-llm-providers-and-models.md) | Helm overlays for AI Gateway backends and model ids |
 | [Helm values reference](reference/helm-values.md) | `platform` / `workspace` / `workload` namespaces and schema |
+| [Hosts and Routing](reference/hosts.md) | `gateway.hosts.*` vs internal ClusterIP names |
+| [Worker Environment](reference/worker-env.md) | Injected env vars (`OPENAI_BASE_URL`, `MCP_URL`, OTEL) |
+| [MCP Tools Reference](reference/mcp-tools.md) | Tool prefixes, extraBackends fields, and list mechanics |
+| [Agent Protocol](reference/agent-protocol.md) | Front-door paths, graph ID matching, and fallbacks |
+| [Tenants](reference/tenants.md) | Claims, org map, filters vs forwarded, `zelkor token mint` fields |
 
 ## Architecture
 
 | Page | Job |
 | :--- | :--- |
+| [Architecture Hub](architecture.md) | Map of all hops, components, and trust boundaries |
 | [Drop-In Agent Contract](architecture-agent-contract.md) | How Zelkor sandboxes and governs your agent (Intercept, Wrap, MCP) |
 | [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |
 | [North-South Exposure](architecture-exposure.md) | What Zelkor publishes to the internet versus what stays inside the cluster |
+| [Tenant Isolation](architecture-tenants.md) | How one tenant identity is applied on a run |
+| [Agent Datastores](architecture-datastores.md) | Stateful infrastructure (Postgres, Qdrant) and BYO options |
 
 ## Troubleshooting
 

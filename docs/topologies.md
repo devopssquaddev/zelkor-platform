@@ -36,6 +36,10 @@ To accommodate different cluster setups, Zelkor provides three topology options:
 Use this when you are deploying to a new cluster or you want Envoy Gateway to act as the primary internet-facing LoadBalancer.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart TB
   subgraph Internet
     Client
@@ -54,6 +58,10 @@ The installation scripts use this by default. Envoy Gateway creates a standard L
 Use this when you already have a non-Envoy front door (like NGINX, Traefik, or an AWS ALB) handling TLS, DNS, and WAF for your cluster.
 
 ```mermaid
+---
+config:
+  theme: neutral
+---
 flowchart TB
   subgraph Internet
     Client
