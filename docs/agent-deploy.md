@@ -1,7 +1,7 @@
 ---
 title: Deploy an Agent (Agent Guide)
 description: How to deploy and remove a customer agent on the Zelkor platform.
-type: tutorial
+type: how-to
 sidebar_group: Agents
 sidebar_order: 2
 audience: agent
@@ -43,6 +43,8 @@ redis:
   prefix: "aegra:my-agent"
 ```
 
+> **Note on Keys:** Do not supply provider API keys (e.g. `OPENAI_API_KEY`) in the agent values. Actual provider keys belong in the platform's AI Gateway configuration (`workspace.models.providers...`), not on the agent worker.
+
 3. **Install the Helm release.**
 
 ```bash
@@ -73,7 +75,7 @@ The `deploy` command builds the image, pushes it to the registry, and runs `helm
 To test your deployed agent, use the `zelkor run` CLI command or a direct curl.
 
 ```bash
-zelkor run --graph-id my-agent-id "What is my portfolio valuation?"
+zelkor run --graph-id my-agent-id --input "What is my portfolio valuation?"
 ```
 
 Or via curl to the Envoy front door (requires a valid JWT or dev token):

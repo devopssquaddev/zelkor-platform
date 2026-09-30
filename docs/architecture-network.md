@@ -54,4 +54,4 @@ flowchart TB
 
 You provide the **Agent Code**. The platform generates the **NetworkPolicies** and **Gateways**.
 
-By default, an agent pod cannot open a connection to the internet, nor can it talk directly to the underlying datastores (Postgres, Valkey, Qdrant). All its interactions must go through the platform's AI Gateway for LLM calls and the MCP Gateway for tool calls and data access. This guarantees that observability, guardrails, and tenant isolation cannot be bypassed.
+By default (`security.networkPolicies.enabled: false`), traffic is not restricted. When you enable NetworkPolicies in production, an agent pod cannot open a connection to the internet, nor can it talk directly to the underlying datastores (Postgres, Valkey, Qdrant). All its interactions must go through the platform's AI Gateway for LLM calls and the MCP Gateway for tool calls and data access. This guarantees that observability, guardrails, and tenant isolation cannot be bypassed.

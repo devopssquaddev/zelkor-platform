@@ -30,7 +30,7 @@ OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh \
   --namespace zelkor
 ```
 
-The script has default `*.localhost` hosts built-in for local testing. If you want to use real domains, provide `--hosts-agents` and `--hosts-langfuse`. The script will generate passwords and output the Envoy dataplane services.
+The script has built-in localhost defaults (like `agents.<namespace>.zelkor.local`) for local evaluation. If you want to use real domains, provide `--hosts-agents` and `--hosts-langfuse`. The script will generate passwords and output the Envoy dataplane services.
 
 ## Install (Production)
 

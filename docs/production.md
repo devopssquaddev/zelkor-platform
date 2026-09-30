@@ -25,7 +25,7 @@ Deploy the production shape of Zelkor Community Edition. This runs databases via
 - `metrics-server` installed (required for HPA).
 - A JWT Identity Provider (IdP) for tenant authentication, with a downloaded JWKS JSON file.
 
-NetworkPolicies are disabled by default. Set `security.networkPolicies.enabled: true` in your values to enforce [Network Boundaries](architecture-network.md) and isolate pod traffic.
+NetworkPolicies are **disabled by default**. Set `security.networkPolicies.enabled: true` in your values to enforce [Network Boundaries](architecture-network.md) and isolate pod traffic.
 
 ## Sandbox Runtime (gVisor)
 
@@ -36,6 +36,7 @@ Community Edition uses gVisor to sandbox generated code. On production clusters,
 The `install-production.sh` script bootstraps the required operators, installs Envoy Gateway, and deploys the platform using the `values-production.yaml` profile.
 
 # Replace placeholders with your actual hosts, keys, and JWT settings
+
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
 cd zelkor-platform
@@ -49,6 +50,8 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
   --jwks-file "./path/to/jwks.json" \
   --generate-passwords
 ```
+
+This script maps the JWT flags to the underlying Helm keys (`platform.tenants.jwt.issuer`, `audiences[0]`, and `jwksConfigMap`).
 
 Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script will configure Envoy Gateway using a standard LoadBalancer by default. If you have an existing Ingress controller, you can use the `--topology layered` option.
 

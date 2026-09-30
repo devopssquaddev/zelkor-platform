@@ -30,9 +30,9 @@ These services are only resolvable from inside the Kubernetes cluster. The `{rel
 | :--- | :--- | :--- |
 | `{release}-aegra` | 8000 | Platform Aegra. The default backend for unmatched `X-Graph-ID` traffic. |
 | `{release}-mcp` | 80 | The unified MCP gateway. Resolves internal tool routing and injects secrets. (ExternalName) |
-| `{release}-mcp-postgres` | 8000 | Native Postgres MCP server. |
-| `{release}-mcp-qdrant` | 8000 | Native Qdrant MCP server. |
-| `{release}-mcp-sandbox` | 8000 | Sandbox execution coordinator. |
+| `{release}-mcp-postgres` | 8080 | Native Postgres MCP server. |
+| `{release}-mcp-qdrant` | 8080 | Native Qdrant MCP server. |
+| `{release}-mcp-sandbox` | 8080 | Sandbox execution coordinator. |
 | `{release}-ai-gateway` | 80 | Envoy AI Gateway `/v1` proxy for LLM intercept. (ExternalName) |
 | `{release}-nemo` | 8000 | NeMo Guardrails intercept server. |
 | `{release}-langfuse` | 3000 | Langfuse UI and telemetry ingestion. |

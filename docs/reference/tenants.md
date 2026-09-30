@@ -25,9 +25,11 @@ platform:
       audiences:
         - "zelkor-platform"
       remoteJwksUri: "https://your-idp.example.com/.well-known/jwks.json"
-      # Claims to use for the tenant ID (default: ["org_id"])
+      # Claims to use for the tenant ID (default: ["tenant_id", "org_id", "sub"])
       tenantClaims:
+        - "tenant_id"
         - "org_id"
+        - "sub"
     # Optional mapping from IDP org names to internal tenant IDs
     orgMappings:
       "idp-org-uuid-1": "tenant-a"
@@ -38,10 +40,10 @@ platform:
 
 Zelkor uses standard JWKS (JSON Web Key Set) validation. It integrates with any Identity Management (IDM) system that issues signed JWTs:
 
-- **Okta / Auth0:** Set `remoteJwksUri` to your authorization server's `.well-known/jwks.json`. Use a custom claim (e.g., `org_id`) in `tenantClaims`.
-- **Microsoft Entra ID (Azure AD):** Use the v2.0 endpoint for `remoteJwksUri`. The `tenantClaims` is typically `tid` (tenant ID) or a mapped app role.
+- **Okta / Auth0:** Set `issuer` and `remoteJwksUri` to your authorization server's endpoints (e.g. `.well-known/jwks.json`). Use a custom claim (e.g., `org_id`) in `tenantClaims`.
+- **Microsoft Entra ID (Azure AD):** Use the v2.0 endpoint for `issuer` and `remoteJwksUri`. The `tenantClaims` is typically `tid` (tenant ID) or a mapped app role.
 - **Keycloak:** Point `remoteJwksUri` to the realm's certs endpoint (`/realms/<realm>/protocol/openid-connect/certs`).
-- **Custom IDP:** Serve a static JWKS endpoint. If your IDP issues opaque UUIDs but your agent expects readable names, use `orgMappings` to translate them (e.g., `b2f4...: Bank_Alpha`).
+- **Custom IDP:** Serve a static JWKS endpoint. If your IDP issues opaque UUIDs but your agent expects readable names, use `orgMappings` to translate them (e.g., `b2f4...: tenant-a`).
 
 ## Tool Filtering vs. Forwarding
 
