@@ -55,7 +55,14 @@ This script maps the JWT flags to the underlying Helm keys (`platform.tenants.jw
 
 > **Note on JWT Issuers:** Production installs strictly enforce identity verification. If you do not have an external IdP (like Auth0 or Entra ID) and are deploying to an isolated or air-gapped environment, you have two alternatives: 
 > 1. Run a lightweight internal OIDC provider (like Keycloak or Zitadel) in your cluster and point `--jwt-issuer` to it.
-> 2. Pass a custom override file containing `platform.tenants.jwt.localSigning.enabled: true` to bypass the issuer requirement and use Zelkor's native dev signing (not recommended for true production).
+> 2. Use Zelkor's native dev signing (not recommended for true production). To bypass the issuer requirement, pass the `localSigning` override instead of the `--jwt-*` flags:
+> ```bash
+> OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
+>   --hosts-agents agents.example.com \
+>   --hosts-langfuse langfuse.example.com \
+>   --set "platform.tenants.jwt.localSigning.enabled=true" \
+>   --generate-passwords
+> ```
 
 Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script will configure Envoy Gateway using a standard LoadBalancer by default. If you have an existing Ingress controller, you can use the `--topology layered` option.
 
