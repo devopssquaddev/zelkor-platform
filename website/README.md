@@ -15,7 +15,7 @@ npm run docs:dev
 
 ## Cloudflare (Workers Git)
 
-1. Project **name** in the dashboard must be exactly `zelkor-docs` (same as `name` in `wrangler.toml`). Rename the project if it still matches the GitHub repo.
+1. Project **name** in the dashboard must be exactly `zelkor-platform` (same as `name` in `wrangler.toml`).
 2. Connect `zelkor-platform`, production branch `chore/docs-cleanup` until merge, then `main`.
 3. Settings:
 
