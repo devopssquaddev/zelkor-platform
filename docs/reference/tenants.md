@@ -74,9 +74,10 @@ platform:
     jwt:
       localSigning:
         enabled: true
-        # Automatically generate a long-lived token for this tenant at install
+        # Automatically generate a token for this tenant during install.
+        # For a static-key experience in an isolated environment, set a long TTL.
         seedTenant: "tenant-a"
-        seedTokenTTL: "24h"
+        seedTokenTTL: "8760h" # 1 year
 ```
 
 When enabled (which is the default in `profiles/values-local.yaml` used by the quickstart script), you can also mint valid JWTs using the CLI:
