@@ -23,7 +23,7 @@ Deploy the production shape of Zelkor Community Edition. This runs databases via
 - Kubernetes v1.28+ with at least 3 worker nodes.
 - Default StorageClass with dynamic provisioning.
 - `metrics-server` installed (required for HPA).
-- A JWT Identity Provider (IdP) for tenant authentication, with a downloaded JWKS JSON file.
+- A JWT Identity Provider (IdP) for tenant authentication, with a downloaded JWKS JSON file (or an internal OIDC issuer like Keycloak for isolated environments).
 
 NetworkPolicies are **disabled by default**. Set `security.networkPolicies.enabled: true` in your values to enforce [Network Boundaries](architecture-network.md) and isolate pod traffic.
 
@@ -51,7 +51,11 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
   --generate-passwords
 ```
 
-This script maps the JWT flags to the underlying Helm keys (`platform.tenants.jwt.issuer`, `audiences[0]`, and `jwksConfigMap`).
+This script maps the JWT flags to the underlying Helm keys (`platform.tenants.jwt.issuer`, `audiences[0]`, and `jwksConfigMap`). 
+
+> **Note on JWT Issuers:** Production installs strictly enforce identity verification. If you do not have an external IdP (like Auth0 or Entra ID) and are deploying to an isolated or air-gapped environment, you have two alternatives: 
+> 1. Run a lightweight internal OIDC provider (like Keycloak or Zitadel) in your cluster and point `--jwt-issuer` to it.
+> 2. Pass a custom override file containing `platform.tenants.jwt.localSigning.enabled: true` to bypass the issuer requirement and use Zelkor's native dev signing (not recommended for true production).
 
 Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script will configure Envoy Gateway using a standard LoadBalancer by default. If you have an existing Ingress controller, you can use the `--topology layered` option.
 

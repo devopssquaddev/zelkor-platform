@@ -62,9 +62,11 @@ For backends registered via `workspace.tools`, Zelkor **forwards** the tenant id
 
 The identity is forwarded as an HTTP header (e.g., `X-Tenant-ID`) to the extra backend. The external backend is responsible for enforcing its own isolation.
 
-## `zelkor token mint`
+## `zelkor token mint` & `localSigning`
 
-For local development and testing, you can mint valid JWTs using the CLI. These tokens are signed by the platform's dev key (enabled by default in `profiles/values-local.yaml`).
+For local development, testing, or fully air-gapped deployments without an IdP, you can enable Zelkor's native `localSigning` fallback feature. This allows the platform to act as its own signer. 
+
+When enabled (which is the default in `profiles/values-local.yaml` used by the quickstart script), you can mint valid JWTs using the CLI:
 
 ```bash
 # Mint a token for a specific tenant

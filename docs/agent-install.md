@@ -48,6 +48,8 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
 
 If you need to skip operator installation (e.g., in a brownfield environment where operators are already present), pass `--skip-operators`.
 
+> **Note on JWT Issuers:** Production installs strictly require a JWT issuer. If you are deploying an isolated system without an external IdP (like Okta or Entra ID), you can deploy a lightweight internal OIDC provider (like Keycloak) to your cluster, or use a Helm override to enable Zelkor's native `localSigning` fallback (see [Tenant Reference](reference/tenants.md) for details).
+
 ## Uninstall
 
 To remove the Zelkor platform Helm release from the cluster:
