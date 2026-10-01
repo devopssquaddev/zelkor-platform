@@ -78,7 +78,11 @@ spec:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             - name: LOG_EXCLUDE_PATHS
               value: "/health,/live,/ready"
+            - name: OTEL_PYTHON_EXCLUDED_URLS
+              value: "/health|/live|/ready|/v1/health"
             - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
+              value: "/health|/live|/ready|/v1/health"
+            - name: OTEL_PYTHON_ASGI_EXCLUDED_URLS
               value: "/health|/live|/ready|/v1/health"
             {{- include "zelkor-agent.tenantAuthEnv" . | nindent 12 }}
             {{- if $dbUrl }}

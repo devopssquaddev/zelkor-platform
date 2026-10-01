@@ -103,11 +103,16 @@ def test_platform_aegra_deployment_has_standard_probes():
     container = _container(deploy, "aegra")
     _assert_aegra_probes(container)
     env = {e["name"]: e.get("value") for e in container.get("env") or []}
-    assert env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
+    for key in (
+        "OTEL_PYTHON_EXCLUDED_URLS",
+        "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS",
+        "OTEL_PYTHON_ASGI_EXCLUDED_URLS",
+    ):
+        assert env.get(key) == "/health|/live|/ready|/v1/health", key
     assert [e["name"] for e in container.get("env") or []].count("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == 1
     nemo = _named(_docs(proc.stdout), "Deployment", "zelkor-platform-nemo")
     nemo_env = {e["name"]: e.get("value") for e in _container(nemo, "nemo-guardrails").get("env") or []}
-    assert nemo_env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
+    assert nemo_env.get("OTEL_PYTHON_ASGI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
 
 
 def test_zelkor_agent_deployment_has_standard_probes():
@@ -118,7 +123,9 @@ def test_zelkor_agent_deployment_has_standard_probes():
     container = _container(deploy, "agent")
     _assert_aegra_probes(container)
     env = {e["name"]: e.get("value") for e in container.get("env") or []}
+    assert env.get("OTEL_PYTHON_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
     assert env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
+    assert env.get("OTEL_PYTHON_ASGI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
 
 
 def test_zelkor_agent_null_startup_omits_startup_only():
