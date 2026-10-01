@@ -85,5 +85,8 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | :--- | :--- |
 | [Knowledge Base](kb/README.md) | Index of known issues and fixes |
 | [Vertex `gemini-*` unknown backend](kb/ai-gateway-vertex-unknown-backend.md) | Fix AI Gateway 500 when Vertex auth rotation skips the backend |
+| [JWT rejected (401)](kb/jwt-rejected.md) | Token `iss` vs Helm issuer and JWKS fetch |
+| [`POST /runs/wait` 422](kb/runs-wait-assistant-id.md) | Body must include `assistant_id` |
+| [AI Gateway `route_not_found`](kb/ai-gateway-route-not-found.md) | Empty provider `apiKey` deleted the route |
 
 Read [Install on an Existing Cluster](helm-install.md) and [Production Install](production.md) when you are ready to move off kind.

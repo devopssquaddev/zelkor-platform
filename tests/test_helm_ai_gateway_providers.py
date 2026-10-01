@@ -28,13 +28,16 @@ SECRET_SETS = [
 ]
 
 
-def _helm(*extra: str) -> str:
+def _helm(*extra: str, check: bool = True) -> str:
     cmd = ["helm", "template", "zelkor-platform", str(CHART), "--namespace", "zelkor"]
     for item in SECRET_SETS:
         cmd.extend(["--set", item])
     cmd.extend(extra)
     proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
-    assert proc.returncode == 0, proc.stderr
+    if check:
+        assert proc.returncode == 0, proc.stderr
+    elif proc.returncode != 0:
+        return proc.stderr
     return proc.stdout
 
 
@@ -272,6 +275,8 @@ def test_guardrails_nemo_model_wins_over_default_model():
     docs = _docs(
         _helm(
             "--set",
+            "workspace.models.providers.openai.apiKey=sk-test",
+            "--set",
             "workspace.models.defaultModel=qwen3:8b",
             "--set",
             "workspace.policies.nemo.model=openai/gpt-4o",
@@ -375,3 +380,25 @@ def test_vertex_bypass_rule_stays_two_header_when_reject_present():
     )
     names = {h.get("name") for h in vertex_rule["matches"][0]["headers"]}
     assert names == {"x-zelkor-guardrails-bypass", "x-ai-eg-model"}
+
+
+def test_default_model_without_provider_fails():
+    err = _helm(
+        "--set",
+        "workspace.models.defaultModel=gpt-oss:20b",
+        check=False,
+    )
+    assert "workspace.models.providers" in err
+    assert "defaultModel" in err
+
+
+def test_default_model_with_ollama_cloud_renders_route():
+    docs = _docs(
+        _helm(
+            "--set",
+            "workspace.models.defaultModel=gpt-oss:20b",
+            "--set",
+            "workspace.models.providers.ollamaCloud.apiKey=ollama-test",
+        )
+    )
+    _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")

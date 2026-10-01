@@ -86,6 +86,7 @@ curl -X POST https://agents.example.com/runs/wait \
   -H "Authorization: Bearer <your-token>" \
   -H "X-Graph-ID: my-agent-id" \
   -d '{
+    "assistant_id": "my-agent-id",
     "graph_id": "my-agent-id",
     "input": {
       "messages": [{"role": "human", "content": "What is my portfolio valuation?"}]
@@ -93,7 +94,7 @@ curl -X POST https://agents.example.com/runs/wait \
   }'
 ```
 
-After the run completes, visit the Langfuse UI (`langfuse.example.com`) to inspect the trace.
+After the run completes, visit the Langfuse UI (`langfuse.example.com`) to inspect the trace. Envoy routes on `X-Graph-ID` (or `?graph_id=`), not the JSON body. The run body still needs `assistant_id`. If Aegra returns 422 `assistant_id` Field required, see [runs/wait assistant_id](kb/runs-wait-assistant-id.md).
 
 ## Removing an Agent
 

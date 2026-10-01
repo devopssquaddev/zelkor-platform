@@ -29,7 +29,7 @@ helm upgrade zelkor-platform charts/zelkor-platform \
   --set workspace.models.defaultModel="openai/gpt-4o-mini"
 ```
 
-Model ids must match a route the chart created for your enabled providers (see table below).
+Model ids must match a route the chart created for your enabled providers (see table below). Helm fails if `defaultModel` is set and every provider `apiKey` (or equivalent credential) is empty. An overlay with `apiKey: ""` replaces a previous secret; pass `--set-file` (or omit the key) on later upgrades. Symptom: [AI Gateway route not found](kb/ai-gateway-route-not-found.md).
 
 ## Enable a named provider
 

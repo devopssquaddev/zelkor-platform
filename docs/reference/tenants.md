@@ -22,19 +22,24 @@ Configuration in `values.yaml`:
 platform:
   tenants:
     jwt:
+      issuer: "https://your-idp.example.com"
       audiences:
         - "zelkor-platform"
       remoteJwksUri: "https://your-idp.example.com/.well-known/jwks.json"
-      # Claims to use for the tenant ID (default: ["tenant_id", "org_id", "sub"])
+      jwksEgressCIDRs:
+        - "203.0.113.0/24"
       tenantClaims:
         - "tenant_id"
         - "org_id"
         - "sub"
+
     # Optional mapping from IDP org names to internal tenant IDs
     orgMappings:
       "idp-org-uuid-1": "tenant-a"
       "idp-org-uuid-2": "tenant-b"
 ```
+
+`issuer` must equal the JWT `iss` claim. `remoteJwksUri` must be the HTTPS JWKS URL the IdP publishes. When NetworkPolicies are on, set `jwksEgressCIDRs` to the IdP CIDRs (TCP 443). Do not set `issuer` or `remoteJwksUri` to an in-cluster Service URL that only answers with a public `Host` header. For those IdPs, put the keys in a ConfigMap (`--jwks-file` / `jwksConfigMap`). See [JWT rejected (401)](../kb/jwt-rejected.md).
 
 ## IDM Integration Options
 

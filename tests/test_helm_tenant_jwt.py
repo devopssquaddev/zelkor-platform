@@ -106,3 +106,38 @@ def test_schema_rejects_jwt_secret_and_dev_tokens_keys():
     ):
         r = _helm("--set", bad_set)
         assert r.returncode != 0
+
+
+JWKS_EGRESS_POLICIES = (
+    "zelkor-platform-aegra-egress",
+    "zelkor-platform-mcp-postgres-egress",
+    "zelkor-platform-mcp-qdrant-egress",
+    "zelkor-platform-mcp-aigateway-egress",
+)
+
+
+def test_jwks_egress_cidrs_render_https_ipblock_on_aegra_and_mcp():
+    r = _helm(
+        "--set",
+        "security.networkPolicies.enabled=true",
+        "--set",
+        "platform.tenants.jwt.jwksEgressCIDRs[0]=203.0.113.0/24",
+    )
+    assert r.returncode == 0, r.stderr
+    found = set()
+    for d in _docs(r.stdout):
+        if d.get("kind") != "NetworkPolicy":
+            continue
+        name = d["metadata"]["name"]
+        if name not in JWKS_EGRESS_POLICIES:
+            continue
+        blocks = []
+        for rule in d["spec"].get("egress") or []:
+            for dest in rule.get("to") or []:
+                cidr = (dest.get("ipBlock") or {}).get("cidr")
+                if cidr:
+                    ports = {(p.get("protocol"), p.get("port")) for p in rule.get("ports") or []}
+                    blocks.append((cidr, ports))
+        assert ("203.0.113.0/24", {("TCP", 443)}) in blocks, name
+        found.add(name)
+    assert found == set(JWKS_EGRESS_POLICIES)

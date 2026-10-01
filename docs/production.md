@@ -70,6 +70,13 @@ Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script
 
 - **TLS**: Use `--tls --cluster-issuer letsencrypt-prod` to attach a cert-manager ClusterIssuer to the Gateway.
 - **ServiceMonitor**: Use `--service-monitor` to enable Prometheus metrics scraping.
+- **Existing operators**: Pass `--skip-operators` when CloudNativePG, ClickHouse Operator, or cert-manager are already on the cluster.
+- **Storage**: Set `databases.postgresql.storage.storageClass` and `databases.clickhouse.storage.storageClass` to a class that actually provisions on your nodes. Shrink replica counts if that class exists on fewer nodes than the production profile.
+- **gVisor**: Set `security.sandbox.nodes.selector` to nodes that have RuntimeClass `gvisor`.
+- **Layered edge**: `--topology layered` prints the Envoy dataplane Service. Point your Ingress at that Service (preserve Host). Do not wrap it in another ClusterIP Endpoints list.
+- **LLM keys on upgrade**: keep passing `--set-file` for `workspace.models.providers.*.apiKey`, or omit the key. An overlay with `apiKey: ""` deletes the AI Gateway route ([route not found](./kb/ai-gateway-route-not-found.md)).
+
+`--jwt-issuer` must match the token `iss`. Prefer `--jwks-file`. Remote JWKS needs HTTPS plus `jwksEgressCIDRs` when NetworkPolicies are on ([JWT rejected](./kb/jwt-rejected.md)).
 
 ## Next steps
 
