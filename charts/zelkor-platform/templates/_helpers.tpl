@@ -310,11 +310,11 @@ Drop kubelet/health probes from OTEL (FastAPI, ASGI, and the global fallback).
 */}}
 {{- define "zelkor-platform.otelProbeExcludeEnv" -}}
 - name: OTEL_PYTHON_EXCLUDED_URLS
-  value: "/health|/live|/ready|/v1/health"
+  value: "/health,/live,/ready,/v1/health"
 - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
-  value: "/health|/live|/ready|/v1/health"
+  value: "/health,/live,/ready,/v1/health"
 - name: OTEL_PYTHON_ASGI_EXCLUDED_URLS
-  value: "/health|/live|/ready|/v1/health"
+  value: "/health,/live,/ready,/v1/health"
 {{- end }}
 
 {{/*
