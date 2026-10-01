@@ -104,6 +104,10 @@ def test_platform_aegra_deployment_has_standard_probes():
     _assert_aegra_probes(container)
     env = {e["name"]: e.get("value") for e in container.get("env") or []}
     assert env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
+    assert [e["name"] for e in container.get("env") or []].count("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == 1
+    nemo = _named(_docs(proc.stdout), "Deployment", "zelkor-platform-nemo")
+    nemo_env = {e["name"]: e.get("value") for e in _container(nemo, "nemo-guardrails").get("env") or []}
+    assert nemo_env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
 
 
 def test_zelkor_agent_deployment_has_standard_probes():

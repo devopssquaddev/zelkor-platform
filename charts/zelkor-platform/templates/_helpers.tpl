@@ -899,7 +899,7 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" $creds.publicKey $creds.secretKey)) | quote }}
 {{- end }}
 - name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
-  value: "/v1/health"
+  value: "/health|/live|/ready|/v1/health"
 - name: LANGFUSE_EXTRA_OTLP
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
