@@ -155,7 +155,12 @@ def test_kind_profiles_inherit_release_image_tags():
         assert "tag: dev" not in raw
     finserve_local = ROOT / "examples" / "finserve" / "chart" / "values-local.yaml"
     assert "tag: dev" not in finserve_local.read_text()
-    proc = _helm("-f", str(ROOT / "profiles" / "values-local-fast.yaml"))
+    proc = _helm(
+        "-f",
+        str(ROOT / "profiles" / "values-local-fast.yaml"),
+        "--set",
+        "platform.tenants.jwt.remoteJwksUri=",
+    )
     assert proc.returncode == 0, proc.stderr
     assert "zelkor-aegra:dev" not in proc.stdout
     assert "zelkor-mcp:dev" not in proc.stdout

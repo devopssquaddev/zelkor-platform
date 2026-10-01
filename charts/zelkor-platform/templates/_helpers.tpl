@@ -306,6 +306,18 @@ Tenant JWT verification env for Aegra and native MCP backends (JWKS, iss, aud, c
 {{- end }}
 
 {{/*
+Drop kubelet/health probes from OTEL (FastAPI, ASGI, and the global fallback).
+*/}}
+{{- define "zelkor-platform.otelProbeExcludeEnv" -}}
+- name: OTEL_PYTHON_EXCLUDED_URLS
+  value: "/health,/live,/ready,/v1/health"
+- name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
+  value: "/health,/live,/ready,/v1/health"
+- name: OTEL_PYTHON_ASGI_EXCLUDED_URLS
+  value: "/health,/live,/ready,/v1/health"
+{{- end }}
+
+{{/*
 Aegra OTel → Langfuse. When langfuse.init is enabled, envFrom {release}-langfuse-otel supplies OTEL_TARGETS and LANGFUSE_*.
 Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 */}}
@@ -315,8 +327,7 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 - name: OTEL_TARGETS
   value: {{ $targets | quote }}
 {{- end }}
-- name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
-  value: "/health|/live|/ready|/v1/health"
+{{ include "zelkor-platform.otelProbeExcludeEnv" . }}
 {{- end }}
 
 {{- define "zelkor-platform.aegraLangfuseOtelEnvFrom" -}}
@@ -898,8 +909,7 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
 - name: OTEL_EXPORTER_OTLP_HEADERS
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" $creds.publicKey $creds.secretKey)) | quote }}
 {{- end }}
-- name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
-  value: "/v1/health"
+{{ include "zelkor-platform.otelProbeExcludeEnv" . }}
 - name: LANGFUSE_EXTRA_OTLP
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
