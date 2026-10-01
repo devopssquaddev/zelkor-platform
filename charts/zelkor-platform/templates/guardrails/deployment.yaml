@@ -61,6 +61,7 @@ spec:
               name: http
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.guardrails.nemo "name" "zelkor-nemo") | nindent 12 }}
+            {{- include "zelkor-platform.otelProbeExcludeEnv" . | nindent 12 }}
             - name: OPENAI_API_KEY
               value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
             - name: MAIN_MODEL_BASE_URL

@@ -909,7 +909,6 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
 - name: OTEL_EXPORTER_OTLP_HEADERS
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" $creds.publicKey $creds.secretKey)) | quote }}
 {{- end }}
-{{ include "zelkor-platform.otelProbeExcludeEnv" . }}
 - name: LANGFUSE_EXTRA_OTLP
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
