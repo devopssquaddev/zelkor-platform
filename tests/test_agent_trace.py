@@ -55,7 +55,7 @@ def test_capture_content_chart_default_off_local_on():
     local = LOCAL_VALUES.read_text()
     assert "captureContent: true" in local
     excluded = (PLATFORM_CHART / "templates/_helpers.tpl").read_text()
-    assert 'value: "/v1/health"' in excluded
+    assert 'value: "/health,/live,/ready,/v1/health"' in excluded
 
 
 def _classify(trace: dict) -> tuple[bool, bool, list]:
