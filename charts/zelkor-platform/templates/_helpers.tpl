@@ -327,7 +327,7 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 - name: OTEL_TARGETS
   value: {{ $targets | quote }}
 {{- end }}
-{{- include "zelkor-platform.otelProbeExcludeEnv" . }}
+{{ include "zelkor-platform.otelProbeExcludeEnv" . }}
 {{- end }}
 
 {{- define "zelkor-platform.aegraLangfuseOtelEnvFrom" -}}
@@ -909,7 +909,7 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
 - name: OTEL_EXPORTER_OTLP_HEADERS
   value: {{ printf "Authorization=Basic %s" (b64enc (printf "%s:%s" $creds.publicKey $creds.secretKey)) | quote }}
 {{- end }}
-{{- include "zelkor-platform.otelProbeExcludeEnv" . }}
+{{ include "zelkor-platform.otelProbeExcludeEnv" . }}
 - name: LANGFUSE_EXTRA_OTLP
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
