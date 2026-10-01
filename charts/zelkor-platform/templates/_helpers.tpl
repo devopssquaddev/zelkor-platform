@@ -87,6 +87,10 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- if $m -}}
 {{- $_ := set .Values "aiGateway" $m -}}
 {{- end -}}
+{{- $defaultModel := ((.Values.aiGateway).defaultModel | default "") | toString | trim -}}
+{{- if and $defaultModel (ne (include "zelkor-platform.aiGatewayHasProviders" .) "true") -}}
+{{- fail "workspace.models.defaultModel is set but no workspace.models.providers credential is present (empty apiKey in an overlay replaces a previous secret). Set a provider key or omit defaultModel." -}}
+{{- end -}}
 {{- end }}
 
 {{- define "zelkor-platform.compile.policies" -}}
@@ -311,6 +315,8 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
 - name: OTEL_TARGETS
   value: {{ $targets | quote }}
 {{- end }}
+- name: OTEL_PYTHON_FASTAPI_EXCLUDED_URLS
+  value: "/health|/live|/ready|/v1/health"
 {{- end }}
 
 {{- define "zelkor-platform.aegraLangfuseOtelEnvFrom" -}}
@@ -1249,6 +1255,18 @@ aiplatform.googleapis.com
 {{- else -}}
 {{- printf "%s-aiplatform.googleapis.com" $region -}}
 {{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.jwksEgressRules" -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- range $jwt.jwksEgressCIDRs | default list }}
+- to:
+    - ipBlock:
+        cidr: {{ . | quote }}
+  ports:
+    - protocol: TCP
+      port: 443
+{{- end }}
 {{- end }}
 
 {{- define "zelkor-platform.aiGatewayHasProviders" -}}

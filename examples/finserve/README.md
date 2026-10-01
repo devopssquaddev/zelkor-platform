@@ -79,6 +79,7 @@ curl -X POST http://127.0.0.1:8088/runs/wait \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "X-Graph-ID: finserve-advisor" \
   -d '{
+    "assistant_id": "finserve-advisor",
     "graph_id": "finserve-advisor",
     "input": {
       "messages": [{"role": "human", "content": "What is my portfolio valuation?"}]

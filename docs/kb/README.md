@@ -15,6 +15,12 @@ This section contains troubleshooting guides for known issues, edge cases, and c
 ## AI Gateway
 
 * [Vertex `gemini-*` unknown backend](ai-gateway-vertex-unknown-backend.md): Fix AI Gateway 500 errors when Vertex authentication rotation skips the backend.
+* [AI Gateway `route_not_found`](ai-gateway-route-not-found.md): Fix 404 on `/v1/chat/completions` after a Helm upgrade cleared the provider key.
+
+## Agent Protocol
+
+* [`POST /runs/wait` 422 `assistant_id`](runs-wait-assistant-id.md): Aegra requires `assistant_id` in the body; `X-Graph-ID` is only routing.
+* [JWT rejected (401)](jwt-rejected.md): Token `iss` must match Helm issuer; use a JWKS file when in-cluster JWKS needs a public Host.
 
 ## General Troubleshooting
 

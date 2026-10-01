@@ -46,9 +46,15 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
   --namespace zelkor
 ```
 
-If you need to skip operator installation (e.g., in a brownfield environment where operators are already present), pass `--skip-operators`.
+If you need to skip operator installation (operators already present on the cluster), pass `--skip-operators`.
 
-> **Note on JWT Issuers:** Production installs strictly require a JWT issuer. If you are deploying an isolated system without an external IdP (like Okta or Entra ID), you can deploy a lightweight internal OIDC provider (like Keycloak) to your cluster, or use a Helm override to enable Zelkor's native `localSigning` fallback (see [Tenant Reference](reference/tenants.md) for details).
+Set storage and sandbox to the cluster you have. Empty `databases.*.storage.storageClass` uses the cluster default; replica counts in the production profile need that class on enough nodes. Pin `security.sandbox.nodes.selector` to nodes that have RuntimeClass `gvisor`.
+
+The installer prints the Envoy dataplane Service. A layered edge (Traefik, existing Ingress) must send Host-preserving traffic to that Service. Do not put another ClusterIP in Endpoints.
+
+Later Helm upgrades that set `workspace.models` must pass the provider key again (`--set-file`) or omit `apiKey` so an empty overlay does not wipe it.
+
+> **Note on JWT Issuers:** Production installs strictly require a JWT issuer. If you are deploying an isolated system without an external IdP (like Okta or Entra ID), you can deploy a lightweight internal OIDC provider (like Keycloak) to your cluster, or use a Helm override to enable Zelkor's native `localSigning` fallback (see [Tenant Reference](reference/tenants.md) for details). `--jwt-issuer` must match token `iss`. Prefer `--jwks-file` over an in-cluster JWKS URL. See [JWT rejected (401)](kb/jwt-rejected.md).
 
 ## Uninstall
 
@@ -58,7 +64,7 @@ To remove the Zelkor platform Helm release from the cluster:
 ./scripts/uninstall.sh --namespace zelkor
 ```
 
-This removes the platform release but leaves Envoy Gateway and operators intact. To purge them (if Zelkor installed them), append `--purge-gateway` and `--purge-operators`.
+This removes the platform release but leaves Envoy Gateway and operators intact. `--purge-gateway` and `--purge-operators` remove those components only when Zelkor recorded them in the cluster ownership ConfigMap (it skips a gateway another team installed).
 
 ```bash
 ./scripts/uninstall.sh --namespace zelkor --purge-gateway --purge-operators

@@ -100,7 +100,10 @@ def test_platform_aegra_deployment_has_standard_probes():
     proc = _helm_platform()
     assert proc.returncode == 0, proc.stderr
     deploy = _named(_docs(proc.stdout), "Deployment", "zelkor-platform-aegra")
-    _assert_aegra_probes(_container(deploy, "aegra"))
+    container = _container(deploy, "aegra")
+    _assert_aegra_probes(container)
+    env = {e["name"]: e.get("value") for e in container.get("env") or []}
+    assert env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
 
 
 def test_zelkor_agent_deployment_has_standard_probes():
@@ -108,7 +111,10 @@ def test_zelkor_agent_deployment_has_standard_probes():
     assert proc.returncode == 0, proc.stderr
     deploy = _docs(proc.stdout)[1]
     assert deploy["kind"] == "Deployment"
-    _assert_aegra_probes(_container(deploy, "agent"))
+    container = _container(deploy, "agent")
+    _assert_aegra_probes(container)
+    env = {e["name"]: e.get("value") for e in container.get("env") or []}
+    assert env.get("OTEL_PYTHON_FASTAPI_EXCLUDED_URLS") == "/health|/live|/ready|/v1/health"
 
 
 def test_zelkor_agent_null_startup_omits_startup_only():

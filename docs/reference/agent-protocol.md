@@ -28,7 +28,7 @@ The front door supports the standard Agent Protocol REST surface. All these path
 
 | Path | Method | Purpose |
 | :--- | :--- | :--- |
-| `/runs/wait` | POST | Execute a graph synchronously and wait for the final result. |
+| `/runs/wait` | POST | Execute a graph synchronously and wait for the final result. Body requires `assistant_id` (see [422 assistant_id](../kb/runs-wait-assistant-id.md)). |
 | `/runs/stream` | POST | Execute a graph and stream events (SSE). |
 | `/threads` | POST | Create a new memory thread. |
 | `/threads/{thread_id}/state` | GET | Retrieve the current state of a thread. |

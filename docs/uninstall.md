@@ -34,7 +34,7 @@ If Zelkor originally installed Envoy Gateway, CloudNativePG, or the ClickHouse O
 ./scripts/uninstall.sh --namespace zelkor --purge-gateway --purge-operators
 ```
 
-> **Warning:** Purging operators will affect any other workloads on the cluster that depend on them. Do not use `--purge-operators` if you have non-Zelkor Postgres or ClickHouse clusters managed by these operators.
+> **Warning:** `--purge-gateway` removes Envoy Gateway and AI Gateway only if Zelkor recorded them as its own. It skips a gateway another workload installed. `--purge-operators` affects any other Postgres or ClickHouse on those operators. Do not pass those flags unless you intend to remove that shared infrastructure.
 
 ## Delete the Namespace
 
