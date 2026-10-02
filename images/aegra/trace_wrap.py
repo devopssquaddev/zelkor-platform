@@ -67,6 +67,9 @@ class ProbeFilterSpanProcessor:
 
     Aegra runs bare ``uvicorn`` (not ``opentelemetry-instrument``), so Helm
     ``OTEL_PYTHON_*_EXCLUDED_URLS`` is ignored. Wrap the SDK multi-processor.
+
+    Span.end() calls ``_on_ending`` on ``TracerProvider._active_span_processor``
+    (not ``on_end``). Forward that hook or every request 500s.
     """
 
     def __init__(self, wrapped: Any) -> None:
@@ -82,11 +85,23 @@ class ProbeFilterSpanProcessor:
             return
         self._wrapped.on_end(span)
 
+    def _on_ending(self, span: Any) -> None:
+        if is_probe_span(span):
+            return
+        ending = getattr(self._wrapped, "_on_ending", None)
+        if callable(ending):
+            ending(span)
+            return
+        self._wrapped.on_end(span)
+
     def shutdown(self) -> None:
         self._wrapped.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return bool(self._wrapped.force_flush(timeout_millis))
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._wrapped, name)
 
 
 def install_probe_span_filter(provider: Any) -> None:

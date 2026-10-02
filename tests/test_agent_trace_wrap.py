@@ -236,6 +236,17 @@ def test_probe_filter_skips_export():
     inner.on_end.assert_called_once_with(run)
 
 
+def test_probe_filter_on_ending_matches_otel_sdk():
+    """OTEL Span.end() calls _on_ending on the active multi-processor."""
+    inner = MagicMock()
+    filt = ProbeFilterSpanProcessor(inner)
+    filt._on_ending(_NamedSpan("GET /ready"))
+    filt._on_ending(_NamedSpan("GET /runs"))
+    inner._on_ending.assert_called_once()
+    assert inner._on_ending.call_args[0][0].name == "GET /runs"
+    inner.on_end.assert_not_called()
+
+
 def test_install_probe_span_filter_wraps_once():
     inner = MagicMock()
 
