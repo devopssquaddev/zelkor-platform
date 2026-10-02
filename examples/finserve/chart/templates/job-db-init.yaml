@@ -87,9 +87,18 @@ spec:
                 sleep 2
               done
 
-              curl -sf -X PUT "${QDRANT_BASE}/collections/finserve_policies" \
+              create_code=$(curl -sS -o /tmp/qdrant-create.json -w '%{http_code}' \
+                -X PUT "${QDRANT_BASE}/collections/finserve_policies" \
                 -H 'Content-Type: application/json' \
-                -d '{"vectors": {"size": 4, "distance": "Cosine"}}'
+                -d '{"vectors": {"size": 4, "distance": "Cosine"}}')
+              if [ "$create_code" != "200" ] && [ "$create_code" != "201" ] && [ "$create_code" != "409" ]; then
+                echo "Qdrant collection create failed: HTTP ${create_code}" >&2
+                cat /tmp/qdrant-create.json >&2 || true
+                exit 1
+              fi
+              if [ "$create_code" = "409" ]; then
+                echo "Qdrant collection finserve_policies already exists; upserting points."
+              fi
 
               curl -sf -X PUT "${QDRANT_BASE}/collections/finserve_policies/points?wait=true" \
                 -H 'Content-Type: application/json' \
