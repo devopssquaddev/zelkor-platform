@@ -48,6 +48,7 @@ def test_sitecustomize_has_ready_gate_not_proxy():
     assert "disable_streaming" in text
     assert "trace_wrap" in text
     assert "patch_otel_setup" in text
+    assert "install_probe_span_filter" in wrap
     assert "ChatOpenAI.request" in wrap
     assert "_agenerate" in wrap
     assert "httpx2" in wrap

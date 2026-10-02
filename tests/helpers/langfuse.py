@@ -305,7 +305,13 @@ def has_nemo_spans(observations: list, detail: dict) -> bool:
 
 def is_health_probe_trace(trace: dict, observations: list | None = None) -> bool:
     name = str(trace.get("name") or "")
-    return "/v1/health" in name
+    lowered = name.lower().strip()
+    if "/v1/health" in lowered:
+        return True
+    for path in ("/health", "/live", "/ready"):
+        if lowered in {f"get {path}", f"head {path}", path}:
+            return True
+    return False
 
 
 def is_orphan_http_client_trace(trace: dict, observations: list | None = None) -> bool:

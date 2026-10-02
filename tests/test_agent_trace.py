@@ -14,7 +14,6 @@ from tests.helpers.langfuse import (
     graph_root_output_is_assistant,
     has_graph_spans,
     has_nemo_spans,
-    is_health_probe_trace,
     list_traces,
     observation_io_nonempty,
     recent_orphan_http_client_ids,
@@ -245,5 +244,9 @@ def test_nemo_health_probe_is_not_a_langfuse_trace():
     except Exception as exc:
         pytest.skip(f"Langfuse not reachable: {exc}")
 
-    probes = [t.get("id") or t.get("name") for t in traces if is_health_probe_trace(t)]
+    probes = [
+        t.get("id") or t.get("name")
+        for t in traces
+        if "/v1/health" in str(t.get("name") or "")
+    ]
     assert not probes, f"NeMo /v1/health created Langfuse traces: {probes}"
