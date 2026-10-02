@@ -8,9 +8,13 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "aegra"))
 
 from trace_wrap import (  # noqa: E402
+    ProbeFilterSpanProcessor,
     assistant_output_text,
     clip_io,
+    excluded_probe_paths,
     identity_headers,
+    install_probe_span_filter,
+    is_probe_span,
     openinference_span_for_run,
     record_span_io,
     run_identity,
@@ -188,6 +192,65 @@ def test_openinference_span_for_run_falls_back_to_spans_by_run():
     assert openinference_span_for_run(rm) is span
 
 
+class _NamedSpan:
+    def __init__(self, name: str, attributes: dict | None = None) -> None:
+        self.name = name
+        self.attributes = attributes or {}
+
+
+def test_is_probe_span_fastapi_server_names():
+    assert is_probe_span(_NamedSpan("GET /ready"))
+    assert is_probe_span(_NamedSpan("GET /live"))
+    assert is_probe_span(_NamedSpan("GET /health"))
+    assert is_probe_span(_NamedSpan("GET /v1/health"))
+    assert is_probe_span(_NamedSpan("HEAD /ready/"))
+    assert not is_probe_span(_NamedSpan("GET /runs"))
+    assert not is_probe_span(_NamedSpan("POST /runs/wait"))
+
+
+def test_is_probe_span_http_attributes():
+    assert is_probe_span(_NamedSpan("HTTP GET", {"http.route": "/ready"}))
+    assert is_probe_span(
+        _NamedSpan("HTTP GET", {"http.url": "http://aegra:8000/live"})
+    )
+    assert not is_probe_span(_NamedSpan("HTTP GET", {"http.route": "/threads"}))
+
+
+def test_excluded_probe_paths_from_env(monkeypatch):
+    monkeypatch.setenv(
+        "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS", "/health,/live,/ready,/v1/health"
+    )
+    assert excluded_probe_paths() == ("/health", "/live", "/ready", "/v1/health")
+
+
+def test_probe_filter_skips_export():
+    inner = MagicMock()
+    filt = ProbeFilterSpanProcessor(inner)
+    probe = _NamedSpan("GET /ready")
+    run = _NamedSpan("GET /runs")
+    filt.on_start(probe)
+    filt.on_end(probe)
+    filt.on_start(run)
+    filt.on_end(run)
+    inner.on_start.assert_called_once_with(run, None)
+    inner.on_end.assert_called_once_with(run)
+
+
+def test_install_probe_span_filter_wraps_once():
+    inner = MagicMock()
+
+    class _Provider:
+        def __init__(self) -> None:
+            self._active_span_processor = inner
+
+    provider = _Provider()
+    install_probe_span_filter(provider)
+    first = provider._active_span_processor
+    assert isinstance(first, ProbeFilterSpanProcessor)
+    install_probe_span_filter(provider)
+    assert provider._active_span_processor is first
+
+
 def test_sitecustomize_and_dockerfile_ship_trace_wrap():
     root = Path(__file__).resolve().parents[1]
     site = (root / "images/aegra/sitecustomize.py").read_text()
@@ -202,6 +265,7 @@ def test_sitecustomize_and_dockerfile_ship_trace_wrap():
     assert "Pregel" in wrap
     assert "astream_events" in wrap
     assert "langfuse.observation.input" in wrap
+    assert "install_probe_span_filter" in wrap
     assert "trace_wrap.py" in dockerfile
     assert "chmod 644" in dockerfile
     assert "sitecustomize.py" in dockerfile

@@ -253,7 +253,7 @@ def audit_recent_health_probes() -> bool:
     traces = list_traces(limit=30)
     probes = [t for t in traces if is_health_probe_trace(t)]
     ok = len(probes) == 0
-    print(f"[{'PASS' if ok else 'FAIL'}] §2 no /v1/health probe traces (found {len(probes)})")
+    print(f"[{'PASS' if ok else 'FAIL'}] §2 no probe traces GET /health /live /ready /v1/health (found {len(probes)})")
     return ok
 
 

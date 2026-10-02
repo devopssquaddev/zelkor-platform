@@ -16,6 +16,87 @@ _log = logging.getLogger("zelkor-aegra-wrap")
 
 IO_MAX = 8192
 
+_DEFAULT_PROBE_PATHS = ("/health", "/live", "/ready", "/v1/health")
+_PROBE_ATTR_KEYS = ("http.route", "http.target", "url.path", "http.path", "http.url")
+_HTTP_METHODS = frozenset({"GET", "HEAD"})
+
+
+def excluded_probe_paths() -> tuple[str, ...]:
+    """Comma-separated paths from Helm OTEL exclude env (same list as NeMo)."""
+    for key in (
+        "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS",
+        "OTEL_PYTHON_ASGI_EXCLUDED_URLS",
+        "OTEL_PYTHON_EXCLUDED_URLS",
+    ):
+        raw = os.getenv(key, "").strip()
+        if raw:
+            return tuple(p.strip() for p in raw.split(",") if p.strip())
+    return _DEFAULT_PROBE_PATHS
+
+
+def _normalize_http_path(value: str) -> str:
+    text = value.strip()
+    if "://" in text:
+        from urllib.parse import urlparse
+
+        text = urlparse(text).path
+    path = text.split("?", 1)[0].rstrip("/")
+    return path or "/"
+
+
+def is_probe_span(span: Any) -> bool:
+    """True for kubelet/health HTTP spans (FastAPI/ASGI names like GET /ready)."""
+    probes = {_normalize_http_path(p) for p in excluded_probe_paths()}
+    name = str(getattr(span, "name", "") or "")
+    parts = name.split(None, 1)
+    if len(parts) == 2 and parts[0].upper() in _HTTP_METHODS:
+        if _normalize_http_path(parts[1]) in probes:
+            return True
+    attrs = getattr(span, "attributes", None) or {}
+    for key in _PROBE_ATTR_KEYS:
+        raw = attrs.get(key)
+        if raw is None:
+            continue
+        if _normalize_http_path(str(raw)) in probes:
+            return True
+    return False
+
+
+class ProbeFilterSpanProcessor:
+    """Drop probe spans before Aegra's BatchSpanProcessor exports to Langfuse.
+
+    Aegra runs bare ``uvicorn`` (not ``opentelemetry-instrument``), so Helm
+    ``OTEL_PYTHON_*_EXCLUDED_URLS`` is ignored. Wrap the SDK multi-processor.
+    """
+
+    def __init__(self, wrapped: Any) -> None:
+        self._wrapped = wrapped
+
+    def on_start(self, span: Any, parent_context: Any = None) -> None:
+        if is_probe_span(span):
+            return
+        self._wrapped.on_start(span, parent_context)
+
+    def on_end(self, span: Any) -> None:
+        if is_probe_span(span):
+            return
+        self._wrapped.on_end(span)
+
+    def shutdown(self) -> None:
+        self._wrapped.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return bool(self._wrapped.force_flush(timeout_millis))
+
+
+def install_probe_span_filter(provider: Any) -> None:
+    inner = getattr(provider, "_active_span_processor", None)
+    if inner is None or isinstance(inner, ProbeFilterSpanProcessor):
+        return
+    wrapped = ProbeFilterSpanProcessor(inner)
+    provider._active_span_processor = wrapped
+    _log.info("probe span filter installed")
+
 
 def bound_contextvars() -> dict[str, Any]:
     try:
@@ -524,6 +605,10 @@ def patch_otel_setup() -> None:
         provider = getattr(self, "_tracer_provider", None)
         if provider is None:
             return
+        try:
+            install_probe_span_filter(provider)
+        except Exception:
+            _log.exception("probe span filter install failed")
         try:
             wrap_pregel_current_span(provider)
             _log.info("Pregel current-span wrap ok")
