@@ -107,6 +107,17 @@ def test_finserve_helm_values_local_emits_kind_dns():
     assert "pk-lf-zelkor-dev" not in (FINSERVE_CHART / "templates" / "job-langfuse-seed.yaml").read_text()
 
 
+def test_finserve_qdrant_seed_treats_collection_409_as_success():
+    raw = (FINSERVE_CHART / "templates" / "job-db-init.yaml").read_text()
+    assert "create_code=" in raw
+    assert '"409"' in raw
+    assert 'curl -sf -X PUT "${QDRANT_BASE}/collections/finserve_policies"' not in raw
+    _ensure_finserve_deps()
+    proc = _helm(FINSERVE_CHART, "finserve", "-f", str(FINSERVE_LOCAL))
+    assert proc.returncode == 0, proc.stderr
+    assert "already exists; upserting points" in proc.stdout
+
+
 def test_zelkor_agent_inherit_release_name_without_dsn_or_auth():
     proc = _helm(
         AGENT_CHART,
