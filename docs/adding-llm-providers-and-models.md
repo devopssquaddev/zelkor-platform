@@ -194,6 +194,29 @@ workspace:
 
 Apply via a values overlay file or `--set-file`. Each item requires `name`, `host`, `prefix`, `modelMatch`, and `apiKey` for the chart to render auth. Calls use `model` ids that match `modelMatch` (for example `groq/llama-3.3-70b-versatile`).
 
+## Cap runaway completions
+
+Community Edition caps **all** `/v1` calls on the shared AI Gateway at **50 requests per minute** (`workspace.models.rateLimit`). A looping agent gets HTTP **429**; the provider is not called. This is a request count, not a dollar budget.
+
+Raise, lower, or turn it off in an overlay:
+
+```yaml
+workspace:
+  models:
+    rateLimit:
+      enabled: true
+      requestsPerMinute: 200
+```
+
+```bash
+helm upgrade zelkor-platform charts/zelkor-platform \
+  --namespace zelkor \
+  --reuse-values \
+  --set workspace.models.rateLimit.requestsPerMinute=200
+```
+
+Set `workspace.models.rateLimit.enabled=false` to omit the cap. **Pro** adds per-team USD / token ceilings and model downshift on the same `/v1` path; that is not this knob.
+
 ## Consumer key on agents
 
 Agents use OpenAI-compatible clients pointed at the platform AI Gateway base URL. The gateway expects the shared **consumer key** from `workspace.models.consumerKey` (install scripts set this when you pass `AI_GATEWAY_CONSUMER_KEY` or let the script generate one). Do not mount provider API keys on agent Deployments.

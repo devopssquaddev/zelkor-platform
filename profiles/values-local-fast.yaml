@@ -122,6 +122,9 @@ workspace:
   models:
     enabled: true
     consumerKey: dev-key
+    rateLimit:
+      enabled: true
+      requestsPerMinute: 600
     providers:
       ollamaLocal:
         host: ''

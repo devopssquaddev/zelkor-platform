@@ -50,6 +50,7 @@ Update governing requirement and specification documents whenever:
 - **Native Postgres / Qdrant MCP implementation:** `internal/plan/architecture_native_mcp_oss_wrap.md` (thin Postgres; Qdrant pip-wrap)
 - **North–south exposure (what to publish on ingress):** `internal/plan/architecture_ingress_exposure.md`
 - **AI Gateway providers (Envoy coverage + CE/Pro/Ent):** `internal/plan/ai_gateway_provider_coverage.md`, `internal/plan/requirements_ai_gateway_providers.md`
+- **AI Gateway CE global RPM (safety net, not Pro budgets):** `internal/plan/requirements_ai_gateway_rate_limit.md` (multi-root)
 - **Component pins & compatibility matrix:** `internal/plan/component_compatibility_matrix.md`
 - **CE versioning (git tag + chart + first-party images):** `internal/plan/requirements_ce_versioning.md` (always-apply rule: `.cursor/rules/ce-versioning.mdc`)
 - **Helm values schema, extraManifests, provenance (CE-1):** `internal/plan/requirements_values_schema.md` (multi-root)

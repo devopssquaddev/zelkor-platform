@@ -41,4 +41,4 @@ You deploy the **Agent** and configure the **Model**. The platform generates the
 
 The agent is never given the real provider key (e.g., your actual OpenAI API key). It is injected with a local consumer key (`OPENAI_API_KEY`) and its traffic is forced to `OPENAI_BASE_URL` pointing at the internal AI Gateway. 
 
-The AI Gateway performs rate limiting, applies guardrails via NeMo, injects the real provider credentials from a Kubernetes Secret, and forwards the request to the upstream model provider.
+The AI Gateway applies a **global request cap** on `/v1` (chart default 50 requests per minute). Over the cap, the gateway returns HTTP 429 and does not call the provider — so a looping agent cannot run an unbounded bill. That cap is a request count shared by the install, not a dollar budget. **Pro** adds per-team USD and token ceilings with model downshift on the same path. The gateway also applies guardrails via NeMo, injects the real provider credentials from a Kubernetes Secret, and forwards allowed requests to the upstream model provider.

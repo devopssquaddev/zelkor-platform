@@ -754,6 +754,22 @@
               "type": "string",
               "description": "Value for workspace.models.internalUrl."
             },
+            "rateLimit": {
+              "type": "object",
+              "description": "Global request cap on AI Gateway /v1 (CE safety net).",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for workspace.models.rateLimit.enabled."
+                },
+                "requestsPerMinute": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Value for workspace.models.rateLimit.requestsPerMinute."
+                }
+              },
+              "additionalProperties": false
+            },
             "inClusterService": {
               "type": "object",
               "description": "Values under workspace.models.inClusterService.",

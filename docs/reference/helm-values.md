@@ -45,6 +45,8 @@ Customer-facing configuration is grouped into three layers. Templates compile th
 | `workspace.models.enabled` | AI Gateway route generation |
 | `workspace.models.consumerKey` | Shared `/v1` bearer key for agents |
 | `workspace.models.defaultModel` | Default model id when unset on the worker |
+| `workspace.models.rateLimit.enabled` | Global `/v1` request cap (default on) |
+| `workspace.models.rateLimit.requestsPerMinute` | Shared RPM on AI Gateway `/v1` (chart default `50`) |
 | `workspace.models.providers.*` | Named LLM backends — see [Add LLM providers](../adding-llm-providers-and-models.md) |
 | `workspace.models.providers.openaiCompat[]` | Generic OpenAI-schema hosts (Groq, Mistral, …) |
 | `workspace.policies.nemo` | NeMo Guardrails intercept and model |
