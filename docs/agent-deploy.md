@@ -31,7 +31,7 @@ sharedRoute:
 
 image:
   repository: my-registry/my-agent
-  tag: "2.1.1"
+  tag: "2.2.0"
 
 platform:
   # The name of the platform Helm release (e.g., zelkor-platform).
