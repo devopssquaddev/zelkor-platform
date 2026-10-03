@@ -436,6 +436,7 @@ def _discover_runner(captured: dict | None = None):
     captured = captured if captured is not None else {}
 
     def runner(argv, **_kwargs):
+        captured.setdefault("commands", []).append(list(argv))
         if captured is not None and "upgrade" in argv and "--install" in argv:
             idx = argv.index("-f")
             captured["values"] = Path(argv[idx + 1]).read_text(encoding="utf-8")
@@ -606,7 +607,8 @@ def test_deploy_from_values_skips_docker(tmp_path):
     )
     assert result["graph_id"] == "gpt-researcher"
     assert result["release"] == "gpt-researcher"
-    assert "docker" not in " ".join(captured.get("argv") or [])
+    joined = "\n".join(" ".join(c) for c in captured.get("commands") or [])
+    assert "docker" not in joined
     dumped = captured["values"]
     assert "gpt-researcher" in dumped
     assert "gvisor" in dumped
@@ -614,6 +616,101 @@ def test_deploy_from_values_skips_docker(tmp_path):
     assert "agents.example.com" in dumped
     assert "zelkor-platform" in dumped
     assert "cluster-consumer" in dumped
+
+
+def test_deploy_from_values_builds_and_kind_loads(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.delenv("KIND_CLUSTER", raising=False)
+    captured: dict = {}
+    result = deploy_from_values(
+        values_path=values,
+        env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    assert result["image"].endswith(":2.2.0")
+    cmds = captured.get("commands") or []
+    build = next(c for c in cmds if c[:2] == ["docker", "build"])
+    assert str(tmp_path / "Dockerfile") in build
+    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in build
+    assert any(a.startswith("ZELKOR_AEGRA_DEEP_IMAGE=") for a in build)
+    assert str((ROOT / "charts" / "zelkor-agent").resolve().parent.parent) in build
+    load = next(c for c in cmds if c[:2] == ["kind", "load"])
+    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in load
+    assert "zelkor" in load
+    assert not any(c[:2] == ["docker", "push"] for c in cmds)
+
+
+def test_deploy_from_values_skip_build_env(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.setenv("ZELKOR_SKIP_BUILD", "1")
+    captured: dict = {}
+    deploy_from_values(
+        values_path=values,
+        env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    joined = "\n".join(" ".join(c) for c in captured.get("commands") or [])
+    assert "docker" not in joined
+    assert "kind load" not in joined
+
+
+def test_deploy_from_values_pushes_off_kind(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.setenv("ZELKOR_IMAGE_REGISTRY", "ghcr.io/devopssquaddev")
+    captured: dict = {}
+    deploy_from_values(
+        values_path=values,
+        env=Env(name="prod", kube_context="k3s", namespace="zelkor"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    cmds = captured.get("commands") or []
+    assert any(c[:2] == ["docker", "build"] for c in cmds)
+    assert any(c[:2] == ["docker", "push"] for c in cmds)
+    assert not any(c[:2] == ["kind", "load"] for c in cmds)
 
 
 def test_deploy_from_values_honors_image_tag_env(tmp_path, monkeypatch):
@@ -696,11 +793,57 @@ def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys, caplog):
         runner=_discover_runner(captured),
     )
     assert code == 0
-    assert "docker" not in " ".join(captured.get("argv") or [])
+    joined = "\n".join(" ".join(c) for c in captured.get("commands") or [])
+    assert "docker" not in joined
     out = capsys.readouterr().out
     assert "gpt-researcher" in out
     assert "discover platform" in caplog.text
     assert "helm upgrade --install" in caplog.text
+
+
+def test_cli_deploy_f_builds_on_kind(tmp_path, monkeypatch, capsys):
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="local", kube_context="kind-zelkor", namespace="default"), store_path=store)
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    values = overlay / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (overlay / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.delenv("KIND_CLUSTER", raising=False)
+    captured: dict = {}
+    code = main(
+        [
+            "--store",
+            str(store),
+            "--env",
+            "local",
+            "--chart",
+            str(ROOT / "charts" / "zelkor-agent"),
+            "--platform-chart",
+            str(ROOT / "charts" / "zelkor-platform"),
+            "deploy",
+            "-f",
+            str(values),
+            str(tmp_path),
+        ],
+        runner=_discover_runner(captured),
+    )
+    assert code == 0
+    cmds = captured.get("commands") or []
+    assert any(c[:2] == ["docker", "build"] for c in cmds)
+    assert any(c[:2] == ["kind", "load"] for c in cmds)
+    capsys.readouterr()
 
 
 def test_cli_deploy_overlay_has_no_sandbox_worker_urls():

@@ -8,17 +8,17 @@ The agent pod uses gVisor. LLM calls go through the in-cluster AI Gateway. Trace
 
 - Zelkor CE installed; `zelkor env use` points at that cluster
 - RuntimeClass `gvisor` on the cluster
-- Image `ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher` pullable (tag matches Chart `appVersion`, or `dev` in a lab)
+- Docker on PATH (unless `ZELKOR_SKIP_BUILD=1`)
 - A Tavily key for web retrieval (private overlay; not in git)
 
 ## Deploy and run
 
 ```bash
-ZELKOR_IMAGE_TAG=dev zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
+zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
 zelkor run --graph-id gpt-researcher --input "Summarize the latest gVisor isolation model"
 ```
 
-On a published CE install, omit `ZELKOR_IMAGE_TAG` to use the Chart `appVersion` tag in `values.yaml`. Labs (kind test server) must set `ZELKOR_IMAGE_TAG=dev` and have that image loaded — `:2.2.0` is not published until the catalog ships in a CE tag.
+`deploy -f` builds the sibling `Dockerfile` at the repo root, then kind-loads (kind) or pushes (`--registry` / `ZELKOR_IMAGE_REGISTRY` off kind). Skip the build with `ZELKOR_SKIP_BUILD=1` when the wrap image is already in the registry.
 
 See [Deploy an Agent](../../../docs/agent-deploy.md).
 

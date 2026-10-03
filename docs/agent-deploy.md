@@ -72,12 +72,14 @@ The `deploy` command builds the image, pushes it to the registry, and runs `helm
 
 ## Deploy a prepared values file
 
-When the worker image is already in a registry (catalog overlays under `examples/armored-agents/`), skip the build:
+Catalog overlays (`examples/armored-agents/`) ship a sibling `Dockerfile`. `zelkor deploy -f` builds that image, then Helm-installs:
 
 ```bash
 zelkor env use production
 zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
 ```
+
+On kind, the CLI kind-loads the image. Off kind, pass `--registry` or set `ZELKOR_IMAGE_REGISTRY`. `ZELKOR_SKIP_BUILD=1` skips docker when the image is already in the registry.
 
 The CLI merges live platform connection fields (release name, agents host, Langfuse traces, auth) into empty keys in the file. `graphId`, `image`, `runtimeClassName`, and `extraEnv` stay as written. Provider keys stay on the AI Gateway, not in the values file.
 

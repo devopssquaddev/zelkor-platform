@@ -316,6 +316,62 @@ def _is_kind(env: Env) -> bool:
     return env.kube_context.startswith("kind-") or os.getenv("KIND_CLUSTER", "") != ""
 
 
+def _skip_build() -> bool:
+    return _truthy(os.getenv("ZELKOR_SKIP_BUILD", ""))
+
+
+def _chart_repo_root(agent_chart: Path) -> Path:
+    return agent_chart.resolve().parent.parent
+
+
+def _chart_app_version(agent_chart: Path) -> str:
+    chart = yaml.safe_load((agent_chart / "Chart.yaml").read_text(encoding="utf-8")) or {}
+    return str(chart.get("appVersion") or "dev").strip().strip('"')
+
+
+def _kind_cluster_name(env: Env) -> str:
+    return os.getenv("KIND_CLUSTER") or env.kube_context.removeprefix("kind-")
+
+
+def _deep_base_image(tag: str) -> str:
+    return os.getenv("ZELKOR_DEEP_IMAGE", "").strip() or f"ghcr.io/devopssquaddev/zelkor-aegra-deep:{tag}"
+
+
+def _build_catalog_image(
+    *,
+    env: Env,
+    image_ref: str,
+    dockerfile: Path,
+    context: Path,
+    tag: str,
+    runner: Optional[RunFn],
+    push: bool,
+) -> None:
+    deep = _deep_base_image(tag)
+    logger.info("building %s", image_ref)
+    _run(
+        [
+            "docker",
+            "build",
+            "-f",
+            str(dockerfile),
+            "-t",
+            image_ref,
+            "--build-arg",
+            f"ZELKOR_AEGRA_DEEP_IMAGE={deep}",
+            str(context),
+        ],
+        runner=runner,
+    )
+    if push:
+        logger.info("push %s", image_ref)
+        _run(["docker", "push", image_ref], runner=runner)
+    elif _is_kind(env):
+        cluster = _kind_cluster_name(env)
+        logger.info("kind load %s cluster=%s", image_ref, cluster)
+        _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
+
+
 def _is_empty(value: Any) -> bool:
     return value is None or value == "" or value == [] or value == {}
 
@@ -576,7 +632,8 @@ def deploy_agent(
         if push:
             _run(["docker", "push", image_ref], runner=runner)
         elif _is_kind(env):
-            cluster = os.getenv("KIND_CLUSTER") or env.kube_context.removeprefix("kind-")
+            cluster = _kind_cluster_name(env)
+            logger.info("kind load %s cluster=%s", image_ref, cluster)
             _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
     overlay: dict[str, Any] = {
         "graphId": shape.graph_id,
@@ -660,6 +717,8 @@ def deploy_from_values(
     runner: Optional[RunFn] = None,
     approval_threshold: str = "",
     extra_values: Optional[list[Path]] = None,
+    image_registry: str = "",
+    skip_build: Optional[bool] = None,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
@@ -670,10 +729,35 @@ def deploy_from_values(
     graph_id = str(file_values.get("graphId") or "").strip()
     if not graph_id:
         raise RuntimeError("values file must set graphId")
-    image = file_values.get("image") or {}
-    if not str((image or {}).get("repository") or "").strip():
+    image = dict(file_values.get("image") or {})
+    repo = str(image.get("repository") or "").strip()
+    if not repo:
         raise RuntimeError("values file must set image.repository")
-    logger.info("deploy -f %s graph_id=%s image=%s:%s", values_path, graph_id, image.get("repository"), image.get("tag"))
+    digest = str(image.get("digest") or "").strip()
+    tag = str(image.get("tag") or "").strip() or _chart_app_version(agent_chart)
+    image["tag"] = tag
+    file_values = dict(file_values)
+    file_values["image"] = image
+    logger.info("deploy -f %s graph_id=%s image=%s:%s", values_path, graph_id, repo, tag)
+    dockerfile = values_path.parent / "Dockerfile"
+    skip = _skip_build() if skip_build is None else skip_build
+    if dockerfile.is_file() and not skip and not digest:
+        if not _is_kind(env):
+            registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
+            if not registry:
+                raise RuntimeError(
+                    "Set ZELKOR_IMAGE_REGISTRY or pass --registry when deploying to a non-kind cluster"
+                )
+        image_ref = f"{repo}:{tag}"
+        _build_catalog_image(
+            env=env,
+            image_ref=image_ref,
+            dockerfile=dockerfile,
+            context=_chart_repo_root(agent_chart),
+            tag=tag,
+            runner=runner,
+            push=not _is_kind(env),
+        )
     info = discover_platform(env, runner=runner)
     overlay = merge_catalog_values(file_values, discovered_worker_values(info))
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
@@ -688,15 +772,10 @@ def deploy_from_values(
         as_default=as_default,
         runner=runner,
     )
-    image_ref = str(image.get("repository") or "")
-    tag = str(image.get("tag") or "")
-    digest = str(image.get("digest") or "")
     if digest:
-        ref = f"{image_ref}@{digest}"
-    elif tag:
-        ref = f"{image_ref}:{tag}"
+        ref = f"{repo}@{digest}"
     else:
-        ref = image_ref
+        ref = f"{repo}:{tag}"
     return {"release": release, "graph_id": graph_id, "as_default": as_default, "image": ref}
 
 
@@ -1129,6 +1208,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 platform_chart=platform_chart,
                 runner=runner,
                 approval_threshold=getattr(args, "approval_threshold", "") or "",
+                image_registry=getattr(args, "registry", "") or "",
             )
         else:
             result = deploy_agent(
