@@ -165,6 +165,11 @@ def test_kind_profiles_inherit_release_image_tags():
     assert "zelkor-aegra:dev" not in proc.stdout
     assert "zelkor-mcp:dev" not in proc.stdout
     assert f"zelkor-aegra:{tag}" in proc.stdout
+    docs = _docs(proc.stdout)
+    deploys = {d["metadata"]["name"] for d in _kinds(docs, "Deployment")}
+    assert "zelkor-platform-mcp-aigateway" not in deploys
+    job = _named(docs, "Job", "zelkor-platform-langfuse-bootstrap")
+    assert _env(job, "SEED_MCP_TOOLS") == "false"
 
 
 def test_install_images_default_uses_chart_tag():

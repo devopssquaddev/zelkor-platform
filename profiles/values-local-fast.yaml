@@ -1,6 +1,6 @@
 # Local kind overlay — fast cold-start profile (INSTALL_PROFILE=fast).
-# gVisor sandbox MCP with one warm-pool worker; skips NetworkPolicies and Langfuse evaluator seed.
-# Langfuse MCP tools seed (Playground llm_tools) is on; evaluators stay off.
+# gVisor sandbox MCP with one warm-pool worker; skips NetworkPolicies, AI Gateway MCP,
+# Langfuse MCP tools seed, and evaluator seed. Full profile turns those on.
 # Envoy hostNetwork:true maps kind extraPortMappings 8088; see docs/quickstart.md.
 ---
 global:
@@ -94,7 +94,7 @@ platform:
         llmConnection:
           enabled: true
         tools:
-          seedFromMcp: true
+          seedFromMcp: false
         evaluators:
           seedCode: false
       nextauthUrl: http://langfuse.localhost:8088
@@ -139,6 +139,8 @@ workspace:
           captureContent: true
   tools:
     enabled: true
+    aigatewayMCP:
+      enabled: false
     sandboxMCP:
       warmPool:
         replicas: 1
