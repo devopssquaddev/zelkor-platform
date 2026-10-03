@@ -83,15 +83,35 @@ def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = 
     raise FileNotFoundError(f"charts/{chart_name} not found from {start}")
 
 
+KUBE_REQUEST_TIMEOUT = os.getenv("ZELKOR_KUBE_TIMEOUT", "30s").strip() or "30s"
+KUBE_RUN_TIMEOUT_SEC = float(os.getenv("ZELKOR_KUBE_RUN_TIMEOUT_SEC", "45"))
+HELM_UPGRADE_TIMEOUT_SEC = float(os.getenv("ZELKOR_HELM_UPGRADE_TIMEOUT_SEC", "180"))
+
+
 def _run(
     argv: list[str],
     *,
     runner: Optional[RunFn] = None,
     check: bool = True,
     capture: bool = True,
+    timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess:
+    logger.info("run %s", " ".join(argv))
     fn = runner or subprocess.run
-    res = fn(argv, capture_output=capture, text=True, check=False)
+    kw: dict[str, Any] = {"text": True, "check": False}
+    if timeout is not None:
+        kw["timeout"] = timeout
+    if capture:
+        kw["capture_output"] = True
+    else:
+        kw["stdout"] = sys.stderr
+        kw["stderr"] = sys.stderr
+    try:
+        res = fn(argv, **kw)
+    except TypeError:
+        res = fn(argv, capture_output=capture, text=True, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{' '.join(argv)} timed out after {timeout}s") from exc
     if check and res.returncode != 0:
         err = (res.stderr or res.stdout or "").strip()
         raise RuntimeError(f"{' '.join(argv)} failed: {err}")
@@ -99,7 +119,7 @@ def _run(
 
 
 def kube_argv(env: Env, *args: str) -> list[str]:
-    cmd = ["kubectl", "--context", env.kube_context, "-n", env.namespace]
+    cmd = ["kubectl", "--request-timeout", KUBE_REQUEST_TIMEOUT, "--context", env.kube_context, "-n", env.namespace]
     if env.kubeconfig:
         cmd[1:1] = ["--kubeconfig", env.kubeconfig]
     cmd.extend(args)
@@ -107,7 +127,7 @@ def kube_argv(env: Env, *args: str) -> list[str]:
 
 
 def helm_argv(env: Env, *args: str) -> list[str]:
-    cmd = ["helm", "--kube-context", env.kube_context, "-n", env.namespace]
+    cmd = ["helm", "--request-timeout", KUBE_REQUEST_TIMEOUT, "--kube-context", env.kube_context, "-n", env.namespace]
     if env.kubeconfig:
         cmd[1:1] = ["--kubeconfig", env.kubeconfig]
     cmd.extend(args)
@@ -128,8 +148,18 @@ def _container_env(deploy: dict[str, Any]) -> dict[str, str]:
 
 
 def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
+    logger.info(
+        "discover platform env=%s context=%s namespace=%s",
+        env.name,
+        env.kube_context,
+        env.namespace,
+    )
     info = PlatformInfo()
-    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner)
+    listed = _run(
+        helm_argv(env, "list", "-o", "json"),
+        runner=runner,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     releases = json.loads(listed.stdout or "[]")
     for rel in releases:
         chart = str(rel.get("chart") or "")
@@ -139,7 +169,11 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
             break
     if not info.release:
         raise RuntimeError("zelkor-platform Helm release not found in this env")
-    values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
+    values_raw = _run(
+        helm_argv(env, "get", "values", info.release, "-o", "yaml"),
+        runner=runner,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     values = yaml.safe_load(values_raw.stdout or "") or {}
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
@@ -148,6 +182,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     deploys = _run(
         kube_argv(env, "get", "deploy", "-l", "app.kubernetes.io/component=aegra", "-o", "json"),
         runner=runner,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
     )
     items = (json.loads(deploys.stdout or "{}") or {}).get("items") or []
     for dep in items:
@@ -181,7 +216,12 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         if name:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
         break
-    routes = _run(kube_argv(env, "get", "httproute", "-o", "json"), runner=runner, check=False)
+    routes = _run(
+        kube_argv(env, "get", "httproute", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     if routes.returncode == 0:
         for route in (json.loads(routes.stdout or "{}") or {}).get("items") or []:
             labels = (route.get("metadata") or {}).get("labels") or {}
@@ -207,6 +247,7 @@ def in_cluster_openai_base_url(env: Env, runner: Optional[RunFn] = None) -> str:
         kube_argv(env, "get", "svc", "-l", "app.kubernetes.io/component=ai-gateway", "-o", "json"),
         runner=runner,
         check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
     )
     if svcs.returncode != 0:
         return ""
@@ -358,6 +399,7 @@ def _helm_upgrade_agent(
         yaml.safe_dump(overlay, fh)
         values_file = fh.name
     try:
+        logger.info("helm upgrade --install %s", release)
         _run(
             helm_argv(
                 env,
@@ -369,11 +411,15 @@ def _helm_upgrade_agent(
                 values_file,
             ),
             runner=runner,
+            capture=False,
+            timeout=HELM_UPGRADE_TIMEOUT_SEC,
         )
         if as_default:
+            logger.info("helm upgrade platform %s attachDefaultRoute=false", platform_release)
             plat_args = helm_argv(env, "upgrade", platform_release, str(platform_chart), "--reuse-values")
             plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
-            _run(plat_args, runner=runner)
+            _run(plat_args, runner=runner, capture=False, timeout=HELM_UPGRADE_TIMEOUT_SEC)
+        logger.info("wait rollout deployment/%s", agent_deployment_name(release))
         _run(
             kube_argv(
                 env,
@@ -383,6 +429,8 @@ def _helm_upgrade_agent(
                 "--timeout=180s",
             ),
             runner=runner,
+            capture=False,
+            timeout=200,
         )
     finally:
         Path(values_file).unlink(missing_ok=True)
@@ -417,7 +465,11 @@ def deploy_agent(
     info = discover_platform(env, runner=runner)
     platform_values: dict[str, Any] = {}
     if shape.mcp_servers:
-        values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
+        values_raw = _run(
+            helm_argv(env, "get", "values", info.release, "-o", "yaml"),
+            runner=runner,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
         platform_values = yaml.safe_load(values_raw.stdout or "") or {}
         missing = missing_extra_registrations(shape.mcp_servers, platform_values)
         if missing:
@@ -507,6 +559,7 @@ def deploy_from_values(
     image = file_values.get("image") or {}
     if not str((image or {}).get("repository") or "").strip():
         raise RuntimeError("values file must set image.repository")
+    logger.info("deploy -f %s graph_id=%s", values_path, graph_id)
     info = discover_platform(env, runner=runner)
     overlay = merge_catalog_values(file_values, discovered_worker_values(info))
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
@@ -544,13 +597,18 @@ def cmd_undeploy(
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
     info = discover_platform(env, runner=runner)
-    got = _run(helm_argv(env, "get", "values", release, "-o", "yaml"), runner=runner, check=False)
+    got = _run(
+        helm_argv(env, "get", "values", release, "-o", "yaml"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     if got.returncode != 0:
         print(f"agent release {release} not found", file=sys.stderr)
         return 1
     values = yaml.safe_load(got.stdout or "") or {}
     as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
-    _run(helm_argv(env, "uninstall", release), runner=runner)
+    _run(helm_argv(env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
     if as_default:
         _run(
             helm_argv(
@@ -563,6 +621,8 @@ def cmd_undeploy(
                 "aegra.attachDefaultRoute=true",
             ),
             runner=runner,
+            capture=False,
+            timeout=HELM_UPGRADE_TIMEOUT_SEC,
         )
     print(json.dumps({"release": release, "uninstalled": True, "restored_default": as_default}))
     return 0
@@ -639,7 +699,7 @@ def cmd_env(args: argparse.Namespace, store_path: Path | None) -> int:
 
 
 def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
-    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner)
+    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner, timeout=KUBE_RUN_TIMEOUT_SEC)
     print("Helm releases:")
     for rel in json.loads(listed.stdout or "[]"):
         chart = str(rel.get("chart") or "")
@@ -647,7 +707,12 @@ def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
             print(f"  {rel.get('name')}  {chart}  {rel.get('status')}")
         if chart.startswith("zelkor-platform"):
             print(f"  {rel.get('name')}  {chart}  {rel.get('status')}")
-    routes = _run(kube_argv(env, "get", "httproute", "-o", "json"), runner=runner, check=False)
+    routes = _run(
+        kube_argv(env, "get", "httproute", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     print("HTTPRoutes:")
     if routes.returncode == 0:
         for route in (json.loads(routes.stdout or "{}") or {}).get("items") or []:
@@ -769,7 +834,7 @@ def _boot_logging() -> None:
         return
     if not os.getenv("ZELKOR_LOG_FORMAT"):
         os.environ["ZELKOR_LOG_FORMAT"] = "text" if sys.stderr.isatty() else "json"
-        configure_logging("zelkor-cli", stream=sys.stderr)
+    configure_logging("zelkor-cli", stream=sys.stderr)
 
 
 def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> int:

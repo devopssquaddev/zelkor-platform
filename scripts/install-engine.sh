@@ -1174,6 +1174,14 @@ cat <<EOF
      Gateway / playground: same project
 
 ======================================================================
+  CLI — point at this cluster
+======================================================================
+
+  pip install -e cli/
+  zelkor env add local --kube-context ${KCTX} --namespace ${ns}
+  zelkor env use local
+
+======================================================================
 EOF
 if [[ "${DEMO_TOUR_FAILED:-false}" == "true" ]]; then
 cat <<EOF

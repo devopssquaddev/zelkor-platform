@@ -19,7 +19,20 @@ from zelkor.detect import (  # noqa: E402
 )
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
 from zelkor.extra_backends import extra_backend_overlay_snippet, missing_extra_registrations  # noqa: E402
-from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, deploy_from_values, fill_empty, in_cluster_openai_base_url, main, merge_catalog_values  # noqa: E402
+from zelkor.main import (  # noqa: E402
+    UPGRADE,
+    PlatformInfo,
+    auth_values,
+    default_llm_model_from,
+    deploy_agent,
+    deploy_from_values,
+    fill_empty,
+    helm_argv,
+    in_cluster_openai_base_url,
+    kube_argv,
+    main,
+    merge_catalog_values,
+)
 from zelkor import token_cmd  # noqa: E402
 
 
@@ -496,6 +509,16 @@ def test_merge_catalog_values_file_wins():
     assert merged["auth"]["issuer"] == "https://issuer.example"
 
 
+def test_kube_and_helm_argv_set_request_timeout():
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    kube = kube_argv(env, "get", "ns")
+    helm = helm_argv(env, "list", "-o", "json")
+    assert kube[:3] == ["kubectl", "--request-timeout", "30s"]
+    assert helm[:3] == ["helm", "--request-timeout", "30s"]
+    assert "--context" in kube and "kind-zelkor" in kube
+    assert "--kube-context" in helm and "kind-zelkor" in helm
+
+
 def test_fill_empty_keeps_set_values():
     assert fill_empty({"host": "mine"}, {"host": "theirs", "gatewayName": "gw"}) == {
         "host": "mine",
@@ -561,7 +584,7 @@ def test_deploy_from_values_rejects_approval_threshold(tmp_path):
         )
 
 
-def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys):
+def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys, caplog):
     store = tmp_path / "envs.yaml"
     add_env(Env(name="prod", kube_context="k3s", namespace="zelkor"), store_path=store)
     values = tmp_path / "values.yaml"
@@ -599,6 +622,8 @@ def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys):
     assert "docker" not in " ".join(captured.get("argv") or [])
     out = capsys.readouterr().out
     assert "gpt-researcher" in out
+    assert "discover platform" in caplog.text
+    assert "helm upgrade --install" in caplog.text
 
 
 def test_cli_deploy_overlay_has_no_sandbox_worker_urls():
