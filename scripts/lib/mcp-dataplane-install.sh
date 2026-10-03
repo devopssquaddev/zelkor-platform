@@ -75,16 +75,20 @@ mcp_dataplane_wait_gateway() {
     return 0
   fi
   echo "install: waiting for Gateway ${gw}"
-  local i programmed
+  local i gw_programmed listener_programmed reason
   for i in $(seq 1 60); do
-    programmed="$(mcp_dataplane_kubectl -n "$ns" get gateway "$gw" \
+    gw_programmed="$(mcp_dataplane_kubectl -n "$ns" get gateway "$gw" \
       -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || true)"
-    if [[ "$programmed" == "True" ]]; then
+    listener_programmed="$(mcp_dataplane_kubectl -n "$ns" get gateway "$gw" \
+      -o jsonpath='{.status.listeners[*].conditions[?(@.type=="Programmed")].status}' 2>/dev/null || true)"
+    if [[ "$gw_programmed" == "True" || "$listener_programmed" == *"True"* ]]; then
       return 0
     fi
     sleep 5
   done
-  echo "warning: Gateway ${gw} not Programmed within timeout" >&2
+  reason="$(mcp_dataplane_kubectl -n "$ns" get gateway "$gw" \
+    -o jsonpath='{.status.conditions[?(@.type=="Programmed")].reason}' 2>/dev/null || true)"
+  echo "warning: Gateway ${gw} listeners not Programmed within timeout${reason:+ (${reason})}" >&2
   return 1
 }
 
