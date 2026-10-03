@@ -645,6 +645,7 @@ def test_deploy_from_values_builds_and_kind_loads(tmp_path, monkeypatch):
     assert result["image"].endswith(":2.2.0")
     cmds = captured.get("commands") or []
     build = next(c for c in cmds if c[:2] == ["docker", "build"])
+    assert "--progress=plain" in build
     assert str(tmp_path / "Dockerfile") in build
     assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in build
     assert any(a.startswith("ZELKOR_AEGRA_DEEP_IMAGE=") for a in build)
@@ -713,7 +714,7 @@ def test_deploy_from_values_pushes_off_kind(tmp_path, monkeypatch):
     assert not any(c[:2] == ["kind", "load"] for c in cmds)
 
 
-def test_deploy_from_values_honors_image_tag_env(tmp_path, monkeypatch):
+def test_deploy_from_values_keeps_values_tag(tmp_path, monkeypatch):
     values = tmp_path / "values.yaml"
     values.write_text(
         "\n".join(
@@ -735,9 +736,9 @@ def test_deploy_from_values_honors_image_tag_env(tmp_path, monkeypatch):
         platform_chart=ROOT / "charts" / "zelkor-platform",
         runner=_discover_runner(captured),
     )
-    assert result["image"].endswith(":dev")
-    assert "2.2.0" not in captured["values"]
-    assert "dev" in captured["values"]
+    assert result["image"].endswith(":2.2.0")
+    assert ":dev" not in result["image"]
+    assert "2.2.0" in captured["values"]
 
 
 def test_deploy_from_values_rejects_approval_threshold(tmp_path):
@@ -801,7 +802,7 @@ def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys, caplog):
     assert "helm upgrade --install" in caplog.text
 
 
-def test_cli_deploy_f_builds_on_kind(tmp_path, monkeypatch, capsys):
+def test_cli_deploy_f_builds_on_kind(tmp_path, monkeypatch, capsys, caplog):
     store = tmp_path / "envs.yaml"
     add_env(Env(name="local", kube_context="kind-zelkor", namespace="default"), store_path=store)
     overlay = tmp_path / "overlay"
@@ -843,6 +844,8 @@ def test_cli_deploy_f_builds_on_kind(tmp_path, monkeypatch, capsys):
     cmds = captured.get("commands") or []
     assert any(c[:2] == ["docker", "build"] for c in cmds)
     assert any(c[:2] == ["kind", "load"] for c in cmds)
+    assert "building " in caplog.text
+    assert "run docker" in caplog.text
     capsys.readouterr()
 
 

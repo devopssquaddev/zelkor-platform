@@ -88,6 +88,26 @@ KUBE_RUN_TIMEOUT_SEC = float(os.getenv("ZELKOR_KUBE_RUN_TIMEOUT_SEC", "45"))
 HELM_UPGRADE_TIMEOUT_SEC = float(os.getenv("ZELKOR_HELM_UPGRADE_TIMEOUT_SEC", "180"))
 
 
+def _argv_for_log(argv: list[str]) -> str:
+    text = " ".join(argv)
+    return text if len(text) <= 240 else text[:237] + "..."
+
+
+def _flush_logs() -> None:
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    for handler in logger.handlers:
+        handler.flush()
+    try:
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _stream_child(argv: list[str]) -> bool:
+    return bool(argv) and argv[0] in {"docker", "kind"}
+
+
 def _run(
     argv: list[str],
     *,
@@ -96,7 +116,14 @@ def _run(
     capture: bool = True,
     timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess:
-    logger.debug("run %s", " ".join(argv))
+    if _stream_child(argv):
+        capture = False
+    line = _argv_for_log(argv)
+    if capture:
+        logger.debug("run %s", line)
+    else:
+        logger.info("run %s", line)
+        _flush_logs()
     fn = runner or subprocess.run
     kw: dict[str, Any] = {"text": True, "check": False}
     if timeout is not None:
@@ -106,12 +133,17 @@ def _run(
     else:
         kw["stdout"] = sys.stderr
         kw["stderr"] = sys.stderr
+    started = time.monotonic()
     try:
         res = fn(argv, **kw)
     except TypeError:
         res = fn(argv, capture_output=capture, text=True, check=False)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"{' '.join(argv)} timed out after {timeout}s") from exc
+    elapsed = time.monotonic() - started
+    if not capture:
+        logger.info("done %s elapsed=%.1fs rc=%s", argv[0] if argv else "cmd", elapsed, res.returncode)
+        _flush_logs()
     if check and res.returncode != 0:
         err = (res.stderr or res.stdout or "").strip()
         raise RuntimeError(f"{' '.join(argv)} failed: {err}")
@@ -155,6 +187,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         env.namespace,
     )
     info = PlatformInfo()
+    logger.info("helm list")
     listed = _run(
         helm_argv(env, "list", "-o", "json"),
         runner=runner,
@@ -169,6 +202,8 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
             break
     if not info.release:
         raise RuntimeError("zelkor-platform Helm release not found in this env")
+    logger.info("found platform release=%s chart=%s", info.release, info.chart_version)
+    logger.info("helm get values %s", info.release)
     values_raw = _run(
         helm_argv(env, "get", "values", info.release, "-o", "yaml"),
         runner=runner,
@@ -179,6 +214,8 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
     info.gateway_namespace = env.namespace
+    logger.info("agents host=%s", info.agents_host or "(empty)")
+    logger.info("get aegra deployment")
     deploys = _run(
         kube_argv(env, "get", "deploy", "-l", "app.kubernetes.io/component=aegra", "-o", "json"),
         runner=runner,
@@ -216,6 +253,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         if name:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
         break
+    logger.info("get httproutes")
     routes = _run(
         kube_argv(env, "get", "httproute", "-o", "json"),
         runner=runner,
@@ -238,6 +276,12 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.openai_base_url = cluster_gw
     if not info.default_llm_model:
         info.default_llm_model = default_llm_model_from({}, values)
+    logger.info(
+        "discover done release=%s gateway=%s model=%s",
+        info.release,
+        info.gateway_name or "(none)",
+        info.default_llm_model or "(none)",
+    )
     return info
 
 
@@ -348,11 +392,13 @@ def _build_catalog_image(
     push: bool,
 ) -> None:
     deep = _deep_base_image(tag)
-    logger.info("building %s", image_ref)
+    logger.info("building %s dockerfile=%s context=%s base=%s", image_ref, dockerfile, context, deep)
+    logger.info("docker build first pull can take several minutes; layer progress follows")
     _run(
         [
             "docker",
             "build",
+            "--progress=plain",
             "-f",
             str(dockerfile),
             "-t",
@@ -363,6 +409,7 @@ def _build_catalog_image(
         ],
         runner=runner,
     )
+    logger.info("built %s", image_ref)
     if push:
         logger.info("push %s", image_ref)
         _run(["docker", "push", image_ref], runner=runner)
@@ -370,6 +417,7 @@ def _build_catalog_image(
         cluster = _kind_cluster_name(env)
         logger.info("kind load %s cluster=%s", image_ref, cluster)
         _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
+        logger.info("kind-loaded %s; kubelet will not pull this tag", image_ref)
 
 
 def _is_empty(value: Any) -> bool:
@@ -608,6 +656,7 @@ def deploy_agent(
         registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
+    logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
     platform_values: dict[str, Any] = {}
     if shape.mcp_servers:
@@ -628,8 +677,12 @@ def deploy_agent(
         with tempfile.TemporaryDirectory(prefix="zelkor-build-") as tmp:
             ctx = Path(tmp)
             _write_build_context(root, ctx, shape.kind, shape.graph_id)
-            _run(["docker", "build", "-t", image_ref, str(ctx)], runner=runner)
+            logger.info("building %s", image_ref)
+            logger.info("docker build first pull can take several minutes; layer progress follows")
+            _run(["docker", "build", "--progress=plain", "-t", image_ref, str(ctx)], runner=runner)
+            logger.info("built %s", image_ref)
         if push:
+            logger.info("push %s", image_ref)
             _run(["docker", "push", image_ref], runner=runner)
         elif _is_kind(env):
             cluster = _kind_cluster_name(env)
@@ -696,18 +749,6 @@ def _merge_values_files(paths: list[Path]) -> dict[str, Any]:
     return merged
 
 
-def _apply_image_tag_override(file_values: dict[str, Any]) -> dict[str, Any]:
-    tag = os.getenv("ZELKOR_IMAGE_TAG", "").strip()
-    if not tag:
-        return file_values
-    image = dict(file_values.get("image") or {})
-    image["tag"] = tag
-    out = dict(file_values)
-    out["image"] = image
-    logger.info("image.tag from ZELKOR_IMAGE_TAG=%s", tag)
-    return out
-
-
 def deploy_from_values(
     *,
     values_path: Path,
@@ -723,7 +764,7 @@ def deploy_from_values(
     if approval_threshold:
         raise RuntimeError(UPGRADE)
     paths = [values_path, *(extra_values or [])]
-    file_values = _apply_image_tag_override(_merge_values_files(paths))
+    file_values = _merge_values_files(paths)
     if not isinstance(file_values, dict):
         raise RuntimeError(f"{values_path} must be a YAML mapping")
     graph_id = str(file_values.get("graphId") or "").strip()
@@ -758,6 +799,11 @@ def deploy_from_values(
             runner=runner,
             push=not _is_kind(env),
         )
+        if _is_kind(env):
+            image["pullPolicy"] = "Never"
+            file_values = dict(file_values)
+            file_values["image"] = image
+            logger.info("image.pullPolicy=Never after kind load")
     info = discover_platform(env, runner=runner)
     overlay = merge_catalog_values(file_values, discovered_worker_values(info))
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
@@ -789,6 +835,7 @@ def cmd_undeploy(
 ) -> int:
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
+    logger.info("undeploy release=%s", release)
     info = discover_platform(env, runner=runner)
     got = _run(
         helm_argv(env, "get", "values", release, "-o", "yaml"),
@@ -801,6 +848,7 @@ def cmd_undeploy(
         return 1
     values = yaml.safe_load(got.stdout or "") or {}
     as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
+    logger.info("helm uninstall %s", release)
     _run(helm_argv(env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
     if as_default:
         _run(
@@ -846,6 +894,7 @@ def cmd_logs(
 
 
 def cmd_init(root: Path) -> int:
+    logger.info("init directory=%s", root)
     agent = root / "agent.json"
     md = root / "AGENTS.md"
     if agent.exists() or md.exists():
@@ -858,6 +907,7 @@ def cmd_init(root: Path) -> int:
 
 
 def cmd_env(args: argparse.Namespace, store_path: Path | None) -> int:
+    logger.info("env %s", args.env_cmd)
     if args.env_cmd == "add":
         add_env(
             Env(name=args.name, kube_context=args.kube_context, namespace=args.namespace, kubeconfig=args.kubeconfig or ""),
@@ -892,6 +942,7 @@ def cmd_env(args: argparse.Namespace, store_path: Path | None) -> int:
 
 
 def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
+    logger.info("status env=%s namespace=%s", env.name, env.namespace)
     listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner, timeout=KUBE_RUN_TIMEOUT_SEC)
     print("Helm releases:")
     for rel in json.loads(listed.stdout or "[]"):
@@ -916,6 +967,7 @@ def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
 
 
 def cmd_doctor(env: Env, runner: Optional[RunFn] = None) -> int:
+    logger.info("doctor env=%s namespace=%s", env.name, env.namespace)
     info = discover_platform(env, runner=runner)
     checks = [
         ("DATABASE_URL", bool(info.database_url)),
@@ -958,6 +1010,7 @@ def cmd_run(
     runner: Optional[RunFn] = None,
 ) -> int:
     shape = detect(root, graph_id_flag)
+    logger.info("run graph_id=%s", shape.graph_id)
     info = discover_platform(env, runner=runner)
     base = url or os.getenv("ZELKOR_AGENTS_URL") or os.getenv("ZELKOR_AEGRA_URL") or (
         f"http://{info.agents_host}" if info.agents_host else ""
@@ -980,6 +1033,7 @@ def cmd_run(
     try:
         from langgraph_sdk import get_sync_client
 
+        logger.info("run stream url=%s graph_id=%s", base, shape.graph_id)
         client = get_sync_client(url=base, headers=headers)
         thread = client.threads.create()
         errored = False
@@ -1015,6 +1069,10 @@ def _env_from_args(args: argparse.Namespace, *, prefer_local: bool = False) -> E
 
 
 def _boot_logging() -> None:
+    try:
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     common = Path(__file__).resolve().parents[3] / "images" / "common"
     if (common / "zelkor_logging.py").is_file() and str(common) not in sys.path:
         sys.path.insert(0, str(common))
@@ -1113,7 +1171,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         action="append",
         default=[],
         dest="values_files",
-        help="zelkor-agent values overlay (repeatable; skip docker build)",
+        help="zelkor-agent values overlay (repeatable; builds sibling Dockerfile unless ZELKOR_SKIP_BUILD=1)",
     )
 
     args = parser.parse_args(argv)
@@ -1143,6 +1201,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    logger.info("using env=%s context=%s namespace=%s", env.name, env.kube_context, env.namespace)
 
     if args.cmd == "status":
         return cmd_status(env, runner=runner)
