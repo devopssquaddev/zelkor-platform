@@ -66,6 +66,7 @@ zelkor deploy --env staging --registry ghcr.io/myorg
 - **Non-kind clusters:** `--registry` or `ZELKOR_IMAGE_REGISTRY` is required.
 - **Kind:** registry defaults to `ghcr.io/devopssquaddev`; image loads with `kind load` when not pushing.
 - **Skip local build:** `ZELKOR_SKIP_BUILD=1 zelkor deploy` when the image is already in the registry.
+- **Prepared values overlay:** `zelkor deploy -f path/to/values.yaml` installs a `zelkor-agent` release without building. Empty `platform.*` and `sharedRoute.host` are filled from the live cluster. Use this for catalog overlays under `examples/armored-agents/`.
 - **Platform MCP extras:** if `tools.json` names servers not registered in `workspace.tools.extraBackends`, deploy fails with a GitOps snippet — fix the platform overlay first ([Register extra MCP backends](mcp-extra-backends.md)).
 
 Optional workload intent (compiled to Helm values):
@@ -115,6 +116,7 @@ Commands registered by the `zelkor` binary:
 | `init [dir]` | ● | Write `agent.json` + `AGENTS.md` |
 | `dev [dir]` | ● | Build and `helm upgrade` without registry push |
 | `deploy [dir]` | ● | Build, push (or kind load), `helm upgrade` agent release |
+| `deploy -f FILE` | ● | Skip build; Helm-install a `zelkor-agent` values overlay |
 | `undeploy [dir]` | ● | `helm uninstall` agent; restore platform default route if needed |
 | `run [dir]` | ● | Create thread + stream run (`langgraph-sdk`) |
 | `logs [dir]` | ● | `kubectl logs` on agent Deployment (`-f` default) |

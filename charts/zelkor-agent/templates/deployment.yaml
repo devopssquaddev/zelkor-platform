@@ -46,6 +46,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- $runtimeClass := (.Values.runtimeClassName | default "") | toString | trim }}
+      {{- if $runtimeClass }}
+      runtimeClassName: {{ $runtimeClass | quote }}
+      {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 35 }}
       containers:
         - name: agent

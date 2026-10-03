@@ -712,3 +712,35 @@ def test_agent_chart_empty_aegra_config_omits_env():
     deploy = next(d for d in docs if d.get("kind") == "Deployment")
     env = {e["name"]: e.get("value") for e in deploy["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert "AEGRA_CONFIG" not in env
+
+
+def test_agent_chart_runtime_class_omitted_by_default():
+    rendered = _helm(
+        "template",
+        "agent",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=agent",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+    )
+    docs = _docs(rendered)
+    deploy = next(d for d in docs if d.get("kind") == "Deployment")
+    assert "runtimeClassName" not in deploy["spec"]["template"]["spec"]
+
+
+def test_agent_chart_runtime_class_renders_when_set():
+    rendered = _helm(
+        "template",
+        "agent",
+        str(AGENT_CHART),
+        "--set",
+        "graphId=agent",
+        "--set",
+        "platform.databaseUrl=postgresql://zelkor:x@db:5432/aegra",
+        "--set",
+        "runtimeClassName=gvisor",
+    )
+    docs = _docs(rendered)
+    deploy = next(d for d in docs if d.get("kind") == "Deployment")
+    assert deploy["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"

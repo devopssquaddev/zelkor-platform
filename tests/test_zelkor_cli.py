@@ -19,7 +19,7 @@ from zelkor.detect import (  # noqa: E402
 )
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
 from zelkor.extra_backends import extra_backend_overlay_snippet, missing_extra_registrations  # noqa: E402
-from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, in_cluster_openai_base_url, main  # noqa: E402
+from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, deploy_from_values, fill_empty, in_cluster_openai_base_url, main, merge_catalog_values  # noqa: E402
 from zelkor import token_cmd  # noqa: E402
 
 
@@ -415,6 +415,190 @@ def test_deploy_agent_requires_registry_off_kind(tmp_path, monkeypatch):
             platform_chart=ROOT / "charts" / "zelkor-platform",
             runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
         )
+
+
+def _discover_runner(captured: dict | None = None):
+    captured = captured if captured is not None else {}
+
+    def runner(argv, **_kwargs):
+        if captured is not None and "upgrade" in argv and "--install" in argv:
+            idx = argv.index("-f")
+            captured["values"] = Path(argv[idx + 1]).read_text(encoding="utf-8")
+            captured["argv"] = list(argv)
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps(
+                [{"name": "zelkor-platform", "chart": "zelkor-platform-2.2.0", "status": "deployed"}]
+            )
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "gateway:\n  hosts:\n    agents: agents.example.com\n"
+        elif "get" in argv and "deploy" in argv:
+            stdout = json.dumps(
+                {
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "zelkor-platform-aegra",
+                                "labels": {"app.kubernetes.io/component": "aegra"},
+                            },
+                            "spec": {
+                                "template": {
+                                    "spec": {
+                                        "containers": [
+                                            {
+                                                "env": [
+                                                    {"name": "DATABASE_URL", "value": "postgresql://x"},
+                                                    {"name": "OPENAI_BASE_URL", "value": "http://gw/v1"},
+                                                    {"name": "MCP_URL", "value": "http://mcp:8080"},
+                                                    {"name": "OPENAI_API_KEY", "value": "cluster-consumer"},
+                                                    {"name": "REDIS_URL", "value": "redis://valkey:6379"},
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        elif "get" in argv and "svc" in argv:
+            stdout = json.dumps({"items": []})
+        elif "get" in argv and "httproute" in argv:
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    return runner
+
+
+def test_merge_catalog_values_file_wins():
+    file_values = {
+        "graphId": "gpt-researcher",
+        "runtimeClassName": "gvisor",
+        "image": {"repository": "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher", "tag": "2.2.0"},
+        "extraEnv": [{"name": "FOO", "value": "bar"}],
+        "platform": {"releaseName": ""},
+        "sharedRoute": {"host": ""},
+    }
+    discovered = {
+        "platform": {"releaseName": "zelkor-platform", "consumerKey": "cluster-consumer"},
+        "sharedRoute": {"host": "agents.example.com", "asDefault": True},
+        "auth": {"issuer": "https://issuer.example"},
+    }
+    merged = merge_catalog_values(file_values, discovered)
+    assert merged["graphId"] == "gpt-researcher"
+    assert merged["runtimeClassName"] == "gvisor"
+    assert merged["image"]["repository"].endswith("zelkor-armored-gpt-researcher")
+    assert merged["extraEnv"] == [{"name": "FOO", "value": "bar"}]
+    assert merged["platform"]["releaseName"] == "zelkor-platform"
+    assert merged["sharedRoute"]["host"] == "agents.example.com"
+    assert "asDefault" not in merged["sharedRoute"]
+    assert merged["auth"]["issuer"] == "https://issuer.example"
+
+
+def test_fill_empty_keeps_set_values():
+    assert fill_empty({"host": "mine"}, {"host": "theirs", "gatewayName": "gw"}) == {
+        "host": "mine",
+        "gatewayName": "gw",
+    }
+
+
+def test_deploy_from_values_skips_docker(tmp_path):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "runtimeClassName: gvisor",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+                "extraEnv: []",
+                "platform:",
+                "  releaseName: ''",
+                "sharedRoute:",
+                "  host: ''",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    captured: dict = {}
+    result = deploy_from_values(
+        values_path=values,
+        env=env,
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    assert result["graph_id"] == "gpt-researcher"
+    assert result["release"] == "gpt-researcher"
+    assert "docker" not in " ".join(captured.get("argv") or [])
+    dumped = captured["values"]
+    assert "gpt-researcher" in dumped
+    assert "gvisor" in dumped
+    assert "zelkor-armored-gpt-researcher" in dumped
+    assert "agents.example.com" in dumped
+    assert "zelkor-platform" in dumped
+    assert "cluster-consumer" in dumped
+
+
+def test_deploy_from_values_rejects_approval_threshold(tmp_path):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "graphId: gpt-researcher\nimage:\n  repository: ghcr.io/example/agent\n",
+        encoding="utf-8",
+    )
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    with pytest.raises(RuntimeError, match="Pro"):
+        deploy_from_values(
+            values_path=values,
+            env=env,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            approval_threshold="0.5",
+            runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
+        )
+
+
+def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys):
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="prod", kube_context="k3s", namespace="zelkor"), store_path=store)
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "runtimeClassName: gvisor",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    captured: dict = {}
+    code = main(
+        [
+            "--store",
+            str(store),
+            "--env",
+            "prod",
+            "--chart",
+            str(ROOT / "charts" / "zelkor-agent"),
+            "--platform-chart",
+            str(ROOT / "charts" / "zelkor-platform"),
+            "deploy",
+            "-f",
+            str(values),
+            str(tmp_path),
+        ],
+        runner=_discover_runner(captured),
+    )
+    assert code == 0
+    assert "docker" not in " ".join(captured.get("argv") or [])
+    out = capsys.readouterr().out
+    assert "gpt-researcher" in out
 
 
 def test_cli_deploy_overlay_has_no_sandbox_worker_urls():

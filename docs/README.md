@@ -49,6 +49,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Use the zelkor CLI](cli.md) | Env targets, deploy, run, logs, doctor |
 | [Register extra MCP backends](mcp-extra-backends.md) | BYO ClusterIP MCP on the unified gateway |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
+| [Armored catalog](../examples/armored-agents/README.md) | Unmodified OSS agents as `zelkor deploy -f` overlays |
 
 ## Reference
 

@@ -51,6 +51,7 @@ ALL_IMAGES=(
   zelkor-guardrails
   zelkor-example-finserve
   zelkor-example-finserve-coder
+  zelkor-armored-gpt-researcher
 )
 
 dockerfile_for() {
@@ -64,6 +65,7 @@ dockerfile_for() {
     zelkor-guardrails) echo images/guardrails/Dockerfile ;;
     zelkor-example-finserve) echo images/example-finserve/Dockerfile ;;
     zelkor-example-finserve-coder) echo images/example-finserve-coder/Dockerfile ;;
+    zelkor-armored-gpt-researcher) echo examples/armored-agents/gpt-researcher/Dockerfile ;;
     *) return 1 ;;
   esac
 }
@@ -91,7 +93,7 @@ for name in "${SELECTED[@]}"; do
       zelkor-aegra-deep|zelkor-example-finserve)
         extra_args+=(--build-arg "ZELKOR_AEGRA_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra:${IMAGE_TAG}")
         ;;
-      zelkor-example-finserve-coder)
+      zelkor-example-finserve-coder|zelkor-armored-gpt-researcher)
         extra_args+=(--build-arg "ZELKOR_AEGRA_DEEP_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra-deep:${IMAGE_TAG}")
         ;;
     esac

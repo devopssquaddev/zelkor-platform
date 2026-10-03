@@ -275,6 +275,119 @@ def _is_kind(env: Env) -> bool:
     return env.kube_context.startswith("kind-") or os.getenv("KIND_CLUSTER", "") != ""
 
 
+def _is_empty(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def fill_empty(dst: Any, src: Any) -> Any:
+    if not isinstance(dst, dict) or not isinstance(src, dict):
+        return src if _is_empty(dst) else dst
+    out = dict(dst)
+    for key, val in src.items():
+        cur = out.get(key)
+        if key not in out or _is_empty(cur):
+            out[key] = val
+        elif isinstance(cur, dict) and isinstance(val, dict):
+            out[key] = fill_empty(cur, val)
+    return out
+
+
+_FILE_WINS = frozenset({"graphId", "image", "runtimeClassName", "extraEnv"})
+
+
+def discovered_worker_values(info: PlatformInfo) -> dict[str, Any]:
+    platform: dict[str, Any] = {
+        "releaseName": info.release,
+        "databaseUrl": info.database_url,
+        "openaiBaseUrl": info.openai_base_url,
+        "mcpUrl": info.mcp_url,
+        "consumerKey": info.consumer_key,
+        "valkeyUrl": info.redis_url,
+        "mcpInject": True,
+    }
+    if info.default_llm_model:
+        platform["defaultLlmModel"] = info.default_llm_model
+    if info.langfuse_base_url:
+        platform["langfuseBaseUrl"] = info.langfuse_base_url
+    if info.langfuse_public_key:
+        platform["langfusePublicKey"] = info.langfuse_public_key
+    if info.langfuse_secret_key:
+        platform["langfuseSecretKey"] = info.langfuse_secret_key
+    if info.otel_targets:
+        platform["otelTargets"] = info.otel_targets
+    overlay: dict[str, Any] = {
+        "sharedRoute": {
+            "host": info.agents_host,
+            "gatewayName": info.gateway_name,
+            "gatewayNamespace": info.gateway_namespace,
+        },
+        "platform": platform,
+        "auth": auth_values(info),
+    }
+    if info.image_pull_secrets:
+        overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
+    return overlay
+
+
+def merge_catalog_values(file_values: dict[str, Any], discovered: dict[str, Any]) -> dict[str, Any]:
+    kept = {key: file_values[key] for key in _FILE_WINS if key in file_values}
+    rest = {key: val for key, val in file_values.items() if key not in _FILE_WINS}
+    sr = rest.get("sharedRoute")
+    if isinstance(sr, dict) and "asDefault" not in sr:
+        disc_sr = dict((discovered.get("sharedRoute") or {}))
+        disc_sr.pop("asDefault", None)
+        discovered = dict(discovered)
+        discovered["sharedRoute"] = disc_sr
+    merged = fill_empty(rest, discovered)
+    merged.update(kept)
+    return merged
+
+
+def _helm_upgrade_agent(
+    *,
+    env: Env,
+    release: str,
+    overlay: dict[str, Any],
+    agent_chart: Path,
+    platform_chart: Path,
+    platform_release: str,
+    as_default: bool,
+    runner: Optional[RunFn] = None,
+) -> None:
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
+        yaml.safe_dump(overlay, fh)
+        values_file = fh.name
+    try:
+        _run(
+            helm_argv(
+                env,
+                "upgrade",
+                "--install",
+                release,
+                str(agent_chart),
+                "-f",
+                values_file,
+            ),
+            runner=runner,
+        )
+        if as_default:
+            plat_args = helm_argv(env, "upgrade", platform_release, str(platform_chart), "--reuse-values")
+            plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
+            _run(plat_args, runner=runner)
+        _run(
+            kube_argv(
+                env,
+                "rollout",
+                "status",
+                f"deployment/{agent_deployment_name(release)}",
+                "--timeout=180s",
+            ),
+            runner=runner,
+        )
+    finally:
+        Path(values_file).unlink(missing_ok=True)
+
+
 def deploy_agent(
     *,
     root: Path,
@@ -361,39 +474,63 @@ def deploy_agent(
         }
     if info.image_pull_secrets:
         overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
-        yaml.safe_dump(overlay, fh)
-        values_file = fh.name
-    try:
-        _run(
-            helm_argv(
-                env,
-                "upgrade",
-                "--install",
-                release,
-                str(agent_chart),
-                "-f",
-                values_file,
-            ),
-            runner=runner,
-        )
-        if as_default:
-            plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
-            plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
-            _run(plat_args, runner=runner)
-        _run(
-            kube_argv(
-                env,
-                "rollout",
-                "status",
-                f"deployment/{agent_deployment_name(release)}",
-                "--timeout=180s",
-            ),
-            runner=runner,
-        )
-    finally:
-        Path(values_file).unlink(missing_ok=True)
+    _helm_upgrade_agent(
+        env=env,
+        release=release,
+        overlay=overlay,
+        agent_chart=agent_chart,
+        platform_chart=platform_chart,
+        platform_release=info.release,
+        as_default=as_default,
+        runner=runner,
+    )
     return {"release": release, "graph_id": shape.graph_id, "as_default": as_default, "image": image_ref}
+
+
+def deploy_from_values(
+    *,
+    values_path: Path,
+    env: Env,
+    agent_chart: Path,
+    platform_chart: Path,
+    runner: Optional[RunFn] = None,
+    approval_threshold: str = "",
+) -> dict[str, Any]:
+    if approval_threshold:
+        raise RuntimeError(UPGRADE)
+    file_values = yaml.safe_load(values_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(file_values, dict):
+        raise RuntimeError(f"{values_path} must be a YAML mapping")
+    graph_id = str(file_values.get("graphId") or "").strip()
+    if not graph_id:
+        raise RuntimeError("values file must set graphId")
+    image = file_values.get("image") or {}
+    if not str((image or {}).get("repository") or "").strip():
+        raise RuntimeError("values file must set image.repository")
+    info = discover_platform(env, runner=runner)
+    overlay = merge_catalog_values(file_values, discovered_worker_values(info))
+    as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
+    release = helm_release_name(graph_id)
+    _helm_upgrade_agent(
+        env=env,
+        release=release,
+        overlay=overlay,
+        agent_chart=agent_chart,
+        platform_chart=platform_chart,
+        platform_release=info.release,
+        as_default=as_default,
+        runner=runner,
+    )
+    image_ref = str(image.get("repository") or "")
+    tag = str(image.get("tag") or "")
+    digest = str(image.get("digest") or "")
+    if digest:
+        ref = f"{image_ref}@{digest}"
+    elif tag:
+        ref = f"{image_ref}:{tag}"
+    else:
+        ref = image_ref
+    return {"release": release, "graph_id": graph_id, "as_default": as_default, "image": ref}
 
 
 def cmd_undeploy(
@@ -712,6 +849,13 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         p.add_argument("--approval-threshold", default="", help="workload.intent.approval.threshold (Pro)")
         p.add_argument("--registry", default="", help="container registry for agent image (required off kind)")
         p.add_argument("directory", nargs="?", default=".")
+    sub.choices["deploy"].add_argument(
+        "-f",
+        "--values",
+        default="",
+        dest="values_file",
+        help="zelkor-agent values overlay (skip docker build)",
+    )
 
     args = parser.parse_args(argv)
     logger.info("cli cmd=%s", args.cmd)
@@ -795,20 +939,30 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         print(str(exc), file=sys.stderr)
         return 1
     try:
-        result = deploy_agent(
-            root=root,
-            env=env,
-            push=args.cmd == "deploy",
-            graph_id_flag=args.graph_id,
-            agent_chart=agent_chart,
-            platform_chart=platform_chart,
-            runner=runner,
-            skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
-            run_timeout=getattr(args, "timeout", "") or "",
-            max_tokens=int(getattr(args, "max_tokens", 0) or 0),
-            approval_threshold=getattr(args, "approval_threshold", "") or "",
-            image_registry=getattr(args, "registry", "") or "",
-        )
+        if args.cmd == "deploy" and getattr(args, "values_file", ""):
+            result = deploy_from_values(
+                values_path=Path(args.values_file).resolve(),
+                env=env,
+                agent_chart=agent_chart,
+                platform_chart=platform_chart,
+                runner=runner,
+                approval_threshold=getattr(args, "approval_threshold", "") or "",
+            )
+        else:
+            result = deploy_agent(
+                root=root,
+                env=env,
+                push=args.cmd == "deploy",
+                graph_id_flag=args.graph_id,
+                agent_chart=agent_chart,
+                platform_chart=platform_chart,
+                runner=runner,
+                skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
+                run_timeout=getattr(args, "timeout", "") or "",
+                max_tokens=int(getattr(args, "max_tokens", 0) or 0),
+                approval_threshold=getattr(args, "approval_threshold", "") or "",
+                image_registry=getattr(args, "registry", "") or "",
+            )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
