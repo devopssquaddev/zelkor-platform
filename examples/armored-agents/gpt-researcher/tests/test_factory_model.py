@@ -32,6 +32,18 @@ def test_gateway_model_ollama_id_uses_openai_prefix(monkeypatch):
     assert _gateway_model() == "openai:gpt-oss:20b"
 
 
+def test_pin_gateway_llms_overwrites_gptr_defaults(monkeypatch):
+    from graph import _pin_gateway_llms
+
+    monkeypatch.setenv("FAST_LLM", "openai:gpt-5.4-mini")
+    monkeypatch.setenv("SMART_LLM", "openai:gpt-5.4")
+    monkeypatch.setenv("STRATEGIC_LLM", "openai:gpt-5.4")
+    _pin_gateway_llms("openai:gpt-oss:20b")
+    assert os.environ["FAST_LLM"] == "openai:gpt-oss:20b"
+    assert os.environ["SMART_LLM"] == "openai:gpt-oss:20b"
+    assert os.environ["STRATEGIC_LLM"] == "openai:gpt-oss:20b"
+
+
 def test_graph_factory_is_zero_arg():
     import inspect
 

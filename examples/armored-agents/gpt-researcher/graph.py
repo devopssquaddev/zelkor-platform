@@ -24,6 +24,17 @@ def _gateway_model() -> str:
     return raw
 
 
+def _pin_gateway_llms(model: str) -> None:
+    """GPTR defaults FAST/SMART/STRATEGIC to openai:gpt-5.4* — overwrite for the in-cluster gateway."""
+    for key in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
+        os.environ[key] = model
+
+
+_m = _gateway_model()
+if _m:
+    _pin_gateway_llms(_m)
+
+
 def graph() -> Any:
     """0-arg Aegra factory. Two untyped params fail classify_factory on Aegra v0.10.4."""
     from deep_agents.agent import build_agent
@@ -40,7 +51,7 @@ def graph() -> Any:
     model = _gateway_model()
     if model:
         task["model"] = model
-        os.environ.setdefault("STRATEGIC_LLM", model)
+        _pin_gateway_llms(model)
     logger.info(
         "graph_build",
         extra={"event": "graph_build", "component": "zelkor-armored-gpt-researcher"},
