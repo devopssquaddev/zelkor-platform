@@ -34,6 +34,8 @@ from zelkor.main import (  # noqa: E402
     merge_catalog_values,
     _deploy_ready,
     _wait_agent_rollout,
+    _pod_wait_summary,
+    _prune_stale_agent_pods,
 )
 from zelkor import token_cmd  # noqa: E402
 
@@ -491,6 +493,8 @@ def _discover_runner(captured: dict | None = None):
                     ]
                 }
             )
+        elif "get" in argv and "rs" in argv:
+            stdout = json.dumps({"items": []})
         elif "get" in argv and "svc" in argv:
             stdout = json.dumps({"items": []})
         elif "get" in argv and "httproute" in argv:
@@ -539,13 +543,17 @@ def test_deploy_ready_false_on_progress_deadline_without_replicas():
     }
     assert _deploy_ready(dep) is False
     env = Env(name="local", kube_context="kind-zelkor", namespace="default")
-    calls = {"n": 0}
+    calls = {"deploy": 0}
 
     def runner(argv, **_kwargs):
-        calls["n"] += 1
+        if "rs" in argv:
+            return SimpleNamespace(returncode=0, stdout='{"items":[]}', stderr="")
         if "pods" in argv:
             return SimpleNamespace(returncode=0, stdout='{"items":[]}', stderr="")
-        if calls["n"] == 1:
+        if "delete" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        calls["deploy"] += 1
+        if calls["deploy"] == 1:
             return SimpleNamespace(returncode=0, stdout=json.dumps(dep), stderr="")
         ready = dict(dep)
         ready["status"] = {
@@ -557,7 +565,114 @@ def test_deploy_ready_false_on_progress_deadline_without_replicas():
         return SimpleNamespace(returncode=0, stdout=json.dumps(ready), stderr="")
 
     _wait_agent_rollout(env, "gpt-researcher", runner=runner, timeout_sec=5)
-    assert calls["n"] >= 2
+    assert calls["deploy"] >= 2
+
+
+def test_prune_stale_agent_pods_deletes_old_hash():
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    deleted: list[str] = []
+
+    def runner(argv, **_kwargs):
+        if "rs" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "annotations": {"deployment.kubernetes.io/revision": "7"},
+                                    "labels": {"pod-template-hash": "oldhash"},
+                                }
+                            },
+                            {
+                                "metadata": {
+                                    "annotations": {"deployment.kubernetes.io/revision": "8"},
+                                    "labels": {"pod-template-hash": "newhash"},
+                                }
+                            },
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "get" in argv and "pods" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "name": "gpt-researcher-zelkor-agent-oldhash-a",
+                                    "labels": {"pod-template-hash": "oldhash"},
+                                }
+                            },
+                            {
+                                "metadata": {
+                                    "name": "gpt-researcher-zelkor-agent-newhash-b",
+                                    "labels": {"pod-template-hash": "newhash"},
+                                }
+                            },
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "delete" in argv:
+            deleted.append(argv[argv.index("pod") + 1] if "pod" in argv else "")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+    _prune_stale_agent_pods(env, "gpt-researcher", runner=runner)
+    assert deleted == ["gpt-researcher-zelkor-agent-oldhash-a"]
+
+
+def test_pod_wait_summary_skips_stale_hash():
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+
+    def runner(argv, **_kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "old-dev",
+                                "labels": {"pod-template-hash": "7644b84487"},
+                            },
+                            "status": {
+                                "phase": "Pending",
+                                "containerStatuses": [
+                                    {
+                                        "state": {
+                                            "waiting": {
+                                                "reason": "ImagePullBackOff",
+                                                "message": "zelkor-armored-gpt-researcher:dev",
+                                            }
+                                        }
+                                    }
+                                ],
+                            },
+                        },
+                        {
+                            "metadata": {
+                                "name": "new-220",
+                                "labels": {"pod-template-hash": "859c9c7f89"},
+                            },
+                            "status": {"phase": "Running", "containerStatuses": []},
+                        },
+                    ]
+                }
+            ),
+            stderr="",
+        )
+
+    text = _pod_wait_summary(env, "gpt-researcher", runner=runner, template_hash="859c9c7f89")
+    assert "new-220" in text
+    assert "old-dev" not in text
+    assert ":dev" not in text
 
 
 def test_kube_argv_sets_request_timeout():

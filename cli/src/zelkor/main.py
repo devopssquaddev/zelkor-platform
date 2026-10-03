@@ -491,6 +491,62 @@ def merge_catalog_values(file_values: dict[str, Any], discovered: dict[str, Any]
 ROLLOUT_WAIT_SEC = float(os.getenv("ZELKOR_ROLLOUT_TIMEOUT_SEC", "180"))
 
 
+def _rs_revision(rs: dict[str, Any]) -> int:
+    raw = ((rs.get("metadata") or {}).get("annotations") or {}).get("deployment.kubernetes.io/revision")
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pod_template_hash(obj: dict[str, Any]) -> str:
+    return str(((obj.get("metadata") or {}).get("labels") or {}).get("pod-template-hash") or "")
+
+
+def _current_template_hash(env: Env, release: str, runner: Optional[RunFn] = None) -> str:
+    res = _run(
+        kube_argv(env, "get", "rs", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if res.returncode != 0:
+        return ""
+    best_rev = -1
+    best_hash = ""
+    for rs in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        rev = _rs_revision(rs)
+        if rev >= best_rev:
+            best_rev = rev
+            best_hash = _pod_template_hash(rs)
+    return best_hash
+
+
+def _prune_stale_agent_pods(env: Env, release: str, runner: Optional[RunFn] = None) -> None:
+    current = _current_template_hash(env, release, runner=runner)
+    if not current:
+        return
+    res = _run(
+        kube_argv(env, "get", "pods", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if res.returncode != 0:
+        return
+    for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        name = str((pod.get("metadata") or {}).get("name") or "")
+        if not name or _pod_template_hash(pod) == current:
+            continue
+        logger.info("delete stale pod %s (not hash=%s)", name, current)
+        _run(
+            kube_argv(env, "delete", "pod", name, "--grace-period=0", "--force"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+
+
 def _deploy_ready(dep: dict[str, Any]) -> bool:
     spec = dep.get("spec") or {}
     status = dep.get("status") or {}
@@ -520,7 +576,13 @@ def _deploy_wait_summary(dep: dict[str, Any]) -> str:
     return f"updated={updated}/{desired} available={available}/{desired}{extra}"
 
 
-def _pod_wait_summary(env: Env, release: str, runner: Optional[RunFn] = None) -> str:
+def _pod_wait_summary(
+    env: Env,
+    release: str,
+    runner: Optional[RunFn] = None,
+    *,
+    template_hash: str = "",
+) -> str:
     res = _run(
         kube_argv(env, "get", "pods", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
         runner=runner,
@@ -531,6 +593,8 @@ def _pod_wait_summary(env: Env, release: str, runner: Optional[RunFn] = None) ->
         return (res.stderr or res.stdout or "get pods failed").strip()
     parts: list[str] = []
     for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        if template_hash and _pod_template_hash(pod) != template_hash:
+            continue
         name = str((pod.get("metadata") or {}).get("name") or "pod")
         phase = str((pod.get("status") or {}).get("phase") or "")
         waiting = ""
@@ -558,6 +622,7 @@ def _wait_agent_rollout(
     wait_for = ROLLOUT_WAIT_SEC if timeout_sec is None else timeout_sec
     name = agent_deployment_name(release)
     logger.info("wait rollout deployment/%s timeout=%ss", name, int(wait_for))
+    _prune_stale_agent_pods(env, release, runner=runner)
     deadline = time.monotonic() + wait_for
     last_log = 0.0
     while True:
@@ -568,6 +633,7 @@ def _wait_agent_rollout(
             timeout=KUBE_RUN_TIMEOUT_SEC,
         )
         summary = "get deploy failed"
+        current_hash = _current_template_hash(env, release, runner=runner)
         if dep_res.returncode == 0:
             dep = json.loads(dep_res.stdout or "{}") or {}
             if _deploy_ready(dep):
@@ -578,12 +644,12 @@ def _wait_agent_rollout(
             summary = (dep_res.stderr or dep_res.stdout or summary).strip()
         now = time.monotonic()
         if now >= deadline:
-            pods = _pod_wait_summary(env, release, runner=runner)
+            pods = _pod_wait_summary(env, release, runner=runner, template_hash=current_hash)
             raise RuntimeError(
                 f"deployment/{name} not ready within {wait_for:.0f}s ({summary}); pods: {pods}"
             )
         if last_log == 0.0 or now - last_log >= 10:
-            pods = _pod_wait_summary(env, release, runner=runner)
+            pods = _pod_wait_summary(env, release, runner=runner, template_hash=current_hash)
             logger.info("waiting rollout deployment/%s %s pods=%s", name, summary, pods)
             last_log = now
         remaining = deadline - now
