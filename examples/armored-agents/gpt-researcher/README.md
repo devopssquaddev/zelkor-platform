@@ -14,9 +14,11 @@ The agent pod uses gVisor. LLM calls go through the in-cluster AI Gateway. Trace
 ## Deploy and run
 
 ```bash
-zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
+ZELKOR_IMAGE_TAG=dev zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
 zelkor run --graph-id gpt-researcher --input "Summarize the latest gVisor isolation model"
 ```
+
+On a published CE install, omit `ZELKOR_IMAGE_TAG` to use the Chart `appVersion` tag in `values.yaml`. Labs (kind test server) must set `ZELKOR_IMAGE_TAG=dev` and have that image loaded — `:2.2.0` is not published until the catalog ships in a CE tag.
 
 See [Deploy an Agent](../../../docs/agent-deploy.md).
 

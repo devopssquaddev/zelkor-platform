@@ -628,6 +628,28 @@ def deploy_agent(
     return {"release": release, "graph_id": shape.graph_id, "as_default": as_default, "image": image_ref}
 
 
+def _merge_values_files(paths: list[Path]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for path in paths:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            raise RuntimeError(f"{path} must be a YAML mapping")
+        merged = fill_empty(data, merged)
+    return merged
+
+
+def _apply_image_tag_override(file_values: dict[str, Any]) -> dict[str, Any]:
+    tag = os.getenv("ZELKOR_IMAGE_TAG", "").strip()
+    if not tag:
+        return file_values
+    image = dict(file_values.get("image") or {})
+    image["tag"] = tag
+    out = dict(file_values)
+    out["image"] = image
+    logger.info("image.tag from ZELKOR_IMAGE_TAG=%s", tag)
+    return out
+
+
 def deploy_from_values(
     *,
     values_path: Path,
@@ -636,10 +658,12 @@ def deploy_from_values(
     platform_chart: Path,
     runner: Optional[RunFn] = None,
     approval_threshold: str = "",
+    extra_values: Optional[list[Path]] = None,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
-    file_values = yaml.safe_load(values_path.read_text(encoding="utf-8")) or {}
+    paths = [values_path, *(extra_values or [])]
+    file_values = _apply_image_tag_override(_merge_values_files(paths))
     if not isinstance(file_values, dict):
         raise RuntimeError(f"{values_path} must be a YAML mapping")
     graph_id = str(file_values.get("graphId") or "").strip()
@@ -648,7 +672,7 @@ def deploy_from_values(
     image = file_values.get("image") or {}
     if not str((image or {}).get("repository") or "").strip():
         raise RuntimeError("values file must set image.repository")
-    logger.info("deploy -f %s graph_id=%s", values_path, graph_id)
+    logger.info("deploy -f %s graph_id=%s image=%s:%s", values_path, graph_id, image.get("repository"), image.get("tag"))
     info = discover_platform(env, runner=runner)
     overlay = merge_catalog_values(file_values, discovered_worker_values(info))
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
@@ -1006,9 +1030,10 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     sub.choices["deploy"].add_argument(
         "-f",
         "--values",
-        default="",
-        dest="values_file",
-        help="zelkor-agent values overlay (skip docker build)",
+        action="append",
+        default=[],
+        dest="values_files",
+        help="zelkor-agent values overlay (repeatable; skip docker build)",
     )
 
     args = parser.parse_args(argv)
@@ -1093,9 +1118,11 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         print(str(exc), file=sys.stderr)
         return 1
     try:
-        if args.cmd == "deploy" and getattr(args, "values_file", ""):
+        if args.cmd == "deploy" and getattr(args, "values_files", None):
+            files = [Path(p).resolve() for p in args.values_files]
             result = deploy_from_values(
-                values_path=Path(args.values_file).resolve(),
+                values_path=files[0],
+                extra_values=files[1:],
                 env=env,
                 agent_chart=agent_chart,
                 platform_chart=platform_chart,

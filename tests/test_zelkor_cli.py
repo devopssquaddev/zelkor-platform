@@ -616,6 +616,33 @@ def test_deploy_from_values_skips_docker(tmp_path):
     assert "cluster-consumer" in dumped
 
 
+def test_deploy_from_values_honors_image_tag_env(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ZELKOR_IMAGE_TAG", "dev")
+    captured: dict = {}
+    result = deploy_from_values(
+        values_path=values,
+        env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    assert result["image"].endswith(":dev")
+    assert "2.2.0" not in captured["values"]
+    assert "dev" in captured["values"]
+
+
 def test_deploy_from_values_rejects_approval_threshold(tmp_path):
     values = tmp_path / "values.yaml"
     values.write_text(
