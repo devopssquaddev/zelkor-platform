@@ -32,6 +32,8 @@ from zelkor.main import (  # noqa: E402
     kube_argv,
     main,
     merge_catalog_values,
+    _deploy_ready,
+    _wait_agent_rollout,
 )
 from zelkor import token_cmd  # noqa: E402
 
@@ -445,6 +447,19 @@ def _discover_runner(captured: dict | None = None):
             )
         elif "helm" in argv and "get" in argv and "values" in argv:
             stdout = "gateway:\n  hosts:\n    agents: agents.example.com\n"
+        elif "get" in argv and "deploy" in argv and "-l" not in argv:
+            stdout = json.dumps(
+                {
+                    "kind": "Deployment",
+                    "metadata": {"generation": 1},
+                    "spec": {"replicas": 1},
+                    "status": {
+                        "observedGeneration": 1,
+                        "updatedReplicas": 1,
+                        "availableReplicas": 1,
+                    },
+                }
+            )
         elif "get" in argv and "deploy" in argv:
             stdout = json.dumps(
                 {
@@ -507,6 +522,41 @@ def test_merge_catalog_values_file_wins():
     assert merged["sharedRoute"]["host"] == "agents.example.com"
     assert "asDefault" not in merged["sharedRoute"]
     assert merged["auth"]["issuer"] == "https://issuer.example"
+
+
+def test_deploy_ready_false_on_progress_deadline_without_replicas():
+    dep = {
+        "kind": "Deployment",
+        "metadata": {"generation": 2},
+        "spec": {"replicas": 1},
+        "status": {
+            "observedGeneration": 2,
+            "updatedReplicas": 0,
+            "availableReplicas": 0,
+            "conditions": [{"type": "Progressing", "status": "False", "reason": "ProgressDeadlineExceeded"}],
+        },
+    }
+    assert _deploy_ready(dep) is False
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    calls = {"n": 0}
+
+    def runner(argv, **_kwargs):
+        calls["n"] += 1
+        if "pods" in argv:
+            return SimpleNamespace(returncode=0, stdout='{"items":[]}', stderr="")
+        if calls["n"] == 1:
+            return SimpleNamespace(returncode=0, stdout=json.dumps(dep), stderr="")
+        ready = dict(dep)
+        ready["status"] = {
+            "observedGeneration": 2,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+            "conditions": [{"type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable"}],
+        }
+        return SimpleNamespace(returncode=0, stdout=json.dumps(ready), stderr="")
+
+    _wait_agent_rollout(env, "gpt-researcher", runner=runner, timeout_sec=5)
+    assert calls["n"] >= 2
 
 
 def test_kube_argv_sets_request_timeout():

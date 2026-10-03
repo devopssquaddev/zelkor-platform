@@ -384,6 +384,107 @@ def merge_catalog_values(file_values: dict[str, Any], discovered: dict[str, Any]
     return merged
 
 
+ROLLOUT_WAIT_SEC = float(os.getenv("ZELKOR_ROLLOUT_TIMEOUT_SEC", "180"))
+
+
+def _deploy_ready(dep: dict[str, Any]) -> bool:
+    spec = dep.get("spec") or {}
+    status = dep.get("status") or {}
+    if dep.get("kind") == "List" or "replicas" not in spec:
+        return False
+    desired = int(spec.get("replicas") or 0)
+    if desired == 0:
+        return True
+    updated = int(status.get("updatedReplicas") or 0)
+    available = int(status.get("availableReplicas") or 0)
+    gen = int((dep.get("metadata") or {}).get("generation") or 0)
+    observed = int(status.get("observedGeneration") or 0)
+    return observed >= gen and updated >= desired and available >= desired
+
+
+def _deploy_wait_summary(dep: dict[str, Any]) -> str:
+    status = dep.get("status") or {}
+    spec = dep.get("spec") or {}
+    desired = spec.get("replicas")
+    available = status.get("availableReplicas") or 0
+    updated = status.get("updatedReplicas") or 0
+    reasons = []
+    for cond in status.get("conditions") or []:
+        if cond.get("type") == "Progressing" and cond.get("reason"):
+            reasons.append(str(cond.get("reason")))
+    extra = f" {','.join(reasons)}" if reasons else ""
+    return f"updated={updated}/{desired} available={available}/{desired}{extra}"
+
+
+def _pod_wait_summary(env: Env, release: str, runner: Optional[RunFn] = None) -> str:
+    res = _run(
+        kube_argv(env, "get", "pods", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if res.returncode != 0:
+        return (res.stderr or res.stdout or "get pods failed").strip()
+    parts: list[str] = []
+    for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        name = str((pod.get("metadata") or {}).get("name") or "pod")
+        phase = str((pod.get("status") or {}).get("phase") or "")
+        waiting = ""
+        for cs in (pod.get("status") or {}).get("containerStatuses") or []:
+            st = cs.get("state") or {}
+            wait = st.get("waiting") or {}
+            if wait.get("reason"):
+                waiting = str(wait.get("reason"))
+                if wait.get("message"):
+                    waiting = f"{waiting}: {wait.get('message')}"
+                break
+        parts.append(f"{name} {phase} {waiting}".strip())
+    return "; ".join(parts) or "no pods"
+
+
+def _wait_agent_rollout(
+    env: Env,
+    release: str,
+    *,
+    runner: Optional[RunFn] = None,
+    timeout_sec: Optional[float] = None,
+) -> None:
+    """Poll Available replicas. Do not use `kubectl rollout status` — it exits
+    immediately on a leftover ProgressDeadlineExceeded from a prior RS."""
+    wait_for = ROLLOUT_WAIT_SEC if timeout_sec is None else timeout_sec
+    name = agent_deployment_name(release)
+    logger.info("wait rollout deployment/%s timeout=%ss", name, int(wait_for))
+    deadline = time.monotonic() + wait_for
+    last_log = 0.0
+    while True:
+        dep_res = _run(
+            kube_argv(env, "get", "deploy", name, "-o", "json"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        summary = "get deploy failed"
+        if dep_res.returncode == 0:
+            dep = json.loads(dep_res.stdout or "{}") or {}
+            if _deploy_ready(dep):
+                logger.info("rollout ready deployment/%s", name)
+                return
+            summary = _deploy_wait_summary(dep)
+        else:
+            summary = (dep_res.stderr or dep_res.stdout or summary).strip()
+        now = time.monotonic()
+        if now >= deadline:
+            pods = _pod_wait_summary(env, release, runner=runner)
+            raise RuntimeError(
+                f"deployment/{name} not ready within {wait_for:.0f}s ({summary}); pods: {pods}"
+            )
+        if last_log == 0.0 or now - last_log >= 10:
+            logger.info("waiting rollout deployment/%s %s", name, summary)
+            last_log = now
+        remaining = deadline - now
+        time.sleep(0 if runner is not None else min(2.0, remaining))
+
+
 def _helm_upgrade_agent(
     *,
     env: Env,
@@ -419,19 +520,7 @@ def _helm_upgrade_agent(
             plat_args = helm_argv(env, "upgrade", platform_release, str(platform_chart), "--reuse-values")
             plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
             _run(plat_args, runner=runner, capture=False, timeout=HELM_UPGRADE_TIMEOUT_SEC)
-        logger.info("wait rollout deployment/%s", agent_deployment_name(release))
-        _run(
-            kube_argv(
-                env,
-                "rollout",
-                "status",
-                f"deployment/{agent_deployment_name(release)}",
-                "--timeout=180s",
-            ),
-            runner=runner,
-            capture=False,
-            timeout=200,
-        )
+        _wait_agent_rollout(env, release, runner=runner)
     finally:
         Path(values_file).unlink(missing_ok=True)
 
