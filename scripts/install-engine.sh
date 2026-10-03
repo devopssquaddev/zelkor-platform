@@ -486,10 +486,10 @@ require_cmd() {
 }
 
 # Leftover kind node volumes after `kind delete` can ENOSPC the download phase.
+# Do not `docker builder prune` here — that is lab-only (slow; wipes customer build cache).
 reclaim_unused_docker() {
-  echo "[download] reclaiming unused Docker volumes and build cache..."
+  echo "[download] reclaiming unused Docker volumes..."
   docker volume prune -f || true
-  docker builder prune -af || true
 }
 
 require_docker_free_gb() {
@@ -503,7 +503,7 @@ require_docker_free_gb() {
   fi
   avail_gb=$((avail_kb / 1024 / 1024))
   if (( avail_gb < need_gb )); then
-    die "Need ${need_gb}Gi free for kind download (have ${avail_gb}Gi). Reclaim leftover kind data: docker volume prune -f && docker builder prune -af"
+    die "Need ${need_gb}Gi free for kind download (have ${avail_gb}Gi). Reclaim leftover kind data: docker volume prune -f"
   fi
   if (( avail_gb < warn_gb )); then
     log_warn "Only ${avail_gb}Gi free on Docker disk; download may fail with ENOSPC"

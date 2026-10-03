@@ -144,6 +144,9 @@ workspace:
       enabled: true
       port: 80
       targetHost: ''
+    rateLimit:
+      enabled: true
+      requestsPerMinute: 50
     providers:
       openai:
         apiKey: ''

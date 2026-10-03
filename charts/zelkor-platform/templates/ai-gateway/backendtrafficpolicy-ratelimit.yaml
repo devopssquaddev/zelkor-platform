@@ -1,0 +1,32 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
+{{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
+{{- $rl := (.Values.aiGateway.rateLimit | default dict) -}}
+{{- $enabled := $rl.enabled | default false -}}
+{{- $rpm := $rl.requestsPerMinute | int -}}
+{{- if and $enabled .Values.aiGateway.enabled (gt (len $hostnames) 0) $hasProviders }}
+{{- if lt $rpm 1 -}}
+{{- fail "workspace.models.rateLimit.requestsPerMinute must be >= 1 when rateLimit.enabled is true" -}}
+{{- end }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aigateway-ratelimit
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "workspace.models.rateLimit") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "zelkor-platform.fullname" . }}-aigateway-route
+  mergeType: StrategicMerge
+  rateLimit:
+    type: Global
+    global:
+      rules:
+        - limit:
+            requests: {{ $rpm }}
+            unit: Minute
+{{- end }}

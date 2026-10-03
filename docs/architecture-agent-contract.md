@@ -57,7 +57,7 @@ The wrap plane serves your graph and provides the runtime sandbox.
 The intercept plane governs all LLM text generation.
 - **No Keys on the Agent:** Real provider API keys stay on the AI Gateway. The agent only holds a consumer key.
 - **Prompt Verification:** Traffic to `/v1/chat/completions` is routed through NeMo Guardrails to intercept, check, and verify interactions outside the agent's control.
-- **Budget & Observation:** The gateway enforces rate limits, tracks spend, and emits OpenTelemetry traces to Langfuse.
+- **Budget & Observation:** Community Edition caps `/v1` at a global request rate (default 50/minute); over the cap the gateway returns 429 without calling the provider. Spend tracking, per-team USD ceilings, and model downshift are **Pro**. Traces go to Langfuse.
 
 ### 3. MCP (Tool Execution)
 

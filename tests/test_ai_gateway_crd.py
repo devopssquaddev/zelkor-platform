@@ -3,13 +3,13 @@ import pytest
 import subprocess
 import json
 import httpx
-import time
 
 from tests.helpers.gateway import is_chat_completion
 from tests.helpers.llm import llm_model_or_skip
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 AI_GATEWAY_API_KEY = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", "dev-key"))
+AI_GATEWAY_HOST_HEADER = os.environ.get("AI_GATEWAY_HOST_HEADER", "ai-gateway.localhost")
 
 def test_ai_gateway_crds_installed(kubecontext):
     """
@@ -92,7 +92,7 @@ def test_ai_gateway_real_routing_not_mock_string():
     model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
-        "Host": "ai-gateway.localhost",
+        "Host": AI_GATEWAY_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
         "X-Tenant-ID": "tenant_a"
@@ -109,31 +109,36 @@ def test_ai_gateway_real_routing_not_mock_string():
     assert "Hello from default/ollama/llama3.2 route via Envoy AI Gateway!" not in resp.text
 
 def test_ai_gateway_rate_limit_burst_429():
+    """HTTP 429 after workspace.models.rateLimit.requestsPerMinute + 1 /v1 calls.
+
+    Kind local overlay raises RPM so the suite does not starve; set
+    ZELKOR_RATE_LIMIT_RPM to the live install's cap (e.g. 50) to run this.
     """
-    Verify that bursting multiple rapid requests through Envoy AI Gateway routes properly
-    and triggers either successful responses (200) or rate limits (429).
-    """
+    raw = os.environ.get("ZELKOR_RATE_LIMIT_RPM", "").strip()
+    if not raw:
+        pytest.skip("ZELKOR_RATE_LIMIT_RPM not set (kind overlay uses a high cap)")
+    try:
+        rpm = int(raw)
+    except ValueError:
+        pytest.skip(f"ZELKOR_RATE_LIMIT_RPM={raw!r} is not an integer")
+    if rpm < 1:
+        pytest.skip("ZELKOR_RATE_LIMIT_RPM must be >= 1")
+
     model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
-        "Host": "ai-gateway.localhost",
+        "Host": AI_GATEWAY_HOST_HEADER,
         "Content-Type": "application/json",
         "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
-        "X-Tenant-ID": "Rate_Test_Tenant"
     }
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "1"}],
-        "max_tokens": 1
+        "max_tokens": 1,
     }
     statuses = []
-    for _ in range(6):
-        try:
-            resp = httpx.post(url, headers=headers, json=payload, timeout=20.0)
-            statuses.append(resp.status_code)
-        except httpx.TimeoutException:
-            statuses.append(429)
-        time.sleep(0.05)
+    for _ in range(rpm + 1):
+        resp = httpx.post(url, headers=headers, json=payload, timeout=20.0)
+        statuses.append(resp.status_code)
 
-    assert len(statuses) == 6
-    assert all(s in (200, 429) for s in statuses), f"Unexpected HTTP statuses in rate limit probe: {statuses}"
+    assert 429 in statuses, f"expected HTTP 429 after {rpm + 1} calls; got {statuses}"
