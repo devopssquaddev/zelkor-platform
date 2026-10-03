@@ -19,6 +19,7 @@ IO_MAX = 8192
 _DEFAULT_PROBE_PATHS = ("/health", "/live", "/ready", "/v1/health")
 _PROBE_ATTR_KEYS = ("http.route", "http.target", "url.path", "http.path", "http.url")
 _HTTP_METHODS = frozenset({"GET", "HEAD"})
+_PROBE_TRACE_CAP = 4096
 
 
 def excluded_probe_paths() -> tuple[str, ...]:
@@ -62,8 +63,17 @@ def is_probe_span(span: Any) -> bool:
     return False
 
 
+def span_trace_id(span: Any) -> int | None:
+    ctx = getattr(span, "context", None)
+    if ctx is None:
+        getter = getattr(span, "get_span_context", None)
+        ctx = getter() if callable(getter) else None
+    tid = getattr(ctx, "trace_id", None)
+    return int(tid) if tid else None
+
+
 class ProbeFilterSpanProcessor:
-    """Drop probe spans before Aegra's BatchSpanProcessor exports to Langfuse.
+    """Drop probe SERVER spans and their FastAPI child spans (fastapi.endpoint, …).
 
     Aegra runs bare ``uvicorn`` (not ``opentelemetry-instrument``), so Helm
     ``OTEL_PYTHON_*_EXCLUDED_URLS`` is ignored. Wrap the SDK multi-processor.
@@ -74,19 +84,49 @@ class ProbeFilterSpanProcessor:
 
     def __init__(self, wrapped: Any) -> None:
         self._wrapped = wrapped
+        self._probe_traces: set[int] = set()
+
+    def _mark_probe(self, span: Any) -> None:
+        tid = span_trace_id(span)
+        if not tid:
+            return
+        if len(self._probe_traces) >= _PROBE_TRACE_CAP:
+            self._probe_traces.clear()
+        self._probe_traces.add(tid)
+
+    def _drop(self, span: Any) -> bool:
+        tid = span_trace_id(span)
+        if tid and tid in self._probe_traces:
+            return True
+        if is_probe_span(span):
+            self._mark_probe(span)
+            return True
+        name = str(getattr(span, "name", "") or "")
+        if name in (
+            "fastapi.endpoint",
+            "fastapi.dependencies",
+            "fastapi.serialization",
+        ):
+            attrs = getattr(span, "attributes", None) or {}
+            if not attrs.get("langfuse.trace.name"):
+                self._mark_probe(span)
+                return True
+        return False
 
     def on_start(self, span: Any, parent_context: Any = None) -> None:
         if is_probe_span(span):
-            return
+            self._mark_probe(span)
+        elif self._drop(span):
+            pass
         self._wrapped.on_start(span, parent_context)
 
     def on_end(self, span: Any) -> None:
-        if is_probe_span(span):
+        if self._drop(span):
             return
         self._wrapped.on_end(span)
 
     def _on_ending(self, span: Any) -> None:
-        if is_probe_span(span):
+        if self._drop(span):
             return
         ending = getattr(self._wrapped, "_on_ending", None)
         if callable(ending):

@@ -40,6 +40,9 @@ spec:
             - type: Exact
               name: x-zelkor-guardrails-bypass
               value: "1"
+            - type: RegularExpression
+              name: x-ai-eg-model
+              value: ".+"
       filters:
         - type: ExtensionRef
           extensionRef:

@@ -221,10 +221,83 @@ provider:
     shutdownManager:
       image: envoyproxy/gateway:v1.9.1
   type: Kubernetes
+rateLimit:
+  failClosed: false
+  backend:
+    type: Redis
+    redis:
+      url: envoy-ratelimit-redis.envoy-gateway-system.svc:6379
 EOF
 )
 
+apply_ratelimit_redis() {
+  echo "Ensuring Envoy Gateway rate-limit Redis (envoy-ratelimit-redis)..."
+  kubectl "${KUBECTL_ARGS[@]}" apply -f - <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: envoy-ratelimit-redis
+  namespace: envoy-gateway-system
+  labels:
+    app.kubernetes.io/name: envoy-ratelimit-redis
+    app.kubernetes.io/part-of: zelkor
+spec:
+  selector:
+    app.kubernetes.io/name: envoy-ratelimit-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: envoy-ratelimit-redis
+  namespace: envoy-gateway-system
+  labels:
+    app.kubernetes.io/name: envoy-ratelimit-redis
+    app.kubernetes.io/part-of: zelkor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: envoy-ratelimit-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: envoy-ratelimit-redis
+        app.kubernetes.io/part-of: zelkor
+    spec:
+      containers:
+        - name: redis
+          image: docker.io/valkey/valkey:7.2.14-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 6379
+              name: redis
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 2
+            periodSeconds: 5
+EOF
+  wait_rollout envoy-gateway-system envoy-ratelimit-redis
+}
+
 apply_extension_config() {
+  apply_ratelimit_redis
   local eg_cm_current
   eg_cm_current=$(kubectl "${KUBECTL_ARGS[@]}" get configmap envoy-gateway-config -n envoy-gateway-system \
     -o jsonpath='{.data.envoy-gateway\.yaml}' 2>/dev/null || true)

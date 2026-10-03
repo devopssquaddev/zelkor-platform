@@ -192,10 +192,21 @@ def test_openinference_span_for_run_falls_back_to_spans_by_run():
     assert openinference_span_for_run(rm) is span
 
 
+class _SpanCtx:
+    def __init__(self, trace_id: int) -> None:
+        self.trace_id = trace_id
+
+
 class _NamedSpan:
-    def __init__(self, name: str, attributes: dict | None = None) -> None:
+    def __init__(
+        self, name: str, attributes: dict | None = None, trace_id: int = 1
+    ) -> None:
         self.name = name
         self.attributes = attributes or {}
+        self.context = _SpanCtx(trace_id)
+
+    def get_span_context(self) -> _SpanCtx:
+        return self.context
 
 
 def test_is_probe_span_fastapi_server_names():
@@ -226,22 +237,36 @@ def test_excluded_probe_paths_from_env(monkeypatch):
 def test_probe_filter_skips_export():
     inner = MagicMock()
     filt = ProbeFilterSpanProcessor(inner)
-    probe = _NamedSpan("GET /ready")
-    run = _NamedSpan("GET /runs")
+    probe = _NamedSpan("GET /ready", trace_id=1)
+    run = _NamedSpan("GET /runs", trace_id=2)
     filt.on_start(probe)
     filt.on_end(probe)
     filt.on_start(run)
     filt.on_end(run)
-    inner.on_start.assert_called_once_with(run, None)
+    assert inner.on_start.call_count == 2
     inner.on_end.assert_called_once_with(run)
+
+
+def test_probe_filter_drops_fastapi_child_spans():
+    inner = MagicMock()
+    filt = ProbeFilterSpanProcessor(inner)
+    filt.on_start(_NamedSpan("GET /ready", trace_id=9))
+    child = _NamedSpan("fastapi.endpoint", trace_id=9)
+    filt.on_start(child)
+    filt.on_end(child)
+    inner.on_end.assert_not_called()
+    other = _NamedSpan("fastapi.endpoint", {"langfuse.trace.name": "g"}, trace_id=10)
+    filt.on_start(other)
+    filt.on_end(other)
+    inner.on_end.assert_called_once_with(other)
 
 
 def test_probe_filter_on_ending_matches_otel_sdk():
     """OTEL Span.end() calls _on_ending on the active multi-processor."""
     inner = MagicMock()
     filt = ProbeFilterSpanProcessor(inner)
-    filt._on_ending(_NamedSpan("GET /ready"))
-    filt._on_ending(_NamedSpan("GET /runs"))
+    filt._on_ending(_NamedSpan("GET /ready", trace_id=1))
+    filt._on_ending(_NamedSpan("GET /runs", trace_id=2))
     inner._on_ending.assert_called_once()
     assert inner._on_ending.call_args[0][0].name == "GET /runs"
     inner.on_end.assert_not_called()

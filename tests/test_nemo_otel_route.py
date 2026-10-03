@@ -73,6 +73,26 @@ def test_is_orphan_http_client():
     assert not is_orphan_http_client(_Server())
 
 
+def test_drop_probe_span_includes_fastapi_children():
+    from otel_project_route import drop_probe_span
+
+    class _Ctx:
+        def __init__(self, tid: int) -> None:
+            self.trace_id = tid
+
+    class _Span:
+        def __init__(self, name: str, tid: int, attributes=None) -> None:
+            self.name = name
+            self.context = _Ctx(tid)
+            self.attributes = attributes or {}
+
+    assert drop_probe_span(_Span("GET /v1/health", 3))
+    assert drop_probe_span(_Span("fastapi.endpoint", 3))
+    assert drop_probe_span(_Span("fastapi.serialization", 11))
+    named = _Span("fastapi.endpoint", 4, {"langfuse.trace.name": "finserve-advisor"})
+    assert not drop_probe_span(named)
+
+
 def test_identity_from_headers_and_stamp():
     values = identity_from_headers(
         {

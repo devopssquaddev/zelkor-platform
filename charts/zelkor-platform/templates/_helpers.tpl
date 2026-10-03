@@ -1354,6 +1354,51 @@ JSON array of backend+match pairs for AIGatewayRoute. Prefix-namespaced ids avoi
 {{- $rules | toJson -}}
 {{- end }}
 
+{{/*
+Exact x-ai-eg-model ids for the Envoy AI Gateway v1.1 catalog (/v1/models).
+Regex matches alone are not listed; completions then 500 with an empty body.
+*/}}
+{{- define "zelkor-platform.aiGatewayExactModelMatches" -}}
+{{- $matches := include "zelkor-platform.aiGatewayProviderMatches" . | fromJsonArray -}}
+{{- $seen := dict -}}
+{{- $out := list -}}
+{{- $candidates := list -}}
+{{- $dm := (.Values.aiGateway.defaultModel | default "") | toString | trim -}}
+{{- if $dm -}}
+{{- $candidates = append $candidates $dm -}}
+{{- end -}}
+{{- $derived := include "zelkor-platform.aiGatewayDerivedDefaultModel" . | toString | trim -}}
+{{- if $derived -}}
+{{- $candidates = append $candidates $derived -}}
+{{- end -}}
+{{- range $key, $prov := (.Values.aiGateway.providers | default dict) -}}
+{{- if kindIs "map" $prov -}}
+{{- range ($prov.models | default list) -}}
+{{- $id := . | toString | trim -}}
+{{- if and $id (ne $id "*") -}}
+{{- $candidates = append $candidates $id -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- range $candidates -}}
+{{- $model := . -}}
+{{- if not (index $seen $model) -}}
+{{- $_ := set $seen $model true -}}
+{{- $backend := "" -}}
+{{- range $matches -}}
+{{- if and (eq $backend "") (regexMatch .match $model) -}}
+{{- $backend = .backend -}}
+{{- end -}}
+{{- end -}}
+{{- if $backend -}}
+{{- $out = append $out (dict "backend" $backend "model" $model) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $out | toJson -}}
+{{- end }}
+
 {{- define "zelkor-platform.aiGatewayDefaultBackend" -}}
 {{- $p := .Values.aiGateway.providers | default dict -}}
 {{- $full := include "zelkor-platform.fullname" . -}}

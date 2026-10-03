@@ -326,9 +326,18 @@ def test_unknown_bypass_reject_when_intercept_on():
     assert "model_not_found" in filt["spec"]["directResponse"]["body"]["inline"]
     assert route is not None
     headers = route["spec"]["rules"][0]["matches"][0]["headers"]
-    assert headers == [{"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"}]
+    assert {"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"} in headers
+    assert {"type": "RegularExpression", "name": "x-ai-eg-model", "value": ".+"} in headers
     assert "backendRefs" not in route["spec"]["rules"][0]
     rules = _aigateway_rules(docs)
+    exact_models = [
+        h.get("value")
+        for rule in rules
+        for m in rule.get("matches") or []
+        for h in (m.get("headers") or [])
+        if h.get("name") == "x-ai-eg-model" and h.get("type") == "Exact"
+    ]
+    assert "gpt-oss:20b" in exact_models
     assert any(
         any(
             h.get("name") == "x-ai-eg-model" and "gpt-oss" in (h.get("value") or "")
@@ -368,7 +377,8 @@ def test_vertex_bypass_rule_stays_two_header_when_reject_present():
     route = _unknown_model_route(docs)
     assert route is not None
     headers = route["spec"]["rules"][0]["matches"][0]["headers"]
-    assert headers == [{"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"}]
+    assert {"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"} in headers
+    assert {"type": "RegularExpression", "name": "x-ai-eg-model", "value": ".+"} in headers
     vertex_rule = next(
         rule
         for rule in _aigateway_rules(docs)
@@ -402,3 +412,13 @@ def test_default_model_with_ollama_cloud_renders_route():
         )
     )
     _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")
+    rules = _aigateway_rules(docs)
+    exact = [
+        (h.get("value"), rule["backendRefs"][0]["name"])
+        for rule in rules
+        for m in rule.get("matches") or []
+        for h in (m.get("headers") or [])
+        if h.get("name") == "x-ai-eg-model" and h.get("type") == "Exact"
+    ]
+    assert ("gpt-oss:20b", "zelkor-platform-backend-nemo") in exact
+    assert ("gpt-oss:20b", "zelkor-platform-backend-ollama-cloud") not in exact
