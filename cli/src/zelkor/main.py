@@ -127,7 +127,7 @@ def kube_argv(env: Env, *args: str) -> list[str]:
 
 
 def helm_argv(env: Env, *args: str) -> list[str]:
-    cmd = ["helm", "--request-timeout", KUBE_REQUEST_TIMEOUT, "--kube-context", env.kube_context, "-n", env.namespace]
+    cmd = ["helm", "--kube-context", env.kube_context, "-n", env.namespace]
     if env.kubeconfig:
         cmd[1:1] = ["--kubeconfig", env.kubeconfig]
     cmd.extend(args)

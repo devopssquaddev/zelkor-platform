@@ -509,14 +509,14 @@ def test_merge_catalog_values_file_wins():
     assert merged["auth"]["issuer"] == "https://issuer.example"
 
 
-def test_kube_and_helm_argv_set_request_timeout():
+def test_kube_argv_sets_request_timeout():
     env = Env(name="local", kube_context="kind-zelkor", namespace="default")
     kube = kube_argv(env, "get", "ns")
     helm = helm_argv(env, "list", "-o", "json")
     assert kube[:3] == ["kubectl", "--request-timeout", "30s"]
-    assert helm[:3] == ["helm", "--request-timeout", "30s"]
+    assert helm[:3] == ["helm", "--kube-context", "kind-zelkor"]
+    assert "--request-timeout" not in helm
     assert "--context" in kube and "kind-zelkor" in kube
-    assert "--kube-context" in helm and "kind-zelkor" in helm
 
 
 def test_fill_empty_keeps_set_values():
