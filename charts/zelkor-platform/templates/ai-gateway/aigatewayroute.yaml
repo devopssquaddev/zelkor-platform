@@ -21,8 +21,9 @@ spec:
     - {{ . | quote }}
     {{- end }}
   rules:
+    {{- $exact := include "zelkor-platform.aiGatewayExactModelMatches" . | fromJsonArray -}}
     {{- if $intercept }}
-    {{- /* NeMo upstream: bypass header routes to providers (loop prevention). */}}
+    {{- /* NeMo upstream: bypass header routes to providers (loop prevention). Regex only — Exact ids are catalogued on NeMo so AIGW 1.1 has a single model mapping. */}}
     {{- range $matches }}
     - matches:
         - headers:
@@ -34,6 +35,16 @@ spec:
               value: {{ .match | quote }}
       backendRefs:
         - name: {{ .backend }}
+    {{- end }}
+    {{- /* Exact default ids → NeMo: populates /v1/models; intercept without bypass. */}}
+    {{- range $exact }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: {{ .model | quote }}
+      backendRefs:
+        - name: {{ include "zelkor-platform.fullname" $ }}-backend-nemo
     {{- end }}
     {{- /* Default intercept: all other /v1 chat traffic -> NeMo (fail-closed). */}}
     - backendRefs:
@@ -47,6 +58,15 @@ spec:
               value: "^(nemo/.*)"
       backendRefs:
         - name: {{ include "zelkor-platform.fullname" . }}-backend-nemo
+    {{- end }}
+    {{- range $exact }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-ai-eg-model
+              value: {{ .model | quote }}
+      backendRefs:
+        - name: {{ .backend }}
     {{- end }}
     {{- range $matches }}
     - matches:

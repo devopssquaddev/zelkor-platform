@@ -238,15 +238,47 @@ def test_nemo_health_probe_is_not_a_langfuse_trace():
 
     time.sleep(4)
     try:
-        traces = list_traces(limit=50)
+        from datetime import datetime, timedelta, timezone
+
+        from tests.helpers.langfuse import langfuse_get
+
+        from_t = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        resp = langfuse_get(
+            "/api/public/v2/observations",
+            params={
+                "limit": 80,
+                "fields": "core,basic,trace_context",
+                "fromStartTime": from_t,
+            },
+        )
     except pytest.skip.Exception:
         raise
     except Exception as exc:
         pytest.skip(f"Langfuse not reachable: {exc}")
+    if resp.status_code != 200:
+        pytest.skip(f"Langfuse observations {resp.status_code}: {resp.text[:200]}")
+    obs = resp.json().get("data") or []
+    traces = [
+        {"id": o.get("traceId"), "name": o.get("traceName") or o.get("name")}
+        for o in obs
+    ]
 
     probes = [
         t.get("id") or t.get("name")
         for t in traces
-        if "/v1/health" in str(t.get("name") or "")
+        if any(
+            p in str(t.get("name") or "")
+            for p in ("/v1/health", "/health", "/live", "/ready")
+        )
     ]
-    assert not probes, f"NeMo /v1/health created Langfuse traces: {probes}"
+    assert not probes, f"health probe created Langfuse traces: {probes}"
+    fastapi_probes = [
+        (o.get("id"), o.get("name"), o.get("traceName"))
+        for o in obs
+        if str(o.get("name") or "")
+        in ("fastapi.endpoint", "fastapi.dependencies", "fastapi.serialization")
+        and not o.get("traceName")
+    ]
+    assert not fastapi_probes, f"FastAPI probe children in Langfuse: {fastapi_probes[:12]}"
