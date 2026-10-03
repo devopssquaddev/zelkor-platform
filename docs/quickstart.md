@@ -65,7 +65,7 @@ What `./install.sh` does (you do not run these by hand):
 
 First create is typically under five minutes when Docker is already warm and image pulls are not bandwidth-bound. Re-runs skip work that is already ready.
 
-**Success:** the script ends with `Done. Zelkor Platform deployed on kind cluster: zelkor` and a footer of localhost URLs on port `8088`.
+**Success:** the script ends with `Done. Zelkor Platform deployed on kind cluster: zelkor` and a footer of localhost URLs on port `8088`, plus the `zelkor env add local` commands for this cluster.
 
 ## Call a model
 

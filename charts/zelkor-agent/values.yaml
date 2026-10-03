@@ -97,6 +97,9 @@ auth:
 # Extra container env (e.g. DEFAULT_LLM_MODEL, QDRANT_COLLECTION for a graph prompt).
 extraEnv: []
 
+# Empty omits the field. Catalog overlays set gvisor.
+runtimeClassName: ""
+
 resources:
   requests:
     cpu: 100m

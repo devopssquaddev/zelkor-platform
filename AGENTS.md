@@ -12,7 +12,7 @@ Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed â€
 - `images/`: Dockerfiles for first-party images (Aegra runtime, MCP, guardrails, sandbox).
 - `agents/`: Platform auth handlers for tenant isolation.
 - `mcp/`: Native MCP servers (thin Postgres, Qdrant library wrap).
-- `examples/`: Demo applications (e.g., FinServe) with standalone Helm charts.
+- `examples/`: Demo applications (e.g. FinServe) and armored catalog overlays.
 - `scripts/`: Install and uninstall scripts (`install-production.sh`, `install-quickstart.sh`, `uninstall.sh`).
 - `cli/`: The `zelkor` CLI source code.
 - `docs/`: Public product documentation (published to the website).

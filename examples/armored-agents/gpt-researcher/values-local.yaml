@@ -1,0 +1,6 @@
+# kind overlay only
+sharedRoute:
+  host: agents.localhost
+
+platform:
+  releaseName: zelkor-platform

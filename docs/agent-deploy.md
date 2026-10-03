@@ -70,6 +70,21 @@ zelkor deploy --timeout 60s
 
 The `deploy` command builds the image, pushes it to the registry, and runs `helm upgrade` on the `zelkor-agent` chart. It automatically copies the platform's Langfuse OTEL configuration so your traces appear in the Langfuse UI, and it wires up the platform's MCP gateway so your agent can use native tools or registered extra backends.
 
+## Deploy a prepared values file
+
+Catalog overlays (`examples/armored-agents/`) ship a sibling `Dockerfile`. `zelkor deploy -f` builds that image, then Helm-installs:
+
+```bash
+zelkor env use production
+zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
+```
+
+On kind, the CLI kind-loads the image. Off kind, pass `--registry` or set `ZELKOR_IMAGE_REGISTRY`. `ZELKOR_SKIP_BUILD=1` skips docker when the image is already in the registry.
+
+The CLI merges live platform connection fields (release name, agents host, Langfuse traces, auth) into empty keys in the file. `graphId`, `image`, `runtimeClassName`, and `extraEnv` stay as written. Provider keys stay on the AI Gateway, not in the values file.
+
+Set `platform.releaseName` and `sharedRoute.host` in GitOps yourself, or let `zelkor deploy -f` fill them from the selected env.
+
 ## Run Your Agent
 
 To test your deployed agent, use the `zelkor run` CLI command or a direct curl.

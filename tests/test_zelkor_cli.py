@@ -19,7 +19,24 @@ from zelkor.detect import (  # noqa: E402
 )
 from zelkor.envfile import Env, add_env, resolve_env  # noqa: E402
 from zelkor.extra_backends import extra_backend_overlay_snippet, missing_extra_registrations  # noqa: E402
-from zelkor.main import UPGRADE, PlatformInfo, auth_values, default_llm_model_from, deploy_agent, in_cluster_openai_base_url, main  # noqa: E402
+from zelkor.main import (  # noqa: E402
+    UPGRADE,
+    PlatformInfo,
+    auth_values,
+    default_llm_model_from,
+    deploy_agent,
+    deploy_from_values,
+    fill_empty,
+    helm_argv,
+    in_cluster_openai_base_url,
+    kube_argv,
+    main,
+    merge_catalog_values,
+    _deploy_ready,
+    _wait_agent_rollout,
+    _pod_wait_summary,
+    _prune_stale_agent_pods,
+)
 from zelkor import token_cmd  # noqa: E402
 
 
@@ -345,6 +362,7 @@ def test_default_llm_model_from_nemo_when_aegra_env_empty():
     assert default_llm_model_from({}, {"aiGateway": {"defaultModel": "qwen3:8b"}}) == "qwen3:8b"
     assert default_llm_model_from({}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}, "aiGateway": {"defaultModel": "qwen3:8b"}}) == "gpt-oss:20b"
     assert default_llm_model_from({}, {"langfuse": {"surfaces": {"llmConnection": {"models": ["gpt-oss:20b"]}}}}) == "gpt-oss:20b"
+    assert default_llm_model_from({}, {"workspace": {"models": {"defaultModel": "gpt-oss:20b"}}}) == "gpt-oss:20b"
 
 
 def test_in_cluster_openai_base_url_uses_ai_gateway_service():
@@ -415,6 +433,618 @@ def test_deploy_agent_requires_registry_off_kind(tmp_path, monkeypatch):
             platform_chart=ROOT / "charts" / "zelkor-platform",
             runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
         )
+
+
+def _discover_runner(captured: dict | None = None):
+    captured = captured if captured is not None else {}
+
+    def runner(argv, **_kwargs):
+        captured.setdefault("commands", []).append(list(argv))
+        if captured is not None and "upgrade" in argv and "--install" in argv:
+            idx = argv.index("-f")
+            captured["values"] = Path(argv[idx + 1]).read_text(encoding="utf-8")
+            captured["argv"] = list(argv)
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps(
+                [{"name": "zelkor-platform", "chart": "zelkor-platform-2.2.0", "status": "deployed"}]
+            )
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "gateway:\n  hosts:\n    agents: agents.example.com\n"
+        elif "get" in argv and "deploy" in argv and "-l" not in argv:
+            stdout = json.dumps(
+                {
+                    "kind": "Deployment",
+                    "metadata": {"generation": 1},
+                    "spec": {"replicas": 1},
+                    "status": {
+                        "observedGeneration": 1,
+                        "updatedReplicas": 1,
+                        "availableReplicas": 1,
+                    },
+                }
+            )
+        elif "get" in argv and "deploy" in argv:
+            stdout = json.dumps(
+                {
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "zelkor-platform-aegra",
+                                "labels": {"app.kubernetes.io/component": "aegra"},
+                            },
+                            "spec": {
+                                "template": {
+                                    "spec": {
+                                        "containers": [
+                                            {
+                                                "env": [
+                                                    {"name": "DATABASE_URL", "value": "postgresql://x"},
+                                                    {"name": "OPENAI_BASE_URL", "value": "http://gw/v1"},
+                                                    {"name": "MCP_URL", "value": "http://mcp:8080"},
+                                                    {"name": "OPENAI_API_KEY", "value": "cluster-consumer"},
+                                                    {"name": "REDIS_URL", "value": "redis://valkey:6379"},
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                        }
+                    ]
+                }
+            )
+        elif "get" in argv and "rs" in argv:
+            stdout = json.dumps({"items": []})
+        elif "get" in argv and "svc" in argv:
+            stdout = json.dumps({"items": []})
+        elif "get" in argv and "httproute" in argv:
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    return runner
+
+
+def test_merge_catalog_values_file_wins():
+    file_values = {
+        "graphId": "gpt-researcher",
+        "runtimeClassName": "gvisor",
+        "image": {"repository": "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher", "tag": "2.2.0"},
+        "extraEnv": [{"name": "FOO", "value": "bar"}],
+        "platform": {"releaseName": ""},
+        "sharedRoute": {"host": ""},
+    }
+    discovered = {
+        "platform": {"releaseName": "zelkor-platform", "consumerKey": "cluster-consumer"},
+        "sharedRoute": {"host": "agents.example.com", "asDefault": True},
+        "auth": {"issuer": "https://issuer.example"},
+    }
+    merged = merge_catalog_values(file_values, discovered)
+    assert merged["graphId"] == "gpt-researcher"
+    assert merged["runtimeClassName"] == "gvisor"
+    assert merged["image"]["repository"].endswith("zelkor-armored-gpt-researcher")
+    assert merged["extraEnv"] == [{"name": "FOO", "value": "bar"}]
+    assert merged["platform"]["releaseName"] == "zelkor-platform"
+    assert merged["sharedRoute"]["host"] == "agents.example.com"
+    assert "asDefault" not in merged["sharedRoute"]
+    assert merged["auth"]["issuer"] == "https://issuer.example"
+
+
+def test_deploy_ready_false_on_progress_deadline_without_replicas():
+    dep = {
+        "kind": "Deployment",
+        "metadata": {"generation": 2},
+        "spec": {"replicas": 1},
+        "status": {
+            "observedGeneration": 2,
+            "updatedReplicas": 0,
+            "availableReplicas": 0,
+            "conditions": [{"type": "Progressing", "status": "False", "reason": "ProgressDeadlineExceeded"}],
+        },
+    }
+    assert _deploy_ready(dep) is False
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    calls = {"deploy": 0}
+
+    def runner(argv, **_kwargs):
+        if "rs" in argv:
+            return SimpleNamespace(returncode=0, stdout='{"items":[]}', stderr="")
+        if "pods" in argv:
+            return SimpleNamespace(returncode=0, stdout='{"items":[]}', stderr="")
+        if "delete" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if "logs" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        calls["deploy"] += 1
+        if calls["deploy"] == 1:
+            return SimpleNamespace(returncode=0, stdout=json.dumps(dep), stderr="")
+        ready = dict(dep)
+        ready["status"] = {
+            "observedGeneration": 2,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+            "conditions": [{"type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable"}],
+        }
+        return SimpleNamespace(returncode=0, stdout=json.dumps(ready), stderr="")
+
+    _wait_agent_rollout(env, "gpt-researcher", runner=runner, timeout_sec=5)
+    assert calls["deploy"] >= 2
+
+
+def test_prune_stale_agent_pods_deletes_old_hash():
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    deleted: list[str] = []
+
+    def runner(argv, **_kwargs):
+        if "rs" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "annotations": {"deployment.kubernetes.io/revision": "7"},
+                                    "labels": {"pod-template-hash": "oldhash"},
+                                }
+                            },
+                            {
+                                "metadata": {
+                                    "annotations": {"deployment.kubernetes.io/revision": "8"},
+                                    "labels": {"pod-template-hash": "newhash"},
+                                }
+                            },
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "get" in argv and "pods" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "name": "gpt-researcher-zelkor-agent-oldhash-a",
+                                    "labels": {"pod-template-hash": "oldhash"},
+                                }
+                            },
+                            {
+                                "metadata": {
+                                    "name": "gpt-researcher-zelkor-agent-newhash-b",
+                                    "labels": {"pod-template-hash": "newhash"},
+                                }
+                            },
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "delete" in argv:
+            deleted.append(argv[argv.index("pod") + 1] if "pod" in argv else "")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+    _prune_stale_agent_pods(env, "gpt-researcher", runner=runner)
+    assert deleted == ["gpt-researcher-zelkor-agent-oldhash-a"]
+
+
+def test_pod_wait_summary_skips_stale_hash():
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+
+    def runner(argv, **_kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "items": [
+                        {
+                            "metadata": {
+                                "name": "old-dev",
+                                "labels": {"pod-template-hash": "7644b84487"},
+                            },
+                            "status": {
+                                "phase": "Pending",
+                                "containerStatuses": [
+                                    {
+                                        "state": {
+                                            "waiting": {
+                                                "reason": "ImagePullBackOff",
+                                                "message": "zelkor-armored-gpt-researcher:dev",
+                                            }
+                                        }
+                                    }
+                                ],
+                            },
+                        },
+                        {
+                            "metadata": {
+                                "name": "new-220",
+                                "labels": {"pod-template-hash": "859c9c7f89"},
+                            },
+                            "status": {"phase": "Running", "containerStatuses": []},
+                        },
+                    ]
+                }
+            ),
+            stderr="",
+        )
+
+    text = _pod_wait_summary(env, "gpt-researcher", runner=runner, template_hash="859c9c7f89")
+    assert "new-220" in text
+    assert "old-dev" not in text
+    assert ":dev" not in text
+
+
+def test_wait_agent_rollout_logs_current_pod(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    dep = {
+        "kind": "Deployment",
+        "metadata": {"generation": 2},
+        "spec": {"replicas": 1},
+        "status": {
+            "observedGeneration": 2,
+            "updatedReplicas": 1,
+            "availableReplicas": 0,
+            "conditions": [{"type": "Progressing", "status": "True", "reason": "ReplicaSetUpdated"}],
+        },
+    }
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    calls = {"deploy": 0}
+
+    def runner(argv, **_kwargs):
+        if "rs" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "annotations": {"deployment.kubernetes.io/revision": "10"},
+                                    "labels": {"pod-template-hash": "5bd684f8b5"},
+                                }
+                            }
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "logs" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="Graph factory 'graph' accepts 2 parameters but neither is annotated\n",
+                stderr="",
+            )
+        if "pods" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "name": "gpt-researcher-zelkor-agent-5bd684f8b5-xxw7w",
+                                    "labels": {"pod-template-hash": "5bd684f8b5"},
+                                },
+                                "status": {"phase": "Running", "containerStatuses": []},
+                            }
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "delete" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        calls["deploy"] += 1
+        if calls["deploy"] == 1:
+            return SimpleNamespace(returncode=0, stdout=json.dumps(dep), stderr="")
+        ready = dict(dep)
+        ready["status"] = {
+            "observedGeneration": 2,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+            "conditions": [{"type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable"}],
+        }
+        return SimpleNamespace(returncode=0, stdout=json.dumps(ready), stderr="")
+
+    _wait_agent_rollout(env, "gpt-researcher", runner=runner, timeout_sec=5)
+    joined = "\n".join(r.message for r in caplog.records)
+    assert "pod logs gpt-researcher-zelkor-agent-5bd684f8b5-xxw7w" in joined
+    assert "Graph factory" in joined
+
+
+def test_kube_argv_sets_request_timeout():
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    kube = kube_argv(env, "get", "ns")
+    helm = helm_argv(env, "list", "-o", "json")
+    assert kube[:3] == ["kubectl", "--request-timeout", "30s"]
+    assert helm[:3] == ["helm", "--kube-context", "kind-zelkor"]
+    assert "--request-timeout" not in helm
+    assert "--context" in kube and "kind-zelkor" in kube
+
+
+def test_fill_empty_keeps_set_values():
+    assert fill_empty({"host": "mine"}, {"host": "theirs", "gatewayName": "gw"}) == {
+        "host": "mine",
+        "gatewayName": "gw",
+    }
+
+
+def test_deploy_from_values_skips_docker(tmp_path):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "runtimeClassName: gvisor",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+                "extraEnv: []",
+                "platform:",
+                "  releaseName: ''",
+                "sharedRoute:",
+                "  host: ''",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    captured: dict = {}
+    result = deploy_from_values(
+        values_path=values,
+        env=env,
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    assert result["graph_id"] == "gpt-researcher"
+    assert result["release"] == "gpt-researcher"
+    joined = "\n".join(" ".join(c) for c in captured.get("commands") or [])
+    assert "docker" not in joined
+    dumped = captured["values"]
+    assert "gpt-researcher" in dumped
+    assert "gvisor" in dumped
+    assert "zelkor-armored-gpt-researcher" in dumped
+    assert "agents.example.com" in dumped
+    assert "zelkor-platform" in dumped
+    assert "cluster-consumer" in dumped
+
+
+def test_deploy_from_values_builds_and_kind_loads(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.delenv("KIND_CLUSTER", raising=False)
+    captured: dict = {}
+    result = deploy_from_values(
+        values_path=values,
+        env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    assert result["image"].endswith(":2.2.0")
+    cmds = captured.get("commands") or []
+    build = next(c for c in cmds if c[:2] == ["docker", "build"])
+    assert "--progress=plain" in build
+    assert str(tmp_path / "Dockerfile") in build
+    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in build
+    assert any(a.startswith("ZELKOR_AEGRA_DEEP_IMAGE=") for a in build)
+    assert str((ROOT / "charts" / "zelkor-agent").resolve().parent.parent) in build
+    load = next(c for c in cmds if c[:2] == ["kind", "load"])
+    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in load
+    assert "zelkor" in load
+    assert not any(c[:2] == ["docker", "push"] for c in cmds)
+
+
+def test_deploy_from_values_skip_build_env(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.setenv("ZELKOR_SKIP_BUILD", "1")
+    captured: dict = {}
+    deploy_from_values(
+        values_path=values,
+        env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    joined = "\n".join(" ".join(c) for c in captured.get("commands") or [])
+    assert "docker" not in joined
+    assert "kind load" not in joined
+
+
+def test_deploy_from_values_pushes_off_kind(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.setenv("ZELKOR_IMAGE_REGISTRY", "ghcr.io/devopssquaddev")
+    captured: dict = {}
+    deploy_from_values(
+        values_path=values,
+        env=Env(name="prod", kube_context="k3s", namespace="zelkor"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    cmds = captured.get("commands") or []
+    assert any(c[:2] == ["docker", "build"] for c in cmds)
+    assert any(c[:2] == ["docker", "push"] for c in cmds)
+    assert not any(c[:2] == ["kind", "load"] for c in cmds)
+
+
+def test_deploy_from_values_keeps_values_tag(tmp_path, monkeypatch):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ZELKOR_IMAGE_TAG", "dev")
+    captured: dict = {}
+    result = deploy_from_values(
+        values_path=values,
+        env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+        agent_chart=ROOT / "charts" / "zelkor-agent",
+        platform_chart=ROOT / "charts" / "zelkor-platform",
+        runner=_discover_runner(captured),
+    )
+    assert result["image"].endswith(":2.2.0")
+    assert ":dev" not in result["image"]
+    assert "2.2.0" in captured["values"]
+
+
+def test_deploy_from_values_rejects_approval_threshold(tmp_path):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "graphId: gpt-researcher\nimage:\n  repository: ghcr.io/example/agent\n",
+        encoding="utf-8",
+    )
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    with pytest.raises(RuntimeError, match="Pro"):
+        deploy_from_values(
+            values_path=values,
+            env=env,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            approval_threshold="0.5",
+            runner=lambda *a, **k: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
+        )
+
+
+def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys, caplog):
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="prod", kube_context="k3s", namespace="zelkor"), store_path=store)
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "runtimeClassName: gvisor",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    captured: dict = {}
+    code = main(
+        [
+            "--store",
+            str(store),
+            "--env",
+            "prod",
+            "--chart",
+            str(ROOT / "charts" / "zelkor-agent"),
+            "--platform-chart",
+            str(ROOT / "charts" / "zelkor-platform"),
+            "deploy",
+            "-f",
+            str(values),
+            str(tmp_path),
+        ],
+        runner=_discover_runner(captured),
+    )
+    assert code == 0
+    joined = "\n".join(" ".join(c) for c in captured.get("commands") or [])
+    assert "docker" not in joined
+    out = capsys.readouterr().out
+    assert "gpt-researcher" in out
+    assert "discover platform" in caplog.text
+    assert "helm upgrade --install" in caplog.text
+
+
+def test_cli_deploy_f_builds_on_kind(tmp_path, monkeypatch, capsys, caplog):
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="local", kube_context="kind-zelkor", namespace="default"), store_path=store)
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    values = overlay / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (overlay / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.delenv("KIND_CLUSTER", raising=False)
+    captured: dict = {}
+    code = main(
+        [
+            "--store",
+            str(store),
+            "--env",
+            "local",
+            "--chart",
+            str(ROOT / "charts" / "zelkor-agent"),
+            "--platform-chart",
+            str(ROOT / "charts" / "zelkor-platform"),
+            "deploy",
+            "-f",
+            str(values),
+            str(tmp_path),
+        ],
+        runner=_discover_runner(captured),
+    )
+    assert code == 0
+    cmds = captured.get("commands") or []
+    assert any(c[:2] == ["docker", "build"] for c in cmds)
+    assert any(c[:2] == ["kind", "load"] for c in cmds)
+    assert "building " in caplog.text
+    assert "run docker" in caplog.text
+    capsys.readouterr()
 
 
 def test_cli_deploy_overlay_has_no_sandbox_worker_urls():

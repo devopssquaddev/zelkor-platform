@@ -1,0 +1,16 @@
+graphId: gpt-researcher
+runtimeClassName: gvisor
+aegraConfig: ""
+
+image:
+  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher
+  tag: "2.2.0"
+  digest: ""
+
+platform:
+  releaseName: ""
+
+sharedRoute:
+  host: ""
+
+extraEnv: []

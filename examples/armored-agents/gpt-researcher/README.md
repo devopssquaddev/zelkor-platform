@@ -1,0 +1,39 @@
+# GPT Researcher (deep agents)
+
+Bring GPT Researcher's unmodified `deep_agents/` graph. Zelkor sandboxes the worker — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+
+The agent pod uses gVisor. LLM calls go through the in-cluster AI Gateway. Traces land in Langfuse.
+
+## Prerequisites
+
+- Zelkor CE installed; `zelkor env use` points at that cluster
+- RuntimeClass `gvisor` on the cluster
+- Docker on PATH (unless `ZELKOR_SKIP_BUILD=1`)
+- A Tavily key for web retrieval (private overlay; not in git)
+
+## Deploy and run
+
+```bash
+zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
+zelkor run --graph-id gpt-researcher --input "Summarize the latest gVisor isolation model"
+```
+
+`deploy -f` builds the sibling `Dockerfile` at the repo root, then kind-loads (kind) or pushes (`--registry` / `ZELKOR_IMAGE_REGISTRY` off kind). Skip the build with `ZELKOR_SKIP_BUILD=1` when the wrap image is already in the registry.
+
+See [Deploy an Agent](../../../docs/agent-deploy.md).
+
+## Tavily
+
+GPT Researcher calls Tavily from the worker. Keep the key out of git. A private overlay:
+
+```yaml
+extraEnv:
+  - name: TAVILY_API_KEY
+    value: "<your-tavily-key>"
+```
+
+When platform NetworkPolicies are enabled, agent egress is in-cluster only. Web retrieval then fails until search is an in-cluster MCP extra backend.
+
+## What Zelkor adds
+
+`langgraph.json` and `graph.py` call unmodified `build_agent`. The wrap maps `DEFAULT_LLM_MODEL` (`openai/…` or a gateway id such as `gpt-oss:20b`) to `openai:…` and sets `FAST_LLM` / `SMART_LLM` / `STRATEGIC_LLM` so GPTR’s inner researcher does not call `gpt-5.4*` on the in-cluster gateway.

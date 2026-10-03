@@ -1,0 +1,8 @@
+{
+  "graphs": {
+    "gpt-researcher": "./graph.py:graph"
+  },
+  "auth": {
+    "path": "./tenant_auth.py:auth"
+  }
+}

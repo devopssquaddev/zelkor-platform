@@ -83,15 +83,67 @@ def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = 
     raise FileNotFoundError(f"charts/{chart_name} not found from {start}")
 
 
+KUBE_REQUEST_TIMEOUT = os.getenv("ZELKOR_KUBE_TIMEOUT", "30s").strip() or "30s"
+KUBE_RUN_TIMEOUT_SEC = float(os.getenv("ZELKOR_KUBE_RUN_TIMEOUT_SEC", "45"))
+HELM_UPGRADE_TIMEOUT_SEC = float(os.getenv("ZELKOR_HELM_UPGRADE_TIMEOUT_SEC", "180"))
+
+
+def _argv_for_log(argv: list[str]) -> str:
+    text = " ".join(argv)
+    return text if len(text) <= 240 else text[:237] + "..."
+
+
+def _flush_logs() -> None:
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    for handler in logger.handlers:
+        handler.flush()
+    try:
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _stream_child(argv: list[str]) -> bool:
+    return bool(argv) and argv[0] in {"docker", "kind"}
+
+
 def _run(
     argv: list[str],
     *,
     runner: Optional[RunFn] = None,
     check: bool = True,
     capture: bool = True,
+    timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess:
+    if _stream_child(argv):
+        capture = False
+    line = _argv_for_log(argv)
+    if capture:
+        logger.debug("run %s", line)
+    else:
+        logger.info("run %s", line)
+        _flush_logs()
     fn = runner or subprocess.run
-    res = fn(argv, capture_output=capture, text=True, check=False)
+    kw: dict[str, Any] = {"text": True, "check": False}
+    if timeout is not None:
+        kw["timeout"] = timeout
+    if capture:
+        kw["capture_output"] = True
+    else:
+        kw["stdout"] = sys.stderr
+        kw["stderr"] = sys.stderr
+    started = time.monotonic()
+    try:
+        res = fn(argv, **kw)
+    except TypeError:
+        res = fn(argv, capture_output=capture, text=True, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{' '.join(argv)} timed out after {timeout}s") from exc
+    elapsed = time.monotonic() - started
+    if not capture:
+        logger.info("done %s elapsed=%.1fs rc=%s", argv[0] if argv else "cmd", elapsed, res.returncode)
+        _flush_logs()
     if check and res.returncode != 0:
         err = (res.stderr or res.stdout or "").strip()
         raise RuntimeError(f"{' '.join(argv)} failed: {err}")
@@ -99,7 +151,7 @@ def _run(
 
 
 def kube_argv(env: Env, *args: str) -> list[str]:
-    cmd = ["kubectl", "--context", env.kube_context, "-n", env.namespace]
+    cmd = ["kubectl", "--request-timeout", KUBE_REQUEST_TIMEOUT, "--context", env.kube_context, "-n", env.namespace]
     if env.kubeconfig:
         cmd[1:1] = ["--kubeconfig", env.kubeconfig]
     cmd.extend(args)
@@ -128,8 +180,19 @@ def _container_env(deploy: dict[str, Any]) -> dict[str, str]:
 
 
 def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
+    logger.info(
+        "discover platform env=%s context=%s namespace=%s",
+        env.name,
+        env.kube_context,
+        env.namespace,
+    )
     info = PlatformInfo()
-    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner)
+    logger.info("helm list")
+    listed = _run(
+        helm_argv(env, "list", "-o", "json"),
+        runner=runner,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     releases = json.loads(listed.stdout or "[]")
     for rel in releases:
         chart = str(rel.get("chart") or "")
@@ -139,15 +202,24 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
             break
     if not info.release:
         raise RuntimeError("zelkor-platform Helm release not found in this env")
-    values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
+    logger.info("found platform release=%s chart=%s", info.release, info.chart_version)
+    logger.info("helm get values %s", info.release)
+    values_raw = _run(
+        helm_argv(env, "get", "values", info.release, "-o", "yaml"),
+        runner=runner,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     values = yaml.safe_load(values_raw.stdout or "") or {}
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
     info.gateway_namespace = env.namespace
+    logger.info("agents host=%s", info.agents_host or "(empty)")
+    logger.info("get aegra deployment")
     deploys = _run(
         kube_argv(env, "get", "deploy", "-l", "app.kubernetes.io/component=aegra", "-o", "json"),
         runner=runner,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
     )
     items = (json.loads(deploys.stdout or "{}") or {}).get("items") or []
     for dep in items:
@@ -170,7 +242,14 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         elif aud_raw:
             info.jwt_audiences = [a.strip() for a in aud_raw.split(",") if a.strip()]
         claims_raw = env_map.get("AUTH_TENANT_CLAIMS", "tenant_id,org_id,sub")
-        info.jwt_tenant_claims = [c.strip() for c in claims_raw.split(",") if c.strip()]
+        if claims_raw.startswith("["):
+            try:
+                parsed = json.loads(claims_raw)
+                info.jwt_tenant_claims = [str(c) for c in parsed] if isinstance(parsed, list) else []
+            except json.JSONDecodeError:
+                info.jwt_tenant_claims = []
+        elif claims_raw:
+            info.jwt_tenant_claims = [c.strip() for c in claims_raw.split(",") if c.strip()]
         info.jwt_jwks_configmap = f"{info.release}-tenant-jwks"
         info.default_llm_model = default_llm_model_from(env_map, values)
         info.langfuse_base_url = env_map.get("LANGFUSE_BASE_URL", "")
@@ -181,7 +260,13 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         if name:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
         break
-    routes = _run(kube_argv(env, "get", "httproute", "-o", "json"), runner=runner, check=False)
+    logger.info("get httproutes")
+    routes = _run(
+        kube_argv(env, "get", "httproute", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     if routes.returncode == 0:
         for route in (json.loads(routes.stdout or "{}") or {}).get("items") or []:
             labels = (route.get("metadata") or {}).get("labels") or {}
@@ -198,6 +283,12 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.openai_base_url = cluster_gw
     if not info.default_llm_model:
         info.default_llm_model = default_llm_model_from({}, values)
+    logger.info(
+        "discover done release=%s gateway=%s model=%s",
+        info.release,
+        info.gateway_name or "(none)",
+        info.default_llm_model or "(none)",
+    )
     return info
 
 
@@ -207,6 +298,7 @@ def in_cluster_openai_base_url(env: Env, runner: Optional[RunFn] = None) -> str:
         kube_argv(env, "get", "svc", "-l", "app.kubernetes.io/component=ai-gateway", "-o", "json"),
         runner=runner,
         check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
     )
     if svcs.returncode != 0:
         return ""
@@ -230,6 +322,11 @@ def default_llm_model_from(env_map: dict[str, str], values: dict[str, Any]) -> s
     gateway_default = str((values.get("aiGateway") or {}).get("defaultModel") or "").strip()
     if gateway_default:
         return gateway_default
+    workspace_default = str(
+        (((values.get("workspace") or {}).get("models") or {}).get("defaultModel") or "")
+    ).strip()
+    if workspace_default:
+        return workspace_default
     models = (((values.get("langfuse") or {}).get("surfaces") or {}).get("llmConnection") or {}).get("models") or []
     if isinstance(models, list) and models:
         return str(models[0] or "").strip()
@@ -275,6 +372,407 @@ def _is_kind(env: Env) -> bool:
     return env.kube_context.startswith("kind-") or os.getenv("KIND_CLUSTER", "") != ""
 
 
+def _skip_build() -> bool:
+    return _truthy(os.getenv("ZELKOR_SKIP_BUILD", ""))
+
+
+def _chart_repo_root(agent_chart: Path) -> Path:
+    return agent_chart.resolve().parent.parent
+
+
+def _chart_app_version(agent_chart: Path) -> str:
+    chart = yaml.safe_load((agent_chart / "Chart.yaml").read_text(encoding="utf-8")) or {}
+    return str(chart.get("appVersion") or "dev").strip().strip('"')
+
+
+def _kind_cluster_name(env: Env) -> str:
+    return os.getenv("KIND_CLUSTER") or env.kube_context.removeprefix("kind-")
+
+
+def _deep_base_image(tag: str) -> str:
+    return os.getenv("ZELKOR_DEEP_IMAGE", "").strip() or f"ghcr.io/devopssquaddev/zelkor-aegra-deep:{tag}"
+
+
+def _build_catalog_image(
+    *,
+    env: Env,
+    image_ref: str,
+    dockerfile: Path,
+    context: Path,
+    tag: str,
+    runner: Optional[RunFn],
+    push: bool,
+) -> None:
+    deep = _deep_base_image(tag)
+    logger.info("building %s dockerfile=%s context=%s base=%s", image_ref, dockerfile, context, deep)
+    logger.info("docker build first pull can take several minutes; layer progress follows")
+    _run(
+        [
+            "docker",
+            "build",
+            "--progress=plain",
+            "-f",
+            str(dockerfile),
+            "-t",
+            image_ref,
+            "--build-arg",
+            f"ZELKOR_AEGRA_DEEP_IMAGE={deep}",
+            str(context),
+        ],
+        runner=runner,
+    )
+    logger.info("built %s", image_ref)
+    if push:
+        logger.info("push %s", image_ref)
+        _run(["docker", "push", image_ref], runner=runner)
+    elif _is_kind(env):
+        cluster = _kind_cluster_name(env)
+        logger.info("kind load %s cluster=%s", image_ref, cluster)
+        _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
+        logger.info("kind-loaded %s; kubelet will not pull this tag", image_ref)
+
+
+def _is_empty(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def fill_empty(dst: Any, src: Any) -> Any:
+    if not isinstance(dst, dict) or not isinstance(src, dict):
+        return src if _is_empty(dst) else dst
+    out = dict(dst)
+    for key, val in src.items():
+        cur = out.get(key)
+        if key not in out or _is_empty(cur):
+            out[key] = val
+        elif isinstance(cur, dict) and isinstance(val, dict):
+            out[key] = fill_empty(cur, val)
+    return out
+
+
+_FILE_WINS = frozenset({"graphId", "image", "runtimeClassName", "extraEnv"})
+
+
+def discovered_worker_values(info: PlatformInfo) -> dict[str, Any]:
+    platform: dict[str, Any] = {
+        "releaseName": info.release,
+        "databaseUrl": info.database_url,
+        "openaiBaseUrl": info.openai_base_url,
+        "mcpUrl": info.mcp_url,
+        "consumerKey": info.consumer_key,
+        "valkeyUrl": info.redis_url,
+        "mcpInject": True,
+    }
+    if info.default_llm_model:
+        platform["defaultLlmModel"] = info.default_llm_model
+    if info.langfuse_base_url:
+        platform["langfuseBaseUrl"] = info.langfuse_base_url
+    if info.langfuse_public_key:
+        platform["langfusePublicKey"] = info.langfuse_public_key
+    if info.langfuse_secret_key:
+        platform["langfuseSecretKey"] = info.langfuse_secret_key
+    if info.otel_targets:
+        platform["otelTargets"] = info.otel_targets
+    overlay: dict[str, Any] = {
+        "sharedRoute": {
+            "host": info.agents_host,
+            "gatewayName": info.gateway_name,
+            "gatewayNamespace": info.gateway_namespace,
+        },
+        "platform": platform,
+        "auth": auth_values(info),
+    }
+    if info.image_pull_secrets:
+        overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
+    return overlay
+
+
+def merge_catalog_values(file_values: dict[str, Any], discovered: dict[str, Any]) -> dict[str, Any]:
+    kept = {key: file_values[key] for key in _FILE_WINS if key in file_values}
+    rest = {key: val for key, val in file_values.items() if key not in _FILE_WINS}
+    sr = rest.get("sharedRoute")
+    if isinstance(sr, dict) and "asDefault" not in sr:
+        disc_sr = dict((discovered.get("sharedRoute") or {}))
+        disc_sr.pop("asDefault", None)
+        discovered = dict(discovered)
+        discovered["sharedRoute"] = disc_sr
+    merged = fill_empty(rest, discovered)
+    merged.update(kept)
+    return merged
+
+
+ROLLOUT_WAIT_SEC = float(os.getenv("ZELKOR_ROLLOUT_TIMEOUT_SEC", "180"))
+
+
+def _rs_revision(rs: dict[str, Any]) -> int:
+    raw = ((rs.get("metadata") or {}).get("annotations") or {}).get("deployment.kubernetes.io/revision")
+    try:
+        return int(raw or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _pod_template_hash(obj: dict[str, Any]) -> str:
+    return str(((obj.get("metadata") or {}).get("labels") or {}).get("pod-template-hash") or "")
+
+
+def _current_template_hash(env: Env, release: str, runner: Optional[RunFn] = None) -> str:
+    res = _run(
+        kube_argv(env, "get", "rs", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if res.returncode != 0:
+        return ""
+    best_rev = -1
+    best_hash = ""
+    for rs in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        rev = _rs_revision(rs)
+        if rev >= best_rev:
+            best_rev = rev
+            best_hash = _pod_template_hash(rs)
+    return best_hash
+
+
+def _prune_stale_agent_pods(env: Env, release: str, runner: Optional[RunFn] = None) -> None:
+    current = _current_template_hash(env, release, runner=runner)
+    if not current:
+        return
+    res = _run(
+        kube_argv(env, "get", "pods", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if res.returncode != 0:
+        return
+    for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        name = str((pod.get("metadata") or {}).get("name") or "")
+        if not name or _pod_template_hash(pod) == current:
+            continue
+        logger.info("delete stale pod %s (not hash=%s)", name, current)
+        _run(
+            kube_argv(env, "delete", "pod", name, "--grace-period=0", "--force"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+
+
+def _deploy_ready(dep: dict[str, Any]) -> bool:
+    spec = dep.get("spec") or {}
+    status = dep.get("status") or {}
+    if dep.get("kind") == "List" or "replicas" not in spec:
+        return False
+    desired = int(spec.get("replicas") or 0)
+    if desired == 0:
+        return True
+    updated = int(status.get("updatedReplicas") or 0)
+    available = int(status.get("availableReplicas") or 0)
+    gen = int((dep.get("metadata") or {}).get("generation") or 0)
+    observed = int(status.get("observedGeneration") or 0)
+    return observed >= gen and updated >= desired and available >= desired
+
+
+def _deploy_wait_summary(dep: dict[str, Any]) -> str:
+    status = dep.get("status") or {}
+    spec = dep.get("spec") or {}
+    desired = spec.get("replicas")
+    available = status.get("availableReplicas") or 0
+    updated = status.get("updatedReplicas") or 0
+    reasons = []
+    for cond in status.get("conditions") or []:
+        if cond.get("type") == "Progressing" and cond.get("reason"):
+            reasons.append(str(cond.get("reason")))
+    extra = f" {','.join(reasons)}" if reasons else ""
+    return f"updated={updated}/{desired} available={available}/{desired}{extra}"
+
+
+def _pod_wait_summary(
+    env: Env,
+    release: str,
+    runner: Optional[RunFn] = None,
+    *,
+    template_hash: str = "",
+) -> str:
+    _names, summary = _current_wait_pods(env, release, runner=runner, template_hash=template_hash)
+    return summary
+
+
+def _current_wait_pods(
+    env: Env,
+    release: str,
+    runner: Optional[RunFn] = None,
+    *,
+    template_hash: str = "",
+) -> tuple[Optional[list[str]], str]:
+    res = _run(
+        kube_argv(env, "get", "pods", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if res.returncode != 0:
+        return None, (res.stderr or res.stdout or "get pods failed").strip()
+    names: list[str] = []
+    parts: list[str] = []
+    for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
+        if template_hash and _pod_template_hash(pod) != template_hash:
+            continue
+        name = str((pod.get("metadata") or {}).get("name") or "pod")
+        names.append(name)
+        phase = str((pod.get("status") or {}).get("phase") or "")
+        waiting = ""
+        for cs in (pod.get("status") or {}).get("containerStatuses") or []:
+            st = cs.get("state") or {}
+            wait = st.get("waiting") or {}
+            if wait.get("reason"):
+                waiting = str(wait.get("reason"))
+                if wait.get("message"):
+                    waiting = f"{waiting}: {wait.get('message')}"
+                break
+        parts.append(f"{name} {phase} {waiting}".strip())
+    return names, "; ".join(parts) or "no pods"
+
+
+def _clip_log_text(text: str, *, max_chars: int = 2000) -> str:
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    return "…\n" + text[-max_chars:]
+
+
+def _pod_log_snippet(env: Env, pod: str, runner: Optional[RunFn] = None) -> str:
+    argv = kube_argv(env, "logs", pod, "--tail", "40")
+    res = _run(argv, runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    text = (res.stdout or "").strip()
+    if not text:
+        prev = _run(
+            kube_argv(env, "logs", pod, "--previous", "--tail", "40"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        text = (prev.stdout or prev.stderr or res.stderr or "").strip()
+    elif res.returncode != 0 and not text:
+        text = (res.stderr or "").strip()
+    return _clip_log_text(text) if text else "(no logs yet)"
+
+
+def _log_rollout_heartbeat(
+    env: Env,
+    *,
+    name: str,
+    summary: str,
+    release: str,
+    template_hash: str,
+    runner: Optional[RunFn] = None,
+) -> None:
+    names, pods = _current_wait_pods(env, release, runner=runner, template_hash=template_hash)
+    logger.info("waiting rollout deployment/%s %s pods=%s", name, summary, pods)
+    if names is None:
+        return
+    for pod in names:
+        snippet = _pod_log_snippet(env, pod, runner=runner)
+        logger.info("pod logs %s\n%s", pod, snippet)
+
+
+def _wait_agent_rollout(
+    env: Env,
+    release: str,
+    *,
+    runner: Optional[RunFn] = None,
+    timeout_sec: Optional[float] = None,
+) -> None:
+    """Poll Available replicas. Do not use `kubectl rollout status` — it exits
+    immediately on a leftover ProgressDeadlineExceeded from a prior RS."""
+    wait_for = ROLLOUT_WAIT_SEC if timeout_sec is None else timeout_sec
+    name = agent_deployment_name(release)
+    logger.info("wait rollout deployment/%s timeout=%ss", name, int(wait_for))
+    _prune_stale_agent_pods(env, release, runner=runner)
+    deadline = time.monotonic() + wait_for
+    last_log = 0.0
+    while True:
+        dep_res = _run(
+            kube_argv(env, "get", "deploy", name, "-o", "json"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        summary = "get deploy failed"
+        current_hash = _current_template_hash(env, release, runner=runner)
+        if dep_res.returncode == 0:
+            dep = json.loads(dep_res.stdout or "{}") or {}
+            if _deploy_ready(dep):
+                logger.info("rollout ready deployment/%s", name)
+                return
+            summary = _deploy_wait_summary(dep)
+        else:
+            summary = (dep_res.stderr or dep_res.stdout or summary).strip()
+        now = time.monotonic()
+        if now >= deadline:
+            names, pods = _current_wait_pods(env, release, runner=runner, template_hash=current_hash)
+            snippets = []
+            for pod in names or []:
+                snippets.append(f"{pod}: {_pod_log_snippet(env, pod, runner=runner)}")
+            extra = ("\n" + "\n".join(snippets)) if snippets else ""
+            raise RuntimeError(
+                f"deployment/{name} not ready within {wait_for:.0f}s ({summary}); pods: {pods}{extra}"
+            )
+        if last_log == 0.0 or now - last_log >= 10:
+            _log_rollout_heartbeat(
+                env,
+                name=name,
+                summary=summary,
+                release=release,
+                template_hash=current_hash,
+                runner=runner,
+            )
+            last_log = now
+        remaining = deadline - now
+        time.sleep(0 if runner is not None else min(2.0, remaining))
+
+
+def _helm_upgrade_agent(
+    *,
+    env: Env,
+    release: str,
+    overlay: dict[str, Any],
+    agent_chart: Path,
+    platform_chart: Path,
+    platform_release: str,
+    as_default: bool,
+    runner: Optional[RunFn] = None,
+) -> None:
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
+        yaml.safe_dump(overlay, fh)
+        values_file = fh.name
+    try:
+        logger.info("helm upgrade --install %s", release)
+        _run(
+            helm_argv(
+                env,
+                "upgrade",
+                "--install",
+                release,
+                str(agent_chart),
+                "-f",
+                values_file,
+            ),
+            runner=runner,
+            capture=False,
+            timeout=HELM_UPGRADE_TIMEOUT_SEC,
+        )
+        if as_default:
+            logger.info("helm upgrade platform %s attachDefaultRoute=false", platform_release)
+            plat_args = helm_argv(env, "upgrade", platform_release, str(platform_chart), "--reuse-values")
+            plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
+            _run(plat_args, runner=runner, capture=False, timeout=HELM_UPGRADE_TIMEOUT_SEC)
+        _wait_agent_rollout(env, release, runner=runner)
+    finally:
+        Path(values_file).unlink(missing_ok=True)
+
+
 def deploy_agent(
     *,
     root: Path,
@@ -301,10 +799,15 @@ def deploy_agent(
         registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
+    logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
     platform_values: dict[str, Any] = {}
     if shape.mcp_servers:
-        values_raw = _run(helm_argv(env, "get", "values", info.release, "-o", "yaml"), runner=runner)
+        values_raw = _run(
+            helm_argv(env, "get", "values", info.release, "-o", "yaml"),
+            runner=runner,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
         platform_values = yaml.safe_load(values_raw.stdout or "") or {}
         missing = missing_extra_registrations(shape.mcp_servers, platform_values)
         if missing:
@@ -317,11 +820,16 @@ def deploy_agent(
         with tempfile.TemporaryDirectory(prefix="zelkor-build-") as tmp:
             ctx = Path(tmp)
             _write_build_context(root, ctx, shape.kind, shape.graph_id)
-            _run(["docker", "build", "-t", image_ref, str(ctx)], runner=runner)
+            logger.info("building %s", image_ref)
+            logger.info("docker build first pull can take several minutes; layer progress follows")
+            _run(["docker", "build", "--progress=plain", "-t", image_ref, str(ctx)], runner=runner)
+            logger.info("built %s", image_ref)
         if push:
+            logger.info("push %s", image_ref)
             _run(["docker", "push", image_ref], runner=runner)
         elif _is_kind(env):
-            cluster = os.getenv("KIND_CLUSTER") or env.kube_context.removeprefix("kind-")
+            cluster = _kind_cluster_name(env)
+            logger.info("kind load %s cluster=%s", image_ref, cluster)
             _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
     overlay: dict[str, Any] = {
         "graphId": shape.graph_id,
@@ -361,39 +869,103 @@ def deploy_agent(
         }
     if info.image_pull_secrets:
         overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
-    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
-        yaml.safe_dump(overlay, fh)
-        values_file = fh.name
-    try:
-        _run(
-            helm_argv(
-                env,
-                "upgrade",
-                "--install",
-                release,
-                str(agent_chart),
-                "-f",
-                values_file,
-            ),
-            runner=runner,
-        )
-        if as_default:
-            plat_args = helm_argv(env, "upgrade", info.release, str(platform_chart), "--reuse-values")
-            plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
-            _run(plat_args, runner=runner)
-        _run(
-            kube_argv(
-                env,
-                "rollout",
-                "status",
-                f"deployment/{agent_deployment_name(release)}",
-                "--timeout=180s",
-            ),
-            runner=runner,
-        )
-    finally:
-        Path(values_file).unlink(missing_ok=True)
+    _helm_upgrade_agent(
+        env=env,
+        release=release,
+        overlay=overlay,
+        agent_chart=agent_chart,
+        platform_chart=platform_chart,
+        platform_release=info.release,
+        as_default=as_default,
+        runner=runner,
+    )
     return {"release": release, "graph_id": shape.graph_id, "as_default": as_default, "image": image_ref}
+
+
+def _merge_values_files(paths: list[Path]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for path in paths:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if not isinstance(data, dict):
+            raise RuntimeError(f"{path} must be a YAML mapping")
+        merged = fill_empty(data, merged)
+    return merged
+
+
+def deploy_from_values(
+    *,
+    values_path: Path,
+    env: Env,
+    agent_chart: Path,
+    platform_chart: Path,
+    runner: Optional[RunFn] = None,
+    approval_threshold: str = "",
+    extra_values: Optional[list[Path]] = None,
+    image_registry: str = "",
+    skip_build: Optional[bool] = None,
+) -> dict[str, Any]:
+    if approval_threshold:
+        raise RuntimeError(UPGRADE)
+    paths = [values_path, *(extra_values or [])]
+    file_values = _merge_values_files(paths)
+    if not isinstance(file_values, dict):
+        raise RuntimeError(f"{values_path} must be a YAML mapping")
+    graph_id = str(file_values.get("graphId") or "").strip()
+    if not graph_id:
+        raise RuntimeError("values file must set graphId")
+    image = dict(file_values.get("image") or {})
+    repo = str(image.get("repository") or "").strip()
+    if not repo:
+        raise RuntimeError("values file must set image.repository")
+    digest = str(image.get("digest") or "").strip()
+    tag = str(image.get("tag") or "").strip() or _chart_app_version(agent_chart)
+    image["tag"] = tag
+    file_values = dict(file_values)
+    file_values["image"] = image
+    logger.info("deploy -f %s graph_id=%s image=%s:%s", values_path, graph_id, repo, tag)
+    dockerfile = values_path.parent / "Dockerfile"
+    skip = _skip_build() if skip_build is None else skip_build
+    if dockerfile.is_file() and not skip and not digest:
+        if not _is_kind(env):
+            registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
+            if not registry:
+                raise RuntimeError(
+                    "Set ZELKOR_IMAGE_REGISTRY or pass --registry when deploying to a non-kind cluster"
+                )
+        image_ref = f"{repo}:{tag}"
+        _build_catalog_image(
+            env=env,
+            image_ref=image_ref,
+            dockerfile=dockerfile,
+            context=_chart_repo_root(agent_chart),
+            tag=tag,
+            runner=runner,
+            push=not _is_kind(env),
+        )
+        if _is_kind(env):
+            image["pullPolicy"] = "Never"
+            file_values = dict(file_values)
+            file_values["image"] = image
+            logger.info("image.pullPolicy=Never after kind load")
+    info = discover_platform(env, runner=runner)
+    overlay = merge_catalog_values(file_values, discovered_worker_values(info))
+    as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
+    release = helm_release_name(graph_id)
+    _helm_upgrade_agent(
+        env=env,
+        release=release,
+        overlay=overlay,
+        agent_chart=agent_chart,
+        platform_chart=platform_chart,
+        platform_release=info.release,
+        as_default=as_default,
+        runner=runner,
+    )
+    if digest:
+        ref = f"{repo}@{digest}"
+    else:
+        ref = f"{repo}:{tag}"
+    return {"release": release, "graph_id": graph_id, "as_default": as_default, "image": ref}
 
 
 def cmd_undeploy(
@@ -406,14 +978,21 @@ def cmd_undeploy(
 ) -> int:
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
+    logger.info("undeploy release=%s", release)
     info = discover_platform(env, runner=runner)
-    got = _run(helm_argv(env, "get", "values", release, "-o", "yaml"), runner=runner, check=False)
+    got = _run(
+        helm_argv(env, "get", "values", release, "-o", "yaml"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     if got.returncode != 0:
         print(f"agent release {release} not found", file=sys.stderr)
         return 1
     values = yaml.safe_load(got.stdout or "") or {}
     as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
-    _run(helm_argv(env, "uninstall", release), runner=runner)
+    logger.info("helm uninstall %s", release)
+    _run(helm_argv(env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
     if as_default:
         _run(
             helm_argv(
@@ -426,6 +1005,8 @@ def cmd_undeploy(
                 "aegra.attachDefaultRoute=true",
             ),
             runner=runner,
+            capture=False,
+            timeout=HELM_UPGRADE_TIMEOUT_SEC,
         )
     print(json.dumps({"release": release, "uninstalled": True, "restored_default": as_default}))
     return 0
@@ -456,6 +1037,7 @@ def cmd_logs(
 
 
 def cmd_init(root: Path) -> int:
+    logger.info("init directory=%s", root)
     agent = root / "agent.json"
     md = root / "AGENTS.md"
     if agent.exists() or md.exists():
@@ -468,6 +1050,7 @@ def cmd_init(root: Path) -> int:
 
 
 def cmd_env(args: argparse.Namespace, store_path: Path | None) -> int:
+    logger.info("env %s", args.env_cmd)
     if args.env_cmd == "add":
         add_env(
             Env(name=args.name, kube_context=args.kube_context, namespace=args.namespace, kubeconfig=args.kubeconfig or ""),
@@ -502,7 +1085,8 @@ def cmd_env(args: argparse.Namespace, store_path: Path | None) -> int:
 
 
 def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
-    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner)
+    logger.info("status env=%s namespace=%s", env.name, env.namespace)
+    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner, timeout=KUBE_RUN_TIMEOUT_SEC)
     print("Helm releases:")
     for rel in json.loads(listed.stdout or "[]"):
         chart = str(rel.get("chart") or "")
@@ -510,7 +1094,12 @@ def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
             print(f"  {rel.get('name')}  {chart}  {rel.get('status')}")
         if chart.startswith("zelkor-platform"):
             print(f"  {rel.get('name')}  {chart}  {rel.get('status')}")
-    routes = _run(kube_argv(env, "get", "httproute", "-o", "json"), runner=runner, check=False)
+    routes = _run(
+        kube_argv(env, "get", "httproute", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
     print("HTTPRoutes:")
     if routes.returncode == 0:
         for route in (json.loads(routes.stdout or "{}") or {}).get("items") or []:
@@ -521,6 +1110,7 @@ def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
 
 
 def cmd_doctor(env: Env, runner: Optional[RunFn] = None) -> int:
+    logger.info("doctor env=%s namespace=%s", env.name, env.namespace)
     info = discover_platform(env, runner=runner)
     checks = [
         ("DATABASE_URL", bool(info.database_url)),
@@ -563,6 +1153,7 @@ def cmd_run(
     runner: Optional[RunFn] = None,
 ) -> int:
     shape = detect(root, graph_id_flag)
+    logger.info("run graph_id=%s", shape.graph_id)
     info = discover_platform(env, runner=runner)
     base = url or os.getenv("ZELKOR_AGENTS_URL") or os.getenv("ZELKOR_AEGRA_URL") or (
         f"http://{info.agents_host}" if info.agents_host else ""
@@ -585,6 +1176,7 @@ def cmd_run(
     try:
         from langgraph_sdk import get_sync_client
 
+        logger.info("run stream url=%s graph_id=%s", base, shape.graph_id)
         client = get_sync_client(url=base, headers=headers)
         thread = client.threads.create()
         errored = False
@@ -620,6 +1212,10 @@ def _env_from_args(args: argparse.Namespace, *, prefer_local: bool = False) -> E
 
 
 def _boot_logging() -> None:
+    try:
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     common = Path(__file__).resolve().parents[3] / "images" / "common"
     if (common / "zelkor_logging.py").is_file() and str(common) not in sys.path:
         sys.path.insert(0, str(common))
@@ -632,7 +1228,7 @@ def _boot_logging() -> None:
         return
     if not os.getenv("ZELKOR_LOG_FORMAT"):
         os.environ["ZELKOR_LOG_FORMAT"] = "text" if sys.stderr.isatty() else "json"
-        configure_logging("zelkor-cli", stream=sys.stderr)
+    configure_logging("zelkor-cli", stream=sys.stderr)
 
 
 def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> int:
@@ -712,6 +1308,14 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         p.add_argument("--approval-threshold", default="", help="workload.intent.approval.threshold (Pro)")
         p.add_argument("--registry", default="", help="container registry for agent image (required off kind)")
         p.add_argument("directory", nargs="?", default=".")
+    sub.choices["deploy"].add_argument(
+        "-f",
+        "--values",
+        action="append",
+        default=[],
+        dest="values_files",
+        help="zelkor-agent values overlay (repeatable; builds sibling Dockerfile unless ZELKOR_SKIP_BUILD=1)",
+    )
 
     args = parser.parse_args(argv)
     logger.info("cli cmd=%s", args.cmd)
@@ -740,6 +1344,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+    logger.info("using env=%s context=%s namespace=%s", env.name, env.kube_context, env.namespace)
 
     if args.cmd == "status":
         return cmd_status(env, runner=runner)
@@ -795,20 +1400,33 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         print(str(exc), file=sys.stderr)
         return 1
     try:
-        result = deploy_agent(
-            root=root,
-            env=env,
-            push=args.cmd == "deploy",
-            graph_id_flag=args.graph_id,
-            agent_chart=agent_chart,
-            platform_chart=platform_chart,
-            runner=runner,
-            skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
-            run_timeout=getattr(args, "timeout", "") or "",
-            max_tokens=int(getattr(args, "max_tokens", 0) or 0),
-            approval_threshold=getattr(args, "approval_threshold", "") or "",
-            image_registry=getattr(args, "registry", "") or "",
-        )
+        if args.cmd == "deploy" and getattr(args, "values_files", None):
+            files = [Path(p).resolve() for p in args.values_files]
+            result = deploy_from_values(
+                values_path=files[0],
+                extra_values=files[1:],
+                env=env,
+                agent_chart=agent_chart,
+                platform_chart=platform_chart,
+                runner=runner,
+                approval_threshold=getattr(args, "approval_threshold", "") or "",
+                image_registry=getattr(args, "registry", "") or "",
+            )
+        else:
+            result = deploy_agent(
+                root=root,
+                env=env,
+                push=args.cmd == "deploy",
+                graph_id_flag=args.graph_id,
+                agent_chart=agent_chart,
+                platform_chart=platform_chart,
+                runner=runner,
+                skip_build=os.getenv("ZELKOR_SKIP_BUILD", "").strip().lower() in {"1", "true", "yes"},
+                run_timeout=getattr(args, "timeout", "") or "",
+                max_tokens=int(getattr(args, "max_tokens", 0) or 0),
+                approval_threshold=getattr(args, "approval_threshold", "") or "",
+                image_registry=getattr(args, "registry", "") or "",
+            )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1
