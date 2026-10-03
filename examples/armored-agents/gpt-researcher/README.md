@@ -36,4 +36,4 @@ When platform NetworkPolicies are enabled, agent egress is in-cluster only. Web 
 
 ## What Zelkor adds
 
-`langgraph.json` and `graph.py` call unmodified `build_agent`. The wrap maps `DEFAULT_LLM_MODEL` (`openai/…`) to `openai:…` so the gateway intercepts `/v1`.
+`langgraph.json` and `graph.py` call unmodified `build_agent`. The wrap maps `DEFAULT_LLM_MODEL` (`openai/…` or a gateway id such as `gpt-oss:20b`) to `openai:…` so the gateway intercepts `/v1`.

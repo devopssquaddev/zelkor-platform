@@ -242,7 +242,14 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         elif aud_raw:
             info.jwt_audiences = [a.strip() for a in aud_raw.split(",") if a.strip()]
         claims_raw = env_map.get("AUTH_TENANT_CLAIMS", "tenant_id,org_id,sub")
-        info.jwt_tenant_claims = [c.strip() for c in claims_raw.split(",") if c.strip()]
+        if claims_raw.startswith("["):
+            try:
+                parsed = json.loads(claims_raw)
+                info.jwt_tenant_claims = [str(c) for c in parsed] if isinstance(parsed, list) else []
+            except json.JSONDecodeError:
+                info.jwt_tenant_claims = []
+        elif claims_raw:
+            info.jwt_tenant_claims = [c.strip() for c in claims_raw.split(",") if c.strip()]
         info.jwt_jwks_configmap = f"{info.release}-tenant-jwks"
         info.default_llm_model = default_llm_model_from(env_map, values)
         info.langfuse_base_url = env_map.get("LANGFUSE_BASE_URL", "")
@@ -315,6 +322,11 @@ def default_llm_model_from(env_map: dict[str, str], values: dict[str, Any]) -> s
     gateway_default = str((values.get("aiGateway") or {}).get("defaultModel") or "").strip()
     if gateway_default:
         return gateway_default
+    workspace_default = str(
+        (((values.get("workspace") or {}).get("models") or {}).get("defaultModel") or "")
+    ).strip()
+    if workspace_default:
+        return workspace_default
     models = (((values.get("langfuse") or {}).get("surfaces") or {}).get("llmConnection") or {}).get("models") or []
     if isinstance(models, list) and models:
         return str(models[0] or "").strip()
@@ -583,6 +595,17 @@ def _pod_wait_summary(
     *,
     template_hash: str = "",
 ) -> str:
+    _names, summary = _current_wait_pods(env, release, runner=runner, template_hash=template_hash)
+    return summary
+
+
+def _current_wait_pods(
+    env: Env,
+    release: str,
+    runner: Optional[RunFn] = None,
+    *,
+    template_hash: str = "",
+) -> tuple[Optional[list[str]], str]:
     res = _run(
         kube_argv(env, "get", "pods", "-l", f"app.kubernetes.io/instance={release}", "-o", "json"),
         runner=runner,
@@ -590,12 +613,14 @@ def _pod_wait_summary(
         timeout=KUBE_RUN_TIMEOUT_SEC,
     )
     if res.returncode != 0:
-        return (res.stderr or res.stdout or "get pods failed").strip()
+        return None, (res.stderr or res.stdout or "get pods failed").strip()
+    names: list[str] = []
     parts: list[str] = []
     for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
         if template_hash and _pod_template_hash(pod) != template_hash:
             continue
         name = str((pod.get("metadata") or {}).get("name") or "pod")
+        names.append(name)
         phase = str((pod.get("status") or {}).get("phase") or "")
         waiting = ""
         for cs in (pod.get("status") or {}).get("containerStatuses") or []:
@@ -607,7 +632,49 @@ def _pod_wait_summary(
                     waiting = f"{waiting}: {wait.get('message')}"
                 break
         parts.append(f"{name} {phase} {waiting}".strip())
-    return "; ".join(parts) or "no pods"
+    return names, "; ".join(parts) or "no pods"
+
+
+def _clip_log_text(text: str, *, max_chars: int = 2000) -> str:
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+    return "…\n" + text[-max_chars:]
+
+
+def _pod_log_snippet(env: Env, pod: str, runner: Optional[RunFn] = None) -> str:
+    argv = kube_argv(env, "logs", pod, "--tail", "40")
+    res = _run(argv, runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    text = (res.stdout or "").strip()
+    if not text:
+        prev = _run(
+            kube_argv(env, "logs", pod, "--previous", "--tail", "40"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        text = (prev.stdout or prev.stderr or res.stderr or "").strip()
+    elif res.returncode != 0 and not text:
+        text = (res.stderr or "").strip()
+    return _clip_log_text(text) if text else "(no logs yet)"
+
+
+def _log_rollout_heartbeat(
+    env: Env,
+    *,
+    name: str,
+    summary: str,
+    release: str,
+    template_hash: str,
+    runner: Optional[RunFn] = None,
+) -> None:
+    names, pods = _current_wait_pods(env, release, runner=runner, template_hash=template_hash)
+    logger.info("waiting rollout deployment/%s %s pods=%s", name, summary, pods)
+    if names is None:
+        return
+    for pod in names:
+        snippet = _pod_log_snippet(env, pod, runner=runner)
+        logger.info("pod logs %s\n%s", pod, snippet)
 
 
 def _wait_agent_rollout(
@@ -644,13 +711,23 @@ def _wait_agent_rollout(
             summary = (dep_res.stderr or dep_res.stdout or summary).strip()
         now = time.monotonic()
         if now >= deadline:
-            pods = _pod_wait_summary(env, release, runner=runner, template_hash=current_hash)
+            names, pods = _current_wait_pods(env, release, runner=runner, template_hash=current_hash)
+            snippets = []
+            for pod in names or []:
+                snippets.append(f"{pod}: {_pod_log_snippet(env, pod, runner=runner)}")
+            extra = ("\n" + "\n".join(snippets)) if snippets else ""
             raise RuntimeError(
-                f"deployment/{name} not ready within {wait_for:.0f}s ({summary}); pods: {pods}"
+                f"deployment/{name} not ready within {wait_for:.0f}s ({summary}); pods: {pods}{extra}"
             )
         if last_log == 0.0 or now - last_log >= 10:
-            pods = _pod_wait_summary(env, release, runner=runner, template_hash=current_hash)
-            logger.info("waiting rollout deployment/%s %s pods=%s", name, summary, pods)
+            _log_rollout_heartbeat(
+                env,
+                name=name,
+                summary=summary,
+                release=release,
+                template_hash=current_hash,
+                runner=runner,
+            )
             last_log = now
         remaining = deadline - now
         time.sleep(0 if runner is not None else min(2.0, remaining))

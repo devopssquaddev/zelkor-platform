@@ -24,3 +24,17 @@ def test_gateway_model_empty(monkeypatch):
     monkeypatch.delenv("STRATEGIC_LLM", raising=False)
     monkeypatch.delenv("DEFAULT_LLM_MODEL", raising=False)
     assert _gateway_model() == ""
+
+
+def test_gateway_model_ollama_id_uses_openai_prefix(monkeypatch):
+    monkeypatch.delenv("STRATEGIC_LLM", raising=False)
+    monkeypatch.setenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
+    assert _gateway_model() == "openai:gpt-oss:20b"
+
+
+def test_graph_factory_is_zero_arg():
+    import inspect
+
+    from graph import graph
+
+    assert len(inspect.signature(graph).parameters) == 0

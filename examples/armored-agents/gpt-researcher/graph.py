@@ -14,13 +14,18 @@ def _gateway_model() -> str:
     raw = (os.getenv("STRATEGIC_LLM") or os.getenv("DEFAULT_LLM_MODEL") or "").strip()
     if not raw:
         return ""
+    if raw.startswith("openai:"):
+        return raw
     prefix, sep, rest = raw.partition("/")
     if sep and ":" not in prefix:
         return f"{prefix}:{rest}"
+    if "/" not in raw:
+        return f"openai:{raw}"
     return raw
 
 
-def graph(config: Any = None, runtime: Any = None) -> Any:
+def graph() -> Any:
+    """0-arg Aegra factory. Two untyped params fail classify_factory on Aegra v0.10.4."""
     from deep_agents.agent import build_agent
 
     run_dir = os.path.join(tempfile.gettempdir(), f"gptr-{uuid.uuid4().hex[:8]}")

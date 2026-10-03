@@ -362,6 +362,7 @@ def test_default_llm_model_from_nemo_when_aegra_env_empty():
     assert default_llm_model_from({}, {"aiGateway": {"defaultModel": "qwen3:8b"}}) == "qwen3:8b"
     assert default_llm_model_from({}, {"guardrails": {"nemo": {"model": "gpt-oss:20b"}}, "aiGateway": {"defaultModel": "qwen3:8b"}}) == "gpt-oss:20b"
     assert default_llm_model_from({}, {"langfuse": {"surfaces": {"llmConnection": {"models": ["gpt-oss:20b"]}}}}) == "gpt-oss:20b"
+    assert default_llm_model_from({}, {"workspace": {"models": {"defaultModel": "gpt-oss:20b"}}}) == "gpt-oss:20b"
 
 
 def test_in_cluster_openai_base_url_uses_ai_gateway_service():
@@ -552,6 +553,8 @@ def test_deploy_ready_false_on_progress_deadline_without_replicas():
             return SimpleNamespace(returncode=0, stdout='{"items":[]}', stderr="")
         if "delete" in argv:
             return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if "logs" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
         calls["deploy"] += 1
         if calls["deploy"] == 1:
             return SimpleNamespace(returncode=0, stdout=json.dumps(dep), stderr="")
@@ -673,6 +676,86 @@ def test_pod_wait_summary_skips_stale_hash():
     assert "new-220" in text
     assert "old-dev" not in text
     assert ":dev" not in text
+
+
+def test_wait_agent_rollout_logs_current_pod(caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    dep = {
+        "kind": "Deployment",
+        "metadata": {"generation": 2},
+        "spec": {"replicas": 1},
+        "status": {
+            "observedGeneration": 2,
+            "updatedReplicas": 1,
+            "availableReplicas": 0,
+            "conditions": [{"type": "Progressing", "status": "True", "reason": "ReplicaSetUpdated"}],
+        },
+    }
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    calls = {"deploy": 0}
+
+    def runner(argv, **_kwargs):
+        if "rs" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "annotations": {"deployment.kubernetes.io/revision": "10"},
+                                    "labels": {"pod-template-hash": "5bd684f8b5"},
+                                }
+                            }
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "logs" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout="Graph factory 'graph' accepts 2 parameters but neither is annotated\n",
+                stderr="",
+            )
+        if "pods" in argv:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "items": [
+                            {
+                                "metadata": {
+                                    "name": "gpt-researcher-zelkor-agent-5bd684f8b5-xxw7w",
+                                    "labels": {"pod-template-hash": "5bd684f8b5"},
+                                },
+                                "status": {"phase": "Running", "containerStatuses": []},
+                            }
+                        ]
+                    }
+                ),
+                stderr="",
+            )
+        if "delete" in argv:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        calls["deploy"] += 1
+        if calls["deploy"] == 1:
+            return SimpleNamespace(returncode=0, stdout=json.dumps(dep), stderr="")
+        ready = dict(dep)
+        ready["status"] = {
+            "observedGeneration": 2,
+            "updatedReplicas": 1,
+            "availableReplicas": 1,
+            "conditions": [{"type": "Progressing", "status": "True", "reason": "NewReplicaSetAvailable"}],
+        }
+        return SimpleNamespace(returncode=0, stdout=json.dumps(ready), stderr="")
+
+    _wait_agent_rollout(env, "gpt-researcher", runner=runner, timeout_sec=5)
+    joined = "\n".join(r.message for r in caplog.records)
+    assert "pod logs gpt-researcher-zelkor-agent-5bd684f8b5-xxw7w" in joined
+    assert "Graph factory" in joined
 
 
 def test_kube_argv_sets_request_timeout():
