@@ -96,7 +96,7 @@ def _run(
     capture: bool = True,
     timeout: Optional[float] = None,
 ) -> subprocess.CompletedProcess:
-    logger.info("run %s", " ".join(argv))
+    logger.debug("run %s", " ".join(argv))
     fn = runner or subprocess.run
     kw: dict[str, Any] = {"text": True, "check": False}
     if timeout is not None:
@@ -479,7 +479,8 @@ def _wait_agent_rollout(
                 f"deployment/{name} not ready within {wait_for:.0f}s ({summary}); pods: {pods}"
             )
         if last_log == 0.0 or now - last_log >= 10:
-            logger.info("waiting rollout deployment/%s %s", name, summary)
+            pods = _pod_wait_summary(env, release, runner=runner)
+            logger.info("waiting rollout deployment/%s %s pods=%s", name, summary, pods)
             last_log = now
         remaining = deadline - now
         time.sleep(0 if runner is not None else min(2.0, remaining))
