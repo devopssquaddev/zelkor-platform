@@ -13,6 +13,8 @@ from base64 import b64encode
 from collections import defaultdict
 from typing import Any, Dict, List, Sequence
 
+from langfuse_keep import LangfuseKeep
+
 _log = logging.getLogger("zelkor-nemo-otel")
 ATTR = "zelkor.langfuse.pk"
 BAGGAGE_KEY = "zelkor.langfuse.pk"
@@ -90,76 +92,12 @@ def is_orphan_http_client(span: Any) -> bool:
     return False
 
 
-_PROBE_PATHS = ("/health", "/live", "/ready", "/v1/health")
-_PROBE_ATTR_KEYS = ("http.route", "http.target", "url.path", "http.path", "http.url")
-_HTTP_METHODS = frozenset({"GET", "HEAD"})
-_PROBE_TRACE_CAP = 4096
-_probe_traces: set[int] = set()
-
-
-def _normalize_http_path(value: str) -> str:
-    text = value.strip()
-    if "://" in text:
-        from urllib.parse import urlparse
-
-        text = urlparse(text).path
-    path = text.split("?", 1)[0].rstrip("/")
-    return path or "/"
-
-
-def is_probe_span(span: Any) -> bool:
-    probes = set(_PROBE_PATHS)
-    name = str(getattr(span, "name", "") or "")
-    parts = name.split(None, 1)
-    if len(parts) == 2 and parts[0].upper() in _HTTP_METHODS:
-        if _normalize_http_path(parts[1]) in probes:
-            return True
-    attrs = getattr(span, "attributes", None) or {}
-    for key in _PROBE_ATTR_KEYS:
-        raw = attrs.get(key)
-        if raw is None:
-            continue
-        if _normalize_http_path(str(raw)) in probes:
-            return True
-    return False
-
-
-def _span_trace_id(span: Any) -> int | None:
-    ctx = getattr(span, "context", None)
-    if ctx is None:
-        getter = getattr(span, "get_span_context", None)
-        ctx = getter() if callable(getter) else None
-    tid = getattr(ctx, "trace_id", None)
-    return int(tid) if tid else None
-
-
-_FASTAPI_CHILD_NAMES = frozenset(
-    {"fastapi.endpoint", "fastapi.dependencies", "fastapi.serialization"}
-)
+_langfuse_keep = LangfuseKeep()
 
 
 def drop_probe_span(span: Any) -> bool:
-    """Drop kubelet probe SERVER spans and FastAPI children on the same trace."""
-    global _probe_traces
-    tid = _span_trace_id(span)
-    if tid and tid in _probe_traces:
-        return True
-    if is_probe_span(span):
-        if tid:
-            if len(_probe_traces) >= _PROBE_TRACE_CAP:
-                _probe_traces = set()
-            _probe_traces.add(tid)
-        return True
-    name = str(getattr(span, "name", "") or "")
-    if name in _FASTAPI_CHILD_NAMES:
-        attrs = getattr(span, "attributes", None) or {}
-        if not attrs.get("langfuse.trace.name"):
-            if tid:
-                if len(_probe_traces) >= _PROBE_TRACE_CAP:
-                    _probe_traces = set()
-                _probe_traces.add(tid)
-            return True
-    return False
+    """True when the span must not go to Langfuse."""
+    return not _langfuse_keep.should_export(span)
 
 
 def identity_from_headers(headers: Any) -> Dict[str, str]:
@@ -241,13 +179,8 @@ def install() -> None:
         return "", ""
 
     def _kept(spans):  # type: ignore[no-untyped-def]
-        for span in spans:
-            drop_probe_span(span)
-        return [
-            span
-            for span in spans
-            if not is_orphan_http_client(span) and not drop_probe_span(span)
-        ]
+        kept = _langfuse_keep.filter_batch(spans)
+        return [span for span in kept if not is_orphan_http_client(span)]
 
     def _export(self, spans):  # type: ignore[no-untyped-def]
         spans = _kept(spans)

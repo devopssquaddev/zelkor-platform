@@ -12,68 +12,19 @@ import logging
 import os
 from typing import Any
 
+from langfuse_keep import (  # noqa: F401
+    LangfuseKeep,
+    excluded_probe_paths,
+    is_probe_span,
+)
+
 _log = logging.getLogger("zelkor-aegra-wrap")
 
 IO_MAX = 8192
 
-_DEFAULT_PROBE_PATHS = ("/health", "/live", "/ready", "/v1/health")
-_PROBE_ATTR_KEYS = ("http.route", "http.target", "url.path", "http.path", "http.url")
-_HTTP_METHODS = frozenset({"GET", "HEAD"})
-_PROBE_TRACE_CAP = 4096
-
-
-def excluded_probe_paths() -> tuple[str, ...]:
-    """Comma-separated paths from Helm OTEL exclude env (same list as NeMo)."""
-    for key in (
-        "OTEL_PYTHON_FASTAPI_EXCLUDED_URLS",
-        "OTEL_PYTHON_ASGI_EXCLUDED_URLS",
-        "OTEL_PYTHON_EXCLUDED_URLS",
-    ):
-        raw = os.getenv(key, "").strip()
-        if raw:
-            return tuple(p.strip() for p in raw.split(",") if p.strip())
-    return _DEFAULT_PROBE_PATHS
-
-
-def _normalize_http_path(value: str) -> str:
-    text = value.strip()
-    if "://" in text:
-        from urllib.parse import urlparse
-
-        text = urlparse(text).path
-    path = text.split("?", 1)[0].rstrip("/")
-    return path or "/"
-
-
-def is_probe_span(span: Any) -> bool:
-    """True for kubelet/health HTTP spans (FastAPI/ASGI names like GET /ready)."""
-    probes = {_normalize_http_path(p) for p in excluded_probe_paths()}
-    name = str(getattr(span, "name", "") or "")
-    parts = name.split(None, 1)
-    if len(parts) == 2 and parts[0].upper() in _HTTP_METHODS:
-        if _normalize_http_path(parts[1]) in probes:
-            return True
-    attrs = getattr(span, "attributes", None) or {}
-    for key in _PROBE_ATTR_KEYS:
-        raw = attrs.get(key)
-        if raw is None:
-            continue
-        if _normalize_http_path(str(raw)) in probes:
-            return True
-    return False
-
-
-def span_trace_id(span: Any) -> int | None:
-    ctx = getattr(span, "context", None)
-    if ctx is None:
-        getter = getattr(span, "get_span_context", None)
-        ctx = getter() if callable(getter) else None
-    tid = getattr(ctx, "trace_id", None)
-    return int(tid) if tid else None
-
 
 class ProbeFilterSpanProcessor:
-    """Drop probe SERVER spans and their FastAPI child spans (fastapi.endpoint, …).
+    """Export only agent-run traces and /v1/chat/completions.
 
     Aegra runs bare ``uvicorn`` (not ``opentelemetry-instrument``), so Helm
     ``OTEL_PYTHON_*_EXCLUDED_URLS`` is ignored. Wrap the SDK multi-processor.
@@ -84,49 +35,19 @@ class ProbeFilterSpanProcessor:
 
     def __init__(self, wrapped: Any) -> None:
         self._wrapped = wrapped
-        self._probe_traces: set[int] = set()
-
-    def _mark_probe(self, span: Any) -> None:
-        tid = span_trace_id(span)
-        if not tid:
-            return
-        if len(self._probe_traces) >= _PROBE_TRACE_CAP:
-            self._probe_traces.clear()
-        self._probe_traces.add(tid)
-
-    def _drop(self, span: Any) -> bool:
-        tid = span_trace_id(span)
-        if tid and tid in self._probe_traces:
-            return True
-        if is_probe_span(span):
-            self._mark_probe(span)
-            return True
-        name = str(getattr(span, "name", "") or "")
-        if name in (
-            "fastapi.endpoint",
-            "fastapi.dependencies",
-            "fastapi.serialization",
-        ):
-            attrs = getattr(span, "attributes", None) or {}
-            if not attrs.get("langfuse.trace.name"):
-                self._mark_probe(span)
-                return True
-        return False
+        self._keep = LangfuseKeep()
 
     def on_start(self, span: Any, parent_context: Any = None) -> None:
-        if is_probe_span(span):
-            self._mark_probe(span)
-        elif self._drop(span):
-            pass
         self._wrapped.on_start(span, parent_context)
+        self._keep.note(span)
 
     def on_end(self, span: Any) -> None:
-        if self._drop(span):
+        if not self._keep.should_export(span):
             return
         self._wrapped.on_end(span)
 
     def _on_ending(self, span: Any) -> None:
-        if self._drop(span):
+        if not self._keep.should_export(span):
             return
         ending = getattr(self._wrapped, "_on_ending", None)
         if callable(ending):
@@ -150,7 +71,7 @@ def install_probe_span_filter(provider: Any) -> None:
         return
     wrapped = ProbeFilterSpanProcessor(inner)
     provider._active_span_processor = wrapped
-    _log.info("probe span filter installed")
+    _log.info("Langfuse keep-span filter installed")
 
 
 def bound_contextvars() -> dict[str, Any]:
