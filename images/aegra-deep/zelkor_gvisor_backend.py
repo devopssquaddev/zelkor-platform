@@ -17,7 +17,6 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("zelkor-gvisor-backend")
 
 SKILLS_VIRTUAL_PATH = "/skills"
-_MCP_HTTP_TIMEOUT_SEC = 110.0
 _SANDBOX_TIMEOUT_MAX = 90
 
 try:
@@ -51,32 +50,6 @@ def _execute_response(output: str, exit_code: int, truncated: bool = False) -> A
         return SimpleNamespace(output=output, exit_code=exit_code, truncated=truncated)
 
 
-def _mcp_endpoint() -> str:
-    base = os.getenv("MCP_URL", "").rstrip("/")
-    if not base:
-        return ""
-    return f"{base}/mcp"
-
-
-def _run_config() -> dict:
-    try:
-        from mcp_inject import _current_run_config
-
-        cfg = _current_run_config()
-        return cfg if isinstance(cfg, dict) else {}
-    except Exception:
-        return {}
-
-
-def _mcp_bearer() -> str:
-    try:
-        from mcp_inject import inbound_authorization
-
-        return inbound_authorization(_run_config())
-    except Exception:
-        return ""
-
-
 def _clamp_timeout(seconds: int) -> int:
     return max(1, min(int(seconds), _SANDBOX_TIMEOUT_MAX))
 
@@ -94,6 +67,8 @@ def _parse_execute_payload(result: Any) -> tuple[str, int]:
         text = content[0].text
     if not text:
         return "", 0
+    if text.startswith("Error:"):
+        return text, 1
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
@@ -119,36 +94,18 @@ def _parse_execute_payload(result: Any) -> tuple[str, int]:
 
 
 async def _call_sandbox_execute(code: str, environment: str, timeout_sec: int) -> Any:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamable_http_client
+    from mcp_inject import call_tool
 
-    import httpx
-
-    url = _mcp_endpoint()
-    if not url:
-        raise RuntimeError("MCP_URL is not set")
-    bearer = _mcp_bearer()
-    if not bearer:
-        raise RuntimeError("no MCP bearer for sandbox execute")
-
-    auth = bearer if bearer.lower().startswith("bearer ") else f"Bearer {bearer}"
-    timeout = httpx.Timeout(_MCP_HTTP_TIMEOUT_SEC, connect=30.0)
-    async with httpx.AsyncClient(
-        headers={"Authorization": auth},
-        timeout=timeout,
-    ) as http_client:
-        async with streamable_http_client(url, http_client=http_client) as streams:
-            read_stream, write_stream, _ = streams
-            async with ClientSession(read_stream, write_stream) as session:
-                await session.initialize()
-                return await session.call_tool(
-                    "sandbox__execute_python",
-                    {
-                        "code": code,
-                        "environment": environment,
-                        "timeout": timeout_sec,
-                    },
-                )
+    text = await call_tool(
+        "sandbox__execute_python",
+        {
+            "code": code,
+            "environment": environment,
+            "timeout": timeout_sec,
+        },
+    )
+    is_err = text.startswith("Error:")
+    return SimpleNamespace(isError=is_err, content=[SimpleNamespace(text=text)])
 
 
 def _run_async(coro: Any) -> Any:
@@ -428,7 +385,7 @@ class ZelkorGvisorBackend(_ProtocolBase):
         return virt
 
     def execute(self, command: str, *, timeout: int | None = None) -> Any:
-        if not self._mcp and not _mcp_endpoint():
+        if not self._mcp:
             logger.error("MCP_URL is not set")
             return _execute_response("MCP_URL is not set", 1)
         seconds = _clamp_timeout(5 if timeout is None else int(timeout))

@@ -24,6 +24,7 @@ from zelkor.detect import (
     deploy_first_langgraph,
     detect,
     helm_release_name,
+    mcp_servers_from_tools,
     should_attach_as_default,
 )
 from zelkor.envfile import Env, add_env, list_envs, load_store, remove_env, resolve_env
@@ -61,6 +62,7 @@ class PlatformInfo:
     otel_targets: str = ""
     agent_route_names: list[str] = field(default_factory=list)
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
+    helm_values: dict[str, Any] = field(default_factory=dict)
 
 
 def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = "") -> Path:
@@ -210,6 +212,8 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         timeout=KUBE_RUN_TIMEOUT_SEC,
     )
     values = yaml.safe_load(values_raw.stdout or "") or {}
+    if isinstance(values, dict):
+        info.helm_values = values
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
@@ -430,6 +434,14 @@ def _build_catalog_image(
         logger.info("kind load %s cluster=%s", image_ref, cluster)
         _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
         logger.info("kind-loaded %s; kubelet will not pull this tag", image_ref)
+
+
+def _require_registered_extras(info: PlatformInfo, servers: tuple[dict[str, str], ...] | list[dict[str, str]]) -> None:
+    if not servers:
+        return
+    missing = missing_extra_registrations(servers, info.helm_values)
+    if missing:
+        raise RuntimeError(format_missing_extras_error(missing))
 
 
 def _is_empty(value: Any) -> bool:
@@ -801,17 +813,7 @@ def deploy_agent(
     release = helm_release_name(shape.graph_id)
     logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
-    platform_values: dict[str, Any] = {}
-    if shape.mcp_servers:
-        values_raw = _run(
-            helm_argv(env, "get", "values", info.release, "-o", "yaml"),
-            runner=runner,
-            timeout=KUBE_RUN_TIMEOUT_SEC,
-        )
-        platform_values = yaml.safe_load(values_raw.stdout or "") or {}
-        missing = missing_extra_registrations(shape.mcp_servers, platform_values)
-        if missing:
-            raise RuntimeError(format_missing_extras_error(missing))
+    _require_registered_extras(info, shape.mcp_servers)
     as_default = should_attach_as_default(info.agent_route_names, release)
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
@@ -948,6 +950,7 @@ def deploy_from_values(
             file_values["image"] = image
             logger.info("image.pullPolicy=Never after kind load")
     info = discover_platform(env, runner=runner)
+    _require_registered_extras(info, mcp_servers_from_tools(values_path.parent))
     overlay = merge_catalog_values(file_values, discovered_worker_values(info))
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
     release = helm_release_name(graph_id)
@@ -1142,6 +1145,58 @@ def cmd_version(env: Optional[Env], runner: Optional[RunFn] = None) -> int:
     return 0
 
 
+def _chunk_field(chunk: object, key: str):
+    if isinstance(chunk, dict):
+        return chunk.get(key)
+    return getattr(chunk, key, None)
+
+
+_PROGRESS_START = {
+    "on_chain_start": "node",
+    "on_chat_model_start": "model",
+    "on_llm_start": "model",
+    "on_tool_start": "tool",
+}
+_SKIP_PROGRESS = frozenset(
+    {
+        "LangGraph",
+        "RunnableSequence",
+        "RunnableLambda",
+        "RunnableParallel",
+        "RunnableEach",
+        "ChannelWrite",
+        "ChannelRead",
+        "Pregel",
+        "__start__",
+        "__end__",
+    }
+)
+
+
+def format_run_progress(chunk: object) -> str | None:
+    """One stderr line for node/model/tool start. No event payloads."""
+    event = _chunk_field(chunk, "event")
+    data = _chunk_field(chunk, "data")
+    if not isinstance(data, dict):
+        data = {}
+    if event == "custom":
+        kind = str(data.get("kind") or "")
+        name = str(data.get("name") or "").strip()
+        if not kind or not name:
+            return None
+        phase = str(data.get("phase") or "start")
+        if phase == "wait":
+            return f"agent: {kind} {name} wait {int(data.get('elapsed_s') or 0)}s"
+        return f"agent: {kind} {name}"
+    lc_event = event if event in _PROGRESS_START else data.get("event")
+    name = str(data.get("name") or _chunk_field(chunk, "name") or "").strip()
+    if lc_event not in _PROGRESS_START:
+        return None
+    if not name or name in _SKIP_PROGRESS or name.startswith("Runnable") or name.startswith("Channel"):
+        return None
+    return f"agent: {_PROGRESS_START[lc_event]} {name}"
+
+
 def cmd_run(
     root: Path,
     env: Env,
@@ -1182,11 +1237,15 @@ def cmd_run(
             thread["thread_id"],
             shape.graph_id,
             input={"messages": [{"role": "human", "content": message}]},
-            stream_mode="updates",
+            stream_mode=["events", "updates"],
         ):
-            print(chunk)
-            event = getattr(chunk, "event", None)
-            if event == "error" or (isinstance(chunk, dict) and chunk.get("event") == "error"):
+            line = format_run_progress(chunk)
+            if line:
+                print(line, file=sys.stderr)
+            stream_event = _chunk_field(chunk, "event")
+            if stream_event in ("updates", "error"):
+                print(chunk)
+            if stream_event == "error" or (isinstance(chunk, dict) and chunk.get("event") == "error"):
                 errored = True
         if errored:
             return 1

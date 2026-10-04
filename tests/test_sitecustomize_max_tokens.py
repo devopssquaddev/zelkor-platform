@@ -16,6 +16,7 @@ SITECUSTOMIZE = ROOT / "images" / "aegra" / "sitecustomize.py"
 def _load_chat_openai_patch(monkeypatch, cap: str):
     monkeypatch.setenv("ZELKOR_MAX_TOKENS", cap)
     # Minimal stubs so sitecustomize import does not need full aegra image tree.
+    sys.modules.setdefault("agent_step", MagicMock())
     for mod in ("auth_inject", "wrap_identity", "trace_wrap", "mcp_inject"):
         sys.modules.setdefault(mod, MagicMock())
     sys.modules["zelkor_logging"] = MagicMock(configure_logging=MagicMock())

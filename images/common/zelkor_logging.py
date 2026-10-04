@@ -24,7 +24,25 @@ _LEVELS = {
     "CRITICAL": logging.CRITICAL,
 }
 
-_CONTEXT_KEYS = ("tenant_id", "graph_id", "run_id", "request_id", "trace_id", "event")
+_CONTEXT_KEYS = (
+    "tenant_id",
+    "graph_id",
+    "run_id",
+    "request_id",
+    "trace_id",
+    "event",
+    "kind",
+    "phase",
+    "elapsed_s",
+    "tool",
+    "id",
+    "is_error",
+    "exc_type",
+    "pending_id",
+    "since_send_s",
+    "sse_drops",
+    "status",
+)
 
 
 class JsonFormatter(logging.Formatter):
@@ -38,14 +56,35 @@ class JsonFormatter(logging.Formatter):
         }
         for key in _CONTEXT_KEYS:
             val = getattr(record, key, None)
-            if val:
+            if val is None or val == "":
+                continue
+            if key in ("elapsed_s", "since_send_s", "sse_drops", "id", "pending_id") and val == 0:
                 payload[key] = val
+                continue
+            if val or val is False:
+                payload[key] = val
+        step = getattr(record, "step", None)
+        if step:
+            payload["name"] = step
         sandbox = getattr(record, "sandbox", None)
         if isinstance(sandbox, dict) and sandbox:
             payload["sandbox"] = sandbox
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)
         return json.dumps(payload, default=str)
+
+
+class DropMcpSessionIdFilter(logging.Filter):
+    """MCP streamable HTTP logs the session id at INFO; that is a secret."""
+
+    _NEEDLES = ("session id", "session-id", "mcp-session-id", "negotiated protocol")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage().lower()
+        except Exception:
+            return True
+        return not any(n in msg for n in self._NEEDLES)
 
 
 class _ComponentFilter(logging.Filter):
@@ -239,6 +278,7 @@ def configure_logging(
             logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
         )
     handler.addFilter(_ComponentFilter(name))
+    handler.addFilter(DropMcpSessionIdFilter())
 
     root = logging.getLogger()
     root.setLevel(level)
@@ -251,4 +291,16 @@ def configure_logging(
         log_shutdown._done = False  # type: ignore[attr-defined]
     log_startup()
     install_lifecycle_hooks()
+    return name
+
+
+def restore_after_vendor_logging(component: Optional[str] = None) -> str:
+    """Re-apply Zelkor JSON after Aegra dictConfig/structlog. Mute MCP session ids."""
+    name = configure_logging(component, force=True)
+    root = logging.getLogger()
+    if not any(isinstance(f, DropMcpSessionIdFilter) for f in root.filters):
+        root.addFilter(DropMcpSessionIdFilter())
+    mcp_http = logging.getLogger("mcp.client.streamable_http")
+    if not any(isinstance(f, DropMcpSessionIdFilter) for f in mcp_http.filters):
+        mcp_http.addFilter(DropMcpSessionIdFilter())
     return name

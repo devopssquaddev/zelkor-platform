@@ -24,28 +24,37 @@ def registered_extra_names(values: dict[str, Any]) -> set[str]:
     return names
 
 
-def _service_hint_from_url(url: str) -> tuple[str, int]:
-    parsed = urlparse(url.strip())
-    host = (parsed.hostname or "").strip()
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    if not host:
-        return "", 0
-    svc = host.split(".")[0] if host else ""
-    return svc, port
+def _is_public_https_host(host: str, scheme: str) -> bool:
+    if scheme != "https" or not host or "." not in host:
+        return False
+    lowered = host.lower()
+    return not lowered.endswith(".svc.cluster.local") and not lowered.endswith(".svc")
 
 
 def extra_backend_overlay_snippet(name: str, url: str) -> str:
-    svc, port = _service_hint_from_url(url)
+    parsed = urlparse((url or "").strip())
+    host = (parsed.hostname or "").strip()
+    scheme = (parsed.scheme or "").strip().lower()
+    port = parsed.port or (443 if scheme == "https" else 80)
+    path = parsed.path.strip() or "/mcp"
     lines = [
         "workspace:",
         "  tools:",
         "    extraBackends:",
         f"      - name: {name}",
     ]
-    if svc:
+    if _is_public_https_host(host, scheme):
+        lines.append("        fqdn:")
+        lines.append(f"          hostname: {host}")
+        lines.append(f"          port: {port}")
+        lines.append(f"        path: {path}")
+    elif host:
+        svc = host.split(".")[0]
         lines.append("        service:")
         lines.append(f"          name: {svc}")
         lines.append(f"          port: {port}")
+        if path and path != "/":
+            lines.append(f"        path: {path}")
     else:
         lines.append(f"        # register upstream for {url!r} (service or fqdn required)")
     lines.append("        apiKey:")

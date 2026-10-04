@@ -64,6 +64,8 @@ def test_values_yaml_has_no_secrets_or_kind_hosts():
     assert "localhost" not in text
     assert "dev-key" not in text
     assert "TAVILY" not in text
+    tools = Path(__file__).resolve().parents[1] / "tools.json"
+    assert '"name": "tavily"' in tools.read_text(encoding="utf-8")
     assert "runtimeClassName: gvisor" in text
     assert 'aegraConfig: ""' in text or "aegraConfig: ''" in text
 

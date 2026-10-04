@@ -17,7 +17,12 @@ from zelkor_deep_factory import (  # noqa: E402
     validate_mcp_servers,
     wants_sandbox,
 )
-from zelkor_gvisor_backend import SKILLS_VIRTUAL_PATH, ZelkorGvisorBackend, wrap_shell_as_python  # noqa: E402
+from zelkor_gvisor_backend import (  # noqa: E402
+    SKILLS_VIRTUAL_PATH,
+    ZelkorGvisorBackend,
+    _parse_execute_payload,
+    wrap_shell_as_python,
+)
 
 
 def test_graph_name_defaults_to_agent():
@@ -155,7 +160,6 @@ def test_gvisor_backend_execute_uses_mcp_sdk_not_jsonrpc(monkeypatch):
 
     monkeypatch.setenv("MCP_URL", "http://zelkor-platform-mcp")
     monkeypatch.delenv("SANDBOX_WORKER_URLS", raising=False)
-    monkeypatch.setattr("zelkor_gvisor_backend._mcp_bearer", lambda: "Bearer tenant-jwt")
     monkeypatch.setattr("zelkor_gvisor_backend._call_sandbox_execute", fake_call)
     monkeypatch.setattr("zelkor_gvisor_backend._run_async", lambda coro: asyncio.run(coro))
     backend = ZelkorGvisorBackend()
@@ -169,6 +173,18 @@ def test_gvisor_backend_execute_uses_mcp_sdk_not_jsonrpc(monkeypatch):
     assert "_identity_headers" not in text
     assert "SANDBOX_WORKER_URLS" not in text
     assert "from deepagents.backends import FilesystemBackend" not in text
+    assert "streamable_http_client" not in text
+    assert "from mcp_inject import call_tool" in text
+
+
+def test_gvisor_parse_error_prefix_is_exit_1():
+    result = SimpleNamespace(
+        isError=False,
+        content=[SimpleNamespace(text="Error: RuntimeError: Session terminated")],
+    )
+    output, exit_code = _parse_execute_payload(result)
+    assert exit_code == 1
+    assert output.startswith("Error:")
 
 
 def test_deep_graph_factory_signature():

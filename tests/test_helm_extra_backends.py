@@ -77,6 +77,82 @@ def test_external_fqdn_renders_without_egress_cidrs_when_network_policies_enable
     backends = [d for d in docs if d.get("kind") == "Backend" and d.get("metadata", {}).get("name") == "saas"]
     assert len(backends) == 1
     assert backends[0]["spec"]["endpoints"][0]["fqdn"]["hostname"] == "mcp.example.com"
+    tls_pols = [
+        d
+        for d in docs
+        if d.get("kind") == "BackendTLSPolicy" and d.get("metadata", {}).get("name") == "saas-tls"
+    ]
+    assert len(tls_pols) == 1
+    assert tls_pols[0]["spec"]["validation"]["wellKnownCACertificates"] == "System"
+    assert tls_pols[0]["spec"]["validation"]["hostname"] == "mcp.example.com"
+
+
+def test_tavily_fqdn_extra_renders_apikey_and_system_tls():
+    r = _helm(
+        "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
+        "--set",
+        "workspace.tools.extraBackends[0].name=tavily",
+        "--set",
+        "workspace.tools.extraBackends[0].fqdn.hostname=mcp.tavily.com",
+        "--set",
+        "workspace.tools.extraBackends[0].fqdn.port=443",
+        "--set",
+        "workspace.tools.extraBackends[0].path=/mcp",
+        "--set",
+        "workspace.tools.extraBackends[0].apiKey.secretRef.name=tavily-mcp-key",
+    )
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    route = _mcproute(docs)
+    refs = {ref.get("name"): ref for ref in route["spec"].get("backendRefs") or []}
+    assert "tavily" in refs
+    assert refs["tavily"]["path"] == "/mcp"
+    assert refs["tavily"]["securityPolicy"]["apiKey"]["secretRef"]["name"] == "tavily-mcp-key"
+    backends = [d for d in docs if d.get("kind") == "Backend" and d.get("metadata", {}).get("name") == "tavily"]
+    assert len(backends) == 1
+    assert backends[0]["spec"]["endpoints"][0]["fqdn"]["hostname"] == "mcp.tavily.com"
+    assert "tls" not in backends[0]["spec"]
+    tls_pols = [
+        d
+        for d in docs
+        if d.get("kind") == "BackendTLSPolicy" and d.get("metadata", {}).get("name") == "tavily-tls"
+    ]
+    assert len(tls_pols) == 1
+    assert tls_pols[0]["spec"]["validation"]["hostname"] == "mcp.tavily.com"
+
+
+def test_fqdn_custom_ca_skips_system_tls_policy():
+    r = _helm(
+        "--set",
+        "gateway.hosts.mcp=mcp.example.com",
+        "--set",
+        "platform.tenants.jwt.issuer=https://issuer.example",
+        "--set",
+        "platform.tenants.jwt.audiences[0]=zelkor",
+        "--set",
+        "workspace.tools.extraBackends[0].name=partner",
+        "--set",
+        "workspace.tools.extraBackends[0].fqdn.hostname=mcp.partner.example.com",
+        "--set",
+        "workspace.tools.extraBackends[0].fqdn.port=443",
+        "--set",
+        "workspace.tools.extraBackends[0].tls.caSecretRef=partner-mcp-ca",
+    )
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    backends = [d for d in docs if d.get("kind") == "Backend" and d.get("metadata", {}).get("name") == "partner"]
+    assert backends[0]["spec"]["tls"]["caCertificateRef"]["name"] == "partner-mcp-ca"
+    tls_pols = [
+        d
+        for d in docs
+        if d.get("kind") == "BackendTLSPolicy" and d.get("metadata", {}).get("name") == "partner-tls"
+    ]
+    assert tls_pols == []
 
 
 def test_extra_backend_unknown_key_fails_render():
