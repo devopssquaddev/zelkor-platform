@@ -53,7 +53,7 @@ def test_extra_backend_string_port_compiles():
     assert "acme" in names
 
 
-def test_external_fqdn_requires_egress_cidrs_when_network_policies_enabled():
+def test_external_fqdn_renders_without_egress_cidrs_when_network_policies_enabled():
     r = _helm(
         "--set",
         "security.networkPolicies.enabled=true",
@@ -70,8 +70,13 @@ def test_external_fqdn_requires_egress_cidrs_when_network_policies_enabled():
         "--set",
         "workspace.tools.extraBackends[0].fqdn.port=443",
     )
-    assert r.returncode != 0
-    assert "egress.cidrs" in r.stderr
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    names = [ref.get("name") for ref in _mcproute(docs)["spec"].get("backendRefs") or []]
+    assert "saas" in names
+    backends = [d for d in docs if d.get("kind") == "Backend" and d.get("metadata", {}).get("name") == "saas"]
+    assert len(backends) == 1
+    assert backends[0]["spec"]["endpoints"][0]["fqdn"]["hostname"] == "mcp.example.com"
 
 
 def test_extra_backend_unknown_key_fails_render():
