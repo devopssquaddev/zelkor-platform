@@ -45,6 +45,7 @@ Each page answers one specific architectural question about how traffic flows an
 | [Network Boundaries](architecture-network.md) | Who may talk to whom inside the cluster |
 | [Sandbox Isolation](architecture-sandbox.md) | Where generated code executes |
 | [MCP Governance](architecture-mcp.md) | How a tool call is isolated and authenticated |
+| [External and Third-Party MCP](architecture-external-mcp.md) | How Zelkor isolates and governs third-party SaaS and external MCP servers |
 | [Run Trace](architecture-trace.md) | What one run looks like in Langfuse |
 | [North-South Exposure](architecture-exposure.md) | What is published to the internet versus ClusterIP |
 | [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |

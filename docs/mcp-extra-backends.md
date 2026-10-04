@@ -55,7 +55,7 @@ helm upgrade zelkor-platform charts/zelkor-platform \
   -f my-platform-overlay.yaml
 ```
 
-**External hostname** (gateway egress allowed when NetworkPolicies are on):
+**External hostname** (no wrapper Deployment; Envoy dials this FQDN):
 
 ```yaml
       - name: partner
@@ -65,11 +65,6 @@ helm upgrade zelkor-platform charts/zelkor-platform \
         path: /mcp
         tls:
           caSecretRef: partner-mcp-ca
-        egress:
-          cidrs:
-            - 203.0.113.0/24
-          ports:
-            - 443
         apiKey:
           secretRef:
             name: partner-mcp-key
@@ -86,7 +81,7 @@ helm upgrade zelkor-platform charts/zelkor-platform \
 
 Gateway `tools/list` returns **`{name}__{tool}`** (for example `acme__create_incident`). `tools/call` strips the prefix and forwards JSON-RPC to your backend.
 
-Optional fields: `toolSelector`, `forwardHeaders` (not `Authorization` — use `apiKey` instead), `tls.caSecretRef`, `egress.cidrs` / `ports` when `security.networkPolicies.enabled` and the URL is external.
+Optional fields: `toolSelector`, `forwardHeaders` (not `Authorization` — use `apiKey` instead), `tls.caSecretRef`. `egress.cidrs` / `ports` are optional GitOps notes for your own CNI; Community Edition does not apply them to Envoy. Isolation is the agent NetworkPolicy plus the registered FQDN on MCPRoute. See [External and Third-Party MCP](architecture-external-mcp.md).
 
 ## Match agent `tools.json` before deploy
 

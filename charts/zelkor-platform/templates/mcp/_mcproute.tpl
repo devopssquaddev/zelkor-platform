@@ -1,5 +1,6 @@
 {{/*
-MCPRoute helpers: native/extra backend refs, compile extras for Langfuse seed + NetworkPolicy egress.
+MCPRoute helpers: native/extra backend refs, compile extras for Langfuse seed.
+CE does not emit Envoy egress NetworkPolicies from extra FQDN CIDRs.
 */}}
 {{- define "zelkor-platform.mcpReservedBackendNames" -}}
 postgres,qdrant,sandbox,aigateway,nemo,aegra,langfuse
@@ -37,7 +38,6 @@ false
 {{- $items := (.Values.mcp.extraBackends | default list) -}}
 {{- $reserved := splitList "," (include "zelkor-platform.mcpReservedBackendNames" .) -}}
 {{- $seed := list -}}
-{{- $ipBlocks := list -}}
 {{- range $idx, $item := $items -}}
 {{- if not (kindIs "map" $item) -}}
 {{- fail (printf "workspace.tools.extraBackends[%d] must be an object" $idx) -}}
@@ -66,19 +66,9 @@ false
 {{- fail (printf "workspace.tools.extraBackends[%d]: forwardHeaders must not include Authorization" $idx) -}}
 {{- end -}}
 {{- end -}}
-{{- if $hasFqdn -}}
-{{- $cidrs := ($item.egress | default dict).cidrs | default list -}}
-{{- if and $root.Values.security.networkPolicies.enabled (eq (len $cidrs) 0) -}}
-{{- fail (printf "workspace.tools.extraBackends[%d] (%s): fqdn target requires egress.cidrs when security.networkPolicies.enabled" $idx $name) -}}
-{{- end -}}
-{{- range $cidrs -}}
-{{- $ipBlocks = append $ipBlocks (dict "cidr" . "ports" (($item.egress | default dict).ports | default (list 443))) -}}
-{{- end -}}
-{{- end -}}
 {{- $seed = append $seed (dict "name" $name "path" ($item.path | default "/mcp")) -}}
 {{- end -}}
 {{- $_ := set $root.Values "__mcpExtraBackendSeedJson" ($seed | toJson) -}}
-{{- $_ := set $root.Values "__mcpExtraBackendIpBlocks" $ipBlocks -}}
 {{- end -}}
 
 {{- define "zelkor-platform.tenantJwtValidate" -}}
