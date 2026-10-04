@@ -87,4 +87,4 @@ sequenceDiagram
 
 Zelkor forwards tenant headers you configure. It does not enforce row-level security inside a community SaaS MCP. Native Postgres and Qdrant wrappers are the servers Zelkor guarantees to filter.
 
-How to register: [Register Extra MCP Backends](mcp-extra-backends.md).
+How to register: [Register Extra MCP Backends](mcp-extra-backends.md). Handshake failures or a missing `{name}__` prefix: [Hosted extra MCP tools missing](kb/hosted-mcp-tls.md).
