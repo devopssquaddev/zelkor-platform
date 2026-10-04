@@ -600,6 +600,12 @@ def patch_otel_setup() -> None:
             _log.info("tool current-span wrap ok")
         except Exception:
             _log.exception("tool current-span wrap failed")
+        try:
+            from zelkor_logging import restore_after_vendor_logging
+
+            restore_after_vendor_logging("zelkor-aegra")
+        except Exception:
+            _log.exception("zelkor json logging restore failed")
 
     _otel_setup._zelkor_httpx_patched = True  # type: ignore[attr-defined]
     OpenTelemetryProvider.setup = _otel_setup  # type: ignore[method-assign]

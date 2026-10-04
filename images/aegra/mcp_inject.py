@@ -7,9 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import inspect
+import itertools
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -32,6 +35,13 @@ INJECT_STATUS_PATH = Path(os.getenv("MCP_INJECT_STATUS_PATH", "/tmp/zelkor-mcp-i
 _SPEC_CACHE_TTL_SEC = 60.0
 # cache_key -> (monotonic_ts, list of mcp.types.Tool)
 _TOOL_SPEC_CACHE: dict[str, tuple[float, list[Any]]] = {}
+_RUN_MCP: contextvars.ContextVar[Optional[dict[str, Any]]] = contextvars.ContextVar(
+    "zelkor_mcp_run", default=None
+)
+_RPC_IDS = itertools.count(1)
+_RPC_STATE: dict[str, Any] = {"sse_drops": 0}
+_SSE_HOOKED = False
+_HTTP_STATUS_RE = re.compile(r"\b(?:HTTP[ /]|status[=: ]+)(\d{3})\b", re.I)
 
 try:
     from langchain_core.runnables import RunnableConfig
@@ -69,6 +79,8 @@ def _mcp_url() -> str:
     base = os.getenv("MCP_URL", "").rstrip("/")
     if not base:
         return ""
+    if base.endswith("/mcp"):
+        return base
     return f"{base}/mcp"
 
 
@@ -295,6 +307,94 @@ def _tool_error_text(exc: BaseException) -> str:
     return f"Error: {type(exc).__name__}: {exc}"
 
 
+def _tool_timeout_sec() -> float:
+    raw = os.getenv("ZELKOR_MCP_TOOL_TIMEOUT_SEC", "600").strip()
+    try:
+        val = float(raw)
+    except ValueError:
+        return 600.0
+    if val <= 0:
+        return 600.0
+    return val
+
+
+def _rpc_debug(phase: str, **fields: Any) -> None:
+    extra = {"event": "mcp_rpc", "phase": phase}
+    extra.update({k: v for k, v in fields.items() if v is not None and v != ""})
+    logger.debug("mcp rpc %s", phase, extra=extra)
+
+
+class _SseDropHandler(logging.Handler):
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return
+        low = msg.lower()
+        if "disconnect" not in low and "reconnect" not in low:
+            return
+        _RPC_STATE["sse_drops"] = int(_RPC_STATE.get("sse_drops") or 0) + 1
+        status = None
+        match = _HTTP_STATUS_RE.search(msg)
+        if match:
+            status = int(match.group(1))
+        exc_type = ""
+        if record.exc_info and record.exc_info[0]:
+            exc_type = record.exc_info[0].__name__
+        _rpc_debug("sse_drop", exc_type=exc_type, status=status)
+
+
+def _ensure_sse_drop_hook() -> None:
+    global _SSE_HOOKED
+    if _SSE_HOOKED:
+        return
+    handler = _SseDropHandler()
+    handler.setLevel(logging.DEBUG)
+    for name in ("mcp.client.streamable_http", "mcp.client.sse", "httpx", "httpcore"):
+        log = logging.getLogger(name)
+        log.addHandler(handler)
+    _SSE_HOOKED = True
+
+
+async def _session_call_tool(session: Any, name: str, arguments: Optional[dict[str, Any]]) -> Any:
+    _ensure_sse_drop_hook()
+    rpc_id = next(_RPC_IDS)
+    t0 = time.monotonic()
+    _rpc_debug("send", tool=name, id=rpc_id)
+
+    async def _heartbeat() -> None:
+        while True:
+            await asyncio.sleep(30)
+            _rpc_debug(
+                "wait",
+                tool=name,
+                pending_id=rpc_id,
+                since_send_s=int(time.monotonic() - t0),
+                sse_drops=int(_RPC_STATE.get("sse_drops") or 0),
+            )
+
+    beat = asyncio.create_task(_heartbeat())
+    try:
+        result = await asyncio.wait_for(
+            session.call_tool(name, arguments or {}),
+            timeout=_tool_timeout_sec(),
+        )
+        _rpc_debug(
+            "recv",
+            tool=name,
+            id=rpc_id,
+            is_error=bool(getattr(result, "isError", False)),
+        )
+        return result
+    except TimeoutError as exc:
+        _rpc_debug("recv", tool=name, id=rpc_id, is_error=True, exc_type=type(exc).__name__)
+        raise
+    finally:
+        beat.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await beat
+
+
 def _normalize_tool_result(tool, value):
     if getattr(tool, "response_format", None) == "content_and_artifact":
         if isinstance(value, tuple) and len(value) == 2:
@@ -459,6 +559,84 @@ async def _mcp_client_session(
                 yield session
 
 
+def _tool_result_text(result: Any) -> str:
+    content = getattr(result, "content", None) or []
+    texts = [i.text for i in content if getattr(i, "text", None)]
+    if getattr(result, "isError", False):
+        return texts[0] if texts else "MCP tool call failed"
+    return "\n".join(texts)
+
+
+@asynccontextmanager
+async def mcp_run_session() -> AsyncIterator[None]:
+    """One MCP streamable-HTTP session for a Pregel run (same task enter/exit)."""
+    if _RUN_MCP.get() is not None:
+        yield
+        return
+    url = _mcp_url()
+    bearer = inbound_authorization()
+    if not url or not bearer:
+        yield
+        return
+    async with _mcp_client_session(bearer) as session:
+        token = _RUN_MCP.set({"session": session})
+        try:
+            yield
+        finally:
+            _RUN_MCP.reset(token)
+
+
+async def call_tool(name: str, arguments: Optional[dict[str, Any]] = None) -> str:
+    """tools/call on MCP_URL with inbound JWT. Failures return Error: text (do not abort the run)."""
+    try:
+        holder = _RUN_MCP.get()
+        if holder is not None and holder.get("session") is not None:
+            result = await _session_call_tool(holder["session"], name, arguments)
+            return _tool_result_text(result)
+        if not _mcp_url():
+            return _tool_error_text(RuntimeError("MCP_URL is not set"))
+        bearer = inbound_authorization()
+        if not bearer:
+            return _tool_error_text(RuntimeError("no MCP bearer"))
+        async with _mcp_client_session(bearer) as session:
+            result = await _session_call_tool(session, name, arguments)
+        return _tool_result_text(result)
+    except Exception as exc:
+        return _tool_error_text(exc)
+
+
+def patch_pregel_mcp_session() -> None:
+    try:
+        from langgraph.pregel import Pregel
+    except ImportError:
+        return
+    if getattr(Pregel, "_zelkor_mcp_run_session", False):
+        return
+
+    orig_ainvoke = Pregel.ainvoke
+    orig_astream = Pregel.astream
+    orig_astream_events = Pregel.astream_events
+
+    async def ainvoke(self, *args, **kwargs):
+        async with mcp_run_session():
+            return await orig_ainvoke(self, *args, **kwargs)
+
+    async def astream(self, *args, **kwargs):
+        async with mcp_run_session():
+            async for item in orig_astream(self, *args, **kwargs):
+                yield item
+
+    async def astream_events(self, *args, **kwargs):
+        async with mcp_run_session():
+            async for item in orig_astream_events(self, *args, **kwargs):
+                yield item
+
+    Pregel.ainvoke = ainvoke  # type: ignore[method-assign]
+    Pregel.astream = astream  # type: ignore[method-assign]
+    Pregel.astream_events = astream_events  # type: ignore[method-assign]
+    Pregel._zelkor_mcp_run_session = True  # type: ignore[attr-defined]
+
+
 async def _list_tools_cached(session, config: Optional[dict]) -> list[Any]:
     key = _cache_key(config)
     entry = _TOOL_SPEC_CACHE.get(key)
@@ -588,4 +766,5 @@ def patch_langgraph() -> None:
         ("langgraph.prebuilt", "langgraph.prebuilt.chat_agent_executor"),
         "create_react_agent",
     )
+    patch_pregel_mcp_session()
     logger.info("Mode B: per-run factory patch installed")

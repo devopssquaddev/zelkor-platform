@@ -1,0 +1,8 @@
+{
+  "servers": [
+    {
+      "name": "tavily",
+      "url": "https://mcp.tavily.com/mcp"
+    }
+  ]
+}

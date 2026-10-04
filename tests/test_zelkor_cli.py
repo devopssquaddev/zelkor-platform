@@ -27,6 +27,7 @@ from zelkor.main import (  # noqa: E402
     deploy_agent,
     deploy_from_values,
     fill_empty,
+    format_run_progress,
     helm_argv,
     in_cluster_openai_base_url,
     kube_argv,
@@ -125,6 +126,12 @@ def test_missing_extra_registrations_detects_unregistered_tools():
     snippet = extra_backend_overlay_snippet("acme", "http://acme-mcp:8080")
     assert "name: acme" in snippet
     assert "name: acme-mcp" in snippet
+    tavily = extra_backend_overlay_snippet("tavily", "https://mcp.tavily.com/mcp")
+    assert "fqdn:" in tavily
+    assert "hostname: mcp.tavily.com" in tavily
+    assert "port: 443" in tavily
+    assert "path: /mcp" in tavily
+    assert "service:" not in tavily
 
 
 def test_deploy_agent_fails_when_tools_json_extra_not_on_platform(tmp_path):
@@ -816,6 +823,34 @@ def test_deploy_from_values_skips_docker(tmp_path):
     assert "cluster-consumer" in dumped
 
 
+def test_deploy_from_values_fails_when_sibling_tools_json_missing_extra(tmp_path):
+    values = tmp_path / "values.yaml"
+    values.write_text(
+        "\n".join(
+            [
+                "graphId: gpt-researcher",
+                "image:",
+                "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
+                "  tag: '2.2.0'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "tools.json").write_text(
+        '{"servers": [{"name": "tavily", "url": "https://mcp.tavily.com/mcp"}]}',
+        encoding="utf-8",
+    )
+    env = Env(name="prod", kube_context="k3s", namespace="zelkor")
+    with pytest.raises(RuntimeError, match="does not mutate the platform"):
+        deploy_from_values(
+            values_path=values,
+            env=env,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=_discover_runner(),
+        )
+
+
 def test_deploy_from_values_builds_and_kind_loads(tmp_path, monkeypatch):
     values = tmp_path / "values.yaml"
     values.write_text(
@@ -1139,3 +1174,31 @@ def test_token_mint_uses_default_namespace_when_unset(monkeypatch):
     with pytest.raises(RuntimeError):
         token_cmd.cmd_token_mint(args)
     assert seen_ns and seen_ns[0] == "default"
+
+
+def test_format_run_progress_events_and_custom():
+    assert (
+        format_run_progress(
+            {
+                "event": "events",
+                "data": {"event": "on_tool_start", "name": "deep_research", "data": {"input": {"q": "secret"}}},
+            }
+        )
+        == "agent: tool deep_research"
+    )
+    assert "secret" not in (
+        format_run_progress(
+            {
+                "event": "events",
+                "data": {"event": "on_chain_start", "name": "researcher", "data": {"input": "secret"}},
+            }
+        )
+        or ""
+    )
+    assert format_run_progress({"event": "events", "data": {"event": "on_chain_start", "name": "RunnableSequence"}}) is None
+    assert (
+        format_run_progress({"event": "custom", "data": {"kind": "tool", "name": "deep_research", "phase": "wait", "elapsed_s": 30}})
+        == "agent: tool deep_research wait 30s"
+    )
+    assert format_run_progress({"event": "updates", "data": {"researcher": {"messages": [{"content": "secret"}]}}}) is None
+

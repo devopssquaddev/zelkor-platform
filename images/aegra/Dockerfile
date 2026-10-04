@@ -22,6 +22,7 @@ COPY images/aegra/auth_inject.py /app/auth_inject.py
 COPY images/aegra/mcp_inject.py /app/mcp_inject.py
 COPY images/aegra/wrap_identity.py /app/wrap_identity.py
 COPY images/aegra/trace_wrap.py /app/trace_wrap.py
+COPY images/aegra/agent_step.py /app/agent_step.py
 COPY images/aegra/sandbox_trace.py /app/sandbox_trace.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 COPY images/common/langfuse_keep.py /app/langfuse_keep.py

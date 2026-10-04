@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "images" / "common"))
 
 from zelkor_logging import (  # noqa: E402
+    DropMcpSessionIdFilter,
     JsonFormatter,
     ProbeAccessLogFilter,
     configure_logging,
@@ -18,6 +19,7 @@ from zelkor_logging import (  # noqa: E402
     log_shutdown,
     parse_format,
     parse_level,
+    restore_after_vendor_logging,
     wrap_uvicorn_run,
 )
 
@@ -203,6 +205,42 @@ def test_first_party_entrypoints_configure_logging():
     assert "configure_logging(\"zelkor-cli\", stream=sys.stderr)" in cli_main
     boot = (ROOT / "images/guardrails/boot.py").read_text()
     assert "wrap_uvicorn_run" in boot
+    site = (ROOT / "images/aegra/sitecustomize.py").read_text()
+    assert "restore_after_vendor_logging" in site
+    assert "setup_logging" in site
+    wrap = (ROOT / "images/aegra/trace_wrap.py").read_text()
+    assert "restore_after_vendor_logging" in wrap
+
+
+def test_drop_mcp_session_id_filter():
+    filt = DropMcpSessionIdFilter()
+    keep = logging.LogRecord("httpcore.http11", logging.DEBUG, "", 0, "HTTP Request: GET", (), None)
+    drop = logging.LogRecord(
+        "httpcore.http11",
+        logging.DEBUG,
+        "",
+        0,
+        "return_value=(b'HTTP/1.1', 202, [(b'mcp-session-id', b'secret')])",
+        (),
+        None,
+    )
+    assert filt.filter(keep) is True
+    assert filt.filter(drop) is False
+
+
+def test_restore_after_vendor_logging_reapplies_json(monkeypatch, capsys):
+    monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    logging.getLogger().handlers.clear()
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    restore_after_vendor_logging("zelkor-aegra")
+    logging.getLogger("zelkor-aegra").info("after vendor")
+    out = capsys.readouterr().out.strip().splitlines()[-1]
+    payload = json.loads(out)
+    assert payload["message"] == "after vendor"
+    mcp = logging.getLogger("mcp.client.streamable_http")
+    assert any(isinstance(f, DropMcpSessionIdFilter) for f in mcp.filters)
+    assert any(isinstance(f, DropMcpSessionIdFilter) for f in logging.getLogger().filters)
 
 
 def test_chart_default_is_info_json_not_debug():

@@ -60,6 +60,10 @@ except Exception:
 try:
     from wrap_identity import patch_pregel
 
+    if os.getenv("MCP_INJECT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
+        from mcp_inject import patch_pregel_mcp_session
+
+        patch_pregel_mcp_session()
     patch_pregel()
     _log.info("wrap identity ready")
 except Exception:
@@ -74,6 +78,14 @@ try:
     _log.info("trace wrap ready")
 except Exception:
     _log.exception("trace wrap (Pregel root / ChatOpenAI.request / traceparent) failed")
+
+try:
+    from agent_step import install_agent_step_callback
+
+    install_agent_step_callback()
+    _log.info("agent step callback ready")
+except Exception:
+    _log.exception("agent step callback failed")
 
 if os.getenv("MCP_INJECT_ENABLED", "").strip().lower() in ("1", "true", "yes", "on"):
     from mcp_inject import patch_langgraph, write_inject_status
@@ -112,5 +124,24 @@ try:
     _log.info("ready gate installed")
 except Exception:
     _log.exception("ready gate install failed")
+
+try:
+    from aegra_api.utils import setup_logging as _aegra_setup_logging
+    from zelkor_logging import restore_after_vendor_logging
+
+    if not getattr(_aegra_setup_logging.setup_logging, "_zelkor_keep_json", False):
+        _orig_aegra_setup_logging = _aegra_setup_logging.setup_logging
+
+        def _setup_logging_keep_json() -> None:
+            _orig_aegra_setup_logging()
+            restore_after_vendor_logging("zelkor-aegra")
+
+        _setup_logging_keep_json._zelkor_keep_json = True  # type: ignore[attr-defined]
+        _aegra_setup_logging.setup_logging = _setup_logging_keep_json  # type: ignore[method-assign]
+        _log.info("aegra logging keep json")
+except ImportError:
+    _log.debug("aegra setup_logging not present")
+except Exception:
+    _log.exception("aegra logging keep json failed")
 
 logging.getLogger("zelkor-aegra").info("aegra wrap ready", extra={"event": "startup"})

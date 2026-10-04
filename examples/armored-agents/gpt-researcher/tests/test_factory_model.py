@@ -50,3 +50,30 @@ def test_graph_factory_is_zero_arg():
     from graph import graph
 
     assert len(inspect.signature(graph).parameters) == 0
+
+
+def test_factory_uses_mcp_inject_call_tool():
+    text = (ROOT / "graph.py").read_text(encoding="utf-8")
+    assert "from gpt_researcher" not in text
+    assert "TAVILY_API_KEY" not in text
+    assert "streamable_http" not in text
+    assert "from mcp_inject import call_tool" in text
+    assert "tavily__tavily_search" in text
+    assert "tavily__tavily_research" in text
+    assert "def write_todos" in text
+    assert "ZELKOR_RECURSION_LIMIT" in text
+    assert "recursion_limit" in text
+
+
+def test_tavily_search_payload_uses_query():
+    from graph import _search_call
+
+    assert _search_call("gVisor") == ("tavily__tavily_search", {"query": "gVisor"})
+
+
+def test_tavily_research_payload_uses_input():
+    from graph import _research_call
+
+    name, args = _research_call("sentry vs ptrace", "gVisor")
+    assert name == "tavily__tavily_research"
+    assert args == {"input": "sentry vs ptrace (overall topic: gVisor)"}
