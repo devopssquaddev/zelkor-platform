@@ -9,6 +9,7 @@ edition: all
 ---
 
 # External and Third-Party MCP
+Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated.
 
 When your AI agent needs to interact with third-party SaaS platforms like ServiceNow, Jira, or Salesforce, you shouldn't have to rewrite it to handle complex networking and security rules. Zelkor's core advantage is that you can bring the agent you already wrote, and it remains sandboxed. It can't break out or reach unauthorized data and networks, its prompts are verified, its budget is controlled, and it is under observation. Tenants stay strictly isolated.
 
