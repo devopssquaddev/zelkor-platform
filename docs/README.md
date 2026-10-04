@@ -73,6 +73,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Network Boundaries](architecture-network.md) | Who may talk to whom inside the cluster |
 | [Sandbox Isolation](architecture-sandbox.md) | Where generated code executes |
 | [MCP Governance](architecture-mcp.md) | How a tool call is isolated and authenticated |
+| [External and Third-Party MCP](architecture-external-mcp.md) | How Zelkor isolates and governs third-party SaaS and external MCP servers |
 | [Run Trace](architecture-trace.md) | What one run looks like in Langfuse |
 | [Drop-In Agent Contract](architecture-agent-contract.md) | How Zelkor sandboxes and governs your agent (Intercept, Wrap, MCP) |
 | [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |
