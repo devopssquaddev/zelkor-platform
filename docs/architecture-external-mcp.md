@@ -31,36 +31,23 @@ config:
   theme: neutral
 ---
 flowchart TB
-  subgraph Agent Namespace
-    Agent[Agent Worker\nClusterIP]
+  subgraph cluster [Release namespace]
+    Agent[Agent worker\nClusterIP]
+    ExtraMCP[Wrapper MCP\nClusterIP]
   end
-
-  subgraph Platform Namespace
-    MCPGateway[Envoy MCPRoute\n/mcp]
-    GitOps[Platform GitOps\nworkspace.tools.extraBackends]
+  subgraph dataplane [Envoy dataplane]
+    Route[MCPRoute /mcp]
   end
-
-  subgraph Customer Namespace
-    ExtraMCP[Custom MCP Wrapper\nClusterIP]
+  subgraph internet [Internet]
+    VendorMCP[Vendor MCP\nregistered FQDN]
+    SaaSAPI[SaaS API]
   end
-  
-  subgraph Internet
-    VendorMCP[External Vendor MCP\nRegistered FQDN]
-    SaaSAPI[External SaaS API]
-  end
+  Agent -->|"tools/call JWT"| Route
+  Route -->|"prefix to FQDN"| VendorMCP
+  Route -->|"prefix to Service"| ExtraMCP
+  ExtraMCP -->|"HTTPS API key"| SaaSAPI
+  Agent -.->|"NetworkPolicy deny"| internet
 
-  GitOps -. "Defines FQDN & Keys" .-> MCPGateway
-
-  Agent -- "tools/call (Tenant JWT)" --> MCPGateway
-  
-  %% Path 1: Direct FQDN
-  MCPGateway -- "JSON-RPC (API Key injected)" --> VendorMCP
-  
-  %% Path 2: Custom Wrapper
-  MCPGateway -- "JSON-RPC (Forwarded Headers)" --> ExtraMCP
-  ExtraMCP -- "HTTPS (API Key)" --> SaaSAPI
-  
-  Agent -. "Blocked by NetworkPolicy" .-x Internet
 ```
 
 The agent cannot call an arbitrary FQDN. It can only request a prefixed tool (like `partner__action`), which Envoy statically maps to the one hostname or Service you registered.
