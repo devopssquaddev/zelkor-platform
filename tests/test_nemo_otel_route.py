@@ -2,7 +2,9 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "guardrails"))
+_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_root / "images" / "common"))
+sys.path.insert(0, str(_root / "images" / "guardrails"))
 
 from otel_project_route import (  # noqa: E402
     basic_auth_header,
@@ -89,8 +91,32 @@ def test_drop_probe_span_includes_fastapi_children():
     assert drop_probe_span(_Span("GET /v1/health", 3))
     assert drop_probe_span(_Span("fastapi.endpoint", 3))
     assert drop_probe_span(_Span("fastapi.serialization", 11))
+    assert drop_probe_span(_Span("GET /v1/rails/configs", 12))
     named = _Span("fastapi.endpoint", 4, {"langfuse.trace.name": "finserve-advisor"})
     assert not drop_probe_span(named)
+    chat = _Span("POST /v1/chat/completions", 5)
+    assert not drop_probe_span(chat)
+    assert not drop_probe_span(_Span("fastapi.endpoint", 5))
+
+
+def test_keep_filter_batch_children_before_chat_root():
+    from langfuse_keep import LangfuseKeep
+
+    class _Ctx:
+        def __init__(self, tid: int) -> None:
+            self.trace_id = tid
+
+    class _Span:
+        def __init__(self, name: str, tid: int, attributes=None) -> None:
+            self.name = name
+            self.context = _Ctx(tid)
+            self.attributes = attributes or {}
+
+    keep = LangfuseKeep()
+    child = _Span("fastapi.endpoint", 7)
+    root = _Span("POST /v1/chat/completions", 7)
+    kept = keep.filter_batch([child, root])
+    assert [s.name for s in kept] == ["fastapi.endpoint", "POST /v1/chat/completions"]
 
 
 def test_identity_from_headers_and_stamp():
@@ -125,7 +151,7 @@ def _reset_install() -> None:
 
 
 def _span(name: str = "guardrails.request", pk: str | None = None):
-    attrs = {}
+    attrs = {"langfuse.trace.name": "finserve-advisor"}
     if pk:
         attrs["zelkor.langfuse.pk"] = pk
     return type("_Span", (), {"name": name, "attributes": attrs, "kind": None, "parent": None})()

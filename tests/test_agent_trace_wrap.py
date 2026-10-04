@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "aegra"))
+_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_root / "images" / "common"))
+sys.path.insert(0, str(_root / "images" / "aegra"))
 
 from trace_wrap import (  # noqa: E402
     ProbeFilterSpanProcessor,
@@ -238,13 +240,44 @@ def test_probe_filter_skips_export():
     inner = MagicMock()
     filt = ProbeFilterSpanProcessor(inner)
     probe = _NamedSpan("GET /ready", trace_id=1)
-    run = _NamedSpan("GET /runs", trace_id=2)
+    crud = _NamedSpan("GET /runs", trace_id=2)
     filt.on_start(probe)
     filt.on_end(probe)
-    filt.on_start(run)
-    filt.on_end(run)
+    filt.on_start(crud)
+    filt.on_end(crud)
     assert inner.on_start.call_count == 2
-    inner.on_end.assert_called_once_with(run)
+    inner.on_end.assert_not_called()
+
+
+def test_keep_filter_exports_identity_and_chat_not_crud():
+    inner = MagicMock()
+    filt = ProbeFilterSpanProcessor(inner)
+    for name in ("GET /openapi.json", "GET /metrics", "GET /runs"):
+        span = _NamedSpan(name, trace_id=20)
+        filt.on_start(span)
+        filt.on_end(span)
+    inner.on_end.assert_not_called()
+    named = _NamedSpan(
+        "LangGraph", {"langfuse.trace.name": "finserve-advisor"}, trace_id=21
+    )
+    filt.on_start(named)
+    filt.on_end(named)
+    child = _NamedSpan("fastapi.endpoint", trace_id=21)
+    filt.on_start(child)
+    filt.on_end(child)
+    chat = _NamedSpan("POST /v1/chat/completions", trace_id=22)
+    filt.on_start(chat)
+    filt.on_end(chat)
+    stamped_probe = _NamedSpan(
+        "GET /ready", {"langfuse.trace.name": "g"}, trace_id=23
+    )
+    filt.on_start(stamped_probe)
+    filt.on_end(stamped_probe)
+    assert [c.args[0].name for c in inner.on_end.call_args_list] == [
+        "LangGraph",
+        "fastapi.endpoint",
+        "POST /v1/chat/completions",
+    ]
 
 
 def test_probe_filter_drops_fastapi_child_spans():
@@ -266,9 +299,12 @@ def test_probe_filter_on_ending_matches_otel_sdk():
     inner = MagicMock()
     filt = ProbeFilterSpanProcessor(inner)
     filt._on_ending(_NamedSpan("GET /ready", trace_id=1))
-    filt._on_ending(_NamedSpan("GET /runs", trace_id=2))
+    kept = _NamedSpan(
+        "LangGraph", {"langfuse.trace.name": "advisor"}, trace_id=2
+    )
+    filt._on_ending(kept)
     inner._on_ending.assert_called_once()
-    assert inner._on_ending.call_args[0][0].name == "GET /runs"
+    assert inner._on_ending.call_args[0][0].name == "LangGraph"
     inner.on_end.assert_not_called()
 
 
@@ -302,6 +338,7 @@ def test_sitecustomize_and_dockerfile_ship_trace_wrap():
     assert "astream_events" in wrap
     assert "langfuse.observation.input" in wrap
     assert "install_probe_span_filter" in wrap
+    assert "langfuse_keep.py" in dockerfile
     assert "trace_wrap.py" in dockerfile
     assert "chmod 644" in dockerfile
     assert "sitecustomize.py" in dockerfile
