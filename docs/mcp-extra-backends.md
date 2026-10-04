@@ -133,3 +133,4 @@ Zelkor forwards tenant headers you configure. It does **not** enforce row-level 
 
 - [Helm values reference](reference/helm-values.md) — full `extraBackends` schema
 - [Use the zelkor CLI](cli.md) — `deploy`, `doctor`, env targets
+- [Hosted extra MCP tools missing](kb/hosted-mcp-tls.md) — TLS / empty prefix on `tools/list`

@@ -90,5 +90,6 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [JWT rejected (401)](kb/jwt-rejected.md) | Token `iss` vs Helm issuer and JWKS fetch |
 | [`POST /runs/wait` 422](kb/runs-wait-assistant-id.md) | Body must include `assistant_id` |
 | [AI Gateway `route_not_found`](kb/ai-gateway-route-not-found.md) | Empty provider `apiKey` deleted the route |
+| [Hosted extra MCP tools missing](kb/hosted-mcp-tls.md) | FQDN extra TLS / missing `{name}__` on `tools/list` |
 
 Read [Install on an Existing Cluster](helm-install.md) and [Production Install](production.md) when you are ready to move off kind.

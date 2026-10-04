@@ -40,7 +40,13 @@ zelkor run --graph-id gpt-researcher --input "Summarize the latest gVisor isolat
 
 `deploy -f` fails if `tavily` is missing from `workspace.tools.extraBackends`. It builds the sibling `Dockerfile` at the repo root, then kind-loads (kind) or pushes (`--registry` / `ZELKOR_IMAGE_REGISTRY` off kind). Skip the build with `ZELKOR_SKIP_BUILD=1` when the wrap image is already in the registry.
 
-See [Deploy an Agent](../../../docs/agent-deploy.md).
+See [Deploy an Agent](../../../docs/agent-deploy.md). If `tools/list` has no `tavily__*` prefix, [hosted extra MCP tools missing](../../../docs/kb/hosted-mcp-tls.md).
+
+## Tavily credits
+
+`quick_search` is Tavily **search**. `deep_research` is Tavily **research** (`tavily__tavily_research`) — a separate, more expensive product. The unmodified researcher prompt calls `deep_research` **once per report section**. An outline with seven sections can mean seven research jobs plus the editor’s searches. Usage is on Tavily’s dashboard, not in Zelkor.
+
+In Langfuse, on the `gpt-researcher` trace, count TOOL **`deep_research`** (research) vs **`quick_search`** (search). Tool argument bodies appear only when `captureContent` is on.
 
 ## What Zelkor adds
 

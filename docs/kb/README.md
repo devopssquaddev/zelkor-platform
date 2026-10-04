@@ -22,6 +22,10 @@ This section contains troubleshooting guides for known issues, edge cases, and c
 * [`POST /runs/wait` 422 `assistant_id`](runs-wait-assistant-id.md): Aegra requires `assistant_id` in the body; `X-Graph-ID` is only routing.
 * [JWT rejected (401)](jwt-rejected.md): Token `iss` must match Helm issuer; use a JWKS file when in-cluster JWKS needs a public Host.
 
+## MCP
+
+* [Hosted extra MCP tools missing](hosted-mcp-tls.md): FQDN extras need System CA BackendTLSPolicy (or `tls.caSecretRef`); otherwise `tools/list` omits the prefix.
+
 ## General Troubleshooting
 
 If you encounter an issue not listed here:
