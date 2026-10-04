@@ -1170,9 +1170,7 @@ def cmd_run(
     parsed = urlparse(base)
     if info.agents_host and parsed.hostname != info.agents_host:
         headers["Host"] = info.agents_host
-    as_default = should_attach_as_default(info.agent_route_names, helm_release_name(shape.graph_id))
-    if not as_default:
-        headers["X-Graph-ID"] = shape.graph_id
+    headers["X-Graph-ID"] = shape.graph_id
     try:
         from langgraph_sdk import get_sync_client
 
