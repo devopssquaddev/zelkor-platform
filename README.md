@@ -1,7 +1,7 @@
 # Zelkor Platform
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Chart](https://img.shields.io/badge/chart-2.2.0-informational)](charts/zelkor-platform/Chart.yaml)
+[![Chart](https://img.shields.io/badge/chart-2.2.1-informational)](charts/zelkor-platform/Chart.yaml)
 
 You get a **self-hosted agent runtime on your Kubernetes cluster**: bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.
 
@@ -17,7 +17,7 @@ cd zelkor-platform
 OPENAI_API_KEY=sk-... ./install.sh
 ```
 
-`./install.sh` creates a local kind cluster, installs Zelkor Community Edition (chart `2.2.0`), and prints URLs when it finishes. Full prerequisites, other providers, and the first verification call: [Local Quickstart](docs/quickstart.md).
+`./install.sh` creates a local kind cluster, installs Zelkor Community Edition (chart `2.2.1`), and prints URLs when it finishes. Full prerequisites, other providers, and the first verification call: [Local Quickstart](docs/quickstart.md).
 
 ## What you set
 
