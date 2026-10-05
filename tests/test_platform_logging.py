@@ -1,4 +1,5 @@
 """Platform logging contract (no cluster)."""
+import io
 import json
 import logging
 import subprocess
@@ -94,6 +95,18 @@ def test_configure_cli_logs_to_stderr(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "starting" not in captured.out
     assert "starting" in captured.err
+
+
+def test_configure_survives_closed_stream(monkeypatch, capsys):
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")
+    configure_logging("zelkor-cli", force=True, stream=sys.stderr)
+    closed = io.StringIO()
+    closed.close()
+    logging.getLogger().handlers[0].setStream(closed)
+    logging.getLogger("zelkor-cli").info("after-close")
+    err = capsys.readouterr().err
+    assert "after-close" in err
 
 
 def test_configure_emits_startup_and_shutdown_json(monkeypatch, capsys):

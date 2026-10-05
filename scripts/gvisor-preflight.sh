@@ -70,7 +70,7 @@ spec:
     - operator: Exists
   containers:
     - name: smoke
-      image: busybox:1.37.0
+      image: busybox:1.38.0
       command: ["dmesg"]
 EOF
   local deadline=$((SECONDS + 90))

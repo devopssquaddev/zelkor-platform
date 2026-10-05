@@ -965,7 +965,7 @@ true
 {{- $sk := $init.projectSecretKey | default "" | toString | trim -}}
 {{- $lfHost := printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) -}}
 - name: wait-langfuse-bootstrap
-  image: {{ .Values.global.initContainerImage | default "busybox:1.37" | quote }}
+  image: {{ .Values.global.initContainerImage | default "busybox:1.38.0" | quote }}
   env:
     - name: LANGFUSE_HOST
       value: {{ $lfHost | quote }}
@@ -1133,7 +1133,7 @@ false
 
 {{- define "zelkor-platform.gvisorRelease" -}}
 {{- $prov := .Values.security.sandbox.provisioning | default dict -}}
-{{ $prov.gvisorRelease | default "20260817" }}
+{{ $prov.gvisorRelease | default "20260928" }}
 {{- end }}
 
 {{- define "zelkor-platform.gvisorRuntimeClassName" -}}

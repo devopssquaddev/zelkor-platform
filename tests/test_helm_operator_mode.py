@@ -73,11 +73,11 @@ def test_in_cluster_basic_emits_sts_not_operator_crs():
 def test_clickhouse_26_8_sets_langfuse_datetime_compat():
     basic = _helm("--set", "databases.mode=in-cluster-basic")
     assert basic.returncode == 0, basic.stderr
-    assert "26.8.2.7-alpine" in basic.stdout
+    assert "26.9.10.4-alpine" in basic.stdout
     assert "input_format_read_datetime_number_as_raw_value" in basic.stdout
     op = _helm("--set", "databases.mode=operator-cr")
     assert op.returncode == 0, op.stderr
-    assert "26.8.2.7-alpine" in op.stdout
+    assert "26.9.10.4-alpine" in op.stdout
     assert "input_format_read_datetime_number_as_raw_value" in op.stdout
 
 

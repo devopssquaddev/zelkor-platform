@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-
 LABEL org.opencontainers.image.description="Unmodified GPT Researcher deep_agents wrap; not part of the platform chart"
 
 USER root
-ARG GPTR_VERSION=v3.6.1
+ARG GPTR_VERSION=v3.7.0
 ADD https://github.com/assafelovic/gpt-researcher/archive/refs/tags/${GPTR_VERSION}.tar.gz /tmp/gptr.tar.gz
 RUN tar -xzf /tmp/gptr.tar.gz -C /tmp \
     && SRC="/tmp/gpt-researcher-${GPTR_VERSION#v}" \

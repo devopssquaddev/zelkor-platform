@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.14.8-slim-trixie
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
 LABEL org.opencontainers.image.description="Zelkor Aegra production runtime (aegra-api + tenant auth)"
@@ -26,9 +26,9 @@ COPY images/aegra/agent_step.py /app/agent_step.py
 COPY images/aegra/sandbox_trace.py /app/sandbox_trace.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 COPY images/common/langfuse_keep.py /app/langfuse_keep.py
-COPY images/aegra/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
+COPY images/aegra/sitecustomize.py /usr/local/lib/python3.14/site-packages/sitecustomize.py
 
-RUN chmod 644 /usr/local/lib/python3.12/site-packages/sitecustomize.py \
+RUN chmod 644 /usr/local/lib/python3.14/site-packages/sitecustomize.py \
     && useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && chown -R zelkor:zelkor /app
 USER 1000

@@ -41,7 +41,7 @@ spec:
         spec:
           containers:
             - name: clickhouse
-              image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "26.8.2.7-alpine" }}"
+              image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "26.9.10.4-alpine" }}"
     volumeClaimTemplates:
       - name: data
         spec:

@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.14.8-slim-trixie
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
 LABEL org.opencontainers.image.description="Zelkor Langfuse seed (admin signup, LLM connection, MCP tools, code evaluators)"

@@ -47,7 +47,7 @@ IMAGE_TAG="${IMAGE_TAG:-$(zelkor_chart_app_version)}"
 HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-zelkor-platform}"
 GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-default}"
 # Pinned gVisor point release for kind sandbox bootstrap (see internal/plan/component_compatibility_matrix.md)
-GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
+GVISOR_RELEASE="${GVISOR_RELEASE:-20260928}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-$(case "$(uname -m)" in aarch64|arm64) echo linux/arm64 ;; *) echo linux/amd64 ;; esac)}"
 # A lost watch is not a failed rollout: re-check real status before giving up.
 WAIT_RECHECK_GRACE="${WAIT_RECHECK_GRACE:-90}"
