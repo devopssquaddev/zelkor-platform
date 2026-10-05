@@ -143,7 +143,7 @@ def test_deploy_agent_fails_when_tools_json_extra_not_on_platform(tmp_path):
     def runner(argv, **_kwargs):
         stdout = ""
         if "helm" in argv and "list" in argv:
-            stdout = '[{"name": "zelkor-platform", "chart": "zelkor-platform-2.2.0", "status": "deployed"}]'
+            stdout = '[{"name": "zelkor-platform", "chart": "zelkor-platform-2.2.1", "status": "deployed"}]'
         elif "helm" in argv and "get" in argv and "values" in argv:
             stdout = "workspace:\n  tools:\n    extraBackends: []\n"
         return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
@@ -454,7 +454,7 @@ def _discover_runner(captured: dict | None = None):
         stdout = ""
         if "helm" in argv and "list" in argv:
             stdout = json.dumps(
-                [{"name": "zelkor-platform", "chart": "zelkor-platform-2.2.0", "status": "deployed"}]
+                [{"name": "zelkor-platform", "chart": "zelkor-platform-2.2.1", "status": "deployed"}]
             )
         elif "helm" in argv and "get" in argv and "values" in argv:
             stdout = "gateway:\n  hosts:\n    agents: agents.example.com\n"
@@ -516,7 +516,7 @@ def test_merge_catalog_values_file_wins():
     file_values = {
         "graphId": "gpt-researcher",
         "runtimeClassName": "gvisor",
-        "image": {"repository": "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher", "tag": "2.2.0"},
+        "image": {"repository": "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher", "tag": "2.2.1"},
         "extraEnv": [{"name": "FOO", "value": "bar"}],
         "platform": {"releaseName": ""},
         "sharedRoute": {"host": ""},
@@ -791,7 +791,7 @@ def test_deploy_from_values_skips_docker(tmp_path):
                 "runtimeClassName: gvisor",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
                 "extraEnv: []",
                 "platform:",
                 "  releaseName: ''",
@@ -831,7 +831,7 @@ def test_deploy_from_values_fails_when_sibling_tools_json_missing_extra(tmp_path
                 "graphId: gpt-researcher",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
@@ -859,7 +859,7 @@ def test_deploy_from_values_builds_and_kind_loads(tmp_path, monkeypatch):
                 "graphId: gpt-researcher",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
@@ -875,16 +875,16 @@ def test_deploy_from_values_builds_and_kind_loads(tmp_path, monkeypatch):
         platform_chart=ROOT / "charts" / "zelkor-platform",
         runner=_discover_runner(captured),
     )
-    assert result["image"].endswith(":2.2.0")
+    assert result["image"].endswith(":2.2.1")
     cmds = captured.get("commands") or []
     build = next(c for c in cmds if c[:2] == ["docker", "build"])
     assert "--progress=plain" in build
     assert str(tmp_path / "Dockerfile") in build
-    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in build
+    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.1" in build
     assert any(a.startswith("ZELKOR_AEGRA_DEEP_IMAGE=") for a in build)
     assert str((ROOT / "charts" / "zelkor-agent").resolve().parent.parent) in build
     load = next(c for c in cmds if c[:2] == ["kind", "load"])
-    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.0" in load
+    assert "ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher:2.2.1" in load
     assert "zelkor" in load
     assert not any(c[:2] == ["docker", "push"] for c in cmds)
 
@@ -897,7 +897,7 @@ def test_deploy_from_values_skip_build_env(tmp_path, monkeypatch):
                 "graphId: gpt-researcher",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
@@ -925,7 +925,7 @@ def test_deploy_from_values_pushes_off_kind(tmp_path, monkeypatch):
                 "graphId: gpt-researcher",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
@@ -955,7 +955,7 @@ def test_deploy_from_values_keeps_values_tag(tmp_path, monkeypatch):
                 "graphId: gpt-researcher",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
@@ -969,9 +969,9 @@ def test_deploy_from_values_keeps_values_tag(tmp_path, monkeypatch):
         platform_chart=ROOT / "charts" / "zelkor-platform",
         runner=_discover_runner(captured),
     )
-    assert result["image"].endswith(":2.2.0")
+    assert result["image"].endswith(":2.2.1")
     assert ":dev" not in result["image"]
-    assert "2.2.0" in captured["values"]
+    assert "2.2.1" in captured["values"]
 
 
 def test_deploy_from_values_rejects_approval_threshold(tmp_path):
@@ -1003,7 +1003,7 @@ def test_cli_deploy_f_skips_docker_and_detect(tmp_path, capsys, caplog):
                 "runtimeClassName: gvisor",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
@@ -1047,7 +1047,7 @@ def test_cli_deploy_f_builds_on_kind(tmp_path, monkeypatch, capsys, caplog):
                 "graphId: gpt-researcher",
                 "image:",
                 "  repository: ghcr.io/devopssquaddev/zelkor-armored-gpt-researcher",
-                "  tag: '2.2.0'",
+                "  tag: '2.2.1'",
             ]
         ),
         encoding="utf-8",
