@@ -10,7 +10,7 @@ global:
   tier: oss
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
-  initContainerImage: busybox:1.37
+  initContainerImage: busybox:1.38.0
 platform:
   mTLS:
     enabled: false
@@ -52,13 +52,13 @@ platform:
         minReplicas: 1
       image:
         repository: langfuse/langfuse
-        tag: 4.24.0
+        tag: 4.50.0
       worker:
         enabled: true
         replicaCount: 1
         image:
           repository: langfuse/langfuse-worker
-          tag: 4.24.0
+          tag: 4.50.0
       s3:
         bucket: langfuse
         region: auto
@@ -563,13 +563,13 @@ security:
       tolerations: []
     provisioning:
       mode: auto
-      gvisorRelease: '20260817'
+      gvisorRelease: '20260928'
       baseUrl: ''
       verifyChecksum: false
       installer:
         image:
           repository: alpine
-          tag: '3.22'
+          tag: '3.24.2'
           digest: ''
         containerd:
           dropInDir: ''
@@ -697,7 +697,7 @@ clickhouse:
   enabled: true
   image:
     repository: clickhouse/clickhouse-server
-    tag: 26.8.2.7-alpine
+    tag: 26.9.10.4-alpine
   auth:
     username: clickhouse
     password: ''
@@ -728,7 +728,7 @@ qdrant:
   enabled: true
   image:
     repository: qdrant/qdrant
-    tag: v1.19.0
+    tag: v1.19.1
   resources:
     requests:
       cpu: 100m
@@ -756,7 +756,7 @@ seaweedfs:
   enabled: true
   image:
     repository: chrislusf/seaweedfs
-    tag: '4.44'
+    tag: '4.48'
   auth:
     accessKey: ''
     secretKey: ''

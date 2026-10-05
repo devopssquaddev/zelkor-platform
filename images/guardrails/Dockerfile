@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.13.16-slim-trixie
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
 LABEL org.opencontainers.image.description="Zelkor NeMo Guardrails FastAPI server (CPU-native)"
@@ -21,13 +21,13 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
 
 COPY images/guardrails/otel_project_route.py /app/otel_project_route.py
 COPY images/guardrails/boot.py /app/boot.py
-COPY images/guardrails/sitecustomize.py /usr/local/lib/python3.12/site-packages/sitecustomize.py
+COPY images/guardrails/sitecustomize.py /usr/local/lib/python3.13/site-packages/sitecustomize.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 COPY images/common/langfuse_keep.py /app/langfuse_keep.py
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && mkdir -p /etc/nemoguardrails/configs/content_safety \
-    && chmod 644 /usr/local/lib/python3.12/site-packages/sitecustomize.py \
+    && chmod 644 /usr/local/lib/python3.13/site-packages/sitecustomize.py \
     && chown -R zelkor:zelkor /etc/nemoguardrails /app/otel_project_route.py /app/boot.py /app/zelkor_logging.py /app/langfuse_keep.py
 USER 1000
 

@@ -23,12 +23,12 @@ spec:
       hostNetwork: true
       containers:
         - name: install
-          image: alpine:3.22
+          image: alpine:3.24.2
           securityContext:
             privileged: true
           env:
             - name: GVISOR_RELEASE
-              value: "20260817"
+              value: "20260928"
             - name: HOST_ROOT
               value: /host
           command:

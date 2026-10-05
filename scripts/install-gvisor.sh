@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
+GVISOR_RELEASE="${GVISOR_RELEASE:-20260928}"
 APPLY_RC=1
 KUBECTL=(kubectl)
 WAIT_TIMEOUT="${GVISOR_WAIT_TIMEOUT:-600}"
@@ -70,7 +70,7 @@ spec:
     - operator: Exists
   containers:
     - name: smoke
-      image: busybox:1.37.0
+      image: busybox:1.38.0
       command: ["dmesg"]
 EOF
   local deadline=$((SECONDS + 120))
@@ -134,7 +134,7 @@ apply_legacy_installer() {
   python3 - "${DIR}/gvisor/daemonset.yaml" <<'PY'
 import os, pathlib, sys
 text = pathlib.Path(sys.argv[1]).read_text()
-text = text.replace('value: "20260817"', f'value: "{os.environ["GVISOR_RELEASE"]}"')
+text = text.replace('value: "20260928"', f'value: "{os.environ["GVISOR_RELEASE"]}"')
 pathlib.Path("/tmp/zelkor-gvisor-ds.yaml").write_text(text)
 PY
   "${KUBECTL[@]}" apply -f /tmp/zelkor-gvisor-ds.yaml

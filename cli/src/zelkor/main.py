@@ -97,9 +97,15 @@ def _argv_for_log(argv: list[str]) -> str:
 
 def _flush_logs() -> None:
     for handler in logging.getLogger().handlers:
-        handler.flush()
+        try:
+            handler.flush()
+        except ValueError:
+            pass
     for handler in logger.handlers:
-        handler.flush()
+        try:
+            handler.flush()
+        except ValueError:
+            pass
     try:
         sys.stderr.flush()
     except Exception:

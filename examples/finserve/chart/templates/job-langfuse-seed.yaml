@@ -16,7 +16,7 @@ spec:
       restartPolicy: OnFailure
       initContainers:
         - name: wait-for-langfuse
-          image: busybox:1.37
+          image: busybox:1.38.0
           {{- with .Values.langfuseSeed.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -32,7 +32,7 @@ spec:
               echo "Langfuse is reachable."
       containers:
         - name: seed
-          image: python:3.12-slim
+          image: python:3.14.8-slim-trixie
           imagePullPolicy: IfNotPresent
           {{- with .Values.langfuseSeed.resources }}
           resources:

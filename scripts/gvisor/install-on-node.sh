@@ -4,7 +4,7 @@
 set -eu
 
 ROOT="${HOST_ROOT:-/host}"
-GVISOR_RELEASE="${GVISOR_RELEASE:-20260817}"
+GVISOR_RELEASE="${GVISOR_RELEASE:-20260928}"
 GVISOR_BASE_URL="${GVISOR_BASE_URL:-https://storage.googleapis.com/gvisor/releases/release}"
 VERIFY_CHECKSUM="${VERIFY_CHECKSUM:-false}"
 DROP_IN_DIR="${DROP_IN_DIR:-}"

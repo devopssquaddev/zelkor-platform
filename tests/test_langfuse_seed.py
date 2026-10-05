@@ -503,7 +503,7 @@ def test_helm_bootstrap_wait_init_on_aegra_when_init_enabled():
     assert "/api/public/llm-connections" in out
     assert "envFrom:" in out
     assert "zelkor-zelkor-platform-langfuse-otel" in out
-    assert "busybox:1.37" in out
+    assert "busybox:1.38.0" in out
     assert "kubectl" not in out
     assert "bitnami" not in out.lower()
     assert "langfuse-bootstrap-wait" not in out

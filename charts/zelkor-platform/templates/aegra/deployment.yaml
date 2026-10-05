@@ -44,7 +44,7 @@ spec:
       initContainers:
         {{- include "zelkor-platform.langfuseBootstrapWaitInitContainer" . | nindent 8 }}
         - name: wait-for-deps
-          image: {{ .Values.global.initContainerImage | default "busybox:1.37" }}
+          image: {{ .Values.global.initContainerImage | default "busybox:1.38.0" }}
           command:
             - sh
             - -c

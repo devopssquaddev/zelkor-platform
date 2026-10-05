@@ -74,6 +74,35 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+class ZelkorStreamHandler(logging.StreamHandler):
+    """Rebind stdout/stderr if pytest (or the runtime) closed the original stream."""
+
+    def __init__(self, stream: object | None = None) -> None:
+        self._prefer_stderr = stream is sys.stderr
+        super().__init__(stream if stream is not None else sys.stdout)
+
+    def _live_stream(self):
+        current = self.stream
+        if current is not None and not getattr(current, "closed", False):
+            return current
+        return sys.stderr if self._prefer_stderr else sys.stdout
+
+    def emit(self, record: logging.LogRecord) -> None:
+        live = self._live_stream()
+        if live is not self.stream:
+            self.setStream(live)
+        try:
+            super().emit(record)
+        except ValueError:
+            return
+
+    def flush(self) -> None:
+        try:
+            super().flush()
+        except ValueError:
+            return
+
+
 class DropMcpSessionIdFilter(logging.Filter):
     """MCP streamable HTTP logs the session id at INFO; that is a secret."""
 
@@ -270,7 +299,7 @@ def configure_logging(
     level = parse_level()
     fmt = parse_format()
 
-    handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
+    handler = ZelkorStreamHandler(stream if stream is not None else sys.stdout)
     if fmt == "json":
         handler.setFormatter(JsonFormatter())
     else:

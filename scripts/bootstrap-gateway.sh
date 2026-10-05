@@ -11,7 +11,7 @@ source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 # shellcheck source=lib/gateway-policies.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
 
-ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.1}"
+ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.2}"
 AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.1.0}"
 ROLLOUT_WAIT_TIMEOUT="${ROLLOUT_WAIT_TIMEOUT:-5m}"
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
@@ -208,7 +208,7 @@ provider:
   kubernetes:
     rateLimitDeployment:
       container:
-        image: docker.io/envoyproxy/ratelimit:17b1956c
+        image: docker.io/envoyproxy/ratelimit:0482748e
       patch:
         type: StrategicMerge
         value:
@@ -219,7 +219,7 @@ provider:
                 - imagePullPolicy: IfNotPresent
                   name: envoy-ratelimit
     shutdownManager:
-      image: envoyproxy/gateway:v1.9.1
+      image: envoyproxy/gateway:v1.9.2
   type: Kubernetes
 rateLimit:
   failClosed: false
