@@ -54,7 +54,7 @@ Customer-facing configuration is grouped into three layers. Templates compile th
 | `workspace.policies.presidio` | **Enterprise** |
 | `workspace.tools.enabled` | Unified MCP gateway and native MCP Deployments |
 | `workspace.tools.extraBackends[]` | BYO MCP registration — see [Register extra MCP backends](../mcp-extra-backends.md) |
-| `workspace.tools.postgresMCP` / `qdrantMCP` / `sandboxMCP` / `aigatewayMCP` | Native MCP settings |
+| `workspace.tools.postgresMCP` / `qdrantMCP` / `sandboxMCP` / `aigatewayMCP` / `objectMCP` | Native MCP settings. `objectMCP` is off until an S3 endpoint and bucket are set. |
 
 ### `workload`
 

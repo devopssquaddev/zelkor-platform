@@ -1,5 +1,11 @@
 {{- include "zelkor-platform.compile" . -}}
-{{- if and .Values.seaweedfs.enabled .Values.langfuse.enabled }}
+{{- if eq (include "zelkor-platform.seaweedfsRender" .) "true" }}
+{{- $persist := .Values.seaweedfs.persistence | default dict -}}
+{{- $inCluster := eq (include "zelkor-platform.objectStoreInCluster" .) "true" -}}
+{{- $objectBucket := "" -}}
+{{- if $inCluster -}}
+{{- $objectBucket = ((.Values.mcp.objectMCP).s3.bucket | trim) -}}
+{{- end }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -26,6 +32,10 @@ metadata:
     app.kubernetes.io/component: seaweedfs
 spec:
   replicas: 1
+  {{- if $persist.enabled }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "zelkor-platform.selectorLabels" . | nindent 6 }}
@@ -45,10 +55,37 @@ spec:
             - -ec
             - |
               mkdir -p /data
+              {{- if $objectBucket }}
+              weed -v={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.seaweedfs "vendor" "seaweedfs") }} server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json &
+              pid=$!
+              trap 'kill "$pid"' TERM INT
+              ready=0
+              i=0
+              while [ "$i" -lt 60 ]; do
+                if echo "s3.bucket.list" | weed shell -master=localhost:9333 > /tmp/buckets 2>/tmp/buckets.err; then
+                  ready=1
+                  break
+                fi
+                i=$((i+1))
+                sleep 1
+              done
+              if [ "$ready" -ne 1 ]; then
+                echo "seaweedfs shell did not become ready" >&2
+                kill "$pid"
+                exit 1
+              fi
+              if ! grep -q "{{ $objectBucket }}" /tmp/buckets; then
+                echo "s3.bucket.create -name {{ $objectBucket }}" | weed shell -master=localhost:9333
+              fi
+              wait "$pid"
+              {{- else }}
               exec weed -v={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.seaweedfs "vendor" "seaweedfs") }} server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json
+              {{- end }}
           ports:
             - containerPort: 8333
               name: s3
+          resources:
+            {{- toYaml .Values.seaweedfs.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /data
@@ -58,11 +95,35 @@ spec:
           {{- include "zelkor-platform.containerProbes" (dict "root" . "values" .Values.seaweedfs) | nindent 10 }}
       volumes:
         - name: data
+          {{- if $persist.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "zelkor-platform.fullname" . }}-seaweedfs
+          {{- else }}
           emptyDir: {}
+          {{- end }}
         - name: s3-config
           secret:
             secretName: {{ include "zelkor-platform.fullname" . }}-seaweedfs
             items:
               - key: s3-config.json
                 path: s3-config.json
+{{- if $persist.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-seaweedfs
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "seaweedfs") | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $persist.size | default "10Gi" | quote }}
+  {{- if $persist.storageClass | default "" | trim }}
+  storageClassName: {{ $persist.storageClass | quote }}
+  {{- end }}
+{{- end }}
 {{- end }}

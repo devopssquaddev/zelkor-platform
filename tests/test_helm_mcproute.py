@@ -153,3 +153,129 @@ def test_no_legacy_mcp_gateway_objects_in_profiles():
         lowered = r.stdout.lower()
         assert "mcp-gateway" not in lowered
         assert "mcp_gateway" not in lowered
+
+
+_OBJECT_SETS = [
+    "--set",
+    "workspace.tools.objectMCP.enabled=true",
+    "--set",
+    "workspace.tools.objectMCP.s3.endpoint=http://zelkor-platform-seaweedfs:8333",
+    "--set",
+    "workspace.tools.objectMCP.s3.bucket=zelkor-objects",
+    "--set",
+    "workspace.tools.objectMCP.s3.auth.accessKey=obj-ak",
+    "--set",
+    "workspace.tools.objectMCP.s3.auth.secretKey=obj-sk",
+    "--set",
+    "seaweedfs.objectIdentity.accessKey=obj-ak",
+    "--set",
+    "seaweedfs.objectIdentity.secretKey=obj-sk",
+]
+
+
+def test_reserved_object_backend_name_fails():
+    r = _helm(
+        "--set",
+        "workspace.tools.extraBackends[0].name=object",
+        "--set",
+        "workspace.tools.extraBackends[0].service.name=x",
+        "--set",
+        "workspace.tools.extraBackends[0].service.port=8080",
+    )
+    assert r.returncode != 0
+    assert "reserved" in r.stderr
+
+
+def test_object_mcp_requires_endpoint_and_bucket():
+    r = _helm("--set", "workspace.tools.objectMCP.enabled=true")
+    assert r.returncode != 0
+    assert "endpoint" in r.stderr
+
+
+def test_object_mcp_backend_ref_and_no_s3_env_on_agent_or_worker():
+    r = _helm(*_OBJECT_SETS)
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    route = _mcproute(docs)
+    names = [ref.get("name") for ref in route["spec"]["backendRefs"]]
+    assert "object" in names
+    backends = [
+        d
+        for d in docs
+        if d.get("kind") == "Backend" and d.get("metadata", {}).get("name") == "object"
+    ]
+    assert len(backends) == 1
+    forbidden = []
+    for doc in docs:
+        if doc.get("kind") != "Deployment":
+            continue
+        name = doc["metadata"]["name"]
+        if not (name.endswith("-aegra") or "sandbox-worker" in name):
+            continue
+        for container in doc["spec"]["template"]["spec"]["containers"]:
+            for env in container.get("env") or []:
+                if env.get("name", "").startswith("OBJECT_S3") or env.get("name", "").startswith("AWS_"):
+                    forbidden.append((name, env["name"]))
+    assert forbidden == []
+    worker = next(
+        d
+        for d in docs
+        if d.get("kind") == "NetworkPolicy" and d["metadata"]["name"].endswith("sandbox-worker-egress")
+    )
+    assert worker["spec"]["egress"] == []
+
+
+def test_object_mcp_renders_seaweedfs_without_langfuse():
+    r = _helm(
+        *_OBJECT_SETS,
+        "--set",
+        "platform.telemetry.langfuse.enabled=false",
+    )
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    assert any(
+        d.get("kind") == "Deployment" and d["metadata"]["name"].endswith("-seaweedfs") for d in docs
+    )
+    assert any(d.get("kind") == "PersistentVolumeClaim" and "seaweedfs" in d["metadata"]["name"] for d in docs)
+    secret = next(d for d in docs if d.get("kind") == "Secret" and d["metadata"]["name"].endswith("-seaweedfs"))
+    config = secret["stringData"]["s3-config.json"]
+    assert "Read:zelkor-objects" in config
+    assert "Admin" in config
+
+
+def test_external_object_store_does_not_render_seaweedfs_without_langfuse():
+    r = _helm(
+        "--set",
+        "platform.telemetry.langfuse.enabled=false",
+        "--set",
+        "workspace.tools.objectMCP.enabled=true",
+        "--set",
+        "workspace.tools.objectMCP.s3.endpoint=https://s3.amazonaws.com",
+        "--set",
+        "workspace.tools.objectMCP.s3.bucket=customer-objects",
+        "--set",
+        "workspace.tools.objectMCP.s3.auth.accessKey=obj-ak",
+        "--set",
+        "workspace.tools.objectMCP.s3.auth.secretKey=obj-sk",
+        "--set",
+        "workspace.tools.objectMCP.s3.egressCIDRs[0]=203.0.113.0/24",
+        "--set",
+        "security.networkPolicies.enabled=true",
+    )
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    assert not any(
+        d.get("kind") == "Deployment" and str(d.get("metadata", {}).get("name", "")).endswith("-seaweedfs")
+        for d in docs
+    )
+
+
+def test_seaweedfs_empty_dir_when_persistence_disabled():
+    r = _helm("--set", "seaweedfs.persistence.enabled=false")
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    assert not any(d.get("kind") == "PersistentVolumeClaim" for d in docs)
+    deploy = next(d for d in docs if d.get("kind") == "Deployment" and d["metadata"]["name"].endswith("-seaweedfs"))
+    data = next(v for v in deploy["spec"]["template"]["spec"]["volumes"] if v["name"] == "data")
+    assert "emptyDir" in data
+

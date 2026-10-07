@@ -28,6 +28,12 @@ Zelkor ships with several native MCP servers that provide essential infrastructu
 | **Qdrant** | `qdrant__search_documents` | Performs a vector similarity search. The query is automatically wrapped in a `tenant_id` payload filter. |
 | **Qdrant** | `qdrant__upsert_document` | Inserts or updates a document in Qdrant with tenant payload context. |
 | **Sandbox** | `sandbox__execute_python` | Executes arbitrary Python code in a secure, ephemeral gVisor container. Used for dynamic data analysis or generating charts. |
+| **Object** | `object__list` | Lists object keys for the caller. Returned keys omit the tenant prefix. |
+| **Object** | `object__stat` | Returns size and metadata for one key. |
+| **Object** | `object__read_text` | Reads a UTF-8 window. The response is capped; it is not the whole object. |
+| **Object** | `object__write_text` | Writes a UTF-8 object. Text over the per-call cap is rejected. |
+| **Object** | `object__copy` | Copies an object inside the bucket under the same tenant. |
+| **Object** | `object__delete` | Deletes one key. Off unless `workspace.tools.objectMCP.allowDelete` is true. |
 
 ## Tool Prefixes
 
@@ -41,6 +47,7 @@ To prevent naming collisions, the gateway prefixes tool names based on the serve
 | **Qdrant (Native)** | `search_documents` | `qdrant__search_documents` |
 | **Qdrant (Native)** | `upsert_document` | `qdrant__upsert_document` |
 | **Sandbox (Native)** | `execute_python` | `sandbox__execute_python` |
+| **Object (Native)** | `list`, `stat`, `read_text`, `write_text`, `copy`, `delete` | `object__list`, `object__stat`, `object__read_text`, `object__write_text`, `object__copy`, `object__delete` |
 | **Extra (e.g., `jira`)** | `create_issue` | `jira__create_issue` |
 
 *Note: Double underscores (`__`) separate the server prefix from the tool name.*

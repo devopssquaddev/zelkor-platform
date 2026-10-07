@@ -112,6 +112,7 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- $_ := set .Values "mcp" $mcp -}}
 {{- end -}}
 {{- include "zelkor-platform.compile.mcpExtraBackends" . -}}
+{{- include "zelkor-platform.compile.objectMCP" . -}}
 {{- end }}
 
 {{- define "zelkor-platform.compile.workload" -}}
@@ -583,7 +584,7 @@ until nc -z -w 2 {{ include "zelkor-platform.valkeyHost" . }} {{ include "zelkor
   echo "Waiting for valkey..."
   sleep 1
 done
-{{- if and .Values.seaweedfs.enabled .Values.langfuse.enabled }}
+{{- if eq (include "zelkor-platform.seaweedfsRender" .) "true" }}
 until nc -z -w 2 {{ include "zelkor-platform.fullname" . }}-seaweedfs 8333; do
   echo "Waiting for seaweedfs..."
   sleep 1

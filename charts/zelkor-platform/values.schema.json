@@ -754,22 +754,6 @@
               "type": "string",
               "description": "Value for workspace.models.internalUrl."
             },
-            "rateLimit": {
-              "type": "object",
-              "description": "Global request cap on AI Gateway /v1 (CE safety net).",
-              "properties": {
-                "enabled": {
-                  "type": "boolean",
-                  "description": "Value for workspace.models.rateLimit.enabled."
-                },
-                "requestsPerMinute": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "description": "Value for workspace.models.rateLimit.requestsPerMinute."
-                }
-              },
-              "additionalProperties": false
-            },
             "inClusterService": {
               "type": "object",
               "description": "Values under workspace.models.inClusterService.",
@@ -788,6 +772,25 @@
                 "targetHost": {
                   "type": "string",
                   "description": "Value for workspace.models.inClusterService.targetHost."
+                }
+              },
+              "additionalProperties": false
+            },
+            "rateLimit": {
+              "type": "object",
+              "description": "Global request cap on AI Gateway /v1 (CE safety net).",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for workspace.models.rateLimit.enabled."
+                },
+                "requestsPerMinute": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for workspace.models.rateLimit.requestsPerMinute.",
+                  "minimum": 1
                 }
               },
               "additionalProperties": false
@@ -2640,6 +2643,281 @@
                 }
               },
               "additionalProperties": false
+            },
+            "objectMCP": {
+              "type": "object",
+              "description": "Values under workspace.tools.objectMCP.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for workspace.tools.objectMCP.enabled."
+                },
+                "allowDelete": {
+                  "type": "boolean",
+                  "description": "Value for workspace.tools.objectMCP.allowDelete."
+                },
+                "maxReadBytes": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for workspace.tools.objectMCP.maxReadBytes."
+                },
+                "maxWriteBytes": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for workspace.tools.objectMCP.maxWriteBytes."
+                },
+                "maxListKeys": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for workspace.tools.objectMCP.maxListKeys."
+                },
+                "replicaCount": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Value for workspace.tools.objectMCP.replicaCount."
+                },
+                "s3": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.objectMCP.s3.",
+                  "properties": {
+                    "endpoint": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.objectMCP.s3.endpoint."
+                    },
+                    "bucket": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.objectMCP.s3.bucket."
+                    },
+                    "region": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.objectMCP.s3.region."
+                    },
+                    "forcePathStyle": {
+                      "type": "boolean",
+                      "description": "Value for workspace.tools.objectMCP.s3.forcePathStyle."
+                    },
+                    "egressCIDRs": {
+                      "type": "array",
+                      "description": "List at workspace.tools.objectMCP.s3.egressCIDRs.",
+                      "items": {
+                        "type": [
+                          "string",
+                          "object",
+                          "number",
+                          "boolean"
+                        ]
+                      }
+                    },
+                    "auth": {
+                      "type": "object",
+                      "description": "Values under workspace.tools.objectMCP.s3.auth.",
+                      "properties": {
+                        "accessKey": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.s3.auth.accessKey."
+                        },
+                        "secretKey": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.s3.auth.secretKey."
+                        },
+                        "secretRef": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.s3.auth.secretRef."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "resources": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.objectMCP.resources.",
+                  "properties": {
+                    "requests": {
+                      "type": "object",
+                      "description": "Values under workspace.tools.objectMCP.resources.requests.",
+                      "properties": {
+                        "cpu": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.resources.requests.cpu."
+                        },
+                        "memory": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.resources.requests.memory."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "limits": {
+                      "type": "object",
+                      "description": "Values under workspace.tools.objectMCP.resources.limits.",
+                      "properties": {
+                        "cpu": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.resources.limits.cpu."
+                        },
+                        "memory": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.resources.limits.memory."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "startupProbe": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.objectMCP.startupProbe.",
+                  "properties": {
+                    "httpGet": {
+                      "type": "object",
+                      "description": "Values under workspace.tools.objectMCP.startupProbe.httpGet.",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.startupProbe.httpGet.path."
+                        },
+                        "port": {
+                          "type": [
+                            "integer",
+                            "string"
+                          ],
+                          "description": "Value for workspace.tools.objectMCP.startupProbe.httpGet.port."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "initialDelaySeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.startupProbe.initialDelaySeconds."
+                    },
+                    "periodSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.startupProbe.periodSeconds."
+                    },
+                    "timeoutSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.startupProbe.timeoutSeconds."
+                    },
+                    "failureThreshold": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.startupProbe.failureThreshold."
+                    }
+                  }
+                },
+                "livenessProbe": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.objectMCP.livenessProbe.",
+                  "properties": {
+                    "httpGet": {
+                      "type": "object",
+                      "description": "Values under workspace.tools.objectMCP.livenessProbe.httpGet.",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.livenessProbe.httpGet.path."
+                        },
+                        "port": {
+                          "type": [
+                            "integer",
+                            "string"
+                          ],
+                          "description": "Value for workspace.tools.objectMCP.livenessProbe.httpGet.port."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "periodSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.livenessProbe.periodSeconds."
+                    },
+                    "timeoutSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.livenessProbe.timeoutSeconds."
+                    },
+                    "failureThreshold": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.livenessProbe.failureThreshold."
+                    }
+                  }
+                },
+                "readinessProbe": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.objectMCP.readinessProbe.",
+                  "properties": {
+                    "httpGet": {
+                      "type": "object",
+                      "description": "Values under workspace.tools.objectMCP.readinessProbe.httpGet.",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "Value for workspace.tools.objectMCP.readinessProbe.httpGet.path."
+                        },
+                        "port": {
+                          "type": [
+                            "integer",
+                            "string"
+                          ],
+                          "description": "Value for workspace.tools.objectMCP.readinessProbe.httpGet.port."
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "periodSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.readinessProbe.periodSeconds."
+                    },
+                    "timeoutSeconds": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.readinessProbe.timeoutSeconds."
+                    },
+                    "failureThreshold": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.tools.objectMCP.readinessProbe.failureThreshold."
+                    }
+                  }
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
@@ -3112,7 +3390,9 @@
         },
         "monitoringNamespaceSelector": {
           "type": "object",
-          "description": "Namespace labels for Prometheus scrapes of MCP metrics (port 9090)."
+          "description": "Namespace labels for Prometheus scrapes of MCP metrics (port 9090).",
+          "properties": {
+          }
         }
       },
       "additionalProperties": false
@@ -4479,6 +4759,40 @@
             "secretKey": {
               "type": "string",
               "description": "Value for seaweedfs.auth.secretKey."
+            }
+          },
+          "additionalProperties": false
+        },
+        "objectIdentity": {
+          "type": "object",
+          "description": "Values under seaweedfs.objectIdentity.",
+          "properties": {
+            "accessKey": {
+              "type": "string",
+              "description": "Value for seaweedfs.objectIdentity.accessKey."
+            },
+            "secretKey": {
+              "type": "string",
+              "description": "Value for seaweedfs.objectIdentity.secretKey."
+            }
+          },
+          "additionalProperties": false
+        },
+        "persistence": {
+          "type": "object",
+          "description": "Values under seaweedfs.persistence.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for seaweedfs.persistence.enabled."
+            },
+            "size": {
+              "type": "string",
+              "description": "Value for seaweedfs.persistence.size."
+            },
+            "storageClass": {
+              "type": "string",
+              "description": "Value for seaweedfs.persistence.storageClass."
             }
           },
           "additionalProperties": false

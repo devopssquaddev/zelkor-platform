@@ -64,6 +64,11 @@ seaweedfs:
   auth:
     accessKey: zelkor-s3-dev
     secretKey: zelkor-s3-dev-secret
+  objectIdentity:
+    accessKey: zelkor-s3-object-dev
+    secretKey: zelkor-s3-object-dev-secret
+  persistence:
+    size: 1Gi
 qdrant:
   enabled: true
 platform:
@@ -139,6 +144,16 @@ workspace:
           captureContent: true
   tools:
     enabled: true
+    objectMCP:
+      enabled: true
+      s3:
+        endpoint: http://zelkor-platform-seaweedfs:8333
+        bucket: zelkor-objects
+        region: auto
+        forcePathStyle: true
+        auth:
+          accessKey: zelkor-s3-object-dev
+          secretKey: zelkor-s3-object-dev-secret
     aigatewayMCP:
       enabled: false
     sandboxMCP:

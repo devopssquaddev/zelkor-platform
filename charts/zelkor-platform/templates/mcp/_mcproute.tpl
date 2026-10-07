@@ -3,7 +3,7 @@ MCPRoute helpers: native/extra backend refs, compile extras for Langfuse seed.
 CE does not emit Envoy egress NetworkPolicies from extra FQDN CIDRs.
 */}}
 {{- define "zelkor-platform.mcpReservedBackendNames" -}}
-postgres,qdrant,sandbox,aigateway,nemo,aegra,langfuse
+postgres,qdrant,sandbox,aigateway,nemo,aegra,langfuse,object
 {{- end }}
 
 {{- define "zelkor-platform.mcpMcprouteEnabled" -}}
@@ -29,6 +29,9 @@ false
 {{- end -}}
 {{- if (.Values.mcp.aigatewayMCP).enabled -}}
 {{- $list = append $list (dict "name" "aigateway" "hostname" (printf "%s-mcp-aigateway.%s.svc.cluster.local" $fn $ns)) -}}
+{{- end -}}
+{{- if (.Values.mcp.objectMCP).enabled -}}
+{{- $list = append $list (dict "name" "object" "hostname" (printf "%s-mcp-object.%s.svc.cluster.local" $fn $ns)) -}}
 {{- end -}}
 {{- $list | toJson -}}
 {{- end }}
@@ -69,6 +72,66 @@ false
 {{- $seed = append $seed (dict "name" $name "path" ($item.path | default "/mcp")) -}}
 {{- end -}}
 {{- $_ := set $root.Values "__mcpExtraBackendSeedJson" ($seed | toJson) -}}
+{{- end -}}
+
+{{- define "zelkor-platform.objectStoreInCluster" -}}
+{{- $obj := (.Values.mcp.objectMCP | default dict) -}}
+{{- $endpoint := (($obj.s3).endpoint | default "") -}}
+{{- $host := printf "%s-seaweedfs" (include "zelkor-platform.fullname" .) -}}
+{{- if and $obj.enabled (contains $host $endpoint) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.seaweedfsRender" -}}
+{{- $inCluster := eq (include "zelkor-platform.objectStoreInCluster" .) "true" -}}
+{{- if and .Values.seaweedfs.enabled (or .Values.langfuse.enabled $inCluster) -}}
+true
+{{- else -}}
+false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.compile.objectMCP" -}}
+{{- $obj := (.Values.mcp.objectMCP | default dict) -}}
+{{- if $obj.enabled -}}
+{{- $s3 := $obj.s3 | default dict -}}
+{{- $endpoint := $s3.endpoint | default "" | trim -}}
+{{- $bucket := $s3.bucket | default "" | trim -}}
+{{- if not $endpoint -}}{{- fail "workspace.tools.objectMCP.s3.endpoint is required when objectMCP.enabled" -}}{{- end -}}
+{{- if not $bucket -}}{{- fail "workspace.tools.objectMCP.s3.bucket is required when objectMCP.enabled" -}}{{- end -}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $bucket) -}}
+{{- fail "workspace.tools.objectMCP.s3.bucket must be a DNS-style S3 bucket name" -}}
+{{- end -}}
+{{- $auth := $s3.auth | default dict -}}
+{{- $ref := $auth.secretRef | default "" | trim -}}
+{{- $ak := $auth.accessKey | default "" | trim -}}
+{{- $sk := $auth.secretKey | default "" | trim -}}
+{{- if and $ref (or $ak $sk) -}}
+{{- fail "workspace.tools.objectMCP.s3.auth: set secretRef or accessKey and secretKey, not both" -}}
+{{- end -}}
+{{- if and (not $ref) (or (not $ak) (not $sk)) -}}
+{{- fail "workspace.tools.objectMCP.s3.auth.accessKey and secretKey are required when secretRef is empty" -}}
+{{- end -}}
+{{- $inCluster := eq (include "zelkor-platform.objectStoreInCluster" .) "true" -}}
+{{- if $inCluster -}}
+{{- if not .Values.seaweedfs.enabled -}}
+{{- fail "seaweedfs.enabled must be true when objectMCP.s3.endpoint points at in-cluster SeaweedFS" -}}
+{{- end -}}
+{{- $ident := .Values.seaweedfs.objectIdentity | default dict -}}
+{{- if or (not ($ident.accessKey | default "" | trim)) (not ($ident.secretKey | default "" | trim)) -}}
+{{- fail "seaweedfs.objectIdentity.accessKey and secretKey are required when objectMCP uses in-cluster SeaweedFS" -}}
+{{- end -}}
+{{- if and (not $ref) (or (ne $ak ($ident.accessKey | trim)) (ne $sk ($ident.secretKey | trim))) -}}
+{{- fail "workspace.tools.objectMCP.s3.auth must match seaweedfs.objectIdentity when using in-cluster SeaweedFS" -}}
+{{- end -}}
+{{- end -}}
+{{- if and (not $inCluster) .Values.security.networkPolicies.enabled (eq (len ($s3.egressCIDRs | default list)) 0) -}}
+{{- fail "workspace.tools.objectMCP.s3.egressCIDRs is required for an external S3 endpoint when security.networkPolicies.enabled" -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "zelkor-platform.tenantJwtValidate" -}}
