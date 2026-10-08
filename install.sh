@@ -450,6 +450,12 @@ ux_heartbeat_stop() {
 }
 
 ux_cleanup() {
+  local code=$?
+  # exit does not raise ERR. A bare exit 1 (provider check, and any path that
+  # does not call die) would otherwise drop the spinner and print nothing.
+  if [[ "$code" -ne 0 && "${UX_FAILED:-}" != "1" ]]; then
+    ux_fail "install stopped (exit ${code})" || true
+  fi
   ux_heartbeat_stop || true
   [[ -n "${UX_LOCK:-}" ]] && rm -rf "$UX_LOCK"
   [[ -n "${UX_MSG_FILE:-}" ]] && rm -f "$UX_MSG_FILE"
