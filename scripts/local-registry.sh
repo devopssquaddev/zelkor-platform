@@ -41,11 +41,13 @@ start_one() {
   local name="$1" port="$2" config="$3"
   if docker ps --format '{{.Names}}' | grep -qx "$name"; then
     log "running: ${name} (${LOCAL_REGISTRY_BIND}:${port})"
+    wait_http "$port" "$name"
     return 0
   fi
   if docker ps -a --format '{{.Names}}' | grep -qx "$name"; then
     log "starting existing container: ${name}"
     docker start "$name" >/dev/null
+    wait_http "$port" "$name"
     return 0
   fi
   if port_in_use "$port" && ! our_container_on_port "$port" "$name"; then
@@ -61,6 +63,28 @@ start_one() {
     --name "$name" \
     -v "${config}:/etc/docker/registry/config.yml:ro" \
     "$REGISTRY_IMAGE" >/dev/null
+  wait_http "$port" "$name"
+}
+
+# docker run returns before registry listens. The first parallel pulls then die with HTTPS EOF.
+# A missed probe must not exit 1: that aborts ./install.sh. The container is already up.
+wait_http() {
+  local port="$1" name="$2" i code
+  if ! command -v curl >/dev/null 2>&1; then
+    log "curl not found; not probing ${name}"
+    return 0
+  fi
+  for i in $(seq 1 40); do
+    # --noproxy: an ambient http_proxy would skip 127.0.0.1 and the probe would fail forever.
+    code="$(curl --noproxy '*' --max-time 2 -s -o /dev/null -w '%{http_code}' \
+      "http://${LOCAL_REGISTRY_BIND}:${port}/v2/" || true)"
+    if [[ "$code" == "200" || "$code" == "401" ]]; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  log "WARNING: ${name} did not answer HTTP on ${LOCAL_REGISTRY_BIND}:${port}; continuing"
+  return 0
 }
 
 stop_one() {
