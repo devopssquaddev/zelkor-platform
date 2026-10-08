@@ -617,7 +617,8 @@ EOF
       LOCAL_REGISTRY_DOCKER_PORT="$LOCAL_REGISTRY_DOCKER_PORT" \
       LOCAL_REGISTRY_GHCR_PORT="$LOCAL_REGISTRY_GHCR_PORT" \
       LOCAL_REGISTRY_BIND="$LOCAL_REGISTRY_BIND" \
-      ./scripts/local-registry.sh start
+      ./scripts/local-registry.sh start \
+      || log_warn "WARNING: local registry start failed; install continues (kubelet pulls on demand)"
     step_end download_registry_start
 
     step_begin download_warm_cache
@@ -627,14 +628,16 @@ EOF
       LOCAL_REGISTRY_BIND="$LOCAL_REGISTRY_BIND" \
       LOCAL_REGISTRY_DOCKER_PORT="$LOCAL_REGISTRY_DOCKER_PORT" \
       LOCAL_REGISTRY_GHCR_PORT="$LOCAL_REGISTRY_GHCR_PORT" \
-      ./scripts/warm-registry-cache.sh
+      ./scripts/warm-registry-cache.sh \
+      || log_warn "WARNING: one or more image downloads failed; install continues"
     step_end download_warm_cache
   else
     step_begin download_warm_cache
     VALUES_FILE="$VALUES_FILE" INSTALL_EXAMPLES="$INSTALL_EXAMPLES" \
       IMAGE_REGISTRY="$IMAGE_REGISTRY" IMAGE_TAG="$IMAGE_TAG" \
       DOCKER_PLATFORM="$DOCKER_PLATFORM" \
-      ./scripts/prefetch-images.sh --pull-only
+      ./scripts/prefetch-images.sh --pull-only \
+      || log_warn "WARNING: one or more image downloads failed; install continues"
     step_end download_warm_cache
   fi
 

@@ -87,6 +87,16 @@ registry_port_for_proxy() {
   fi
 }
 
+# Docker manifest v2 alone 404s on an OCI index ("accept header does not support OCI indexes").
+# zelkor-langfuse-seed:2.3.0 and other first-party tags are indexes, so every warm looked like a miss.
+MANIFEST_ACCEPT='Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+
+manifest_http() {
+  local port="$1" repo="$2" reference="$3"
+  curl -fsS -o /dev/null -H "$MANIFEST_ACCEPT" \
+    "http://${LOCAL_REGISTRY_BIND}:${port}/v2/${repo}/manifests/${reference}" 2>/dev/null
+}
+
 manifest_warm() {
   local proxy="$1"
   local port path repo tag
@@ -95,31 +105,42 @@ manifest_warm() {
   if [[ "$path" == *@sha256:* ]]; then
     repo="${path%@sha256:*}"
     tag="${path#*@}"
-    curl -fsS -o /dev/null -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
-      "http://${LOCAL_REGISTRY_BIND}:${port}/v2/${repo}/manifests/${tag}" 2>/dev/null
+    manifest_http "$port" "$repo" "$tag"
     return $?
   fi
   repo="${path%:*}"
   tag="${path##*:}"
-  curl -fsS -o /dev/null -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
-    "http://${LOCAL_REGISTRY_BIND}:${port}/v2/${repo}/manifests/${tag}" 2>/dev/null
+  manifest_http "$port" "$repo" "$tag"
 }
 
 warm_one() {
-  local ref="$1" proxy n
+  local ref="$1" proxy n errf
   proxy="$(proxy_path_for_ref "$ref")"
   if manifest_warm "$proxy"; then
     warm_progress "cached: ${ref}"
     return 0
   fi
   warm_progress "$ref"
-  for n in 1 2 3; do
-    if docker pull --quiet --platform "$DOCKER_PLATFORM" "$proxy" 2>&1; then
+  errf="$(mktemp)"
+  # Docker 29 asks the proxy for manifests/sha256-<hex>. registry 2.8.3 treats that as a
+  # tag and returns 404 even after the OCI index is cached. Kind's containerd still pulls
+  # by sha256:<hex>, so a present tag manifest is enough.
+  for n in 1 2 3 4 5; do
+    if docker pull --quiet --platform "$DOCKER_PLATFORM" "$proxy" >"$errf" 2>&1; then
+      rm -f "$errf"
       docker rmi "$proxy" >/dev/null 2>&1 || log "WARNING: docker rmi failed: ${proxy}"
+      return 0
+    fi
+    if manifest_warm "$proxy"; then
+      rm -f "$errf"
+      log "WARNING: ${ref} is in the local registry; docker pull failed on a digest lookup. Continuing."
       return 0
     fi
     sleep $((n * 2))
   done
+  log "ERROR: download failed: ${ref}"
+  cat "$errf" >&2 || true
+  rm -f "$errf"
   return 1
 }
 
@@ -137,8 +158,8 @@ echo 0 > "$WARM_COUNT_FILE"
 trap 'rm -f "$WARM_COUNT_FILE" "$WARM_LOCK_FILE"' EXIT
 
 log "Fetching ${WARM_TOTAL} container images (${PREFETCH_JOBS} at a time, platform=${DOCKER_PLATFORM})..."
-export -f warm_one proxy_path_for_ref manifest_warm registry_port_for_proxy log warm_progress
-export DOCKER_PLATFORM LOCAL_REGISTRY_BIND LOCAL_REGISTRY_DOCKER_PORT LOCAL_REGISTRY_GHCR_PORT WARM_TOTAL WARM_COUNT_FILE WARM_LOCK_FILE
+export -f warm_one proxy_path_for_ref manifest_warm manifest_http registry_port_for_proxy log warm_progress
+export DOCKER_PLATFORM LOCAL_REGISTRY_BIND LOCAL_REGISTRY_DOCKER_PORT LOCAL_REGISTRY_GHCR_PORT WARM_TOTAL WARM_COUNT_FILE WARM_LOCK_FILE MANIFEST_ACCEPT
 failed=0
 if ! printf '%s\n' "${IMAGES[@]}" | xargs -P "$PREFETCH_JOBS" -n 1 bash -c 'warm_one "$1"' _; then
   failed=1
