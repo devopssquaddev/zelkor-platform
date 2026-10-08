@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Zelkor install engine — cluster bootstrap logic (kind, Helm, rollouts).
 # Called by ./install.sh. For plain logs: INSTALL_UX=plain or run this script directly.
+# Rich mode keeps this output in INSTALL_LOG_FILE; the terminal checklist lives in ./install.sh.
 #
 # Prerequisites: docker, kind, helm, kubectl
 
@@ -76,17 +77,32 @@ case "$INSTALL_PROFILE" in
     ;;
   *)
     echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" >&2
+    if declare -f ux_fail >/dev/null 2>&1; then
+      ux_fail "Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" || true
+    fi
     exit 1
     ;;
 esac
 
-if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+# Colors are for the terminal footer. log() stays plain so the install log is grep-able.
+# After rich mode redirects stdout to the log file, [[ -t 1 ]] is false — use the
+# TTY noted before that redirect.
+if [[ "${INSTALL_UX_RICH:-}" == "true" && -z "${NO_COLOR:-}" ]] \
+  && { [[ -w /dev/tty ]] || [[ "${INSTALL_STDOUT_IS_TTY:-}" == "1" ]]; }; then
   C_GREEN=$'\033[32m'
   C_YELLOW=$'\033[33m'
+  C_RED=$'\033[31m'
+  C_CYAN=$'\033[36m'
+  C_DIM=$'\033[2m'
+  C_BOLD=$'\033[1m'
   C_RESET=$'\033[0m'
 else
   C_GREEN=''
   C_YELLOW=''
+  C_RED=''
+  C_CYAN=''
+  C_DIM=''
+  C_BOLD=''
   C_RESET=''
 fi
 
@@ -94,9 +110,15 @@ log() {
   local elapsed=$(( $(date +%s) - INSTALL_START_TIME ))
   printf '[install +%02d:%02d] %s\n' $((elapsed / 60)) $((elapsed % 60)) "$*"
 }
-log_green() { log "${C_GREEN}$*${C_RESET}"; }
-log_warn() { log "${C_YELLOW}$*${C_RESET}"; }
-die() { log "ERROR: $*"; exit 1; }
+log_green() { log "$*"; }
+log_warn() { log "$*"; }
+die() {
+  log "ERROR: $*"
+  if [[ "${INSTALL_UX_RICH:-}" == "true" ]] && declare -f ux_fail >/dev/null 2>&1; then
+    ux_fail "$*" || true
+  fi
+  exit 1
+}
 
 mark_degraded() {
   local what="$1"
@@ -451,7 +473,7 @@ resolve_llm_provider_prerequisites() {
 
 Clients use Bearer dev-key; upstream keys stay in the gateway secret (two-tier auth).
 EOF
-    exit 1
+    die "Choose at least one LLM provider before install."
   fi
 
   if [[ -z "${DEFAULT_LLM_MODEL:-}" ]]; then
@@ -883,14 +905,8 @@ fi
 
 # shellcheck source=lib/local-signing-helm-sets.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/local-signing-helm-sets.sh"
-append_local_signing_helm_sets HELM_EXTRA_ARGS "$VALUES_FILE" || {
-  log "ERROR: localSigning Helm sets failed (see messages above). Gate A kind profiles require seed JWT for Langfuse MCP bootstrap."
-  exit 1
-}
-verify_local_signing_helm_sets "$VALUES_FILE" "${HELM_EXTRA_ARGS[@]}" || {
-  log "ERROR: localSigning enabled in ${VALUES_FILE} but signing key or MCP authToken was not passed to Helm."
-  exit 1
-}
+append_local_signing_helm_sets HELM_EXTRA_ARGS "$VALUES_FILE" || die "localSigning Helm sets failed (see messages above). Gate A kind profiles require seed JWT for Langfuse MCP bootstrap."
+verify_local_signing_helm_sets "$VALUES_FILE" "${HELM_EXTRA_ARGS[@]}" || die "localSigning enabled in ${VALUES_FILE} but signing key or MCP authToken was not passed to Helm."
 
 if [[ ${#HELM_EXTRA_ARGS[@]} -gt 0 ]]; then
   helm upgrade --install "$HELM_RELEASE_NAME" "$CHART_PATH" \
@@ -1087,15 +1103,17 @@ PG_USER="${INSTALL_DISPLAY_POSTGRES_USER:-zelkor}"
 PG_PASS="${INSTALL_DISPLAY_POSTGRES_PASSWORD:-}"
 PG_DB="${INSTALL_DISPLAY_POSTGRES_DATABASE:-zelkor}"
 AIGW_KEY="${INSTALL_DISPLAY_AI_GATEWAY_CONSUMER_KEY:-}"
+local banner="${UX_BANNER:-======================================================================}"
+local subrule="${UX_SUBRULE:-  ------------------------------------------------------------------}"
 if kubectl --context "$KCTX" get secret "${HELM_RELEASE_NAME}-langfuse-admin" -o name &>/dev/null; then
   LF_UI_EMAIL="$(kubectl --context "$KCTX" get secret "${HELM_RELEASE_NAME}-langfuse-admin" -o jsonpath='{.data.email}' 2>/dev/null | base64 -d 2>/dev/null || true)"
   LF_UI_PASSWORD="$(kubectl --context "$KCTX" get secret "${HELM_RELEASE_NAME}-langfuse-admin" -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
 fi
 cat <<EOF
 
-======================================================================
-  Zelkor Platform — Available Web UIs & Endpoints
-======================================================================
+${banner}
+${C_BOLD}  Zelkor Platform — Available Web UIs & Endpoints${C_RESET}
+${banner}
 
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
@@ -1114,9 +1132,9 @@ cat <<EOF
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
 
-======================================================================
-  Local Dev Access Credentials & Tokens
-======================================================================
+${banner}
+${C_BOLD}  Local Dev Access Credentials & Tokens${C_RESET}
+${banner}
 
   [Langfuse UI & API]
     URL:              http://${lf_host}:8088
@@ -1153,13 +1171,13 @@ cat <<EOF
     Valkey (Redis):   localhost:6379
     ClickHouse:       http://localhost:8123 (user: default)
     Qdrant:           http://localhost:6333
-======================================================================
+${banner}
 EOF
 cat <<EOF
 
-======================================================================
-  Quick Test Commands (Instant Live Tracing)
-======================================================================
+${banner}
+${C_BOLD}  Quick Test Commands (Instant Live Tracing)${C_RESET}
+${banner}
 
   1. Test Envoy AI Gateway (model must match your install provider):
      curl -X POST http://${aigw_host}:8088/v1/chat/completions \\
@@ -1191,31 +1209,31 @@ cat <<EOF
      Agent runs (FinServe demo): Langfuse -> project **Zelkor Platform** -> Traces (name **finserve-advisor**)
      Gateway / playground: same project
 
-======================================================================
-  CLI — point at this cluster
-======================================================================
+${banner}
+${C_BOLD}  CLI — point at this cluster${C_RESET}
+${banner}
 
   pip install -e cli/
   zelkor env add local --kube-context ${KCTX} --namespace ${ns}
   zelkor env use local
 
-======================================================================
+${banner}
 EOF
 if [[ "${DEMO_TOUR_FAILED:-false}" == "true" ]]; then
 cat <<EOF
 ${C_GREEN}  Demo tour (optional verification)
-  ------------------------------------------------------------------
+${subrule}
   Some demo tour checks did not pass. Due to LLM use, these tests may
   fail when the model hallucinates or responds non-deterministically.
   The platform install completed successfully.${C_RESET}
 
-======================================================================
+${banner}
 EOF
 fi
 if [[ ${#DEGRADED_COMPONENTS[@]} -gt 0 ]]; then
 cat <<EOF
 ${C_YELLOW}  Degraded components (install continued)
-  ------------------------------------------------------------------
+${subrule}
 EOF
 for entry in "${DEGRADED_COMPONENTS[@]}"; do
   component="${entry%%$'\t'*}"
@@ -1226,13 +1244,13 @@ for entry in "${DEGRADED_COMPONENTS[@]}"; do
 done
 cat <<EOF
 ${C_RESET}
-======================================================================
+${banner}
 EOF
 fi
 if [[ ${#NOT_VERIFIED[@]} -gt 0 ]]; then
 cat <<EOF
   Not verified (fire-and-forget)
-  ------------------------------------------------------------------
+${subrule}
 EOF
 for entry in "${NOT_VERIFIED[@]}"; do
   component="${entry%%$'\t'*}"
@@ -1243,7 +1261,7 @@ for entry in "${NOT_VERIFIED[@]}"; do
 done
 cat <<EOF
 
-======================================================================
+${banner}
 EOF
 fi
 if [[ "$DOWNLOAD_DURATION" -gt 0 ]]; then
@@ -1251,12 +1269,12 @@ cat <<EOF
   Component download:  ${DOWNLOAD_DURATION}s (outside install timer)
   Install time:        ${INSTALL_MINUTES}m ${INSTALL_SECONDS}s (${INSTALL_DURATION} seconds)
   Wall clock:          ${WALL_MINUTES}m ${WALL_SECONDS}s (${WALL_DURATION} seconds)
-======================================================================
+${banner}
 EOF
 else
 cat <<EOF
   Total Installation Time: ${INSTALL_MINUTES}m ${INSTALL_SECONDS}s (${INSTALL_DURATION} seconds)
-======================================================================
+${banner}
 EOF
 fi
   MCP_DP_LOCAL_SIGNING=1
