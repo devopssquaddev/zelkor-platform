@@ -51,3 +51,5 @@ In Langfuse, on the `gpt-researcher` trace, count TOOL **`deep_research`** (rese
 ## What Zelkor adds
 
 `langgraph.json` and `graph.py` call unmodified `create_deep_agent` and GPTR prompts. Search tools `quick_search` / `deep_research` call `mcp_inject.call_tool` for `tavily__tavily_search` and `tavily__tavily_research`. The wrap maps `DEFAULT_LLM_MODEL` (`openai/…` or a gateway id such as `gpt-oss:20b`) to `openai:…` and sets `FAST_LLM` / `SMART_LLM` / `STRATEGIC_LLM` so GPTR’s inner researcher does not call `gpt-5.4*` on the in-cluster gateway.
+
+Enable object MCP on the platform release. After the run, the scratch directory is copied once. Keys are `gpt-researcher/<run-id>/<path>` (the store adds the tenant prefix). The agent does not receive S3 credentials. A missing object store does not change the research.

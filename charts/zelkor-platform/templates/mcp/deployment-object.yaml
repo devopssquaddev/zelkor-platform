@@ -1,0 +1,99 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- if and .Values.mcp.enabled (.Values.mcp.objectMCP).enabled }}
+{{- $obj := .Values.mcp.objectMCP -}}
+{{- $s3 := $obj.s3 -}}
+{{- $auth := $s3.auth -}}
+{{- $secretName := $auth.secretRef | default "" | trim -}}
+{{- if not $secretName -}}
+{{- $secretName = printf "%s-mcp-object" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-object
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.objectMCP") | nindent 4 }}
+    app.kubernetes.io/component: mcp-object
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+    - port: 9090
+      targetPort: 9090
+      name: metrics
+  selector:
+    app.kubernetes.io/component: mcp-object
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-mcp-object
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.objectMCP") | nindent 4 }}
+    app.kubernetes.io/component: mcp-object
+spec:
+  {{- if ne (include "zelkor-platform.haEnabled" .) "true" }}
+  replicas: {{ $obj.replicaCount | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-object
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.objectMCP") | nindent 8 }}
+        app.kubernetes.io/component: mcp-object
+    spec:
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: mcp-object
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          workingDir: /app
+          command: ["python", "mcp/wrappers/object_server.py"]
+          ports:
+            - containerPort: 8080
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: MCP_METRICS_PORT
+              value: "9090"
+            {{- include "zelkor-platform.logEnv" (dict "root" . "component" $obj "name" "zelkor-mcp-object") | nindent 12 }}
+            {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
+            - name: OBJECT_S3_ENDPOINT
+              value: {{ $s3.endpoint | quote }}
+            - name: OBJECT_S3_BUCKET
+              value: {{ $s3.bucket | quote }}
+            - name: OBJECT_S3_REGION
+              value: {{ $s3.region | default "auto" | quote }}
+            - name: OBJECT_S3_FORCE_PATH_STYLE
+              value: {{ $s3.forcePathStyle | quote }}
+            - name: OBJECT_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName | quote }}
+                  key: access-key
+            - name: OBJECT_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName | quote }}
+                  key: secret-key
+            - name: OBJECT_MAX_READ_BYTES
+              value: {{ $obj.maxReadBytes | quote }}
+            - name: OBJECT_MAX_WRITE_BYTES
+              value: {{ $obj.maxWriteBytes | quote }}
+            - name: OBJECT_MAX_LIST_KEYS
+              value: {{ $obj.maxListKeys | quote }}
+            - name: OBJECT_ALLOW_DELETE
+              value: {{ $obj.allowDelete | quote }}
+          resources:
+            {{- toYaml $obj.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "zelkor-platform.tenantAuthVolumeMount" . | nindent 12 }}
+          {{- include "zelkor-platform.containerProbes" (dict "root" . "values" $obj) | nindent 10 }}
+      volumes:
+        {{- include "zelkor-platform.tenantAuthVolume" . | nindent 8 }}
+{{- end }}

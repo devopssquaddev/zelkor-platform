@@ -20,6 +20,7 @@ spec:
           - mcp-qdrant
           - mcp-sandbox
           - mcp-aigateway
+          - mcp-object
   policyTypes:
     - Ingress
   ingress:

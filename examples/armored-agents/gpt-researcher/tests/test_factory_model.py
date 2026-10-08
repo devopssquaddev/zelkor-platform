@@ -1,4 +1,5 @@
 """Factory maps gateway model ids without importing upstream."""
+import asyncio
 import os
 import sys
 from pathlib import Path
@@ -61,14 +62,73 @@ def test_factory_uses_mcp_inject_call_tool():
     assert "tavily__tavily_search" in text
     assert "tavily__tavily_research" in text
     assert "def write_todos" in text
+    assert "FilesystemBackend" in text
+    assert "awrite" not in text
+    assert "object__write_text" in text
+    assert "OBJECT_S3" not in text
+    assert "AWS_" not in text
+    assert "boto3" not in text
     assert "ZELKOR_RECURSION_LIMIT" in text
     assert "recursion_limit" in text
+    assert "use_responses_api=False" in text
+    assert "on_chain_start" in text
+    assert "backend.cwd" in text
 
 
 def test_tavily_search_payload_uses_query():
     from graph import _search_call
 
     assert _search_call("gVisor") == ("tavily__tavily_search", {"query": "gVisor"})
+
+
+def test_save_run_dir_copies_files(tmp_path):
+    from graph import save_run_dir
+
+    text = "section draft"
+    (tmp_path / "research").mkdir()
+    (tmp_path / "research" / "intro.md").write_text(text, encoding="utf-8")
+    (tmp_path / "todos.md").write_text("1. intro\n", encoding="utf-8")
+    calls = []
+
+    async def fake(name, args):
+        calls.append((name, args))
+        return '{"size": 13}'
+
+    keys = asyncio.run(save_run_dir(fake, "a1b2c3d4", str(tmp_path)))
+    assert keys == [
+        "gpt-researcher/a1b2c3d4/research/intro.md",
+        "gpt-researcher/a1b2c3d4/todos.md",
+    ]
+    assert calls[0] == (
+        "object__write_text",
+        {"key": keys[0], "text": text},
+    )
+
+
+def test_save_run_dir_mcp_error_does_not_raise(tmp_path):
+    from graph import save_run_dir
+
+    (tmp_path / "todos.md").write_text("1. intro\n", encoding="utf-8")
+
+    async def fake(name, args):
+        del name, args
+        return "Error: MCP_URL is not set"
+
+    keys = asyncio.run(save_run_dir(fake, "a1b2c3d4", str(tmp_path)))
+    assert keys == []
+
+
+def test_save_run_dir_stops_on_non_json(tmp_path):
+    from graph import save_run_dir
+
+    (tmp_path / "todos.md").write_text("1. intro\n", encoding="utf-8")
+
+    async def fake(name, args):
+        del name, args
+        return "No writable volumes"
+
+    keys = asyncio.run(save_run_dir(fake, "a1b2c3d4", str(tmp_path)))
+    assert keys == []
 
 
 def test_tavily_research_payload_uses_input():

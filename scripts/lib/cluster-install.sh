@@ -73,10 +73,16 @@ cluster_install_helm_sets_include() {
           "${needle}"*) return 0 ;;
         esac
         ;;
-      --set-file)
+      --set-file|--set-string)
         i=$((i + 1))
         [[ $i -lt ${#sets[@]} ]] || break
         val="${sets[$i]}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+      --set-string=*)
+        val="${sets[$i]#--set-string=}"
         case "$val" in
           "${needle}"*) return 0 ;;
         esac
@@ -107,7 +113,7 @@ cluster_install_apply_jwt_cli_flags() {
     CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.issuer=${JWT_ISSUER}")
   fi
   if [[ -n "$JWT_AUDIENCE" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.audiences[0]=${JWT_AUDIENCE}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set-string "platform.tenants.jwt.audiences[0]=${JWT_AUDIENCE}")
   fi
   if [[ -n "$JWKS_FILE" ]]; then
     [[ -f "$JWKS_FILE" ]] || cluster_install_die "--jwks-file not found: ${JWKS_FILE}"
@@ -496,12 +502,44 @@ cluster_install_platform_secrets() {
   )
 }
 
+# In-cluster object MCP is opt-in (OBJECT_MCP_ENABLED=true). Chart default stays off.
+cluster_install_object_mcp() {
+  local flag="${OBJECT_MCP_ENABLED:-}"
+  if [[ "$flag" != "true" && "$flag" != "1" ]]; then
+    return 0
+  fi
+  if [[ -z "${OBJECT_S3_ACCESS_KEY:-}" ]]; then
+    OBJECT_S3_ACCESS_KEY="$(cluster_install_rand_hex 12)"
+  fi
+  if [[ -z "${OBJECT_S3_SECRET_KEY:-}" ]]; then
+    OBJECT_S3_SECRET_KEY="$(cluster_install_rand_hex 24)"
+  fi
+  local bucket="${OBJECT_S3_BUCKET:-zelkor-objects}"
+  local rel="$CLUSTER_INSTALL_RELEASE"
+  local chart="zelkor-platform"
+  local fullname="$rel"
+  if [[ "$rel" != *"$chart"* ]]; then
+    fullname="${rel}-${chart}"
+  fi
+  CLUSTER_INSTALL_HELM_SETS+=(
+    --set "workspace.tools.objectMCP.enabled=true"
+    --set "workspace.tools.objectMCP.s3.endpoint=http://${fullname}-seaweedfs:8333"
+    --set "workspace.tools.objectMCP.s3.bucket=${bucket}"
+    --set "workspace.tools.objectMCP.s3.region=auto"
+    --set "workspace.tools.objectMCP.s3.forcePathStyle=true"
+    --set "workspace.tools.objectMCP.s3.auth.accessKey=${OBJECT_S3_ACCESS_KEY}"
+    --set "workspace.tools.objectMCP.s3.auth.secretKey=${OBJECT_S3_SECRET_KEY}"
+    --set "seaweedfs.objectIdentity.accessKey=${OBJECT_S3_ACCESS_KEY}"
+    --set "seaweedfs.objectIdentity.secretKey=${OBJECT_S3_SECRET_KEY}"
+  )
+}
+
 cluster_install_print_secret_howto() {
   local ns="$CLUSTER_INSTALL_NAMESPACE"
   local rel="$CLUSTER_INSTALL_RELEASE"
   echo
   echo "Install secrets are in cluster Secrets (override with env before install):"
-  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / VALKEY_PASSWORD / SEAWEEDFS_* / WORKER_TOKEN / AI_GATEWAY_CONSUMER_KEY"
+  echo "  POSTGRES_PASSWORD / CLICKHOUSE_PASSWORD / VALKEY_PASSWORD / SEAWEEDFS_* / OBJECT_S3_* / WORKER_TOKEN / AI_GATEWAY_CONSUMER_KEY"
   echo "  LANGFUSE_NEXTAUTH_SECRET / LANGFUSE_SALT / LANGFUSE_ENCRYPTION_KEY"
   echo "  Langfuse project keys (when platform.telemetry.langfuse.init.enabled): ${rel}-langfuse-init / ${rel}-langfuse-otel"
   echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${ns} get secret ${rel}-postgresql -o jsonpath='{.data.password}' | base64 -d; echo"
@@ -936,5 +974,6 @@ cluster_install_prepare() {
   cluster_install_append_llm_helm_sets
   cluster_install_langfuse_secrets
   cluster_install_platform_secrets
+  cluster_install_object_mcp
   cluster_install_append_host_helm_sets
 }

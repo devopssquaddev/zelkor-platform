@@ -168,11 +168,43 @@ def infer_type(value)
   end
 end
 
-def open_map?(key, path)
+def open_map?(key, path, value)
+  return true if value.is_a?(Hash) && value.empty?
   return true if OPEN_MAP_KEYS.include?(key)
   return true if key.end_with?("Probe")
   return true if path.last == "selector" && path[-2] == "nodes"
   path_key(path) == "global"
+end
+
+def merge_prior_constraints(node, prior)
+  return unless node.is_a?(Hash) && prior.is_a?(Hash)
+  %w[minimum maximum minLength maxLength pattern].each do |key|
+    node[key] = prior[key] if prior.key?(key) && !node.key?(key)
+  end
+  nprops = node["properties"]
+  pprops = prior["properties"]
+  return unless nprops.is_a?(Hash) && pprops.is_a?(Hash)
+
+  pprops.each do |key, child|
+    if nprops.key?(key)
+      merge_prior_constraints(nprops[key], child)
+    else
+      nprops[key] = child
+    end
+  end
+end
+
+def prior_description(path)
+  return nil unless defined?(PRIOR_SCHEMA) && PRIOR_SCHEMA
+  node = PRIOR_SCHEMA
+  path.each do |key|
+    return nil unless node.is_a?(Hash)
+    props = node["properties"]
+    return nil unless props.is_a?(Hash)
+    node = props[key.to_s]
+  end
+  return nil unless node.is_a?(Hash)
+  node["description"]
 end
 
 def schema_for(value, path = [])
@@ -230,7 +262,10 @@ def schema_for(value, path = [])
       "description" => pk.empty? ? "Zelkor platform values." : "Values under #{pk}.",
       "properties" => props,
     }
-    sch["additionalProperties"] = false unless open_map?(path.last || "", path)
+    sch["additionalProperties"] = false unless open_map?(path.last || "", path, value)
+    if (kept = prior_description(path))
+      sch["description"] = kept
+    end
     sch
   when Array
     item_key = pk
@@ -242,12 +277,12 @@ def schema_for(value, path = [])
               end
     {
       "type" => "array",
-      "description" => "List at #{pk}.",
+      "description" => prior_description(path) || "List at #{pk}.",
       "items" => items,
     }
   else
     t = infer_type(value)
-    desc = "Value for #{pk}."
+    desc = prior_description(path) || "Value for #{pk}."
     if t.is_a?(Array)
       { "type" => t, "description" => desc }
     else
@@ -257,12 +292,14 @@ def schema_for(value, path = [])
 end
 
 values = YAML.load_file(VALUES_PATH)
+PRIOR_SCHEMA = File.file?(OUT_PATH) ? JSON.parse(File.read(OUT_PATH)) : nil
 root_schema = schema_for(values, [])
 root_schema["$schema"] = "https://json-schema.org/draft-07/schema#"
 root_schema["additionalProperties"] = false
 root_schema["properties"]["nameOverride"] = EXTRA_ROOT_PROPERTIES["nameOverride"]
 root_schema["properties"]["fullnameOverride"] = EXTRA_ROOT_PROPERTIES["fullnameOverride"]
 root_schema["properties"]["extraManifests"] = EXTRA_ROOT_PROPERTIES["extraManifests"]
+merge_prior_constraints(root_schema, PRIOR_SCHEMA) if PRIOR_SCHEMA
 
 if File.file?(V1_STUBS_PATH)
   stubs = YAML.load_file(V1_STUBS_PATH) || {}

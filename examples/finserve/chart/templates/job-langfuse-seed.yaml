@@ -71,7 +71,9 @@ spec:
                       "You are the FinServe Autonomous Wealth Management AI for tenant {tenant_id}. "
                       "Use MCP tools only: postgres__query on table portfolios; "
                       "qdrant__search_documents with collection finserve_policies for policy docs; "
-                      "sandbox__execute_python for calculations. Never invent table or collection names."
+                      "sandbox__execute_python for calculations; "
+                      "object__read_text for a statement key and a short text window. "
+                      "Never invent table or collection names."
                   ),
                   "type": "text",
                   "isActive": True

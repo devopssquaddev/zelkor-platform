@@ -57,6 +57,7 @@ The demo consists of three Mode B `langchain.agents.create_agent` graphs (`FROM 
 | :--- | :--- | :--- |
 | `finserve-advisor` | `finserve-desk` | Portfolio SQL + synthesis |
 | `finserve-research` | `finserve-desk` (same process) | Policy RAG |
+| `finserve-records` | `finserve-desk` (same process) | Statement text windows from object storage |
 | `finserve-quant` | `finserve-quant` | Sandbox projections |
 | `finserve-coder` | `finserve-coder` | Custom Python on portfolio data (`execute()`) |
 
@@ -166,6 +167,8 @@ pytest examples/finserve/tests/ -v
 
 The graph source does not embed an MCP client. Mode B inject lists tools from `MCP_URL` on each run and binds named tools via `MCP_INJECT_TOOLS` on the graph module. Each `tools/call` forwards the run's `Authorization` bearer (JWT tenant).
 
-Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`. Desk/quant specialization is prompt-only. Coder is deploy-first (`examples/finserve/coder/`); it uses Mode B `postgres__*` plus Deep Agents `execute()`.
+Native tools: `postgres__query` / `list_tables` / `get_schema`, `qdrant__search_documents` (`finserve_policies`), `sandbox__execute_python`, `object__list` / `object__read_text`. Desk/quant/records specialization is prompt-only. Coder is deploy-first (`examples/finserve/coder/`); it uses Mode B `postgres__*` plus Deep Agents `execute()`.
+
+`finserve-records` reads a statement the bank already stored. The call sends a key and a short text window. The agent does not receive the rest of the file and does not hold storage credentials. Enable `workspace.tools.objectMCP` on the platform release before using this graph.
 
 Customer SaaS MCP is not part of this demo. Register extra servers on the platform overlay (`workspace.tools.extraBackends`).

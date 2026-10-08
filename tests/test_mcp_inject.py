@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "aegra")
 
 from mcp_inject import (  # noqa: E402
     _mcp_url,
+    _tool_result_text,
     _wrap_agent_factory,
     call_tool,
     inject_ready,
@@ -216,6 +217,63 @@ def test_call_tool_uses_session(monkeypatch):
     with patch.object(mcp_inject, "inbound_authorization", return_value="Bearer jwt"):
         with patch.object(mcp_inject, "_mcp_client_session", fake_session):
             assert asyncio.run(mcp_inject.call_tool("tavily__tavily_search", {"query": "x"})) == "ok"
+
+
+def test_call_tool_records_object_write_span(monkeypatch):
+    import asyncio
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import mcp_inject
+
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(
+        "opentelemetry.trace.get_tracer",
+        lambda *_a, **_k: provider.get_tracer("zelkor.mcp-inject"),
+    )
+
+    class Sess:
+        async def call_tool(self, name, arguments):
+            return SimpleNamespace(isError=False, content=[SimpleNamespace(text='{"size": 12}')])
+
+    @asynccontextmanager
+    async def fake_session(_bearer):
+        yield Sess()
+
+    monkeypatch.setenv("MCP_URL", "http://zelkor-platform-mcp/mcp")
+    with patch.object(mcp_inject, "inbound_authorization", return_value="Bearer jwt"):
+        with patch.object(mcp_inject, "_mcp_client_session", fake_session):
+            out = asyncio.run(
+                mcp_inject.call_tool(
+                    "object__write_text",
+                    {"key": "gpt-researcher/abc/research/note.md", "text": "secret-body", "authorization": "nope"},
+                )
+            )
+    assert out == '{"size": 12}'
+    spans = exporter.get_finished_spans()
+    assert [s.name for s in spans] == ["object__write_text"]
+    attrs = dict(spans[0].attributes)
+    assert attrs["openinference.span.kind"] == "TOOL"
+    assert "gpt-researcher/abc/research/note.md" in attrs["input.value"]
+    assert "secret-body" in attrs["input.value"]
+    assert "nope" not in attrs["input.value"]
+    assert attrs["output.value"] == '{"size": 12}'
+
+
+def test_tool_result_is_error_is_prefixed():
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(isError=True, content=[SimpleNamespace(text="No writable volumes")])
+    out = _tool_result_text(result)
+    assert out.startswith("Error:")
+    assert "No writable volumes" in out
 
 
 def test_call_tool_timeout_is_error_text(monkeypatch):

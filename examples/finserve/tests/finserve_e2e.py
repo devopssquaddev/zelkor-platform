@@ -16,7 +16,8 @@ GRAPH_ADVISOR = os.environ.get("FINSERVE_GRAPH_ADVISOR", "finserve-advisor")
 GRAPH_RESEARCH = os.environ.get("FINSERVE_GRAPH_RESEARCH", "finserve-research")
 GRAPH_QUANT = os.environ.get("FINSERVE_GRAPH_QUANT", "finserve-quant")
 GRAPH_CODER = os.environ.get("FINSERVE_GRAPH_CODER", "finserve-coder")
-GRAPH_IDS = (GRAPH_ADVISOR, GRAPH_RESEARCH, GRAPH_QUANT, GRAPH_CODER)
+GRAPH_RECORDS = os.environ.get("FINSERVE_GRAPH_RECORDS", "finserve-records")
+GRAPH_IDS = (GRAPH_ADVISOR, GRAPH_RESEARCH, GRAPH_QUANT, GRAPH_CODER, GRAPH_RECORDS)
 
 # Tool-minimal prompts (designed for at most one MCP tool per run; LLM may still misbehave).
 PROMPT_ADVISOR_ONE_QUERY = (
@@ -32,6 +33,7 @@ PROMPT_CODER_ONE_EXECUTE = (
     "No ls, read, or todos. One execute(command=\"python -c \\\"print('coder-ok')\\\"\"). "
     "Return stdout only."
 )
+PROMPT_RECORDS_NO_TOOLS = "Reply RECORDS_OK only. No tools."
 PROMPT_TRACE_NO_TOOLS = "Reply TRACE_OK only. No tools."
 PROMPT_IDOR_ONE_QUERY = (
     "One postgres__query: SELECT account_number, client_name, balance FROM portfolios LIMIT 10. "
@@ -44,6 +46,7 @@ PROMPTS_BY_GRAPH = {
     GRAPH_RESEARCH: PROMPT_RESEARCH_ONE_SEARCH,
     GRAPH_QUANT: PROMPT_QUANT_ONE_SANDBOX,
     GRAPH_CODER: PROMPT_CODER_ONE_EXECUTE,
+    GRAPH_RECORDS: PROMPT_RECORDS_NO_TOOLS,
 }
 
 

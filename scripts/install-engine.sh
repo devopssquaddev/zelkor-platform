@@ -1087,7 +1087,7 @@ cat <<EOF
 EOF
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
-  FinServe Demo (front door) ${agents_host}              http://${agents_host}:8088  X-Graph-ID: finserve-advisor|research|quant|coder
+  FinServe Demo (front door) ${agents_host}              http://${agents_host}:8088  X-Graph-ID: finserve-advisor|research|records|quant|coder
 EOF
 fi
 cat <<EOF
@@ -1120,7 +1120,7 @@ if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
 
   [FinServe Demo Agent]
-    URL:              http://${agents_host}:8088  (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|quant|coder)
+    URL:              http://${agents_host}:8088  (Host ${agents_host}; X-Graph-ID: finserve-advisor|research|records|quant|coder)
     Tenant JWT:       zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns}
 EOF
 fi

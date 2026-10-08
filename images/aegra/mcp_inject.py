@@ -10,6 +10,7 @@ import contextlib
 import contextvars
 import inspect
 import itertools
+import json
 import logging
 import os
 import re
@@ -559,11 +560,58 @@ async def _mcp_client_session(
                 yield session
 
 
+def _span_arguments(arguments: Optional[dict[str, Any]]) -> str:
+    safe: dict[str, Any] = {}
+    for key, value in (arguments or {}).items():
+        if key.lower() in {"authorization", "token", "secret", "password"}:
+            continue
+        if key == "text" and isinstance(value, str) and len(value) > 512:
+            safe["text"] = value[:512] + "…"
+            safe["text_bytes"] = len(value)
+        else:
+            safe[key] = value
+    raw = json.dumps(safe, default=str)
+    return raw if len(raw) <= 2048 else raw[:2048] + "…"
+
+
+@contextlib.contextmanager
+def _mcp_tool_span(name: str, arguments: Optional[dict[str, Any]]):
+    """Child of the current run span. OpenInference does not see a raw tools/call."""
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        yield None
+        return
+    tracer = trace.get_tracer("zelkor.mcp-inject")
+    with tracer.start_as_current_span(name) as span:
+        payload = _span_arguments(arguments)
+        span.set_attribute("openinference.span.kind", "TOOL")
+        span.set_attribute("tool.name", name)
+        span.set_attribute("langfuse.observation.input", payload)
+        span.set_attribute("input.value", payload)
+        yield span
+
+
+def _finish_mcp_tool_span(span: Any, result: str) -> None:
+    if span is None:
+        return
+    text = result if len(result) <= 2048 else result[:2048] + "…"
+    span.set_attribute("langfuse.observation.output", text)
+    span.set_attribute("output.value", text)
+    if result.startswith("Error:"):
+        from opentelemetry import trace
+
+        span.set_status(trace.Status(trace.StatusCode.ERROR, "MCP tool failed"))
+
+
 def _tool_result_text(result: Any) -> str:
     content = getattr(result, "content", None) or []
     texts = [i.text for i in content if getattr(i, "text", None)]
     if getattr(result, "isError", False):
-        return texts[0] if texts else "MCP tool call failed"
+        text = texts[0] if texts else "MCP tool call failed"
+        if text.startswith("Error:"):
+            return text
+        return f"Error: {text}"
     return "\n".join(texts)
 
 
@@ -589,20 +637,27 @@ async def mcp_run_session() -> AsyncIterator[None]:
 async def call_tool(name: str, arguments: Optional[dict[str, Any]] = None) -> str:
     """tools/call on MCP_URL with inbound JWT. Failures return Error: text (do not abort the run)."""
     try:
-        holder = _RUN_MCP.get()
-        if holder is not None and holder.get("session") is not None:
-            result = await _session_call_tool(holder["session"], name, arguments)
-            return _tool_result_text(result)
-        if not _mcp_url():
-            return _tool_error_text(RuntimeError("MCP_URL is not set"))
-        bearer = inbound_authorization()
-        if not bearer:
-            return _tool_error_text(RuntimeError("no MCP bearer"))
-        async with _mcp_client_session(bearer) as session:
-            result = await _session_call_tool(session, name, arguments)
-        return _tool_result_text(result)
+        with _mcp_tool_span(name, arguments) as span:
+            result = await _call_tool_unspanned(name, arguments)
+            _finish_mcp_tool_span(span, result)
+            return result
     except Exception as exc:
         return _tool_error_text(exc)
+
+
+async def _call_tool_unspanned(name: str, arguments: Optional[dict[str, Any]]) -> str:
+    holder = _RUN_MCP.get()
+    if holder is not None and holder.get("session") is not None:
+        result = await _session_call_tool(holder["session"], name, arguments)
+        return _tool_result_text(result)
+    if not _mcp_url():
+        return _tool_error_text(RuntimeError("MCP_URL is not set"))
+    bearer = inbound_authorization()
+    if not bearer:
+        return _tool_error_text(RuntimeError("no MCP bearer"))
+    async with _mcp_client_session(bearer) as session:
+        result = await _session_call_tool(session, name, arguments)
+    return _tool_result_text(result)
 
 
 def patch_pregel_mcp_session() -> None:
