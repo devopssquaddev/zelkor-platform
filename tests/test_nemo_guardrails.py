@@ -29,6 +29,12 @@ def _nemo_headers() -> dict:
     return {"Host": NEMO_HOST_HEADER, "Content-Type": "application/json"}
 
 
+def _skip_if_unpublished(resp: httpx.Response, url: str) -> None:
+    """Path B does not publish NeMo. A gateway 404 is not a Guardrails failure."""
+    if resp.status_code == 404:
+        pytest.skip(f"NeMo not published at {url}")
+
+
 def _chat_payload(prompt: str, config_id: str = "content_safety") -> dict:
     return {
         "model": llm_model_or_skip(),
@@ -48,6 +54,7 @@ def test_nemo_configs_endpoint():
     except httpx.ConnectError:
         pytest.skip(f"NeMo not reachable at {NEMO_CONFIGS_URL}")
 
+    _skip_if_unpublished(resp, NEMO_CONFIGS_URL)
     assert resp.status_code == 200, resp.text
     configs = resp.json()
     config_ids = {item.get("id") for item in configs if isinstance(item, dict)}
@@ -72,6 +79,7 @@ def test_nemo_content_safety_blocks_harmful_input():
     except httpx.ConnectError:
         pytest.skip(f"NeMo not reachable at {NEMO_CHAT_URL}")
 
+    _skip_if_unpublished(resp, NEMO_CHAT_URL)
     assert resp.status_code == 200, resp.text
     content = _assistant_text(resp.json())
     if not content.strip():
@@ -95,6 +103,7 @@ def test_nemo_content_safety_allows_benign_prompt():
     except httpx.ConnectError:
         pytest.skip(f"NeMo not reachable at {NEMO_CHAT_URL}")
 
+    _skip_if_unpublished(resp, NEMO_CHAT_URL)
     assert resp.status_code == 200, resp.text
     content = _assistant_text(resp.json())
     if looks_like_refusal(content) or (SAFETY_REFUSAL and SAFETY_REFUSAL in content):
@@ -128,6 +137,7 @@ def test_nemo_otel_trace_in_langfuse():
         )
         if resp.status_code == 504:
             pytest.skip("NeMo chat completion timed out (upstream LLM latency)")
+        _skip_if_unpublished(resp, NEMO_CHAT_URL)
         assert resp.status_code == 200, resp.text
     except httpx.ConnectError:
         pytest.skip(f"NeMo not reachable at {NEMO_CHAT_URL}")

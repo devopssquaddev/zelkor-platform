@@ -10,6 +10,7 @@ import asyncio
 import os
 from typing import Any
 
+import pytest
 from langgraph_sdk import get_client, get_sync_client
 
 from tests.helpers.tokens import bearer_for, test_tokens
@@ -25,7 +26,12 @@ def _request_headers(*, tenant_id: str, graph_id: str | None = None) -> dict[str
     auth = os.environ.get("AEGRA_AUTH_TOKEN")
     if not auth:
         if test_tokens():
-            auth = bearer_for(tenant_id).removeprefix("Bearer ")
+            try:
+                auth = bearer_for(tenant_id).removeprefix("Bearer ")
+            except KeyError:
+                pytest.skip(
+                    f"No bearer for tenant {tenant_id!r} in ZELKOR_TEST_TOKENS"
+                )
         else:
             raise RuntimeError(
                 "Set AEGRA_AUTH_TOKEN or ZELKOR_TEST_TOKENS / ZELKOR_TEST_SIGNING_RELEASE for live Aegra tests"

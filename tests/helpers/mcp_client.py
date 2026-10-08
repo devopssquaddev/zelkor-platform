@@ -23,6 +23,16 @@ except ImportError:
 from tests.helpers.tokens import bearer_for  # noqa: E402
 
 
+def _unwrap_mcp_error(exc: BaseException, url: str) -> BaseException:
+    """Surface a single tool error. A closed session on a non-MCP route is unpublished."""
+    cur: BaseException = exc
+    while isinstance(cur, BaseExceptionGroup) and len(cur.exceptions) == 1:
+        cur = cur.exceptions[0]
+    if cur.__class__.__name__ == "McpError" and "Session terminated" in str(cur):
+        return ConnectionError(f"MCP not published at {url}")
+    return cur
+
+
 def _authorization_for(tenant_id: str) -> str:
     for key in (tenant_id, tenant_id.replace("_", "-"), tenant_id.replace("-", "_")):
         try:
@@ -81,7 +91,10 @@ class MCPGatewayClient:
                 result = await session.list_tools()
                 return [t.model_dump(mode="json") for t in result.tools]
 
-        return asyncio.run(_run())
+        try:
+            return asyncio.run(_run())
+        except BaseExceptionGroup as exc:
+            raise _unwrap_mcp_error(exc, self.mcp_url) from exc
 
     def call_tool(self, name: str, arguments: Optional[Dict[str, Any]] = None) -> Any:
         args = dict(arguments or {})
@@ -102,8 +115,4 @@ class MCPGatewayClient:
         try:
             return asyncio.run(_run())
         except BaseExceptionGroup as exc:
-            # anyio TaskGroup wraps tool RuntimeError; admission tests assert RuntimeError.
-            cur: BaseException = exc
-            while isinstance(cur, BaseExceptionGroup) and len(cur.exceptions) == 1:
-                cur = cur.exceptions[0]
-            raise cur from exc
+            raise _unwrap_mcp_error(exc, self.mcp_url) from exc

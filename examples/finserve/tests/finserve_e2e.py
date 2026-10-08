@@ -64,7 +64,7 @@ def _bearer(tenant_id: str) -> str:
                 "ZELKOR_TEST_TOKENS not set; mint with "
                 "`zelkor token mint --release <platform> --tenant <id>`"
             )
-        raise
+        pytest.skip(f"No bearer for tenant {tenant_id!r} in ZELKOR_TEST_TOKENS")
 
 
 def _headers(tenant_id: str, graph_id: str) -> Dict[str, str]:
