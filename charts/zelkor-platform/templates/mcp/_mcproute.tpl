@@ -78,7 +78,10 @@ false
 {{- $obj := (.Values.mcp.objectMCP | default dict) -}}
 {{- $endpoint := (($obj.s3).endpoint | default "") -}}
 {{- $host := printf "%s-seaweedfs" (include "zelkor-platform.fullname" .) -}}
-{{- if and $obj.enabled (contains $host $endpoint) -}}
+{{- $epHost := $endpoint | trimPrefix "http://" | trimPrefix "https://" -}}
+{{- $epHost = splitList "/" $epHost | first -}}
+{{- $epHost = splitList ":" $epHost | first -}}
+{{- if and $obj.enabled (or (contains $host $endpoint) (and (not (contains "." $epHost)) (hasSuffix "-seaweedfs" $epHost))) -}}
 true
 {{- else -}}
 false
