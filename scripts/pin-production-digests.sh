@@ -47,22 +47,23 @@ tag = sys.argv[2]
 aegra, aegra_cli, guardrails, mcp, worker, seed = sys.argv[3:9]
 text = path.read_text(encoding="utf-8")
 needles = [
-    (f"aegra:\n  image:\n    tag: \"{tag}\"\n    digest: \"", aegra),
-    (f"  cli:\n    image:\n      tag: \"{tag}\"\n      digest: \"", aegra_cli),
-    (f"guardrails:\n  nemo:\n    image:\n      tag: \"{tag}\"\n      digest: \"", guardrails),
-    (f"mcp:\n  image:\n    tag: \"{tag}\"\n    digest: \"", mcp),
-    (f"    workerImage:\n      tag: \"{tag}\"\n      digest: \"", worker),
-    (f"  surfaces:\n    image:\n      tag: \"{tag}\"\n      digest: \"", seed),
+    ("  agents:\n    image:\n      tag: {tag}\n      digest: ", aegra),
+    ("    cli:\n      image:\n        tag: {tag}\n        digest: ", aegra_cli),
+    ("    nemo:\n      image:\n        tag: {tag}\n        digest: ", guardrails),
+    ("  tools:\n    image:\n      tag: {tag}\n      digest: ", mcp),
+    ("      workerImage:\n        tag: {tag}\n        digest: ", worker),
+    ("          seedCode: true\n        image:\n          tag: {tag}\n          digest: ", seed),
 ]
 out = text
 for prefix, digest in needles:
+  prefix = prefix.format(tag=tag)
   start = out.find(prefix)
   if start < 0:
     raise SystemExit(f"pin-production-digests: block not found:\n{prefix}")
   insert = start + len(prefix)
-  end = out.find('"', insert)
-  if end < 0:
-    raise SystemExit("pin-production-digests: missing closing quote after digest")
+  end = insert
+  while end < len(out) and out[end] not in "\n\r":
+    end += 1
   out = out[:insert] + digest + out[end:]
 path.write_text(out, encoding="utf-8")
 print(f"wrote digests into {path}")
