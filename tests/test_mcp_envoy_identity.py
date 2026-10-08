@@ -8,10 +8,10 @@ import httpx
 import pytest
 
 from tests.helpers.mcp_client import GATEWAY_BASE_URL, MCP_HOST_HEADER, MCPGatewayClient
-from tests.helpers.tokens import test_tokens, token_for
+from tests.helpers.tokens import test_tokens as minted_tokens, token_for
 
 pytestmark = pytest.mark.skipif(
-    not test_tokens(),
+    not minted_tokens(),
     reason="ZELKOR_TEST_TOKENS not set (live MCP identity tests)",
 )
 
@@ -27,7 +27,10 @@ async def _post_json(url: str, headers: dict, payload: dict) -> httpx.Response:
 
 
 def test_l2_tenant_jwt_wins_over_forged_tenant_header(mcp_url):
-    token = token_for("tenant-a")
+    try:
+        token = token_for("tenant-a")
+    except KeyError:
+        pytest.skip("tenant-a not in ZELKOR_TEST_TOKENS")
     headers = {
         "Host": MCP_HOST_HEADER,
         "Authorization": f"Bearer {token}",
@@ -54,7 +57,7 @@ def test_l2_tenant_jwt_wins_over_forged_tenant_header(mcp_url):
 
 
 def test_l2_claimless_jwt_tools_list_empty(mcp_url):
-    tokens = test_tokens()
+    tokens = minted_tokens()
     if "claimless" not in tokens:
         pytest.skip("claimless token not in ZELKOR_TEST_TOKENS")
     client = MCPGatewayClient("claimless")
@@ -83,4 +86,6 @@ def test_l2_no_jwt_initialize_unauthorized(mcp_url):
             },
         )
     )
+    if res.status_code == 404:
+        pytest.skip("MCP is not published on GATEWAY_BASE_URL")
     assert res.status_code in (401, 403)
