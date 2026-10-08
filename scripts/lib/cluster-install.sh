@@ -73,10 +73,16 @@ cluster_install_helm_sets_include() {
           "${needle}"*) return 0 ;;
         esac
         ;;
-      --set-file)
+      --set-file|--set-string)
         i=$((i + 1))
         [[ $i -lt ${#sets[@]} ]] || break
         val="${sets[$i]}"
+        case "$val" in
+          "${needle}"*) return 0 ;;
+        esac
+        ;;
+      --set-string=*)
+        val="${sets[$i]#--set-string=}"
         case "$val" in
           "${needle}"*) return 0 ;;
         esac
@@ -107,7 +113,7 @@ cluster_install_apply_jwt_cli_flags() {
     CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.issuer=${JWT_ISSUER}")
   fi
   if [[ -n "$JWT_AUDIENCE" ]]; then
-    CLUSTER_INSTALL_HELM_SETS+=(--set "platform.tenants.jwt.audiences[0]=${JWT_AUDIENCE}")
+    CLUSTER_INSTALL_HELM_SETS+=(--set-string "platform.tenants.jwt.audiences[0]=${JWT_AUDIENCE}")
   fi
   if [[ -n "$JWKS_FILE" ]]; then
     [[ -f "$JWKS_FILE" ]] || cluster_install_die "--jwks-file not found: ${JWKS_FILE}"

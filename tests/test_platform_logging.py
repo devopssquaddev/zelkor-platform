@@ -312,6 +312,8 @@ def test_vendor_templates_map_level():
     seaweed = (CHART / "templates/seaweedfs/deployment.yaml").read_text()
     assert "weed -v=" in seaweed
     assert "server -dir=" in seaweed
+    assert "-volume.max=" in seaweed
+    assert "-master.volumeSizeLimitMB=" in seaweed
     assert "-s3.config=/etc/seaweedfs/s3-config.json -v=" not in seaweed
     assert "logging:" in (CHART / "templates/gateway/envoyproxy.yaml").read_text()
     for rel in (
@@ -510,6 +512,35 @@ def test_mcp_permission_denied_logs_warning(caplog):
     )
     assert denied, body
     assert "MCP permission denied" in caplog.text
+
+
+def test_mcp_tool_failure_logs_warning(caplog):
+    sys.path.insert(0, str(ROOT / "mcp"))
+    pytest.importorskip("starlette")
+    from starlette.testclient import TestClient
+
+    from common.mcp_server import MCPToolHandler, build_starlette_app
+
+    class Dummy(MCPToolHandler):
+        def list_tools(self):
+            return [{"name": "echo"}]
+
+        def call_tool(self, name, arguments, tenant_id):
+            del name, tenant_id
+            raise RuntimeError("No writable volumes")
+
+    app = build_starlette_app(Dummy(), lambda _h: "tenant-a")
+    with TestClient(app) as client:
+        _mcp_initialize(client)
+        with caplog.at_level(logging.WARNING, logger="zelkor-mcp"):
+            body = _mcp_jsonrpc(
+                client,
+                "tools/call",
+                {"name": "echo", "arguments": {"text": "do-not-log-body"}},
+            )
+    assert "error" in body or (body.get("result") or {}).get("isError") is True
+    assert "MCP tool echo failed: RuntimeError: No writable volumes" in caplog.text
+    assert "do-not-log-body" not in caplog.text
 
 
 def test_postgres_query_log_omits_sql(monkeypatch, caplog):

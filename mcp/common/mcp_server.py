@@ -113,6 +113,20 @@ def build_starlette_app(
                 extra={"event": "tools_call", "tenant_id": tenant_id or ""},
             )
             raise
+        except Exception as exc:
+            detail = str(exc).replace("\n", " ")
+            if "Authorization" in detail or "Bearer " in detail:
+                detail = type(exc).__name__
+            else:
+                detail = detail[:160]
+            logger.warning(
+                "MCP tool %s failed: %s: %s",
+                name,
+                type(exc).__name__,
+                detail,
+                extra={"event": "tools_call", "tenant_id": tenant_id or ""},
+            )
+            raise
         logger.info(
             "tools/call %s",
             name,

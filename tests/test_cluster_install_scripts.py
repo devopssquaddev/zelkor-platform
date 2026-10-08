@@ -271,7 +271,7 @@ def test_production_dry_run_greenfield():
     assert "values-local.yaml" not in out
     assert "gateway.hosts.agents=agents.example.com" in out
     assert "platform.tenants.jwt.issuer=https://customer.example" in out
-    assert "platform.tenants.jwt.audiences[0]=zelkor" in out
+    assert "--set-string platform.tenants.jwt.audiences[0]=zelkor" in out
     assert "platform.tenants.jwt.jwks=" in out
     assert "platform.telemetry.langfuse.nextauthUrl=https://langfuse.example.com" in out
     assert "postgresql.auth.password=" in out

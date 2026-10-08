@@ -233,9 +233,15 @@ def test_object_mcp_renders_seaweedfs_without_langfuse():
     )
     assert r.returncode == 0, r.stderr
     docs = _docs(r.stdout)
-    assert any(
-        d.get("kind") == "Deployment" and d["metadata"]["name"].endswith("-seaweedfs") for d in docs
+    deploy = next(
+        d for d in docs if d.get("kind") == "Deployment" and d["metadata"]["name"].endswith("-seaweedfs")
     )
+    command = "\n".join(deploy["spec"]["template"]["spec"]["containers"][0]["command"])
+    assert "-volume.max=16" in command
+    assert "-master.volumeSizeLimitMB=1024" in command
+    assert "Collection:zelkor-objects" in command
+    assert "/vol/grow?collection=zelkor-objects&count=1" in command
+    assert "nodeSelector" not in deploy["spec"]["template"]["spec"]
     assert any(d.get("kind") == "PersistentVolumeClaim" and "seaweedfs" in d["metadata"]["name"] for d in docs)
     secret = next(d for d in docs if d.get("kind") == "Secret" and d["metadata"]["name"].endswith("-seaweedfs"))
     config = secret["stringData"]["s3-config.json"]

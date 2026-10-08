@@ -46,6 +46,10 @@ spec:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: seaweedfs
     spec:
+      {{- with .Values.seaweedfs.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: seaweedfs
           image: "{{ .Values.seaweedfs.image.repository }}:{{ .Values.seaweedfs.image.tag }}"
@@ -56,7 +60,7 @@ spec:
             - |
               mkdir -p /data
               {{- if $objectBucket }}
-              weed -v={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.seaweedfs "vendor" "seaweedfs") }} server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json &
+              weed -v={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.seaweedfs "vendor" "seaweedfs") }} server -dir=/data -volume.max={{ .Values.seaweedfs.volumeMax }} -master.volumeSizeLimitMB={{ .Values.seaweedfs.volumeSizeLimitMB }} -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json &
               pid=$!
               trap 'kill "$pid"' TERM INT
               ready=0
@@ -77,9 +81,17 @@ spec:
               if ! grep -q "{{ $objectBucket }}" /tmp/buckets; then
                 echo "s3.bucket.create -name {{ $objectBucket }}" | weed shell -master=localhost:9333
               fi
+              if ! echo "volume.list" | weed shell -master=localhost:9333 | grep -q "Collection:{{ $objectBucket }}"; then
+                grow_url="http://localhost:9333/vol/grow?collection={{ $objectBucket }}&count=1"
+                if ! wget -qO- "$grow_url" | grep -q '"count"'; then
+                  echo "seaweedfs: no writable volume for {{ $objectBucket }}" >&2
+                  kill "$pid"
+                  exit 1
+                fi
+              fi
               wait "$pid"
               {{- else }}
-              exec weed -v={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.seaweedfs "vendor" "seaweedfs") }} server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json
+              exec weed -v={{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.seaweedfs "vendor" "seaweedfs") }} server -dir=/data -volume.max={{ .Values.seaweedfs.volumeMax }} -master.volumeSizeLimitMB={{ .Values.seaweedfs.volumeSizeLimitMB }} -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3-config.json
               {{- end }}
           ports:
             - containerPort: 8333

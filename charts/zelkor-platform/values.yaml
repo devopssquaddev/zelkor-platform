@@ -809,6 +809,11 @@ seaweedfs:
   objectIdentity:
     accessKey: ''
     secretKey: ''
+  # SeaweedFS 4.48 defaults are 30GB volumes and 8 slots. A 10Gi disk fills
+  # those slots before a new S3 bucket collection can get a writable volume.
+  volumeSizeLimitMB: 1024
+  volumeMax: 16
+  nodeSelector: {}
   persistence:
     enabled: true
     size: 10Gi

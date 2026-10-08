@@ -4763,6 +4763,19 @@
           },
           "additionalProperties": false
         },
+        "volumeSizeLimitMB": {
+          "type": "integer",
+          "description": "Value for seaweedfs.volumeSizeLimitMB. SeaweedFS 4.48 rejects values above 30000."
+        },
+        "volumeMax": {
+          "type": "integer",
+          "description": "Value for seaweedfs.volumeMax. Passed as weed -volume.max."
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Values under seaweedfs.nodeSelector.",
+          "properties": {}
+        },
         "objectIdentity": {
           "type": "object",
           "description": "Values under seaweedfs.objectIdentity.",
