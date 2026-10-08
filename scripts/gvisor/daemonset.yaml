@@ -36,7 +36,7 @@ spec:
             - -c
             - |
               set -eu
-              apk add --no-cache curl bash >/dev/null
+              apk add --no-cache curl bash zstd >/dev/null
               while true; do
                 bash /scripts/install-on-node.sh && sleep 3600 || sleep 30
               done

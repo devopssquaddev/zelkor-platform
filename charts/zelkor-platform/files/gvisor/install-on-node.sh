@@ -35,6 +35,7 @@ runsc_configured() {
 binaries_ready() {
   [ -x "${ROOT}/usr/local/bin/runsc" ] \
     && [ -x "${ROOT}/usr/local/bin/containerd-shim-runsc-v1" ] \
+    && [ -x "${ROOT}/usr/local/bin/gvisor-bin/gvisor_sentry" ] \
     && chroot "${ROOT}" /usr/local/bin/runsc --version 2>/dev/null | grep -q "${GVISOR_RELEASE}"
 }
 
@@ -129,28 +130,36 @@ fi
 
 base="${GVISOR_BASE_URL%/}/${GVISOR_RELEASE}/${arch}"
 
-verify_gvisor_bin() {
-  _bin="$1"
-  _host_path="$2"
-  [ "${VERIFY_CHECKSUM}" = "true" ] || return 0
-  _expected="$(curl -fsSL "${base}/${_bin}.sha512" | awk '{print $1}')"
-  [ -n "${_expected}" ] || {
-    echo "gVisor checksum file missing for ${_bin}" >&2
-    return 1
-  }
-  _actual="$(chroot "${ROOT}" sha512sum "${_host_path}" | awk '{print $1}')"
-  if [ "${_expected}" != "${_actual}" ]; then
-    echo "gVisor checksum mismatch for ${_bin}" >&2
-    return 1
+install_gvisor_archive() {
+  _archive="gvisor.tar.zstd"
+  if ! command -v zstd >/dev/null 2>&1; then
+    _archive="gvisor.tar.bz2"
   fi
+  _tmp="/tmp/${_archive}"
+  curl -fsSL "${base}/${_archive}" -o "${_tmp}"
+  if [ "${VERIFY_CHECKSUM}" = "true" ]; then
+    _expected="$(curl -fsSL "${base}/${_archive}.sha512" | awk '{print $1}')"
+    [ -n "${_expected}" ] || {
+      echo "gVisor checksum file missing for ${_archive}" >&2
+      return 1
+    }
+    _actual="$(sha512sum "${_tmp}" | awk '{print $1}')"
+    if [ "${_expected}" != "${_actual}" ]; then
+      echo "gVisor checksum mismatch for ${_archive}" >&2
+      return 1
+    fi
+  fi
+  if [ "${_archive}" = "gvisor.tar.zstd" ]; then
+    zstd -dc "${_tmp}" | tar -x -C "${ROOT}/usr/local/bin"
+  else
+    tar -xjf "${_tmp}" -C "${ROOT}/usr/local/bin"
+  fi
+  rm -f "${_tmp}"
+  chmod a+rx "${ROOT}/usr/local/bin/runsc" "${ROOT}/usr/local/bin/containerd-shim-runsc-v1"
+  chmod -R a+rx "${ROOT}/usr/local/bin/gvisor-bin"
 }
 
-for bin in runsc containerd-shim-runsc-v1; do
-  curl -fsSL "${base}/${bin}" -o "${ROOT}/usr/local/bin/${bin}.new"
-  verify_gvisor_bin "${bin}" "/usr/local/bin/${bin}.new"
-  mv -f "${ROOT}/usr/local/bin/${bin}.new" "${ROOT}/usr/local/bin/${bin}"
-done
-chmod a+rx "${ROOT}/usr/local/bin/runsc" "${ROOT}/usr/local/bin/containerd-shim-runsc-v1"
+install_gvisor_archive
 chroot "${ROOT}" /usr/local/bin/runsc --version
 
 needs_restart=0
