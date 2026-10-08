@@ -347,8 +347,20 @@ raw = sys.stdin.read().strip()
 if not raw:
     raise SystemExit(1)
 data = json.loads(raw)
-netpol = bool(((data.get("security") or {}).get("networkPolicies") or {}).get("enabled"))
-seed = bool((((data.get("langfuse") or {}).get("surfaces") or {}).get("evaluators") or {}).get("seedCode"))
+
+def dig(root, path):
+    cur = root
+    for part in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+netpol = bool(dig(data, ("security", "networkPolicies", "enabled")))
+seed = dig(data, ("langfuse", "surfaces", "evaluators", "seedCode"))
+if seed is None:
+    seed = dig(data, ("platform", "telemetry", "langfuse", "surfaces", "evaluators", "seedCode"))
+seed = bool(seed)
 if netpol and seed:
     print("full")
 elif not netpol and not seed:
@@ -659,11 +671,17 @@ install_gvisor_on_kind_node() {
         x86_64|amd64) ARCH=x86_64 ;;
       esac
       BASE=https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/\${ARCH}
-      for bin in runsc containerd-shim-runsc-v1; do
-        curl -fsSL \"\${BASE}/\${bin}\" -o \"/tmp/\${bin}.new\"
-        mv -f \"/tmp/\${bin}.new\" \"/usr/local/bin/\${bin}\"
-      done
+      if command -v zstd >/dev/null 2>&1; then
+        curl -fsSL \"\${BASE}/gvisor.tar.zstd\" -o /tmp/gvisor.tar.zstd
+        zstd -dc /tmp/gvisor.tar.zstd | tar -x -C /usr/local/bin
+        rm -f /tmp/gvisor.tar.zstd
+      else
+        curl -fsSL \"\${BASE}/gvisor.tar.bz2\" -o /tmp/gvisor.tar.bz2
+        tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin
+        rm -f /tmp/gvisor.tar.bz2
+      fi
       chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
+      chmod -R a+rx /usr/local/bin/gvisor-bin
     "; then
       log "WARNING: gVisor install failed (sandbox RuntimeClass may not work on this node)"
     fi
