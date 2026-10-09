@@ -247,7 +247,9 @@ def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     site = (ROOT / "images/guardrails/sitecustomize.py").read_text()
     assert "sitecustomize.py" in dockerfile
     assert "otel_project_route import install" in site
+    assert "structured_output import install" in site
     assert "install()" in site
+    assert "structured_output.py" in dockerfile
     assert "boot.py" in dockerfile
     assert (ROOT / "images/guardrails/boot.py").exists()
     assert (ROOT / "images/guardrails/otel_project_route.py").exists()

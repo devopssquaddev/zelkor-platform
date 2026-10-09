@@ -8,7 +8,7 @@
 {{- $evals := $surfaces.evaluators | default dict -}}
 {{- $extraProjects := .Values.langfuse.extraProjects | default list -}}
 {{- $armorOn := and $init.enabled (or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0)) -}}
-{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.orgId | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) | sha256sum | trim -}}
+{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.orgId | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) "ce12-armor-1" | sha256sum | trim -}}
 apiVersion: batch/v1
 kind: Job
 metadata:

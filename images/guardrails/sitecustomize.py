@@ -14,3 +14,10 @@ try:
     _log.info("NeMo OTEL route patch applied (sitecustomize)")
 except Exception:
     _log.exception("NeMo OTEL route patch failed (sitecustomize)")
+
+try:
+    from structured_output import install as install_structured_output
+
+    install_structured_output()
+except Exception:
+    _log.exception("NeMo structured output patch failed (sitecustomize)")

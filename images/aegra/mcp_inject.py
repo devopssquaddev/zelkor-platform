@@ -589,6 +589,12 @@ def _mcp_tool_span(name: str, arguments: Optional[dict[str, Any]]):
         span.set_attribute("tool.name", name)
         span.set_attribute("langfuse.observation.input", payload)
         span.set_attribute("input.value", payload)
+        try:
+            from trace_wrap import stamp_tool_span
+
+            stamp_tool_span(span, known_tool=True)
+        except Exception:
+            pass
         yield span
 
 
