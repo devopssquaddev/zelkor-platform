@@ -48,6 +48,18 @@ done
 
 log() { printf 'gvisor-preflight: %s\n' "$*" >&2; }
 
+# Helm deletes a RuntimeClass it rendered if the next upgrade sets createRuntimeClass=false.
+# An existing class this release does not own must stay false so install does not adopt it.
+gvisor_runtimeclass_owned_by_release() {
+  local rel ns
+  [[ -n "${GVISOR_HELM_RELEASE:-}" && -n "${GVISOR_HELM_NAMESPACE:-}" ]] || return 1
+  rel="$("${KUBECTL[@]}" get runtimeclass gvisor \
+    -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}' 2>/dev/null || true)"
+  ns="$("${KUBECTL[@]}" get runtimeclass gvisor \
+    -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-namespace}' 2>/dev/null || true)"
+  [[ "$rel" == "$GVISOR_HELM_RELEASE" && "$ns" == "$GVISOR_HELM_NAMESPACE" ]]
+}
+
 warn_or_fail() {
   log "$1"
   if [[ "$FAIL_CLOSED" == "true" ]]; then
@@ -102,10 +114,13 @@ else
     log "GKE Sandbox node label detected"
   elif "${KUBECTL[@]}" get runtimeclass gvisor >/dev/null 2>&1 && smoke_gvisor; then
     MODE="preinstalled"
-    # Keep Helm rendering RuntimeClass. CREATE_RC=false on a profile upgrade deletes the
-    # CR while sandbox worker Deployments still reference runtimeClassName: gvisor.
-    CREATE_RC="true"
-    log "RuntimeClass gvisor smoke pod succeeded; preinstalled runsc (retain Helm RuntimeClass)"
+    if gvisor_runtimeclass_owned_by_release; then
+      CREATE_RC="true"
+      log "RuntimeClass gvisor smoke pod succeeded; this release already renders it"
+    else
+      CREATE_RC="false"
+      log "RuntimeClass gvisor already exists and is not owned by this release; Helm will not adopt it"
+    fi
   fi
 
   runtimes="$("${KUBECTL[@]}" get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.containerRuntimeVersion}{"\n"}{end}' 2>/dev/null | sort -u || true)"

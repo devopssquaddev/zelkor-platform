@@ -76,7 +76,7 @@ flowchart TB
 
 In this topology, Envoy Gateway creates a `ClusterIP` Service instead of a LoadBalancer. You configure your existing Ingress to forward traffic for `agents.example.com` and `langfuse.example.com` to the Envoy `ClusterIP`, ensuring you preserve the `Host` header. 
 
-To use this with the install scripts, pass `--topology layered`.
+To use this with the install scripts, pass `--topology layered`. The production installer prints a complete Ingress for the dataplane Service and the health paths `/health` and `/api/public/health`. It does not apply that Ingress.
 
 ## Shared Topology
 

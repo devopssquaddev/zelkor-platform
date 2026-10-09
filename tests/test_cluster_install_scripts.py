@@ -535,3 +535,387 @@ def test_uninstall_delete_namespace():
     assert proc.returncode == 0, proc.stderr
     assert "DELETE_NAMESPACE" in proc.stdout
     assert "zelkor-play" in proc.stdout
+
+
+def _write_exe(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+
+
+def _lib_bash(body: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    script = f"""
+set -euo pipefail
+export ZELKOR_REPO_ROOT="{ROOT}"
+source "{LIB}"
+cluster_install_init
+{body}
+"""
+    full = {
+        "PATH": __import__("os").environ.get("PATH", ""),
+        "HOME": __import__("os").environ.get("HOME", "/tmp"),
+        "INSTALL_LOG_FILE": "off",
+        "CLUSTER_INSTALL_RETRY_SLEEP": "0",
+    }
+    if env:
+        full.update(env)
+    return subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env=full,
+    )
+
+
+_KUBECTL_MOCK = r"""#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+log = os.environ.get("MOCK_KUBECTL_LOG", "")
+if log:
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(" ".join(args) + "\n")
+if not args or args[0] != "get" or len(args) < 2:
+    sys.stderr.write("unexpected kubectl %s\n" % args)
+    sys.exit(99)
+kind = args[1]
+rest = args[2:]
+name = rest[0] if rest and not rest[0].startswith("-") else ""
+if kind == "storageclass":
+    if name:
+        prov = os.environ.get("MOCK_PROVISIONER_" + name, os.environ.get("MOCK_PROVISIONER", "csi.example.com"))
+        sys.stdout.write(prov)
+        sys.exit(0)
+    sys.stdout.write(os.environ.get("MOCK_DEFAULT_SC", "") + "\n")
+    sys.exit(0)
+if kind == "csidriver":
+    sys.exit(0 if os.environ.get("MOCK_IS_CSI", "1") == "1" else 1)
+if kind == "nodes":
+    if "go-template" in " ".join(args):
+        sys.stdout.write(os.environ.get("MOCK_NODE_LABELS", ""))
+        sys.exit(0)
+    sys.stdout.write(os.environ.get("MOCK_NODES", "n1 True\nn2 True\nn3 True\n"))
+    sys.exit(0)
+if kind == "csinode":
+    joined = " ".join(args)
+    if "go-template" in joined:
+        sys.stdout.write(os.environ.get("MOCK_CSI_TOPOLOGY", ""))
+        sys.exit(0)
+    sys.stdout.write(os.environ.get("MOCK_CSINODES", ""))
+    sys.exit(0)
+if kind == "pods":
+    sys.stdout.write(os.environ.get("MOCK_PODS", ""))
+    sys.exit(0)
+sys.stderr.write("unexpected kubectl %s\n" % args)
+sys.exit(99)
+"""
+
+_HELM_MOCK = r"""#!/usr/bin/env python3
+import os, sys
+args = sys.argv[1:]
+log = os.environ["MOCK_HELM_LOG"]
+with open(log, "a", encoding="utf-8") as fh:
+    fh.write(" ".join(args) + "\n")
+state = os.environ["MOCK_HELM_STATE"]
+stuck = os.environ.get("MOCK_HELM_STUCK", "0") == "1"
+
+def read_state():
+    try:
+        return open(state, encoding="utf-8").read().strip() or "deployed"
+    except FileNotFoundError:
+        return "deployed"
+
+def write_state(value):
+    with open(state, "w", encoding="utf-8") as fh:
+        fh.write(value)
+
+if "status" in args:
+    print("STATUS: %s" % read_state())
+    sys.exit(0)
+if "rollback" in args:
+    if not stuck:
+        write_state("deployed")
+    print("rollback ok")
+    sys.exit(0)
+if "uninstall" in args:
+    write_state("uninstalled")
+    sys.exit(0)
+if "upgrade" in args:
+    count_path = state + ".n"
+    n = 0
+    if os.path.exists(count_path):
+        n = int(open(count_path, encoding="utf-8").read() or "0")
+    n += 1
+    with open(count_path, "w", encoding="utf-8") as fh:
+        fh.write(str(n))
+    if stuck or n == 1:
+        write_state("pending-upgrade")
+        sys.stderr.write("EOF\n")
+        sys.exit(1)
+    write_state("deployed")
+    print("upgrade ok")
+    sys.exit(0)
+sys.stderr.write("unexpected helm %s\n" % args)
+sys.exit(99)
+"""
+
+
+def _kubectl_env(tmp_path: Path, **overrides: str) -> dict[str, str]:
+    import os
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(bin_dir / "kubectl", _KUBECTL_MOCK)
+    env = {
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        "MOCK_KUBECTL_LOG": str(tmp_path / "kubectl.log"),
+        "MOCK_DEFAULT_SC": "local-disk",
+        "MOCK_PROVISIONER": "csi.example.com",
+        "MOCK_IS_CSI": "1",
+        "MOCK_NODES": "n1 True\nn2 True\nn3 True\n",
+        "MOCK_CSINODES": "n1\tcsi.example.com \nn2\tcsi.example.com \nn3\tcsi.example.com \n",
+        "MOCK_PODS": "",
+    }
+    env.update(overrides)
+    return env
+
+
+def test_storage_mixed_explicit_class_fails(tmp_path: Path):
+    env = _kubectl_env(tmp_path)
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_PG_INSTANCES=3
+CLUSTER_INSTALL_HELM_SETS=(--set databases.postgresql.storage.storageClass=fast)
+cluster_install_storage_preflight
+echo should-not-reach
+""",
+        env=env,
+    )
+    assert proc.returncode != 0
+    assert "should-not-reach" not in proc.stdout
+    err = proc.stderr
+    assert "empty for others" in err
+    assert "--set databases.clickhouse.storage.storageClass" in err
+    assert "--set seaweedfs.persistence.storageClass" in err
+    assert "databases.postgresql.storage.storageClass=fast" not in err
+    log = (tmp_path / "kubectl.log").read_text(encoding="utf-8") if (tmp_path / "kubectl.log").exists() else ""
+    assert log == ""
+
+
+def test_storage_instances_exceed_nodes_that_advertise_class(tmp_path: Path):
+    env = _kubectl_env(
+        tmp_path,
+        MOCK_CSINODES="n1\tcsi.example.com \nn2\tother.driver \nn3\tother.driver \n",
+    )
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_PG_INSTANCES=3
+cluster_install_storage_preflight
+echo should-not-reach
+""",
+        env=env,
+    )
+    assert proc.returncode != 0, proc.stderr
+    assert "should-not-reach" not in proc.stdout
+    assert "--set databases.postgresql.instances=1" in proc.stderr
+    assert "local-disk" in proc.stderr
+
+
+def test_storage_topology_label_without_driver_fails(tmp_path: Path):
+    env = _kubectl_env(
+        tmp_path,
+        MOCK_CSI_TOPOLOGY="n1\tcsi.example.com\tcsi.example.com/location \nn2\tother.driver\t\n",
+        MOCK_NODE_LABELS="n1\tcsi.example.com/location \nn2\tcsi.example.com/location \nn3\tkubernetes.io/hostname \n",
+    )
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_PG_INSTANCES=1
+cluster_install_storage_preflight
+echo should-not-reach
+""",
+        env=env,
+    )
+    assert proc.returncode != 0, proc.stderr
+    assert "should-not-reach" not in proc.stdout
+    assert "do not list the CSIDriver" in proc.stderr
+    assert "databases.postgresql.storage.storageClass" in proc.stderr
+    assert "n2" in proc.stderr
+
+
+def test_storage_default_class_on_enough_nodes_passes(tmp_path: Path):
+    env = _kubectl_env(tmp_path)
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_PG_INSTANCES=3
+cluster_install_storage_preflight
+echo ok
+""",
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip().endswith("ok")
+
+
+def test_helm_failure_rolls_back_pending_upgrade(tmp_path: Path):
+    import os
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(bin_dir / "helm", _HELM_MOCK)
+    state = tmp_path / "helm-state"
+    log = tmp_path / "helm.log"
+    env = {
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        "MOCK_HELM_LOG": str(log),
+        "MOCK_HELM_STATE": str(state),
+        "MOCK_HELM_STUCK": "0",
+    }
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_RETRY_SLEEP=0
+cluster_install_helm_with_recovery helm upgrade --install zelkor-platform
+echo RECOVERY_OK
+""",
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "RECOVERY_OK" in proc.stdout
+    text = log.read_text(encoding="utf-8")
+    assert "rollback" in text
+    assert state.read_text(encoding="utf-8").strip() == "deployed"
+
+    stuck_state = tmp_path / "helm-stuck"
+    stuck_log = tmp_path / "helm-stuck.log"
+    env["MOCK_HELM_STATE"] = str(stuck_state)
+    env["MOCK_HELM_LOG"] = str(stuck_log)
+    env["MOCK_HELM_STUCK"] = "1"
+    stuck = _lib_bash(
+        """
+CLUSTER_INSTALL_RETRY_SLEEP=0
+cluster_install_helm_with_recovery helm upgrade --install zelkor-platform
+echo should-not-reach
+""",
+        env=env,
+    )
+    assert stuck.returncode != 0
+    assert "should-not-reach" not in stuck.stdout
+    assert "pending-upgrade" in stuck.stderr
+    assert "helm rollback" in stuck.stderr
+    assert "rollback" in stuck_log.read_text(encoding="utf-8")
+
+
+def test_layered_dataplane_banner_prints_ingress_and_health():
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_TOPOLOGY=layered
+CLUSTER_INSTALL_NEXTAUTH_SCHEME=https
+HOSTS_AGENTS=agents.example.com
+HOSTS_LANGFUSE=langfuse.example.com
+cluster_install_print_dataplane
+"""
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "networking.k8s.io/v1" in out
+    assert "kind: Ingress" in out
+    assert "namespace: envoy-gateway-system" in out
+    assert "zelkor-zelkor-platform-dataplane" in out
+    assert "number: 80" in out
+    assert "agents.example.com" in out
+    assert "langfuse.example.com" in out
+    assert "https://agents.example.com/health" in out
+    assert "https://langfuse.example.com/api/public/health" in out
+    assert "cert-manager" not in out
+    assert "traefik" not in out.lower()
+
+
+def test_production_help_mentions_storage_instances_and_health():
+    proc = _run(PROD, "--help")
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "databases.postgresql.storage.storageClass" in out
+    assert "databases.clickhouse.storage.storageClass" in out
+    assert "seaweedfs.persistence.storageClass" in out
+    assert "databases.postgresql.instances" in out
+    assert "/health" in out
+    assert "/api/public/health" in out
+
+
+def test_gvisor_preflight_does_not_adopt_unowned_runtimeclass(tmp_path: Path):
+    import os
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(
+        bin_dir / "kubectl",
+        r"""#!/usr/bin/env python3
+import sys
+args = sys.argv[1:]
+joined = " ".join(args)
+if args[:1] == ["cluster-info"]:
+    sys.exit(0)
+if args[:2] == ["get", "nodes"] and "sandbox.gke.io/runtime=gvisor" in joined:
+    sys.exit(0)
+if args[:2] == ["get", "nodes"] and "containerRuntimeVersion" in joined:
+    print("containerd://1.7.0")
+    sys.exit(0)
+if args[:2] == ["delete", "pod"]:
+    sys.exit(0)
+if args[:1] == ["apply"]:
+    sys.exit(0)
+if args[:3] == ["get", "pod", "zelkor-gvisor-preflight-smoke"]:
+    print("Succeeded")
+    sys.exit(0)
+if args[:2] == ["get", "runtimeclass"] and "release-name" in joined:
+    sys.stdout.write("")
+    sys.exit(0)
+if args[:2] == ["get", "runtimeclass"] and "release-namespace" in joined:
+    sys.stdout.write("")
+    sys.exit(0)
+if args[:2] == ["get", "runtimeclass"]:
+    sys.exit(0)
+sys.stderr.write("unexpected %s\n" % args)
+sys.exit(99)
+""",
+    )
+    env = {
+        "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}",
+        "GVISOR_HELM_RELEASE": "zelkor-platform",
+        "GVISOR_HELM_NAMESPACE": "zelkor",
+    }
+    proc = subprocess.run(
+        [str(ROOT / "scripts" / "gvisor-preflight.sh"), "--output", "helm"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env={**os.environ, **env, "INSTALL_LOG_FILE": "off"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "security.sandbox.createRuntimeClass=false" in proc.stdout
+    assert "will not adopt" in proc.stderr
+
+
+def test_production_dry_run_stays_offline(tmp_path: Path):
+    import os
+
+    marker = tmp_path / "kubectl-called"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(
+        bin_dir / "kubectl",
+        f"#!/bin/sh\ntouch {marker}\necho kubectl-called >&2\nexit 97\n",
+    )
+    proc = _run(
+        PROD,
+        "--dry-run",
+        "--hosts-agents",
+        "agents.example.com",
+        "--hosts-langfuse",
+        "langfuse.example.com",
+        *PROD_JWT_ARGS,
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert not marker.exists()
+    assert "HELM" in proc.stdout

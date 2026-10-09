@@ -48,9 +48,9 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
 
 If you need to skip operator installation (operators already present on the cluster), pass `--skip-operators`.
 
-Set storage and sandbox to the cluster you have. Empty `databases.*.storage.storageClass` uses the cluster default; replica counts in the production profile need that class on enough nodes. Pin `security.sandbox.nodes.selector` to nodes that have RuntimeClass `gvisor`.
+Set storage and sandbox to the cluster you have. Leave `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, and `seaweedfs.persistence.storageClass` empty only when the default StorageClass can provision a volume. If you set one, set all three. Postgres stays at 3 instances unless the installer tells you to pass `--set databases.postgresql.instances=N`. If RuntimeClass `gvisor` already exists and this release does not own it, the installer leaves it in place. Pin `security.sandbox.nodes.selector` only when sandboxed pods must land on specific nodes.
 
-The installer prints the Envoy dataplane Service. A layered edge (Traefik, existing Ingress) must send Host-preserving traffic to that Service. Do not put another ClusterIP in Endpoints.
+The installer prints the Envoy dataplane Service. `--topology layered` also prints an Ingress for namespace `envoy-gateway-system` (preserve Host) and the health URLs `https://<agents-host>/health` and `https://<langfuse-host>/api/public/health`. Apply that Ingress yourself. Do not put another ClusterIP in Endpoints.
 
 Later Helm upgrades that set `workspace.models` must pass the provider key again (`--set-file`) or omit `apiKey` so an empty overlay does not wipe it.
 

@@ -38,6 +38,10 @@ cluster_install_init() {
   CLUSTER_INSTALL_NEXTAUTH_SCHEME="${CLUSTER_INSTALL_NEXTAUTH_SCHEME:-http}"
   CLUSTER_INSTALL_PG_INSTANCES="${CLUSTER_INSTALL_PG_INSTANCES:-1}"
   CLUSTER_INSTALL_EXPECT_HA="${CLUSTER_INSTALL_EXPECT_HA:-0}"
+  CLUSTER_INSTALL_ENFORCE_STORAGE="${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}"
+  CLUSTER_INSTALL_HELM_LAST_ERR=""
+  CLUSTER_INSTALL_CLASS_NODES=""
+  CLUSTER_INSTALL_RETRY_SLEEP="${CLUSTER_INSTALL_RETRY_SLEEP:-2}"
   KUBECONFIG_FILE="${KUBECONFIG_FILE:-}"
   KUBE_CONTEXT="${KUBE_CONTEXT:-}"
   HOSTS_AGENTS="${HOSTS_AGENTS:-}"
@@ -721,7 +725,7 @@ cluster_install_run_helm() {
   while IFS= read -r line; do
     [[ -n "$line" ]] && cmd+=("$line")
   done < <(cluster_install_helm_cmd "$values_file")
-  cluster_install_print_or_run HELM "${cmd[@]}"
+  cluster_install_apply_helm_argv "${cmd[@]}"
 }
 
 cluster_install_append_local_signing_helm_sets() {
@@ -801,22 +805,436 @@ cluster_install_gateway_policies_preflight() {
   fi
 }
 
+cluster_install_trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+
+cluster_install_kubectl() {
+  if [[ ${#KUBECTL_ARGS[@]} -gt 0 ]]; then
+    kubectl "${KUBECTL_ARGS[@]}" "$@"
+  else
+    kubectl "$@"
+  fi
+}
+
+cluster_install_helm_bin() {
+  local cmd=(helm)
+  if [[ ${#HELM_KUBE_ARGS[@]} -gt 0 ]]; then
+    cmd+=("${HELM_KUBE_ARGS[@]}")
+  fi
+  printf '%s\n' "${cmd[@]}"
+}
+
+cluster_install_helm_set_value() {
+  local key="$1"
+  local i=0 val="" result="" found=1 n=0
+  n=${#CLUSTER_INSTALL_HELM_SETS[@]}
+  while [[ $i -lt $n ]]; do
+    case "${CLUSTER_INSTALL_HELM_SETS[$i]}" in
+      --set|--set-string)
+        i=$((i + 1))
+        if [[ $i -ge $n ]]; then
+          break
+        fi
+        val="${CLUSTER_INSTALL_HELM_SETS[$i]}"
+        case "$val" in
+          "$key"=*)
+            result="${val#"$key"=}"
+            found=0
+            ;;
+        esac
+        ;;
+      --set=*)
+        val="${CLUSTER_INSTALL_HELM_SETS[$i]#--set=}"
+        case "$val" in
+          "$key"=*)
+            result="${val#"$key"=}"
+            found=0
+            ;;
+        esac
+        ;;
+      --set-string=*)
+        val="${CLUSTER_INSTALL_HELM_SETS[$i]#--set-string=}"
+        case "$val" in
+          "$key"=*)
+            result="${val#"$key"=}"
+            found=0
+            ;;
+        esac
+        ;;
+    esac
+    i=$((i + 1))
+  done
+  if [[ $found -eq 0 ]]; then
+    printf '%s' "$result"
+    return 0
+  fi
+  return 1
+}
+
+cluster_install_count_lines() {
+  local data="$1"
+  if [[ -z "$data" ]]; then
+    printf '0'
+    return 0
+  fi
+  printf '%s\n' "$data" | sed '/^$/d' | wc -l | tr -d '[:space:]'
+}
+
+cluster_install_ready_node_names() {
+  cluster_install_kubectl get nodes --field-selector=spec.unschedulable!=true \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+    2>/dev/null | awk '$2 == "True" { print $1 }' || true
+  return 0
+}
+
+cluster_install_csi_ready_node_names() {
+  local driver="$1"
+  local ready csi node drivers word hit
+  ready="$(cluster_install_ready_node_names)"
+  csi="$(cluster_install_kubectl get csinode \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.drivers[*]}{.name}{" "}{end}{"\n"}{end}' \
+    2>/dev/null || true)"
+  while IFS=$'\t' read -r node drivers; do
+    [[ -n "$node" ]] || continue
+    hit=1
+    for word in $drivers; do
+      if [[ "$word" == "$driver" ]]; then
+        hit=0
+        break
+      fi
+    done
+    [[ "$hit" -eq 0 ]] || continue
+    if printf '%s\n' "$ready" | grep -qx -- "$node"; then
+      printf '%s\n' "$node"
+    fi
+  done <<< "$csi"
+  return 0
+}
+
+cluster_install_provisioner_pods_ok() {
+  local prov="$1"
+  local lines name ready rest any=0 ok=0
+  lines="$(cluster_install_kubectl get pods -A \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.conditions[?(@.type=="Ready")].status}{"|"}{range .spec.containers[*]}{.name}{" "}{range .args[*]}{.}{" "}{end}{end}{"\n"}{end}' \
+    2>/dev/null || true)"
+  while IFS='|' read -r name ready rest; do
+    [[ -n "$name" ]] || continue
+    case "${name} ${rest}" in
+      *"$prov"*) ;;
+      *) continue ;;
+    esac
+    any=1
+    if [[ "$ready" == "True" ]]; then
+      ok=1
+    fi
+  done <<< "$lines"
+  if [[ "$any" -eq 1 && "$ok" -eq 0 ]]; then
+    return 1
+  fi
+  return 0
+}
+
+cluster_install_storage_set_hint() {
+  printf '%s' "--set databases.postgresql.storage.storageClass --set databases.clickhouse.storage.storageClass --set seaweedfs.persistence.storageClass"
+}
+
+# topologyKeys on the CSINode plus the same labels on a Ready node that does
+# not list the driver lets the scheduler place a volume where it cannot attach.
+cluster_install_select_csi_nodes() {
+  local sc="$1"
+  local driver="$2"
+  local dump node name keys topo_keys="" driver_nodes="" ready eligible=""
+  local label_dump labels n key missing unsafe="" filtered=""
+  dump="$(cluster_install_kubectl get csinode -o go-template='{{range .items}}{{$n := .metadata.name}}{{range .spec.drivers}}{{$n}}{{"\t"}}{{.name}}{{"\t"}}{{range .topologyKeys}}{{.}} {{end}}{{"\n"}}{{end}}{{end}}' 2>/dev/null || true)"
+  if [[ -z "$dump" ]]; then
+    CLUSTER_INSTALL_CLASS_NODES="$(cluster_install_csi_ready_node_names "$driver")"
+    return 0
+  fi
+  while IFS=$'\t' read -r node name keys; do
+    [[ "$name" == "$driver" ]] || continue
+    driver_nodes+="${node}"$'\n'
+    if [[ -z "${topo_keys// /}" && -n "${keys// /}" ]]; then
+      topo_keys="$keys"
+    fi
+  done <<< "$dump"
+  ready="$(cluster_install_ready_node_names)"
+  while IFS= read -r n; do
+    [[ -n "$n" ]] || continue
+    if printf '%s\n' "$ready" | grep -qx -- "$n"; then
+      eligible+="${n}"$'\n'
+    fi
+  done <<< "$driver_nodes"
+  if [[ -z "${topo_keys// /}" ]]; then
+    CLUSTER_INSTALL_CLASS_NODES="$eligible"
+    return 0
+  fi
+  label_dump="$(cluster_install_kubectl get nodes -o go-template='{{range .items}}{{.metadata.name}}{{"\t"}}{{range $k, $v := .metadata.labels}}{{$k}} {{end}}{{"\n"}}{{end}}' 2>/dev/null || true)"
+  while IFS=$'\t' read -r node labels; do
+    [[ -n "$node" ]] || continue
+    printf '%s\n' "$ready" | grep -qx -- "$node" || continue
+    missing=0
+    for key in $topo_keys; do
+      case " ${labels} " in
+        *" ${key} "*) ;;
+        *) missing=1 ;;
+      esac
+    done
+    [[ "$missing" -eq 0 ]] || continue
+    if ! printf '%s\n' "$eligible" | grep -qx -- "$node"; then
+      unsafe+="${node} "
+    else
+      filtered+="${node}"$'\n'
+    fi
+  done <<< "$label_dump"
+  if [[ -n "${unsafe// /}" ]]; then
+    cluster_install_die "StorageClass ${sc} (provisioner ${driver}) has topology keys (${topo_keys}) on Ready nodes that do not list the CSIDriver (${unsafe}). A volume can be scheduled where it cannot provision. Pass $(cluster_install_storage_set_hint)"
+  fi
+  CLUSTER_INSTALL_CLASS_NODES="$filtered"
+}
+
+cluster_install_require_provisionable() {
+  local sc="$1"
+  local prov nodes
+  prov="$(cluster_install_kubectl get storageclass "$sc" -o jsonpath='{.provisioner}' 2>/dev/null || true)"
+  prov="$(cluster_install_trim "$prov")"
+  [[ -n "$prov" ]] || cluster_install_die "StorageClass ${sc} has no provisioner. Pass $(cluster_install_storage_set_hint)"
+  if [[ "$prov" == "kubernetes.io/no-provisioner" ]]; then
+    cluster_install_die "StorageClass ${sc} uses kubernetes.io/no-provisioner and cannot provision a volume. Pass $(cluster_install_storage_set_hint)"
+  fi
+  if ! cluster_install_provisioner_pods_ok "$prov"; then
+    cluster_install_die "provisioner ${prov} has pods and none are Ready. Pass $(cluster_install_storage_set_hint)"
+  fi
+  if cluster_install_kubectl get csidriver "$prov" >/dev/null 2>&1; then
+    cluster_install_select_csi_nodes "$sc" "$prov"
+    nodes="$CLUSTER_INSTALL_CLASS_NODES"
+    [[ -n "$nodes" ]] || cluster_install_die "StorageClass ${sc} (provisioner ${prov}) is not listed on any Ready node's CSINode. Pass $(cluster_install_storage_set_hint)"
+  else
+    nodes="$(cluster_install_ready_node_names)"
+    [[ -n "$nodes" ]] || cluster_install_die "StorageClass ${sc} (provisioner ${prov}) has no Ready nodes. Pass $(cluster_install_storage_set_hint)"
+  fi
+  CLUSTER_INSTALL_CLASS_NODES="$nodes"
+}
+
+cluster_install_read_volume_class() {
+  local key="$1"
+  local val=""
+  if val="$(cluster_install_helm_set_value "$key")"; then
+    cluster_install_trim "$val"
+    return 0
+  fi
+  printf '%s' ""
+  return 0
+}
+
+cluster_install_storage_preflight() {
+  local pg_class ch_class sw_class set_n=0 empty_msg=""
+  local pg_count instances def
+  pg_class="$(cluster_install_read_volume_class databases.postgresql.storage.storageClass)"
+  ch_class="$(cluster_install_read_volume_class databases.clickhouse.storage.storageClass)"
+  sw_class="$(cluster_install_read_volume_class seaweedfs.persistence.storageClass)"
+  if [[ -n "$pg_class" ]]; then set_n=$((set_n + 1)); else empty_msg+=" --set databases.postgresql.storage.storageClass"; fi
+  if [[ -n "$ch_class" ]]; then set_n=$((set_n + 1)); else empty_msg+=" --set databases.clickhouse.storage.storageClass"; fi
+  if [[ -n "$sw_class" ]]; then set_n=$((set_n + 1)); else empty_msg+=" --set seaweedfs.persistence.storageClass"; fi
+  if [[ "$set_n" -gt 0 && "$set_n" -lt 3 ]]; then
+    cluster_install_die "storageClass is set for some volumes and empty for others. Pass${empty_msg}"
+  fi
+  if [[ "$set_n" -eq 0 ]]; then
+    def="$(cluster_install_kubectl get storageclass \
+      -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' \
+      2>/dev/null | head -n 1 || true)"
+    def="$(cluster_install_trim "$def")"
+    if [[ -z "$def" ]]; then
+      cluster_install_die "no default StorageClass. Pass $(cluster_install_storage_set_hint)"
+    fi
+    pg_class="$def"
+    ch_class="$def"
+    sw_class="$def"
+  fi
+  cluster_install_require_provisionable "$pg_class"
+  pg_count="$(cluster_install_count_lines "$CLUSTER_INSTALL_CLASS_NODES")"
+  if [[ "$ch_class" != "$pg_class" ]]; then
+    cluster_install_require_provisionable "$ch_class"
+  fi
+  if [[ "$sw_class" != "$pg_class" && "$sw_class" != "$ch_class" ]]; then
+    cluster_install_require_provisionable "$sw_class"
+  fi
+  instances="$(cluster_install_resolved_pg_instances)"
+  instances="$(cluster_install_trim "$instances")"
+  case "$instances" in
+    ''|*[!0-9]*)
+      cluster_install_die "databases.postgresql.instances must be a positive integer (got ${instances})"
+      ;;
+  esac
+  if [[ "$pg_count" -lt "$instances" ]]; then
+    cluster_install_die "databases.postgresql.instances (${instances}) is greater than Ready nodes that can provision StorageClass ${pg_class} (${pg_count}). Pass --set databases.postgresql.instances=${pg_count} or choose a StorageClass present on more nodes."
+  fi
+}
+
+cluster_install_helm_release_status() {
+  local i out status rc
+  local cmd=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && cmd+=("$line")
+  done < <(cluster_install_helm_bin)
+  cmd+=(status "$CLUSTER_INSTALL_RELEASE" --namespace "$CLUSTER_INSTALL_NAMESPACE")
+  for i in 1 2 3; do
+    set +e
+    out="$("${cmd[@]}" 2>&1)"
+    rc=$?
+    set -e
+    if [[ "$rc" -eq 0 ]]; then
+      status="$(printf '%s\n' "$out" | awk -F': ' '/^STATUS:/{print $2; exit}')"
+      status="$(cluster_install_trim "$status")"
+      if [[ -n "$status" ]]; then
+        printf '%s' "$status"
+        return 0
+      fi
+    fi
+    case "$out" in
+      *EOF*|*"connection reset"*|*"i/o timeout"*|*"unexpected EOF"*|"") ;;
+      *) break ;;
+    esac
+  done
+  printf '%s' ""
+  return 0
+}
+
+cluster_install_helm_err_is_transient() {
+  local err="${1:-}"
+  if [[ -z "$err" ]]; then
+    return 0
+  fi
+  case "$err" in
+    *EOF*|*"connection reset"*|*"i/o timeout"*|*"Client.Timeout"*|*"unexpected EOF"*|*"http2: client connection lost"*|*"the server was unable to return"*|*"context deadline exceeded"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+cluster_install_helm_cli_prefix() {
+  local prefix="helm" a
+  if [[ ${#HELM_KUBE_ARGS[@]} -gt 0 ]]; then
+    for a in "${HELM_KUBE_ARGS[@]}"; do
+      prefix+=" ${a}"
+    done
+  fi
+  printf '%s' "$prefix"
+}
+
+cluster_install_helm_clear_pending() {
+  local status="$1"
+  local cmd=()
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && cmd+=("$line")
+  done < <(cluster_install_helm_bin)
+  case "$status" in
+    pending-upgrade|pending-rollback)
+      echo "install: helm release ${status}; rolling back" >&2
+      cmd+=(rollback "$CLUSTER_INSTALL_RELEASE" --namespace "$CLUSTER_INSTALL_NAMESPACE")
+      ;;
+    pending-install)
+      echo "install: helm release pending-install; uninstalling incomplete release" >&2
+      cmd+=(uninstall "$CLUSTER_INSTALL_RELEASE" --namespace "$CLUSTER_INSTALL_NAMESPACE")
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+  set +e
+  "${cmd[@]}"
+  set -e
+  return 0
+}
+
+cluster_install_die_if_helm_pending() {
+  local status
+  status="$(cluster_install_helm_release_status)"
+  case "$status" in
+    pending-upgrade|pending-rollback)
+      cluster_install_die "helm release left ${status}. Run: $(cluster_install_helm_cli_prefix) rollback ${CLUSTER_INSTALL_RELEASE} --namespace ${CLUSTER_INSTALL_NAMESPACE}"
+      ;;
+    pending-install)
+      cluster_install_die "helm release left pending-install. Run: $(cluster_install_helm_cli_prefix) uninstall ${CLUSTER_INSTALL_RELEASE} --namespace ${CLUSTER_INSTALL_NAMESPACE}"
+      ;;
+  esac
+}
+
+cluster_install_helm_capture() {
+  local err_file rc
+  err_file="$(mktemp)"
+  set +e
+  "$@" 2>&1 | tee "$err_file"
+  rc=${PIPESTATUS[0]}
+  CLUSTER_INSTALL_HELM_LAST_ERR="$(cat "$err_file" 2>/dev/null || true)"
+  rm -f "$err_file"
+  return "$rc"
+}
+
+cluster_install_helm_with_recovery() {
+  local attempt=1 max=3 rc=0 status="" retry=0
+  while [[ "$attempt" -le "$max" ]]; do
+    set +e
+    cluster_install_helm_capture "$@"
+    rc=$?
+    set -e
+    if [[ "$rc" -eq 0 ]]; then
+      return 0
+    fi
+    status="$(cluster_install_helm_release_status)"
+    cluster_install_helm_clear_pending "$status"
+    retry=0
+    if cluster_install_helm_err_is_transient "${CLUSTER_INSTALL_HELM_LAST_ERR:-}"; then
+      retry=1
+    fi
+    case "$status" in
+      pending-*) retry=1 ;;
+    esac
+    if [[ "$retry" -eq 0 || "$attempt" -eq "$max" ]]; then
+      break
+    fi
+    echo "install: retrying helm (${attempt}/${max})" >&2
+    if [[ "${CLUSTER_INSTALL_RETRY_SLEEP:-2}" != "0" ]]; then
+      sleep "$CLUSTER_INSTALL_RETRY_SLEEP"
+    fi
+    attempt=$((attempt + 1))
+  done
+  cluster_install_die_if_helm_pending
+  return "$rc"
+}
+
+cluster_install_apply_helm_argv() {
+  if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
+    cluster_install_print_or_run HELM "$@"
+    return 0
+  fi
+  cluster_install_helm_with_recovery "$@"
+}
+
 cluster_install_preflight() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
   local sc_default ready_nodes instances metrics
-  sc_default=$(kubectl "${KUBECTL_ARGS[@]}" get storageclass \
-    -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' \
-    2>/dev/null || true)
-  if [[ -z "$sc_default" ]]; then
-    cluster_install_warn_or_fail "no default StorageClass; set databases.postgresql.storage.storageClass and databases.clickhouse.storage.storageClass"
-  fi
-  ready_nodes=$(kubectl "${KUBECTL_ARGS[@]}" get nodes \
-    --field-selector=spec.unschedulable!=true \
-    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
-    2>/dev/null | grep -c '^True$' || true)
-  instances="$(cluster_install_resolved_pg_instances)"
-  if [[ "$ready_nodes" -lt "$instances" ]]; then
-    cluster_install_warn_or_fail "Ready nodes (${ready_nodes}) < databases.postgresql.instances (${instances}); pass --set databases.postgresql.instances=${ready_nodes} or add schedulable nodes"
+  if [[ "${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}" -eq 1 ]]; then
+    cluster_install_storage_preflight
+  else
+    sc_default=$(kubectl "${KUBECTL_ARGS[@]}" get storageclass \
+      -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' \
+      2>/dev/null || true)
+    if [[ -z "$sc_default" ]]; then
+      cluster_install_warn_or_fail "no default StorageClass; set databases.postgresql.storage.storageClass and databases.clickhouse.storage.storageClass"
+    fi
+    ready_nodes=$(kubectl "${KUBECTL_ARGS[@]}" get nodes \
+      --field-selector=spec.unschedulable!=true \
+      -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+      2>/dev/null | grep -c '^True$' || true)
+    instances="$(cluster_install_resolved_pg_instances)"
+    if [[ "$ready_nodes" -lt "$instances" ]]; then
+      cluster_install_warn_or_fail "Ready nodes (${ready_nodes}) < databases.postgresql.instances (${instances}); pass --set databases.postgresql.instances=${ready_nodes} or add schedulable nodes"
+    fi
   fi
   if [[ "$CLUSTER_INSTALL_EXPECT_HA" -eq 1 ]]; then
     metrics=$(kubectl "${KUBECTL_ARGS[@]}" get apiservice v1beta1.metrics.k8s.io \
@@ -845,6 +1263,8 @@ cluster_install_adopt_gatewayclass() {
 
 cluster_install_gvisor_preflight() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  export GVISOR_HELM_RELEASE="$CLUSTER_INSTALL_RELEASE"
+  export GVISOR_HELM_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
   local args=()
   local line pending="" skip_mode=0 skip_rc=0
   local arg
@@ -886,13 +1306,47 @@ cluster_install_dataplane_fqdn() {
 }
 
 cluster_install_print_dataplane() {
-  local fqdn
+  local name fqdn scheme
+  name="$(cluster_install_dataplane_name)"
   fqdn="$(cluster_install_dataplane_fqdn)"
+  scheme="${CLUSTER_INSTALL_NEXTAUTH_SCHEME}"
   echo
   echo "Envoy dataplane Service (stable name): ${fqdn}:80"
   if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "layered" ]]; then
     echo "Point your existing ingress at that ClusterIP Service and preserve the Host header."
-    echo "Zelkor does not create Ingress objects."
+    echo "Zelkor does not apply this Ingress. Apply it yourself:"
+    cat <<EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ${CLUSTER_INSTALL_RELEASE}-envoy
+  namespace: envoy-gateway-system
+spec:
+  rules:
+  - host: ${HOSTS_AGENTS}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ${name}
+            port:
+              number: 80
+  - host: ${HOSTS_LANGFUSE}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ${name}
+            port:
+              number: 80
+EOF
+    echo "Health:"
+    echo "  ${scheme}://${HOSTS_AGENTS}/health"
+    echo "  ${scheme}://${HOSTS_LANGFUSE}/api/public/health"
   fi
 }
 
@@ -955,7 +1409,7 @@ cluster_install_enable_langfuse_public_route() {
     [[ -n "$line" ]] && cmd+=("$line")
   done < <(cluster_install_helm_cmd "$values_file")
   cmd+=(--set "platform.telemetry.langfuse.publicHttpRoute.enabled=true")
-  cluster_install_print_or_run HELM "${cmd[@]}"
+  cluster_install_apply_helm_argv "${cmd[@]}"
 }
 
 cluster_install_prepare() {
