@@ -29,7 +29,32 @@ NetworkPolicies are **disabled by default**. Set `security.networkPolicies.enabl
 
 ## Sandbox Runtime (gVisor)
 
-Community Edition uses gVisor to sandbox generated code. On production clusters, you must install the `runsc` binary on your worker nodes and configure a Kubernetes `RuntimeClass` named `gvisor`. (Managed Kubernetes services like GKE and AKS often provide this as a built-in node pool option). If the `RuntimeClass` is missing, sandbox worker pods will fail to schedule.
+Zelkor Community Edition uses gVisor to isolate generated code. Sandbox workers are pinned to the `gvisor` Kubernetes `RuntimeClass`, and they will **never** silently fall back to an unisolated runtime (`runc`). 
+
+### How it installs
+
+On standard containerd clusters (k3s, RKE2, kubeadm, EKS, AKS), the Zelkor installer **automatically provisions** the runtime out of the box. 
+1. A preflight check detects containerd.
+2. A privileged DaemonSet downloads the pinned `runsc` binaries.
+3. It writes a containerd drop-in configuration and restarts the container runtime.
+4. Helm registers the `gvisor` RuntimeClass.
+
+### Prerequisites and Limitations
+
+- **Containerd is required:** OpenShift and CRI-O are **unsupported**. If `runsc` cannot be installed, sandbox workers will stay `Pending` or `ContainerCreating`.
+- **Managed sandbox pools:** If you use GKE Sandbox (nodes labeled `sandbox.gke.io/runtime=gvisor`) or GKE Autopilot, Zelkor detects the pre-existing runtime and delegates to it without running the installer.
+- **Talos Linux:** Must be preinstalled via the `siderolabs/gvisor` system extension because Talos lacks systemd units for the installer to restart.
+- **Air-gapped clusters:** The installer requires access to `storage.googleapis.com` to download gVisor. If unreachable, you must override `security.sandbox.provisioning.baseUrl` to an internal mirror, otherwise the DaemonSet will loop indefinitely.
+
+### Node Selection
+
+If gVisor should only run on specific nodes (for example, if some nodes have SELinux Enforcing which blocks `runsc`), constrain it by setting a node selector:
+
+```bash
+--set "security.sandbox.nodes.selector.kubernetes\.io/hostname=sandbox-node-1"
+```
+
+This single knob pins both the installer DaemonSet and the sandbox worker pods to the allowed nodes. Other nodes are left completely unmodified.
 
 ## Deploy with the production script
 
