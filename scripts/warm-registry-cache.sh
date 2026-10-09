@@ -88,7 +88,7 @@ registry_port_for_proxy() {
 }
 
 # Docker manifest v2 alone 404s on an OCI index ("accept header does not support OCI indexes").
-# zelkor-langfuse-seed:2.3.0 and other first-party tags are indexes, so every warm looked like a miss.
+# zelkor-langfuse-seed:2.3.1 and other first-party tags are indexes, so every warm looked like a miss.
 MANIFEST_ACCEPT='Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
 
 manifest_http() {
