@@ -327,7 +327,7 @@ def test_unknown_bypass_reject_when_intercept_on():
     assert route is not None
     headers = route["spec"]["rules"][0]["matches"][0]["headers"]
     assert {"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"} in headers
-    assert {"type": "RegularExpression", "name": "x-ai-eg-model", "value": ".+"} in headers
+    assert not any(h.get("name") == "x-ai-eg-model" for h in headers)
     assert "backendRefs" not in route["spec"]["rules"][0]
     rules = _aigateway_rules(docs)
     exact_models = [
@@ -378,7 +378,7 @@ def test_vertex_bypass_rule_stays_two_header_when_reject_present():
     assert route is not None
     headers = route["spec"]["rules"][0]["matches"][0]["headers"]
     assert {"type": "Exact", "name": "x-zelkor-guardrails-bypass", "value": "1"} in headers
-    assert {"type": "RegularExpression", "name": "x-ai-eg-model", "value": ".+"} in headers
+    assert not any(h.get("name") == "x-ai-eg-model" for h in headers)
     vertex_rule = next(
         rule
         for rule in _aigateway_rules(docs)

@@ -35,14 +35,13 @@ spec:
     - {{ . | quote }}
     {{- end }}
   rules:
+    # One header only. A second x-ai-eg-model ".+" match ties provider regex
+    # rules; the older route then wins and configured models get this 400.
     - matches:
         - headers:
             - type: Exact
               name: x-zelkor-guardrails-bypass
               value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: ".+"
       filters:
         - type: ExtensionRef
           extensionRef:

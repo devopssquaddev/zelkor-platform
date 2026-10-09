@@ -80,6 +80,14 @@ except Exception:
     _log.exception("trace wrap (Pregel root / ChatOpenAI.request / traceparent) failed")
 
 try:
+    from taskgroup_unwrap import install_stream_unwrap
+
+    install_stream_unwrap()
+    _log.info("taskgroup unwrap ready")
+except Exception:
+    _log.exception("taskgroup unwrap failed")
+
+try:
     from agent_step import install_agent_step_callback
 
     install_agent_step_callback()
