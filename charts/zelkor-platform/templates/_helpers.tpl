@@ -566,6 +566,13 @@ Optional aegra.otelTargets overrides OTEL_TARGETS when set.
   value: {{ .Values.langfuse.migration.nativeOtelBehaviour | default "direct" | quote }}
 - name: LANGFUSE_MIGRATION_V4_ALLOW_PREVIEW_OPT_IN
   value: {{ .Values.langfuse.migration.allowPreviewOptIn | default true | quote }}
+{{- $evalSeed := $surfaces.evaluators | default dict }}
+{{- if $evalSeed.seedCode }}
+- name: LANGFUSE_CODE_EVAL_DISPATCHER
+  value: "insecure-local"
+- name: QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED
+  value: "true"
+{{- end }}
 - name: LANGFUSE_LOG_LEVEL
   value: {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.langfuse "vendor" "langfuse") | quote }}
 {{ include "zelkor-platform.langfuseS3Env" . }}

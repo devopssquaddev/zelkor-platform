@@ -6,7 +6,20 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "langfuse-seed"))
 
-from seed import extra_backend_names, keep_mcp_tool, parse_extra_projects, managed_projects, fast_hashed_secret_key, display_secret_key, resolve_custom_models, to_llm_tool, to_openai_function  # noqa: E402
+from seed import (  # noqa: E402
+    EVAL_CATALOG,
+    extra_backend_names,
+    keep_mcp_tool,
+    load_evaluator_source,
+    parse_extra_projects,
+    managed_projects,
+    fast_hashed_secret_key,
+    display_secret_key,
+    resolve_custom_models,
+    seed_evaluators,
+    to_llm_tool,
+    to_openai_function,
+)
 import seed as seed_mod
 
 
@@ -18,6 +31,49 @@ def test_keep_native_prefixes_only_unless_extra():
     assert keep_mcp_tool("acme-tools__ping", extras)
     assert not keep_mcp_tool("servicenow__get", extras)
     assert not keep_mcp_tool("acme-tools__ping", [])
+
+
+def test_seed_default_eval_model_upserts_gateway_connection(monkeypatch):
+    executed: list[tuple[str, tuple]] = []
+
+    class Cursor:
+        rowcount = 1
+
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    class Conn:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            return None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgresql://db")
+    monkeypatch.setattr(seed_mod, "CONNECTION_NAME", "zelkor-ai-gateway")
+    monkeypatch.setattr(seed_mod, "psycopg", type("P", (), {"connect": staticmethod(lambda _url: Conn())}))
+    seed_mod.seed_default_eval_model({"id": "proj-1"}, ["gpt-oss:20b"])
+    assert "default_llm_models" in executed[0][0]
+    assert executed[0][1][1:] == ("gpt-oss:20b", "proj-1", "zelkor-ai-gateway")
+    assert "DEFAULT_EVAL_MODEL_MISSING" in executed[1][0]
+    assert executed[1][1] == ("proj-1",)
+
+
+def test_seed_default_eval_model_skips_without_models(monkeypatch):
+    monkeypatch.setattr(seed_mod, "DATABASE_URL", "postgresql://db")
+    seed_mod.seed_default_eval_model({"id": "proj-1"}, [])
 
 
 def test_resolve_custom_models_does_not_wipe_existing():
@@ -507,3 +563,110 @@ def test_helm_bootstrap_wait_init_on_aegra_when_init_enabled():
     assert "kubectl" not in out
     assert "bitnami" not in out.lower()
     assert "langfuse-bootstrap-wait" not in out
+
+
+def test_langfuse_dispatcher_follows_seed_code():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    chart = root / "charts" / "zelkor-platform"
+    cases = (
+        (root / "profiles/values-local.yaml", True),
+        (root / "profiles/values-local-fast.yaml", False),
+    )
+    for values, enabled in cases:
+        try:
+            proc = subprocess.run(
+                [
+                    "helm",
+                    "template",
+                    "zelkor",
+                    str(chart),
+                    "-f",
+                    str(values),
+                    "-s",
+                    "templates/langfuse/deployment.yaml",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            pytest.skip("helm not installed")
+        assert proc.returncode == 0, proc.stderr or proc.stdout
+        if enabled:
+            assert proc.stdout.count("LANGFUSE_CODE_EVAL_DISPATCHER") == 2
+            assert 'value: "insecure-local"' in proc.stdout
+            assert proc.stdout.count("QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED") == 2
+        else:
+            assert "LANGFUSE_CODE_EVAL_DISPATCHER" not in proc.stdout
+            assert "QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED" not in proc.stdout
+
+
+def test_mcp_prefix_source_bakes_extra_backend(monkeypatch):
+    monkeypatch.setenv("MCP_EXTRA_BACKENDS", '[{"name":"acme-tools","url":"http://x"}]')
+    src = load_evaluator_source("mcp_prefix")
+    assert '"acme-tools__"' in src
+    assert "postgres__" in src
+    assert "function evaluate" in src
+
+
+def test_seed_evaluators_upserts_jobs_once(monkeypatch):
+    calls = []
+    stored = {"configs": [], "evaluators": [], "rules": []}
+
+    def fake_request(method, path, body=None, **kwargs):
+        calls.append((method, path, body))
+        if method == "GET" and path.startswith("/api/public/score-configs"):
+            return {"data": list(stored["configs"])}
+        if method == "GET" and "/api/public/v2/evaluators" in path:
+            return {"data": list(stored["evaluators"]), "meta": {}}
+        if method == "GET" and "/api/public/v2/evaluation-rules" in path:
+            return {"data": list(stored["rules"]), "meta": {}}
+        if method == "POST" and path == "/api/public/score-configs":
+            stored["configs"].append({"name": body["name"]})
+            return {"name": body["name"]}
+        if method == "POST" and path == "/api/public/v2/evaluators":
+            row = {
+                "id": f"ev-{body['name']}",
+                "name": body["name"],
+                "sourceCode": body["sourceCode"],
+                "sourceCodeLanguage": body["sourceCodeLanguage"],
+            }
+            stored["evaluators"].append(row)
+            return row
+        if method == "POST" and path == "/api/public/v2/evaluation-rules":
+            row = {
+                "id": f"rule-{body['name']}",
+                "name": body["name"],
+                "enabled": True,
+                "filter": body["filter"],
+                "evaluatorAssignments": body["evaluatorAssignments"],
+            }
+            stored["rules"].append(row)
+            return row
+        raise AssertionError(f"unexpected {method} {path}")
+
+    monkeypatch.setattr(seed_mod, "_request", fake_request)
+    project = {"id": "proj", "publicKey": "pk", "secretKey": "sk"}
+    seed_evaluators(project)
+    seed_evaluators(project)
+    names = [item[1] for item in EVAL_CATALOG]
+    created = [
+        body["name"]
+        for method, path, body in calls
+        if method == "POST" and path == "/api/public/v2/evaluators"
+    ]
+    assert created == names
+    rules = [
+        body["name"]
+        for method, path, body in calls
+        if method == "POST" and path == "/api/public/v2/evaluation-rules"
+    ]
+    assert rules == names
+    assert all(
+        body["sourceCodeLanguage"] == "TYPESCRIPT"
+        for method, path, body in calls
+        if method == "POST" and path == "/api/public/v2/evaluators"
+    )
+    assert not any(method == "PATCH" for method, _path, _body in calls)

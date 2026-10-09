@@ -1,6 +1,7 @@
 """Unit tests for Aegra Langfuse run-root wrap (no cluster)."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -12,6 +13,7 @@ sys.path.insert(0, str(_root / "images" / "aegra"))
 from trace_wrap import (  # noqa: E402
     ProbeFilterSpanProcessor,
     assistant_output_text,
+    begin_run_tools,
     clip_io,
     excluded_probe_paths,
     identity_headers,
@@ -19,16 +21,24 @@ from trace_wrap import (  # noqa: E402
     is_probe_span,
     openinference_span_for_run,
     record_span_io,
+    reset_run_tools,
     run_identity,
     run_span_name,
+    stamp_pregel_root,
+    stamp_tool_span,
     user_prompt_text,
 )
 
 
 class _FakeSpan:
-    def __init__(self) -> None:
+    def __init__(self, name: str = "") -> None:
+        self.name = name
         self.attrs: dict = {}
         self.events: list = []
+
+    @property
+    def attributes(self) -> dict:
+        return self.attrs
 
     def set_attribute(self, key, value) -> None:
         self.attrs[key] = value
@@ -342,3 +352,39 @@ def test_sitecustomize_and_dockerfile_ship_trace_wrap():
     assert "trace_wrap.py" in dockerfile
     assert "chmod 644" in dockerfile
     assert "sitecustomize.py" in dockerfile
+
+
+def test_tool_names_are_strings_and_second_call_is_a_repeat():
+    token = begin_run_tools()
+    try:
+        first = _FakeSpan("postgres__query")
+        stamp_tool_span(first, known_tool=True)
+        second = _FakeSpan("postgres__query")
+        stamp_tool_span(second, known_tool=True)
+        stamp_tool_span(second, known_tool=True)
+        root = _FakeSpan("advisor")
+        stamp_pregel_root(root)
+    finally:
+        reset_run_tools(token)
+    names = json.loads(root.attrs["langfuse.observation.metadata.tool_names"])
+    assert names == ["postgres__query", "postgres__query"]
+    assert all(isinstance(name, str) for name in names)
+    assert "langfuse.observation.metadata.tool_repeat" not in first.attrs
+    assert second.attrs["langfuse.observation.metadata.tool_repeat"] == "true"
+    assert first.attrs["langfuse.observation.metadata.tool_name"] == "postgres__query"
+
+
+def test_pregel_root_stamps_user_and_tenant(monkeypatch):
+    monkeypatch.setattr("trace_wrap.bound_contextvars", lambda: {"user_id": "user-1"})
+    import wrap_identity
+
+    monkeypatch.setattr(wrap_identity, "current_auth_identity", lambda: "tenant-a")
+    token = begin_run_tools()
+    try:
+        root = _FakeSpan("advisor")
+        stamp_pregel_root(root)
+    finally:
+        reset_run_tools(token)
+    assert root.attrs["langfuse.observation.metadata.user_id"] == "user-1"
+    assert root.attrs["langfuse.observation.metadata.tenant_id"] == "tenant-a"
+    assert json.loads(root.attrs["langfuse.observation.metadata.tool_names"]) == []

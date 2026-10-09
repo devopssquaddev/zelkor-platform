@@ -296,6 +296,68 @@ def seed_connection(project: Dict[str, str]) -> None:
         AI_GATEWAY_BASE_URL,
         models,
     )
+    seed_default_eval_model(project, models)
+
+
+def seed_default_eval_model(project: Dict[str, str], models: List[str]) -> None:
+    """Point Langfuse's project default eval model at the seeded gateway connection.
+
+    Langfuse 4.50 has no public API for this row. ``upsertDefaultModel`` probes
+    structured output before it writes; code evaluators do not call the model,
+    but a missing row leaves the eval configuration invalid.
+    """
+    model = models[0] if models else ""
+    project_id = (project.get("id") or "").strip()
+    if not model or not project_id or not DATABASE_URL:
+        logger.info("skip default eval model: missing model, project, or database")
+        return
+    if psycopg is None:
+        raise RuntimeError("psycopg is required to seed the default evaluation model")
+    with psycopg.connect(DATABASE_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO default_llm_models (
+                    id, created_at, updated_at, project_id, llm_api_key_id,
+                    provider, adapter, model, model_params
+                )
+                SELECT %s, NOW(), NOW(), k.project_id, k.id, k.provider, k.adapter, %s, '{}'::jsonb
+                FROM llm_api_keys k
+                WHERE k.project_id = %s AND k.provider = %s
+                ON CONFLICT (project_id) DO UPDATE SET
+                    llm_api_key_id = EXCLUDED.llm_api_key_id,
+                    provider = EXCLUDED.provider,
+                    adapter = EXCLUDED.adapter,
+                    model = EXCLUDED.model,
+                    model_params = EXCLUDED.model_params,
+                    updated_at = NOW()
+                """,
+                (f"defm{uuid.uuid4().hex}", model, project_id, CONNECTION_NAME),
+            )
+            seeded = cur.rowcount
+            if seeded:
+                cur.execute(
+                    """
+                    UPDATE evaluators
+                    SET blocked_at = NULL, block_reason = NULL, block_message = NULL, updated_at = NOW()
+                    WHERE project_id = %s AND block_reason = 'DEFAULT_EVAL_MODEL_MISSING'
+                    """,
+                    (project_id,),
+                )
+        conn.commit()
+    if seeded:
+        logger.info(
+            "seeded default eval model project=%s provider=%s model=%s",
+            project_id,
+            CONNECTION_NAME,
+            model,
+        )
+    else:
+        logger.info(
+            "skip default eval model: llm connection %s missing project=%s",
+            CONNECTION_NAME,
+            project_id,
+        )
 
 
 def mcp_tools_list() -> List[Dict[str, Any]]:
@@ -584,24 +646,119 @@ def seed_init_project_sql() -> None:
     )
 
 
-def seed_evaluators(project: Dict[str, str]) -> None:
-    configs = [
-        {
-            "name": "zelkor-refusal-present",
-            "dataType": "BOOLEAN",
-            "description": "Blocked GENERATION observations include platform refusal text.",
-        },
-        {
-            "name": "zelkor-mcp-prefix",
-            "dataType": "BOOLEAN",
-            "description": "Agent tool observations use a native MCP prefix (postgres__/qdrant__/sandbox__/aigateway__).",
-        },
-        {
-            "name": "zelkor-tenant-userid",
-            "dataType": "BOOLEAN",
-            "description": "Agent traces stamp userId / tenant metadata.",
-        },
-    ]
+_TYPE_TOOL = {"type": "stringOptions", "column": "type", "operator": "any of", "value": ["TOOL"]}
+_TYPE_GENERATION = {
+    "type": "stringOptions",
+    "column": "type",
+    "operator": "any of",
+    "value": ["GENERATION"],
+}
+_LEVEL_ERROR = {"type": "stringOptions", "column": "level", "operator": "any of", "value": ["ERROR"]}
+_ROOT = {"type": "boolean", "column": "isRootObservation", "operator": "=", "value": True}
+_PREFIX_LINE = 'const PREFIXES = ["postgres__", "qdrant__", "sandbox__", "aigateway__"];'
+
+# filename, score name, description, rule filter
+EVAL_CATALOG = (
+    (
+        "refusal",
+        "zelkor-refusal-present",
+        "Blocked GENERATION observations include platform refusal text.",
+        [_TYPE_GENERATION],
+    ),
+    (
+        "mcp_prefix",
+        "zelkor-mcp-prefix",
+        "Agent tool observations use a native MCP prefix (postgres__/qdrant__/sandbox__/aigateway__).",
+        [_TYPE_TOOL],
+    ),
+    (
+        "tenant",
+        "zelkor-tenant-userid",
+        "Agent traces stamp userId / tenant metadata.",
+        [_ROOT],
+    ),
+    (
+        "tool_succeeded",
+        "zelkor-tool-succeeded",
+        "TOOL observations are not in error.",
+        [_TYPE_TOOL, _LEVEL_ERROR],
+    ),
+    (
+        "tool_repeat",
+        "zelkor-tool-repeat",
+        "A tool name is not repeated in the run.",
+        [_TYPE_TOOL],
+    ),
+    (
+        "sandbox_clean",
+        "zelkor-sandbox-clean",
+        "TOOL observations do not set sandbox.violation.",
+        [_TYPE_TOOL],
+    ),
+    (
+        "step_budget",
+        "zelkor-step-budget",
+        "Pregel root tool_names length is at most 25.",
+        [_ROOT],
+    ),
+    (
+        "tool_names",
+        "zelkor-tool-names",
+        "Pregel root tool_names is a JSON array of strings.",
+        [_ROOT],
+    ),
+)
+
+
+def evaluator_prefixes() -> List[str]:
+    prefixes = list(NATIVE_PREFIXES)
+    for name in extra_backend_names(os.getenv("MCP_EXTRA_BACKENDS", "[]")):
+        token = f"{name}__" if name and not name.endswith("__") else name
+        if token and token not in prefixes:
+            prefixes.append(token)
+    return prefixes
+
+
+def load_evaluator_source(filename: str) -> str:
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "evaluators", f"{filename}.ts")
+    with open(path, encoding="utf-8") as handle:
+        src = handle.read()
+    if filename == "mcp_prefix":
+        src = src.replace(_PREFIX_LINE, f"const PREFIXES = {json.dumps(evaluator_prefixes())};", 1)
+    return src
+
+
+def _page_items(page: Any) -> tuple[List[dict], str]:
+    if isinstance(page, list):
+        return [row for row in page if isinstance(row, dict)], ""
+    if not isinstance(page, dict):
+        return [], ""
+    data = page.get("data") or []
+    rows = [row for row in data if isinstance(row, dict)]
+    meta = page.get("meta") if isinstance(page.get("meta"), dict) else {}
+    nxt = str(meta.get("nextCursor") or meta.get("next_cursor") or "")
+    return rows, nxt
+
+
+def _list_public(path: str, *, public_key: str, secret_key: str) -> List[dict]:
+    items: List[dict] = []
+    cursor = ""
+    seen: set[str] = set()
+    for _ in range(20):
+        query = f"{path}?limit=100"
+        if cursor:
+            query += "&cursor=" + urllib.parse.quote(cursor, safe="")
+        page = _request("GET", query, public_key=public_key, secret_key=secret_key)
+        rows, nxt = _page_items(page)
+        items.extend(rows)
+        if not nxt or nxt in seen:
+            break
+        seen.add(nxt)
+        cursor = nxt
+    return items
+
+
+def _upsert_score_configs(project: Dict[str, str]) -> None:
     existing = _request(
         "GET",
         "/api/public/score-configs?limit=100",
@@ -609,17 +766,135 @@ def seed_evaluators(project: Dict[str, str]) -> None:
         secret_key=project["secretKey"],
     )
     names = {c.get("name") for c in (existing.get("data") or [])}
-    for cfg in configs:
-        if cfg["name"] in names:
+    for _filename, score_name, description, _filt in EVAL_CATALOG:
+        if score_name in names:
             continue
         _request(
             "POST",
             "/api/public/score-configs",
-            cfg,
+            {"name": score_name, "dataType": "BOOLEAN", "description": description},
             public_key=project["publicKey"],
             secret_key=project["secretKey"],
         )
-    logger.info("seeded code evaluator score-configs project=%s", project["id"])
+
+
+def _upsert_code_evaluator(
+    project: Dict[str, str],
+    *,
+    name: str,
+    description: str,
+    source: str,
+    existing: List[dict],
+) -> str:
+    match = next((row for row in existing if row.get("name") == name), None)
+    body = {
+        "name": name,
+        "description": description,
+        "type": "code",
+        "sourceCode": source,
+        "sourceCodeLanguage": "TYPESCRIPT",
+    }
+    keys = (project["publicKey"], project["secretKey"])
+    if match is None:
+        created = _request(
+            "POST",
+            "/api/public/v2/evaluators",
+            body,
+            public_key=keys[0],
+            secret_key=keys[1],
+        )
+        evaluator_id = str(created.get("id") or "")
+        if not evaluator_id:
+            raise RuntimeError(f"evaluator {name} created without id")
+        existing.append(created)
+        return evaluator_id
+    evaluator_id = str(match.get("id") or "")
+    if match.get("sourceCode") != source or match.get("sourceCodeLanguage") != "TYPESCRIPT":
+        _request(
+            "PATCH",
+            f"/api/public/v2/evaluators/{urllib.parse.quote(evaluator_id, safe='')}",
+            {
+                "type": "code",
+                "sourceCode": source,
+                "sourceCodeLanguage": "TYPESCRIPT",
+            },
+            public_key=keys[0],
+            secret_key=keys[1],
+        )
+    return evaluator_id
+
+
+def _upsert_eval_rule(
+    project: Dict[str, str],
+    *,
+    name: str,
+    evaluator_id: str,
+    filters: List[dict],
+    existing: List[dict],
+) -> None:
+    assignment = [{"evaluatorId": evaluator_id, "variableMapping": None}]
+    match = next((row for row in existing if row.get("name") == name), None)
+    keys = (project["publicKey"], project["secretKey"])
+    if match is None:
+        created = _request(
+            "POST",
+            "/api/public/v2/evaluation-rules",
+            {
+                "name": name,
+                "enabled": True,
+                "filter": filters,
+                "evaluatorAssignments": assignment,
+            },
+            public_key=keys[0],
+            secret_key=keys[1],
+        )
+        existing.append(created if isinstance(created, dict) else {"name": name})
+        return
+    current_ids = {
+        str(item.get("evaluatorId") or "")
+        for item in (match.get("evaluatorAssignments") or [])
+        if isinstance(item, dict)
+    }
+    same_filter = json.dumps(match.get("filter") or [], sort_keys=True) == json.dumps(
+        filters, sort_keys=True
+    )
+    if match.get("enabled") is True and same_filter and current_ids == {evaluator_id}:
+        return
+    rule_id = str(match.get("id") or "")
+    _request(
+        "PATCH",
+        f"/api/public/v2/evaluation-rules/{urllib.parse.quote(rule_id, safe='')}",
+        {
+            "enabled": True,
+            "filter": filters,
+            "evaluatorAssignments": assignment,
+        },
+        public_key=keys[0],
+        secret_key=keys[1],
+    )
+
+
+def seed_evaluators(project: Dict[str, str]) -> None:
+    _upsert_score_configs(project)
+    keys = {"public_key": project["publicKey"], "secret_key": project["secretKey"]}
+    evaluators = _list_public("/api/public/v2/evaluators", **keys)
+    rules = _list_public("/api/public/v2/evaluation-rules", **keys)
+    for filename, score_name, description, filters in EVAL_CATALOG:
+        evaluator_id = _upsert_code_evaluator(
+            project,
+            name=score_name,
+            description=description,
+            source=load_evaluator_source(filename),
+            existing=evaluators,
+        )
+        _upsert_eval_rule(
+            project,
+            name=score_name,
+            evaluator_id=evaluator_id,
+            filters=filters,
+            existing=rules,
+        )
+    logger.info("seeded code evaluators project=%s count=%s", project["id"], len(EVAL_CATALOG))
 
 
 def project_key_in_db(public_key: str) -> bool:

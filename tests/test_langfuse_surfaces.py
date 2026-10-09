@@ -74,6 +74,18 @@ def test_langfuse_mcp_tools_catalog_prompt():
         pytest.skip(f"prompt config.tools has no native MCP names (got {names})")
 
 
+_EVAL_NAMES = {
+    "zelkor-refusal-present",
+    "zelkor-mcp-prefix",
+    "zelkor-tenant-userid",
+    "zelkor-tool-succeeded",
+    "zelkor-tool-repeat",
+    "zelkor-sandbox-clean",
+    "zelkor-step-budget",
+    "zelkor-tool-names",
+}
+
+
 def test_langfuse_code_evaluator_score_configs():
     if not _init_expected():
         pytest.skip("langfuse.init disabled")
@@ -84,9 +96,31 @@ def test_langfuse_code_evaluator_score_configs():
     if resp.status_code in (401, 403, 404):
         pytest.skip(f"score-configs unavailable: {resp.status_code}")
     names = {c.get("name") for c in (resp.json().get("data") or [])}
-    expected = {"zelkor-refusal-present", "zelkor-mcp-prefix", "zelkor-tenant-userid"}
-    if not expected.issubset(names):
+    if not _EVAL_NAMES.issubset(names):
         pytest.skip(f"code evaluators not seeded (got {names})")
+
+
+def test_langfuse_code_evaluator_jobs():
+    if not _init_expected():
+        pytest.skip("langfuse.init disabled")
+    if os.environ.get("LANGFUSE_SEED_CODE_EVALUATORS", "true").lower() in ("0", "false", "no"):
+        pytest.skip("evaluator seed disabled")
+    try:
+        evaluators = langfuse_get("/api/public/v2/evaluators", params={"limit": 100})
+        rules = langfuse_get("/api/public/v2/evaluation-rules", params={"limit": 100})
+    except httpx.ConnectError:
+        pytest.skip(f"Langfuse not reachable at {GATEWAY_BASE_URL}")
+    if evaluators.status_code in (401, 403, 404) or rules.status_code in (401, 403, 404):
+        pytest.skip(f"evaluator API unavailable: {evaluators.status_code}/{rules.status_code}")
+    assert evaluators.status_code == 200, evaluators.text
+    assert rules.status_code == 200, rules.text
+    ev_names = {row.get("name") for row in (evaluators.json().get("data") or [])}
+    rule_rows = rules.json().get("data") or []
+    rule_names = {row.get("name") for row in rule_rows}
+    if not _EVAL_NAMES.issubset(ev_names) or not _EVAL_NAMES.issubset(rule_names):
+        pytest.skip(f"evaluator jobs not seeded (evaluators={ev_names} rules={rule_names})")
+    enabled = {row.get("name"): row.get("enabled") for row in rule_rows if row.get("name") in _EVAL_NAMES}
+    assert all(enabled[name] is True for name in _EVAL_NAMES)
 
 
 def test_langfuse_connection_secret_not_upstream_via_direct():

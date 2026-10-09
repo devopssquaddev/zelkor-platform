@@ -7,6 +7,7 @@ and langfuse.observation.* onto observation input/output).
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
@@ -21,6 +22,82 @@ from langfuse_keep import (  # noqa: F401
 _log = logging.getLogger("zelkor-aegra-wrap")
 
 IO_MAX = 8192
+_RUN_TOOLS: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar(
+    "zelkor_run_tools", default=None
+)
+
+
+def begin_run_tools() -> contextvars.Token:
+    return _RUN_TOOLS.set([])
+
+
+def reset_run_tools(token: contextvars.Token) -> None:
+    _RUN_TOOLS.reset(token)
+
+
+def _span_attrs(span: Any) -> dict[str, Any]:
+    raw = getattr(span, "attributes", None)
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return dict(raw or {})
+    except Exception:
+        return {}
+
+
+def _is_tool_span(attrs: dict[str, Any]) -> bool:
+    kind = str(attrs.get("openinference.span.kind") or "")
+    if kind.upper() == "TOOL":
+        return True
+    return bool(attrs.get("tool.name"))
+
+
+def _tool_span_name(span: Any, attrs: dict[str, Any]) -> str:
+    named = attrs.get("tool.name") or attrs.get("langfuse.observation.metadata.tool_name")
+    if named:
+        return str(named)
+    return str(getattr(span, "name", "") or "")
+
+
+def stamp_tool_span(span: Any, *, known_tool: bool = False) -> None:
+    """Record a TOOL name on the open run and on this span. Names only."""
+    names = _RUN_TOOLS.get()
+    if names is None or span is None:
+        return
+    attrs = _span_attrs(span)
+    if attrs.get("zelkor.tool_noted"):
+        return
+    if not known_tool and not _is_tool_span(attrs):
+        return
+    name = _tool_span_name(span, attrs)
+    if not name:
+        return
+    repeat = name in names
+    names.append(name)
+    span.set_attribute("zelkor.tool_noted", True)
+    span.set_attribute("langfuse.observation.metadata.tool_name", name)
+    if repeat:
+        span.set_attribute("langfuse.observation.metadata.tool_repeat", "true")
+
+
+def stamp_pregel_root(span: Any) -> None:
+    """Root metadata the code evaluators can read without child spans."""
+    if span is None:
+        return
+    names = list(_RUN_TOOLS.get() or [])
+    span.set_attribute("langfuse.observation.metadata.tool_names", json.dumps(names))
+    user_id = str(bound_contextvars().get("user_id") or "").strip()
+    if user_id:
+        span.set_attribute("langfuse.observation.metadata.user_id", user_id)
+    tenant = ""
+    try:
+        from wrap_identity import current_auth_identity
+
+        tenant = str(current_auth_identity() or "").strip()
+    except Exception:
+        tenant = ""
+    if tenant:
+        span.set_attribute("langfuse.observation.metadata.tenant_id", tenant)
 
 
 class ProbeFilterSpanProcessor:
@@ -47,6 +124,10 @@ class ProbeFilterSpanProcessor:
         self._wrapped.on_end(span)
 
     def _on_ending(self, span: Any) -> None:
+        try:
+            stamp_tool_span(span)
+        except Exception as exc:
+            _log.debug("tool stamp skipped: %s", type(exc).__name__)
         if not self._keep.should_export(span):
             return
         ending = getattr(self._wrapped, "_on_ending", None)
@@ -409,56 +490,81 @@ def wrap_pregel_current_span(provider: Any) -> None:
     orig_astream_events = Pregel.astream_events
 
     def invoke(self, *args, **kwargs):
-        payload = _call_input(args, kwargs)
-        with tracer.start_as_current_span(run_span_name(self)) as span:
-            record_span_io(span, prompt=user_prompt_text(payload))
-            result = orig_invoke(self, *args, **kwargs)
-            record_span_io(span, completion=assistant_output_text(result))
-            return result
+        token = begin_run_tools()
+        try:
+            payload = _call_input(args, kwargs)
+            with tracer.start_as_current_span(run_span_name(self)) as span:
+                record_span_io(span, prompt=user_prompt_text(payload))
+                result = orig_invoke(self, *args, **kwargs)
+                record_span_io(span, completion=assistant_output_text(result))
+                stamp_pregel_root(span)
+                return result
+        finally:
+            reset_run_tools(token)
 
     async def ainvoke(self, *args, **kwargs):
-        payload = _call_input(args, kwargs)
-        with tracer.start_as_current_span(run_span_name(self)) as span:
-            record_span_io(span, prompt=user_prompt_text(payload))
-            result = await orig_ainvoke(self, *args, **kwargs)
-            record_span_io(span, completion=assistant_output_text(result))
-            return result
+        token = begin_run_tools()
+        try:
+            payload = _call_input(args, kwargs)
+            with tracer.start_as_current_span(run_span_name(self)) as span:
+                record_span_io(span, prompt=user_prompt_text(payload))
+                result = await orig_ainvoke(self, *args, **kwargs)
+                record_span_io(span, completion=assistant_output_text(result))
+                stamp_pregel_root(span)
+                return result
+        finally:
+            reset_run_tools(token)
 
     def stream(self, *args, **kwargs):
-        payload = _call_input(args, kwargs)
-        with tracer.start_as_current_span(run_span_name(self)) as span:
-            record_span_io(span, prompt=user_prompt_text(payload))
-            last_text = ""
-            for item in orig_stream(self, *args, **kwargs):
-                text = assistant_output_text(item)
-                if text:
-                    last_text = text
-                yield item
-            record_span_io(span, completion=last_text)
+        token = begin_run_tools()
+        try:
+            payload = _call_input(args, kwargs)
+            with tracer.start_as_current_span(run_span_name(self)) as span:
+                record_span_io(span, prompt=user_prompt_text(payload))
+                last_text = ""
+                for item in orig_stream(self, *args, **kwargs):
+                    text = assistant_output_text(item)
+                    if text:
+                        last_text = text
+                    yield item
+                record_span_io(span, completion=last_text)
+                stamp_pregel_root(span)
+        finally:
+            reset_run_tools(token)
 
     async def astream(self, *args, **kwargs):
-        payload = _call_input(args, kwargs)
-        with tracer.start_as_current_span(run_span_name(self)) as span:
-            record_span_io(span, prompt=user_prompt_text(payload))
-            last_text = ""
-            async for item in orig_astream(self, *args, **kwargs):
-                text = assistant_output_text(item)
-                if text:
-                    last_text = text
-                yield item
-            record_span_io(span, completion=last_text)
+        token = begin_run_tools()
+        try:
+            payload = _call_input(args, kwargs)
+            with tracer.start_as_current_span(run_span_name(self)) as span:
+                record_span_io(span, prompt=user_prompt_text(payload))
+                last_text = ""
+                async for item in orig_astream(self, *args, **kwargs):
+                    text = assistant_output_text(item)
+                    if text:
+                        last_text = text
+                    yield item
+                record_span_io(span, completion=last_text)
+                stamp_pregel_root(span)
+        finally:
+            reset_run_tools(token)
 
     async def astream_events(self, *args, **kwargs):
-        payload = _call_input(args, kwargs)
-        with tracer.start_as_current_span(run_span_name(self)) as span:
-            record_span_io(span, prompt=user_prompt_text(payload))
-            last_text = ""
-            async for item in orig_astream_events(self, *args, **kwargs):
-                text = assistant_output_text(item)
-                if text:
-                    last_text = text
-                yield item
-            record_span_io(span, completion=last_text)
+        token = begin_run_tools()
+        try:
+            payload = _call_input(args, kwargs)
+            with tracer.start_as_current_span(run_span_name(self)) as span:
+                record_span_io(span, prompt=user_prompt_text(payload))
+                last_text = ""
+                async for item in orig_astream_events(self, *args, **kwargs):
+                    text = assistant_output_text(item)
+                    if text:
+                        last_text = text
+                    yield item
+                record_span_io(span, completion=last_text)
+                stamp_pregel_root(span)
+        finally:
+            reset_run_tools(token)
 
     Pregel.invoke = invoke  # type: ignore[method-assign]
     Pregel.ainvoke = ainvoke  # type: ignore[method-assign]
@@ -539,8 +645,12 @@ def wrap_tool_current_span(provider: Any) -> None:
     if callable(orig_run):
 
         def _run(self, *args, **kwargs):
-            token = _attach(_run_manager_from(args, kwargs))
+            run_manager = _run_manager_from(args, kwargs)
+            token = _attach(run_manager)
             try:
+                span = openinference_span_for_run(run_manager)
+                if span is not None:
+                    stamp_tool_span(span, known_tool=True)
                 return orig_run(self, *args, **kwargs)
             finally:
                 if token is not None:
@@ -551,8 +661,12 @@ def wrap_tool_current_span(provider: Any) -> None:
     if callable(orig_arun):
 
         async def _arun(self, *args, **kwargs):
-            token = _attach(_run_manager_from(args, kwargs))
+            run_manager = _run_manager_from(args, kwargs)
+            token = _attach(run_manager)
             try:
+                span = openinference_span_for_run(run_manager)
+                if span is not None:
+                    stamp_tool_span(span, known_tool=True)
                 return await orig_arun(self, *args, **kwargs)
             finally:
                 if token is not None:
