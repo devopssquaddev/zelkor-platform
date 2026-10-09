@@ -1,6 +1,7 @@
 """Helm render of Envoy AI Gateway provider schemas (no cluster)."""
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -349,6 +350,120 @@ def test_unknown_bypass_reject_when_intercept_on():
     catch = rules[-1]
     assert not catch.get("matches")
     assert catch["backendRefs"][0]["name"] == "zelkor-platform-backend-nemo"
+
+
+BYPASS = "x-zelkor-guardrails-bypass"
+MODEL = "x-ai-eg-model"
+CATCHALL_MODEL = {".+", ".*", "^.*$", "^.+$"}
+
+
+def _match_headers(rule: dict) -> list[dict]:
+    headers: list[dict] = []
+    for match in rule.get("matches") or []:
+        headers.extend(match.get("headers") or [])
+    return headers
+
+
+def _assert_bypass_more_specific_than_reject(docs: list[dict]) -> None:
+    """Reject is one bypass header. Provider bypass rules are bypass plus a real model match.
+
+    Equal header counts tie. Envoy keeps the older route, so a `.+` model match on the
+    reject route starts returning 400 for configured models after a recreate.
+    """
+    rendered_routes = [
+        doc
+        for doc in docs
+        if doc.get("kind") in ("HTTPRoute", "AIGatewayRoute") and "spec" in doc
+    ]
+    for doc in rendered_routes:
+        name = doc["metadata"]["name"]
+        for rule in doc["spec"].get("rules") or []:
+            headers = _match_headers(rule)
+            values = [h.get("value") for h in headers]
+            assert not any(v in CATCHALL_MODEL for v in values), (
+                f"{doc['kind']}/{name} matches every model id"
+            )
+            names = [h.get("name") for h in headers]
+            is_reject = name.endswith("-unknown-model") or any(
+                (f.get("extensionRef") or {}).get("name", "").endswith("-unknown-model")
+                for f in rule.get("filters") or []
+            )
+            if is_reject:
+                assert names == [BYPASS], f"{name} reject headers {headers}"
+                assert all(h.get("type") == "Exact" and h.get("value") == "1" for h in headers)
+            if BYPASS in names and not is_reject:
+                assert MODEL in names, f"{name} bypass rule has no model match"
+                assert len(headers) > 1
+                model = next(h for h in headers if h.get("name") == MODEL)
+                assert model.get("value") not in CATCHALL_MODEL
+
+
+def test_bypass_reject_stays_less_specific_across_providers():
+    cases = [
+        ("ollama", ["--set", "workspace.models.providers.ollamaCloud.apiKey=k"]),
+        ("openai", ["--set", "workspace.models.providers.openai.apiKey=k"]),
+        (
+            "vertex",
+            [
+                "--set",
+                "workspace.models.providers.vertex.project=p",
+                "--set",
+                "workspace.models.providers.vertex.region=us-central1",
+            ],
+        ),
+        (
+            "openai-and-ollama",
+            [
+                "--set",
+                "workspace.models.providers.openai.apiKey=k",
+                "--set",
+                "workspace.models.providers.ollamaCloud.apiKey=k",
+            ],
+        ),
+        (
+            "compat",
+            [
+                "--set",
+                "workspace.models.providers.openaiCompat[0].name=groq",
+                "--set",
+                "workspace.models.providers.openaiCompat[0].host=api.groq.com",
+                "--set",
+                "workspace.models.providers.openaiCompat[0].apiKey=k",
+                "--set",
+                "workspace.models.providers.openaiCompat[0].prefix=groq/",
+                "--set",
+                "workspace.models.providers.openaiCompat[0].modelMatch=^(groq/.*)",
+            ],
+        ),
+    ]
+    for label, extra in cases:
+        docs = _docs(_helm(*extra))
+        try:
+            _assert_bypass_more_specific_than_reject(docs)
+        except AssertionError as exc:
+            raise AssertionError(f"{label}: {exc}") from exc
+        assert any(d["metadata"]["name"].endswith("-unknown-model") for d in docs if d.get("kind") == "HTTPRoute")
+    off = _docs(
+        _helm(
+            "--set",
+            "workspace.policies.nemo.intercept.enabled=false",
+            "--set",
+            "workspace.models.providers.ollamaCloud.apiKey=k",
+        )
+    )
+    assert not any(
+        d.get("kind") == "HTTPRoute" and d["metadata"]["name"].endswith("-unknown-model") for d in off
+    )
+    _assert_bypass_more_specific_than_reject(off)
+
+
+def test_templates_do_not_pair_bypass_with_catchall_model():
+    catchall = re.compile(r'^\s*value:\s*"\.\+"\s*$', re.M)
+    root = CHART / "templates"
+    for path in root.rglob("*.yaml"):
+        text = path.read_text()
+        if "x-zelkor-guardrails-bypass" in text and catchall.search(text):
+            raise AssertionError(f"{path.relative_to(CHART)} pairs bypass with x-ai-eg-model .+ ")
 
 
 def test_unknown_bypass_reject_absent_when_intercept_off():

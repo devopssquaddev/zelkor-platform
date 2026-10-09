@@ -23,7 +23,7 @@ spec:
   rules:
     {{- $exact := include "zelkor-platform.aiGatewayExactModelMatches" . | fromJsonArray -}}
     {{- if $intercept }}
-    {{- /* NeMo upstream: bypass header routes to providers (loop prevention). Regex only — Exact ids are catalogued on NeMo so AIGW 1.1 has a single model mapping. */}}
+    {{- /* NeMo upstream: bypass + model regex (two headers). The unknown-model HTTPRoute matches bypass alone so it stays less specific. Never add x-ai-eg-model ".+" on that route or here: equal header counts tie, and the older route wins across upgrades. */}}
     {{- range $matches }}
     - matches:
         - headers:

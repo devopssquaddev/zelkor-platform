@@ -35,8 +35,8 @@ spec:
     - {{ . | quote }}
     {{- end }}
   rules:
-    # One header only. A second x-ai-eg-model ".+" match ties provider regex
-    # rules; the older route then wins and configured models get this 400.
+    # Bypass only. A second x-ai-eg-model ".+" match has the same header count as
+    # provider rules; Envoy then keeps the older route and configured models 400.
     - matches:
         - headers:
             - type: Exact
