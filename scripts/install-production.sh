@@ -50,12 +50,28 @@ Options:
   --service-monitor            Enable Prometheus ServiceMonitors
   --image-pull-secret NAME     Optional. CE GHCR images are public. Use for a
                                private mirror or a licensed image later.
-  --strict                     Fail on preflight warnings (StorageClass, nodes, metrics-server)
+  --strict                     Fail on preflight warnings (metrics-server)
   --kubeconfig PATH
   --kube-context NAME
   --set key=value              Extra Helm --set (repeatable)
   --dry-run                    Print bootstrap + helm argv; do not apply
   -h, --help
+
+Storage (hard-fail before Helm; not a --strict warning):
+  Leave all three empty to use the default StorageClass only when that
+  class can provision. If you set any, set all three:
+    --set databases.postgresql.storage.storageClass=CLASS
+    --set databases.clickhouse.storage.storageClass=CLASS
+    --set seaweedfs.persistence.storageClass=CLASS
+  databases.postgresql.instances stays 3 unless fewer Ready nodes can
+  provision the Postgres class. The installer then tells you to pass
+  --set databases.postgresql.instances=N or to choose another class.
+  A CSI class is rejected when its topology keys are set on a Ready node
+  that does not list that driver.
+
+Layered topology prints an Ingress example (it does not apply it) and:
+  SCHEME://<agents-host>/health
+  SCHEME://<langfuse-host>/api/public/health
 
 Install secrets (generated if unset; stored in cluster Secrets):
   POSTGRES_PASSWORD, CLICKHOUSE_PASSWORD, VALKEY_PASSWORD,
@@ -120,6 +136,7 @@ fi
 CLUSTER_INSTALL_NEXTAUTH_SCHEME=https
 CLUSTER_INSTALL_PG_INSTANCES=3
 CLUSTER_INSTALL_EXPECT_HA=1
+CLUSTER_INSTALL_ENFORCE_STORAGE=1
 
 PRODUCTION_VALUES="${ZELKOR_REPO_ROOT}/profiles/values-production.yaml"
 cluster_install_apply_jwt_cli_flags

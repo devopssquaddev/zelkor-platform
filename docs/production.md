@@ -20,8 +20,8 @@ Deploy the production shape of Zelkor Community Edition. This runs databases via
 
 ## Prerequisites
 
-- Kubernetes v1.28+ with at least 3 worker nodes.
-- Default StorageClass with dynamic provisioning.
+- Kubernetes v1.28+. The production profile runs 3 Postgres instances. The installer stops when the Postgres StorageClass is not on that many Ready nodes and tells you the `--set` to pass.
+- A default StorageClass that can provision a volume, or all three class keys: `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, `seaweedfs.persistence.storageClass`.
 - `metrics-server` installed (required for HPA).
 - A JWT Identity Provider (IdP) for tenant authentication, with a downloaded JWKS JSON file (or an internal OIDC issuer like Keycloak for isolated environments).
 
@@ -71,9 +71,9 @@ Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script
 - **TLS**: Use `--tls --cluster-issuer letsencrypt-prod` to attach a cert-manager ClusterIssuer to the Gateway.
 - **ServiceMonitor**: Use `--service-monitor` to enable Prometheus metrics scraping.
 - **Existing operators**: Pass `--skip-operators` when CloudNativePG, ClickHouse Operator, or cert-manager are already on the cluster.
-- **Storage**: Set `databases.postgresql.storage.storageClass` and `databases.clickhouse.storage.storageClass` to a class that actually provisions on your nodes. Shrink replica counts if that class exists on fewer nodes than the production profile.
+- **Storage**: Leave the three volume classes empty only when the default StorageClass can provision. If you set one of `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, or `seaweedfs.persistence.storageClass`, set all three. Postgres stays at 3 instances unless the installer prints `--set databases.postgresql.instances=N`.
 - **gVisor**: Set `security.sandbox.nodes.selector` to nodes that have RuntimeClass `gvisor`.
-- **Layered edge**: `--topology layered` prints the Envoy dataplane Service. Point your Ingress at that Service (preserve Host). Do not wrap it in another ClusterIP Endpoints list.
+- **Layered edge**: `--topology layered` prints the Envoy dataplane Service and an Ingress example (namespace `envoy-gateway-system`, preserve Host). The script does not apply it. Health checks are `https://<agents-host>/health` and `https://<langfuse-host>/api/public/health`. Do not wrap the dataplane in another ClusterIP Endpoints list.
 - **LLM keys on upgrade**: keep passing `--set-file` for `workspace.models.providers.*.apiKey`, or omit the key. An overlay with `apiKey: ""` deletes the AI Gateway route ([route not found](./kb/ai-gateway-route-not-found.md)).
 
 `--jwt-issuer` must match the token `iss`. Prefer `--jwks-file`. Remote JWKS needs HTTPS plus `jwksEgressCIDRs` when NetworkPolicies are on ([JWT rejected](./kb/jwt-rejected.md)).
