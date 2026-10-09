@@ -1,0 +1,41 @@
+---
+description: Envoy bypass routes must stay more specific than the unknown-model reject
+globs: charts/zelkor-platform/templates/ai-gateway/**/*.yaml,charts/zelkor-platform/templates/gateway/**/*.yaml
+alwaysApply: true
+---
+
+# AI Gateway route specificity
+
+Envoy breaks equal header-match counts by keeping the **older** route. That flips after a Helm recreate. Do not rely on route age.
+
+## Contract
+
+When NeMo intercept is on:
+
+- The unknown-model HTTPRoute matches **only** `x-zelkor-guardrails-bypass: 1` (Exact). It returns 400 `model_not_found`.
+- Each provider bypass rule on `AIGatewayRoute` matches that bypass header **and** one `x-ai-eg-model` value. Two headers, so it beats the reject route.
+- `x-ai-eg-model` values are a real provider regex or an Exact model id. Never `.+`, `.*`, `^.*$`, or `^.+$`.
+- The no-match rule sends chat to NeMo. It is not a second reject route.
+
+Same hostname + same header count as a provider rule is a tie. A catch-all model match on the reject route makes configured models 400.
+
+```yaml
+# BAD — ties provider regex rules
+headers:
+  - type: Exact
+    name: x-zelkor-guardrails-bypass
+    value: "1"
+  - type: RegularExpression
+    name: x-ai-eg-model
+    value: ".+"
+
+# GOOD — reject is bypass only; provider rules add the model header
+headers:
+  - type: Exact
+    name: x-zelkor-guardrails-bypass
+    value: "1"
+```
+
+## Tests
+
+`tests/test_helm_ai_gateway_providers.py`: `test_bypass_reject_stays_less_specific_across_providers` and `test_templates_do_not_pair_bypass_with_catchall_model`. Extend them when adding an HTTPRoute or AIGatewayRoute on the AI Gateway host.
