@@ -2,5 +2,5 @@ apiVersion: v2
 name: zelkor-gateway-policies
 description: Envoy Gateway pod ingress policies (K11 control 1)
 type: application
-version: 2.3.0
-appVersion: "2.3.0"
+version: 2.3.1
+appVersion: "2.3.1"

@@ -59,7 +59,7 @@ What `./install.sh` does (you do not run these by hand):
 1. Checks Docker, kind, helm, and kubectl
 2. Creates kind cluster `zelkor` with host port `8088`
 3. Installs the gVisor runtime on the kind node for sandboxed code
-4. Deploys Envoy Gateway, Envoy AI Gateway, and the Zelkor platform Helm chart (`appVersion` / image tag `2.3.0`)
+4. Deploys Envoy Gateway, Envoy AI Gateway, and the Zelkor platform Helm chart (`appVersion` / image tag `2.3.1`)
 5. Deploys the optional FinServe example agents by default
 6. Prints service URLs and a ready curl when everything is healthy
 
