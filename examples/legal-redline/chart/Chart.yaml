@@ -1,0 +1,11 @@
+apiVersion: v2
+name: legal-redline
+description: Standalone Helm chart for the legal-redline clause review example
+type: application
+version: 2.3.1
+appVersion: "2.3.1"
+dependencies:
+  - name: zelkor-agent
+    version: "2.3.1"
+    repository: "file://../../../charts/zelkor-agent"
+    alias: legalRedline

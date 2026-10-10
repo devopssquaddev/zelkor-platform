@@ -1,0 +1,8 @@
+{
+  "graphs": {
+    "legal-redline": "./legal_redline_agent.py:graph"
+  },
+  "auth": {
+    "path": "./tenant_auth.py:auth"
+  }
+}

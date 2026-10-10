@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "legal-redline.fullname" . }}-seed-{{ randAlphaNum 5 | lower }}
+  labels:
+    {{- include "legal-redline.labels" . | nindent 4 }}
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        {{- include "legal-redline.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seed
+          image: {{ include "legal-redline.image" . }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          {{- with .Values.seed.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - python
+            - /app/seed.py
+          env:
+            - name: ZELKOR_LOG_LEVEL
+              value: {{ (.Values.logging.level | default "INFO") | quote }}
+            - name: ZELKOR_LOG_FORMAT
+              value: {{ (.Values.logging.format | default "json") | quote }}
+            - name: ZELKOR_LOG_COMPONENT
+              value: "zelkor-legal-redline"
+            - name: QDRANT_URL
+              value: {{ include "legal-redline.qdrantUrl" . | quote }}
+            - name: QDRANT_COLLECTION
+              value: {{ (.Values.platform.qdrantCollection | default "legal_redline_playbook") | quote }}
+            - name: OBJECT_S3_ENDPOINT
+              value: {{ include "legal-redline.objectEndpoint" . | quote }}
+            - name: OBJECT_S3_BUCKET
+              value: {{ required "objectStore.bucket must be set" .Values.objectStore.bucket | quote }}
+            - name: OBJECT_S3_ACCESS_KEY
+              value: {{ required "objectStore.accessKey must be set" .Values.objectStore.accessKey | quote }}
+            - name: OBJECT_S3_SECRET_KEY
+              value: {{ required "objectStore.secretKey must be set" .Values.objectStore.secretKey | quote }}
+            - name: CONTRACT_PATH
+              value: /app/contract.txt

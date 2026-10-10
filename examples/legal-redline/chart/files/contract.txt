@@ -1,0 +1,11 @@
+Demo fixture. Not legal advice and not a Zelkor policy pack.
+Not the terms of Harborline Freight, Brightpath Clinics, or any real company.
+
+[clause_id: liability-cap]
+The provider's aggregate liability under this agreement is capped at USD 250,000 per occurrence.
+
+[clause_id: payment-terms]
+Fees are due net 30 days after the invoice date.
+
+[clause_id: governing-law]
+This agreement is governed by the laws of the State of Delaware, without regard to conflict-of-law rules.
