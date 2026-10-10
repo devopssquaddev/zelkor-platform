@@ -2,15 +2,15 @@
 
 ## Business Case
 
-**Original Case:** This example demonstrates a single-pass clause review agent. The workload shape is based on [Uber, Scaling AI in Legal (2026-10-08)](https://www.uber.com/in/en/blog/building-ubers-redlining-agent/). The house contract is a small plain-text file in object storage. The sandbox prints a decision (accept/reject/modify) based on hardcoded rules. The model then writes only the comment for the lawyer, respecting the sandbox's decision. 
+**Original Case:** This example demonstrates a single-pass clause review agent. The workload shape is based on [Uber, Scaling AI in Legal (2026-10-08)](https://www.uber.com/in/en/blog/building-ubers-redlining-agent/). The house contract is a small plain-text file in object storage. House playbook rules set accept, reject, or modify. The model then writes only the comment for the lawyer, and does not change that recommendation. 
 
 One ClusterIP graph, `legal-redline`, reviews a single counterparty sentence. This chart is not part of the platform install. Deploy it after Zelkor is already running.
 
 ## Zelkor Features Demonstrated
 
-This example demonstrates how Zelkor safely bridges un-sandboxed workflows with sensitive data:
+This example demonstrates how Zelkor keeps the review inside house bounds:
 - **Object MCP**: Agent safely fetches files from isolated object storage.
-- **Sandboxed Execution**: Decision-making rules are run inside the Zelkor worker sandbox.
+- **House-rule check**: Playbook rules run in an isolated worker, not on the lawyer's laptop.
 - **Tenant Isolation**: Secure execution bounds ensure queries don't cross tenant boundaries.
 - **AI Gateway Interception**: Output generation model logic is routed centrally.
 

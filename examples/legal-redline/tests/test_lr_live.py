@@ -123,6 +123,7 @@ def test_lr5_followup_skips_sandbox():
     )
     text = json.dumps(follow["suggestion"] or follow["raw"], default=str).lower()
     assert follow["sandbox"].get("decision") == "reject" or "reject" in text
+    assert "sandbox" not in text
     later = _trace_for_thread(first["thread_id"], min_traces=2)
     later_sandbox = sum(1 for n in _obs_names(later) if n == "sandbox__execute_python")
     assert later_sandbox == first_sandbox

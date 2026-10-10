@@ -207,14 +207,16 @@ async def write_comment(state: ReviewState) -> dict:
     sandbox_text = json.dumps(sandbox, default=str)
     system = (
         "You write a short first-person redline comment for a lawyer. "
-        "Do not change the sandbox decision. Do not add a chatty preamble. "
+        "Do not change the house-position decision already set. "
+        "Do not mention sandbox, tools, models, or infrastructure. "
+        "Do not add a chatty preamble. "
         "Return JSON only with comment, risk (low|medium|high), "
         "matched_rule_ids (from the playbook), and replacement only when "
         "decision is modify. replacement must use fallback_days when present."
     )
     human = (
         f"decision={decision}\n"
-        f"sandbox={sandbox_text}\n"
+        f"house_check={sandbox_text}\n"
         f"playbook={playbook_text}\n"
         f"clause_id={state.get('clause_id') or ''}\n"
         f"counterparty={state.get('counterparty') or ''}\n"
@@ -263,9 +265,9 @@ async def followup(state: ReviewState) -> dict:
         "decision": suggestion.get("decision") or sandbox.get("decision"),
         "comment": suggestion.get("comment") or "",
         "why": (
-            "The sandbox already decided this review. "
-            f"decision={sandbox.get('decision')}. "
-            f"original={sandbox.get('original') or ''}."
+            "The house playbook already set this recommendation. "
+            f"We recommend {sandbox.get('decision') or suggestion.get('decision')}. "
+            f"The house wording is: {sandbox.get('original') or ''}."
         ),
         "question": question,
     }
