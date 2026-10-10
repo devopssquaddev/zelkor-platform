@@ -16,8 +16,8 @@ Zelkor is a self-hosted runtime for AI agents on Kubernetes. You set a **model**
 
 | Edition | What you get |
 | :--- | :--- |
-| **Community Edition** | Self-hosted runtime in this repository (gateway, tools, sandbox, traces) |
-| **Pro** | SSO, team controls (budgets and approvals), production HA / GitOps |
+| **Community Edition** | Self-hosted runtime in this repository (gateway, tools, sandbox, traces), including the highly available production install |
+| **Pro** | SSO, team controls (budgets and approvals), team GitOps |
 | **Enterprise** | Isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA) |
 
 Start with Community Edition. Pro and Enterprise layers sit on the same platform shape.

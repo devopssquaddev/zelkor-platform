@@ -15,7 +15,7 @@ When your AI agent needs to interact with third-party SaaS platforms like Servic
 
 To achieve this, Zelkor uses an infrastructure-only boundary. Instead of giving the agent direct internet access and API keys, you declare your external tools in the platform's configuration (`workspace.tools.extraBackends`). The platform then generates a unified `/mcp` route on the Envoy dataplane. The agent only ever talks to this single `MCP_URL`. It never picks a destination host and never holds a SaaS token itself.
 
-Zelkor provides native MCP servers for core infrastructure, but we do not ship vendor MCP images for third-party SaaS. You bring your own. This external MCP architecture is available across all editions. Community Edition provides the complete self-hosted runtime. Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps. Enterprise adds strict isolation and compliance on top of Pro (including hardware sandboxes, mTLS, retained audit logs, and BAA support).
+Zelkor provides native MCP servers for core infrastructure, but we do not ship vendor MCP images for third-party SaaS. You bring your own. This external MCP architecture is available across all editions. Community Edition provides the complete self-hosted runtime. Pro adds SSO, team controls (budgets and approvals), and team GitOps. Enterprise adds strict isolation and compliance on top of Pro (including hardware sandboxes, mTLS, retained audit logs, and BAA support).
 
 ## What hops does a tool call take?
 

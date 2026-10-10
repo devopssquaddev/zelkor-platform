@@ -58,8 +58,8 @@ The platform enforces tenant isolation differently depending on the tool backend
 
 Native servers apply strict filters based on the tenant ID. The agent cannot bypass these.
 
-- **Postgres:** The MCP server injects `tenant_id = :tenant` into queries or relies on Postgres Row-Level Security (RLS) configured for the connection role.
-- **Qdrant:** The MCP server wraps vector operations with a strict payload filter: `must: [{key: "tenant_id", match: {value: "the-tenant"}}]`.
+- **Postgres:** Each call runs in a transaction that sets `app.current_tenant` to the verified tenant. The server does not rewrite the SQL. Row-level security applies only when your policies read `app.current_tenant`.
+- **Qdrant:** Search and scroll add a payload filter `tenant_id` equal to the verified tenant. Upsert stamps that field and ignores a tenant id supplied by the caller.
 
 ### Extra MCP Backends
 

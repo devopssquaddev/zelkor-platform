@@ -14,7 +14,7 @@ This guide explains how to uninstall the Zelkor platform from a shared or produc
 
 ## Remove the Platform Release
 
-To remove the core platform components (gateways, tools, interceptors) without deleting databases or operators, use the `uninstall.sh` script.
+This removes the Helm release, including the Postgres, ClickHouse, Valkey, and Qdrant objects that release created. Envoy Gateway and the database operators stay installed. Leftover volumes go away when you delete the namespace.
 
 ```bash
 ./scripts/uninstall.sh --namespace zelkor

@@ -15,7 +15,7 @@ Zelkor uses **Envoy Gateway** and the Kubernetes Gateway API (`gateway.networkin
 **Zelkor sandboxes the agent you already wrote.** It wraps the agent in a comprehensive security and operational perimeter without a rewrite. The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.
 * **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 ## Published vs Internal Services

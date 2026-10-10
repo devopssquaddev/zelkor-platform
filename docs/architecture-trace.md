@@ -15,7 +15,7 @@ One run is one trace. You bring the agent you already wrote. You do not add trac
 The agent is sandboxed: it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated.
 
 * **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.
 * **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 Langfuse is the UI that stores the trace. A span is one step in that trace (the run root, a model call, or a tool call). [Agent Protocol](reference/agent-protocol.md) is how a client starts the run. The trace name is the graph id you sent. See [Envoy Graph Routing](architecture-routing.md).
