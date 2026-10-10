@@ -1,6 +1,10 @@
 # FinServe AI: Multi-Tenant Wealth Management Reference Agents
 
-FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.** You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster.
+You get to bring the agent you already wrote. Zelkor sandboxes it — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated. You declare a model, a tool, and an agent, and those same objects run from laptop to production.
+
+Editions are layers on that sandbox: Community Edition is the self-hosted runtime; Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps; Enterprise adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, HIPAA-ready safeguards).
+
+**Original Case:** FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates a wealth management use case with distinct agents (advisor, research, quant, coder) that are governed by strict tenant isolation. It shows how Zelkor can safely run specialized agents querying dedicated databases and research playbooks.
 
 ## What to copy
 

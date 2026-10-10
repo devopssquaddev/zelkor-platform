@@ -1,8 +1,12 @@
 # GPT Researcher (deep agents)
 
-Bring GPT Researcher's unmodified `deep_agents/` graph. Zelkor sandboxes the worker — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+You get to bring the agent you already wrote. Zelkor sandboxes it — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated. You declare a model, a tool, and an agent, and those same objects run from laptop to production.
 
-The agent pod uses gVisor. LLM calls go through the in-cluster AI Gateway. Traces land in Langfuse. Web search uses Tavily’s hosted MCP through the platform `/mcp` route — the worker never holds a Tavily key.
+Editions are layers on that sandbox: Community Edition is the self-hosted runtime; Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps; Enterprise adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, HIPAA-ready safeguards).
+
+**Original Case:** GPT Researcher is an autonomous agent designed for comprehensive online research. It breaks down a research task into sub-topics, searches the web, and aggregates the findings into a detailed report. By wrapping it in Zelkor, you run this complex, third-party workload securely without rewriting its logic.
+
+Bring GPT Researcher's unmodified `deep_agents/` graph. The agent pod uses gVisor. LLM calls go through the in-cluster AI Gateway. Traces land in Langfuse. Web search uses Tavily’s hosted MCP through the platform `/mcp` route — the worker never holds a Tavily key.
 
 ## Prerequisites
 

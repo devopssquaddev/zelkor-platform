@@ -1,8 +1,12 @@
 # Legal redline example
 
-One ClusterIP graph, `legal-redline`, reviews a single counterparty sentence. The house contract is a small plain-text file in object storage. The sandbox prints the decision. The model writes only the comment.
+You get to bring the agent you already wrote. Zelkor sandboxes it — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated. You declare a model, a tool, and an agent, and those same objects run from laptop to production.
 
-This chart is not part of the platform install. Deploy it after Zelkor is already running.
+Editions are layers on that sandbox: Community Edition is the self-hosted runtime; Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps; Enterprise adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, HIPAA-ready safeguards).
+
+**Original Case:** This example demonstrates a single-pass clause review agent. The house contract is a small plain-text file in object storage. The sandbox prints a decision (accept/reject/modify) based on hardcoded rules. The model then writes only the comment for the lawyer, respecting the sandbox's decision. 
+
+One ClusterIP graph, `legal-redline`, reviews a single counterparty sentence. This chart is not part of the platform install. Deploy it after Zelkor is already running.
 
 ## Deploy
 
