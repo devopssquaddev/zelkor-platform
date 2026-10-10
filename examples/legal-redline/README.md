@@ -1,12 +1,35 @@
 # Legal redline example
 
-You get to bring the agent you already wrote. Zelkor sandboxes it — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated. You declare a model, a tool, and an agent, and those same objects run from laptop to production.
+## Business Case
 
-Editions are layers on that sandbox: Community Edition is the self-hosted runtime; Pro adds SSO, team controls (budgets and approvals), and production HA / GitOps; Enterprise adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, HIPAA-ready safeguards).
-
-**Original Case:** This example demonstrates a single-pass clause review agent. The house contract is a small plain-text file in object storage. The sandbox prints a decision (accept/reject/modify) based on hardcoded rules. The model then writes only the comment for the lawyer, respecting the sandbox's decision. 
+**Original Case:** This example demonstrates a single-pass clause review agent. The workload shape is based on [Uber, Scaling AI in Legal (2026-10-08)](https://www.uber.com/in/en/blog/building-ubers-redlining-agent/). The house contract is a small plain-text file in object storage. The sandbox prints a decision (accept/reject/modify) based on hardcoded rules. The model then writes only the comment for the lawyer, respecting the sandbox's decision. 
 
 One ClusterIP graph, `legal-redline`, reviews a single counterparty sentence. This chart is not part of the platform install. Deploy it after Zelkor is already running.
+
+## Zelkor Features Demonstrated
+
+This example demonstrates how Zelkor safely bridges un-sandboxed workflows with sensitive data:
+- **Object MCP**: Agent safely fetches files from isolated object storage.
+- **Sandboxed Execution**: Decision-making rules are run inside the Zelkor worker sandbox.
+- **Tenant Isolation**: Secure execution bounds ensure queries don't cross tenant boundaries.
+- **AI Gateway Interception**: Output generation model logic is routed centrally.
+
+## Architecture
+
+```mermaid
+---
+config:
+  theme: neutral
+---
+flowchart LR
+  client["Lawyer / Client"] --> front["Platform Aegra"]
+  subgraph ns ["Zelkor Platform"]
+    front -->|"X-Graph-ID"| worker["legal-redline"]
+    worker --> gw["AI Gateway /v1"]
+    worker --> mcp["Object MCP"]
+    mcp --> s3[("S3 / SeaweedFS")]
+  end
+```
 
 ## Deploy
 
