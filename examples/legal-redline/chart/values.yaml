@@ -1,0 +1,58 @@
+# Legal-redline example — target-agnostic defaults.
+# Worker: graphId + image + platform.releaseName + sharedRoute.host.
+# Kind literals: values-local.yaml only.
+global:
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+logging:
+  level: INFO
+  format: json
+
+_platformRelease: &platformRelease
+  releaseName: ""
+
+_agentsHost: &agentsHost
+  host: ""
+
+legalRedline:
+  fullnameOverride: legal-redline
+  graphId: legal-redline
+  aegraConfig: /app/aegra.json
+  workload:
+    intent:
+      timeout: 180s
+      maxTokens: 2048
+  sharedRoute:
+    <<: *agentsHost
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-example-legal-redline
+    tag: "2.3.1"
+    digest: ""
+  platform:
+    <<: *platformRelease
+  extraEnv:
+    - name: QDRANT_COLLECTION
+      value: "legal_redline_playbook"
+
+platform:
+  releaseName: ""
+  qdrantHost: ""
+  qdrantPort: 6333
+  qdrantUrl: ""
+  qdrantCollection: "legal_redline_playbook"
+
+objectStore:
+  endpoint: ""
+  bucket: ""
+  accessKey: ""
+  secretKey: ""
+
+seed:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

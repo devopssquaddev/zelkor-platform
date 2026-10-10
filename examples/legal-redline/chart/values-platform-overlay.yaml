@@ -1,0 +1,7 @@
+# Overlay applied to the platform chart when installing this example.
+# Demo-domain knobs only — no hosts, passwords, or kind Service DNS.
+---
+workspace:
+  tools:
+    objectMCP:
+      enabled: true

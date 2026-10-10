@@ -1,6 +1,17 @@
 # FinServe AI: Multi-Tenant Wealth Management Reference Agents
 
-FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.** You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster.
+## Business Case
+
+**Original Case:** FinServe AI is the reference **drop-in** demo for the Zelkor Platform. It demonstrates a wealth management use case with distinct agents (advisor, research, quant, coder) that are governed by strict tenant isolation. It shows how Zelkor can safely run specialized agents querying dedicated databases and research playbooks.
+
+## Zelkor Features Demonstrated
+
+This example demonstrates how Zelkor safely bridges un-sandboxed workflows with sensitive data:
+- **Tenant Isolation**: Secure execution bounds ensure queries don't cross tenant boundaries (e.g., Bank_Alpha vs Bank_Beta).
+- **Multiple Agent Topologies**: Demonstrates routing traffic to multiple independent agent graphs (desk, quant, coder).
+- **PostgreSQL & Qdrant MCPs**: Agents securely fetch structured records and vector search results from isolated stores without holding DB credentials.
+- **Deep Agents & Code Execution**: The `finserve-coder` agent executes python safely via the gVisor sandbox.
+- **AI Gateway Interception**: Output generation model logic is routed centrally for observability and guardrails.
 
 ## What to copy
 

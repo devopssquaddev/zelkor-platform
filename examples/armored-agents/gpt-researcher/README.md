@@ -1,8 +1,36 @@
 # GPT Researcher (deep agents)
 
-Bring GPT Researcher's unmodified `deep_agents/` graph. Zelkor sandboxes the worker — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+## Business Case
 
-The agent pod uses gVisor. LLM calls go through the in-cluster AI Gateway. Traces land in Langfuse. Web search uses Tavily’s hosted MCP through the platform `/mcp` route — the worker never holds a Tavily key.
+**Original Case:** [GPT Researcher](https://github.com/assafelovic/gpt-researcher) is an autonomous agent designed for comprehensive online research. It breaks down a research task into sub-topics, searches the web, and aggregates the findings into a detailed report. By wrapping it in Zelkor, you run this complex, third-party workload securely without rewriting its logic.
+
+## Zelkor Features Demonstrated
+
+Bring GPT Researcher's unmodified `deep_agents/` graph to run securely on Zelkor. This example demonstrates:
+- **gVisor Isolation**: The agent pod uses gVisor hardware boundaries.
+- **AI Gateway Interception**: LLM calls go through the in-cluster AI Gateway rather than directly to providers.
+- **Observability**: Execution traces automatically land in Langfuse.
+- **External MCP Injection**: Web search uses Tavily’s hosted MCP through the platform `/mcp` route — the worker never holds a Tavily key.
+- **Object MCP**: Final reports are shipped to S3/Object Storage seamlessly.
+
+## Architecture
+
+```mermaid
+---
+config:
+  theme: neutral
+---
+flowchart LR
+  client["Client"] --> front["Platform Aegra"]
+  subgraph ns ["Zelkor Platform"]
+    front -->|"X-Graph-ID"| worker["gpt-researcher (gVisor)"]
+    worker --> gw["AI Gateway /v1"]
+    worker --> mcp["Platform MCP"]
+    gw -.->|"Traces"| lf["Langfuse"]
+  end
+  mcp -->|"tavily__*"| tavily["Tavily SaaS MCP"]
+  mcp -->|"object__*"| s3[("S3 / Object Store")]
+```
 
 ## Prerequisites
 

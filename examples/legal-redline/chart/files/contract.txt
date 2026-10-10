@@ -1,0 +1,59 @@
+MASTER SERVICES AGREEMENT
+No. MSA-2024-0142
+Effective date: 1 March 2024
+
+This Master Services Agreement (the "Agreement") is entered into by and between
+the Provider and the Customer (each a "Party" and together the "Parties").
+
+Demo fixture. Not legal advice and not a Zelkor policy pack.
+Not the terms of Harborline Freight, Brightpath Clinics, or any real company.
+
+Recitals
+The Customer wishes to obtain professional services, and the Provider is willing
+to perform those services on the terms below.
+
+1. Services
+The Provider shall perform the professional services described in each statement
+of work attached to this Agreement. A statement of work is not effective unless
+signed by both Parties.
+
+2. Fees and payment
+Invoices are issued monthly in arrears.
+
+3. Limitation of liability
+Except for a Party's fraud or willful misconduct, the cap in the operative
+sentence below is the exclusive remedy for damages arising under this Agreement.
+
+4. Confidentiality
+Each Party shall keep the other Party's confidential information in confidence
+and use it only to perform this Agreement. These duties survive for three years
+after termination.
+
+5. Term and termination
+This Agreement begins on the effective date and continues until terminated.
+Either Party may terminate for convenience on thirty days' written notice, or
+immediately for a material breach that remains uncured for fifteen days after
+notice.
+
+6. Governing law
+The Parties submit to the exclusive jurisdiction of the state and federal courts
+located in Wilmington, Delaware.
+
+7. Entire agreement
+This Agreement, including any statements of work, is the entire agreement of the
+Parties and supersedes all prior discussions relating to its subject matter.
+
+Operative clauses
+
+[clause_id: payment-terms]
+Fees are due net 30 days after the invoice date.
+[clause_id: liability-cap]
+The provider's aggregate liability under this agreement is capped at USD 250,000 per occurrence.
+[clause_id: governing-law]
+This agreement is governed by the laws of the State of Delaware, without regard to conflict-of-law rules.
+[clause_id: execution]
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the
+effective date.
+
+Provider: ___________________________    Customer: ___________________________
+Name / title                          Name / title

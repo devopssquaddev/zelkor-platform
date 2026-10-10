@@ -66,6 +66,7 @@ dockerfile_for() {
     zelkor-example-finserve) echo images/example-finserve/Dockerfile ;;
     zelkor-example-finserve-coder) echo images/example-finserve-coder/Dockerfile ;;
     zelkor-armored-gpt-researcher) echo examples/armored-agents/gpt-researcher/Dockerfile ;;
+    zelkor-example-legal-redline) echo images/example-legal-redline/Dockerfile ;;
     *) return 1 ;;
   esac
 }
@@ -90,7 +91,7 @@ for name in "${SELECTED[@]}"; do
     echo "[build-images] docker build ${ref}"
     extra_args=()
     case "$name" in
-      zelkor-aegra-deep|zelkor-example-finserve)
+      zelkor-aegra-deep|zelkor-example-finserve|zelkor-example-legal-redline)
         extra_args+=(--build-arg "ZELKOR_AEGRA_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra:${IMAGE_TAG}")
         ;;
       zelkor-example-finserve-coder|zelkor-armored-gpt-researcher)

@@ -1,0 +1,27 @@
+# Kind / ./install.sh only. Do not apply on a shared production cluster.
+_rel: &rel zelkor-platform
+
+_agentsHost: &agentsHost
+  host: agents.localhost
+
+legalRedline:
+  logging:
+    level: DEBUG
+    format: json
+  sharedRoute:
+    <<: *agentsHost
+  platform:
+    releaseName: *rel
+    consumerKey: "dev-key"
+    mcpAuthTokenSecret: zelkor-platform-mcp-service-token
+    defaultLlmModel: "gpt-oss:20b"
+
+platform:
+  releaseName: *rel
+  qdrantCollection: "legal_redline_playbook"
+
+objectStore:
+  endpoint: "http://zelkor-platform-seaweedfs:8333"
+  bucket: "zelkor-objects"
+  accessKey: "zelkor-s3-object-dev"
+  secretKey: "zelkor-s3-object-dev-secret"

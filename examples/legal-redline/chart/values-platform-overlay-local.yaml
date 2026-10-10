@@ -1,0 +1,17 @@
+# Kind / ./install.sh only. Do not apply on a shared production cluster.
+---
+workspace:
+  tools:
+    objectMCP:
+      s3:
+        endpoint: http://zelkor-platform-seaweedfs:8333
+        bucket: zelkor-objects
+        region: auto
+        forcePathStyle: true
+        auth:
+          accessKey: zelkor-s3-object-dev
+          secretKey: zelkor-s3-object-dev-secret
+seaweedfs:
+  objectIdentity:
+    accessKey: zelkor-s3-object-dev
+    secretKey: zelkor-s3-object-dev-secret
