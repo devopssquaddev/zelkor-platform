@@ -39,6 +39,8 @@ cluster_install_init() {
   CLUSTER_INSTALL_PG_INSTANCES="${CLUSTER_INSTALL_PG_INSTANCES:-1}"
   CLUSTER_INSTALL_EXPECT_HA="${CLUSTER_INSTALL_EXPECT_HA:-0}"
   CLUSTER_INSTALL_ENFORCE_STORAGE="${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}"
+  CLUSTER_INSTALL_GVISOR_INSTALL="${CLUSTER_INSTALL_GVISOR_INSTALL:-0}"
+  CLUSTER_INSTALL_GVISOR_SKIP="${CLUSTER_INSTALL_GVISOR_SKIP:-0}"
   CLUSTER_INSTALL_HELM_LAST_ERR=""
   CLUSTER_INSTALL_CLASS_NODES=""
   CLUSTER_INSTALL_RETRY_SLEEP="${CLUSTER_INSTALL_RETRY_SLEEP:-2}"
@@ -1295,6 +1297,166 @@ cluster_install_gvisor_preflight() {
     fi
     CLUSTER_INSTALL_HELM_SETS+=(--set "$line")
   done < <("${ZELKOR_REPO_ROOT}/scripts/gvisor-preflight.sh" "${args[@]}" --output helm)
+}
+
+# Returns 0 and sets CLUSTER_INSTALL_SHIFT when $1 is a gVisor install flag.
+cluster_install_try_gvisor_flag() {
+  case "$1" in
+    --install-gvisor)
+      CLUSTER_INSTALL_GVISOR_INSTALL=1
+      CLUSTER_INSTALL_SHIFT=1
+      return 0
+      ;;
+    --skip-gvisor)
+      CLUSTER_INSTALL_GVISOR_SKIP=1
+      CLUSTER_INSTALL_SHIFT=1
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+cluster_install_gvisor_resolved_mode() {
+  local mode="" arg pending=""
+  pending=""
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    if [[ "$arg" == "--set" ]]; then
+      pending="--set"
+      continue
+    fi
+    if [[ "$pending" == "--set" ]]; then
+      pending=""
+      case "$arg" in
+        security.sandbox.provisioning.mode=*)
+          mode="${arg#security.sandbox.provisioning.mode=}"
+          ;;
+      esac
+    fi
+  done
+  printf '%s\n' "$mode"
+}
+
+cluster_install_gvisor_has_selector() {
+  local arg pending=""
+  pending=""
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    if [[ "$arg" == "--set" ]]; then
+      pending="--set"
+      continue
+    fi
+    if [[ "$pending" == "--set" ]]; then
+      pending=""
+      case "$arg" in
+        security.sandbox.nodes.selector.*) return 0 ;;
+      esac
+    fi
+  done
+  return 1
+}
+
+# Prints kubectl -l arguments, one token per line, for the sandbox node selector.
+cluster_install_gvisor_selector_flags() {
+  local arg pending="" key val
+  pending=""
+  for arg in "${CLUSTER_INSTALL_HELM_SETS[@]+"${CLUSTER_INSTALL_HELM_SETS[@]}"}"; do
+    if [[ "$arg" == "--set" ]]; then
+      pending="--set"
+      continue
+    fi
+    if [[ "$pending" == "--set" ]]; then
+      pending=""
+      case "$arg" in
+        security.sandbox.nodes.selector.*)
+          key="${arg#security.sandbox.nodes.selector.}"
+          val="${key#*=}"
+          key="${key%%=*}"
+          key="${key//\\/}"
+          printf '%s\n' "-l" "${key}=${val}"
+          ;;
+      esac
+    fi
+  done
+}
+
+cluster_install_gvisor_node_names() {
+  local -a label_args=()
+  local line
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && label_args+=("$line")
+  done < <(cluster_install_gvisor_selector_flags)
+  kubectl ${KUBECTL_ARGS[@]+"${KUBECTL_ARGS[@]}"} get nodes ${label_args[@]+"${label_args[@]}"} \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
+}
+
+cluster_install_gvisor_choose() {
+  if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 && "$CLUSTER_INSTALL_GVISOR_SKIP" -eq 1 ]]; then
+    cluster_install_die "pass only one of --install-gvisor and --skip-gvisor"
+  fi
+
+  if [[ "$CLUSTER_INSTALL_GVISOR_SKIP" -eq 1 ]]; then
+    CLUSTER_INSTALL_HELM_SETS+=(
+      --set "security.sandbox.enabled=false"
+      --set "security.sandbox.provisioning.mode=none"
+    )
+    echo "install: --skip-gvisor: sandbox workers run without gVisor. Generated code is not kernel-isolated."
+    return 0
+  fi
+
+  local mode
+  mode="$(cluster_install_gvisor_resolved_mode)"
+  if [[ "$mode" == "preinstalled" ]]; then
+    echo "install: gVisor runtime is already on this cluster. Nodes will not be changed."
+    if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 ]]; then
+      echo "install: --install-gvisor is not needed; leaving the existing runtime in place."
+    fi
+    return 0
+  fi
+
+  if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 || "$mode" == "daemonset" ]]; then
+    cluster_install_gvisor_require_pool
+    CLUSTER_INSTALL_HELM_SETS+=(--set "security.sandbox.provisioning.mode=daemonset")
+    return 0
+  fi
+
+  cat <<'EOF' >&2
+install: gVisor is not on this cluster. Installing it restarts the container runtime on the nodes you select.
+
+  --install-gvisor --set security.sandbox.nodes.selector.kubernetes\.io/hostname=NODE
+
+Or install without kernel isolation:
+
+  --skip-gvisor
+EOF
+  exit 1
+}
+
+cluster_install_gvisor_require_pool() {
+  local names count
+  if ! cluster_install_gvisor_has_selector; then
+    if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
+      cluster_install_die "--install-gvisor needs security.sandbox.nodes.selector (dry-run does not count nodes)"
+    fi
+    names="$(cluster_install_gvisor_node_names)"
+    count="$(printf '%s\n' "$names" | grep -c . || true)"
+    if [[ "$count" -le 1 && -n "$names" ]]; then
+      echo "install: gVisor will restart the container runtime on:"
+      printf '%s\n' "$names"
+      return 0
+    fi
+    echo "install: refusing to restart the container runtime on every node:" >&2
+    printf '%s\n' "$names" >&2
+    cluster_install_die "set security.sandbox.nodes.selector to a sandbox pool, or pass --skip-gvisor"
+  fi
+  if [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]]; then
+    echo "install: gVisor will restart the container runtime on nodes matching security.sandbox.nodes.selector."
+    return 0
+  fi
+  names="$(cluster_install_gvisor_node_names)"
+  if [[ -z "$names" ]]; then
+    cluster_install_die "no nodes match security.sandbox.nodes.selector"
+  fi
+  echo "install: gVisor will install runsc and restart the container runtime on:"
+  printf '%s\n' "$names"
 }
 
 cluster_install_dataplane_name() {

@@ -41,6 +41,14 @@ def test_model_rewrite_strips_provider_and_does_not_set_anthropic(monkeypatch):
     assert spec["anthropic_env_present"] is False
 
 
+def test_model_missing_fails_at_load(monkeypatch):
+    monkeypatch.delenv("DEFAULT_LLM_MODEL", raising=False)
+    with pytest.raises(RuntimeError, match="DEFAULT_LLM_MODEL"):
+        model_spec({})
+    with pytest.raises(RuntimeError, match="DEFAULT_LLM_MODEL"):
+        model_spec({"runtime": {"model": {"model_id": ""}}})
+
+
 def test_model_rewrite_runtime_model_id(monkeypatch):
     monkeypatch.setenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
     spec = model_spec({"runtime": {"model": {"model_id": "anthropic:claude-3"}}})
@@ -54,7 +62,8 @@ def test_sandbox_only_when_asked():
     assert wants_sandbox({"backend": {"type": "state"}}) is False
 
 
-def test_factory_kwargs_from_tree(tmp_path):
+def test_factory_kwargs_from_tree(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEFAULT_LLM_MODEL", "gpt-oss:20b")
     (tmp_path / "agent.json").write_text(
         json.dumps({"name": "desk", "backend": {"type": "sandbox"}}),
         encoding="utf-8",

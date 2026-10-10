@@ -48,7 +48,14 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
 
 If you need to skip operator installation (operators already present on the cluster), pass `--skip-operators`.
 
-Set storage and sandbox to the cluster you have. Leave `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, and `seaweedfs.persistence.storageClass` empty only when the default StorageClass can provision a volume. If you set one, set all three. Postgres stays at 3 instances unless the installer tells you to pass `--set databases.postgresql.instances=N`. If RuntimeClass `gvisor` already exists and this release does not own it, the installer leaves it in place. Pin `security.sandbox.nodes.selector` only when sandboxed pods must land on specific nodes.
+Set storage and sandbox to the cluster you have. Leave `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, and `seaweedfs.persistence.storageClass` empty only when the default StorageClass can provision a volume. If you set one, set all three. Postgres stays at 3 instances unless the installer tells you to pass `--set databases.postgresql.instances=N`. 
+
+Sandbox workers need gVisor. If RuntimeClass `gvisor` already works, the installer leaves nodes alone. Otherwise pass one of:
+
+- `--install-gvisor` plus `--set security.sandbox.nodes.selector.<key>=<value>`. This writes `runsc` and restarts the container runtime on the selected nodes. On a multi-node cluster an empty selector is refused. A one-node cluster may omit the selector; the log names that node.
+- `--skip-gvisor`. Sets `security.sandbox.enabled=false`. Generated code is not kernel-isolated.
+
+Passing neither flag, when no runtime is present, exits before Helm. OpenShift and CRI-O cannot take the installer. A tainted sandbox pool also needs `security.sandbox.nodes.tolerations`. Helm-only installs stay off the node installer until `security.sandbox.provisioning.mode` is `daemonset`.
 
 The installer prints the Envoy dataplane Service. `--topology layered` also prints an Ingress for namespace `envoy-gateway-system` (preserve Host) and the health URLs `https://<agents-host>/health` and `https://<langfuse-host>/api/public/health`. Apply that Ingress yourself. Do not put another ClusterIP in Endpoints.
 

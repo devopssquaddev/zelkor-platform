@@ -119,7 +119,7 @@ platform:
 
 
 def test_quickstart_dry_run_greenfield():
-    proc = _run(QS, "--dry-run", "--namespace", "zelkor-play")
+    proc = _run(QS, "--skip-gvisor", "--dry-run", "--namespace", "zelkor-play")
     assert proc.returncode == 0, proc.stderr
     out = proc.stdout
     assert "BOOTSTRAP_GATEWAY" in out
@@ -138,7 +138,7 @@ def test_quickstart_dry_run_greenfield():
 
 
 def test_quickstart_dry_run_layered():
-    proc = _run(QS, "--dry-run", "--topology", "layered")
+    proc = _run(QS, "--skip-gvisor", "--dry-run", "--topology", "layered")
     assert proc.returncode == 0, proc.stderr
     assert "values-gateway-layered.yaml" in proc.stdout
     assert "--skip-envoy-gateway" not in proc.stdout
@@ -147,6 +147,7 @@ def test_quickstart_dry_run_layered():
 def test_quickstart_dry_run_shared():
     proc = _run(
         QS,
+        "--skip-gvisor",
         "--dry-run",
         "--topology",
         "shared",
@@ -169,6 +170,7 @@ def test_quickstart_dry_run_shared():
 def test_quickstart_dry_run_shared_install_ai_gateway():
     proc = _run(
         QS,
+        "--skip-gvisor",
         "--dry-run",
         "--topology",
         "shared",
@@ -187,7 +189,7 @@ def test_quickstart_dry_run_shared_install_ai_gateway():
 
 
 def test_quickstart_requires_llm():
-    proc = _run(QS, "--dry-run", env={"OPENAI_API_KEY": ""})
+    proc = _run(QS, "--skip-gvisor", "--dry-run", env={"OPENAI_API_KEY": ""})
     assert proc.returncode != 0
     assert "LLM provider" in proc.stderr or "llm provider" in proc.stderr.lower()
 
@@ -195,6 +197,7 @@ def test_quickstart_requires_llm():
 def test_quickstart_dry_run_azure_not_fatal():
     proc = _run(
         QS,
+        "--skip-gvisor",
         "--dry-run",
         "--namespace",
         "zelkor-play",
@@ -212,6 +215,7 @@ def test_quickstart_dry_run_azure_not_fatal():
 def test_quickstart_dry_run_bedrock_not_fatal():
     proc = _run(
         QS,
+        "--skip-gvisor",
         "--dry-run",
         "--namespace",
         "zelkor-play",
@@ -230,6 +234,7 @@ def test_quickstart_dry_run_bedrock_not_fatal():
 def test_quickstart_dry_run_vertex_not_fatal():
     proc = _run(
         QS,
+        "--skip-gvisor",
         "--dry-run",
         "--namespace",
         "zelkor-play",
@@ -245,7 +250,7 @@ def test_quickstart_dry_run_vertex_not_fatal():
 
 
 def test_quickstart_shared_requires_parent_ref():
-    proc = _run(QS, "--dry-run", "--topology", "shared")
+    proc = _run(QS, "--skip-gvisor", "--dry-run", "--topology", "shared")
     assert proc.returncode != 0
     assert "parent-ref" in proc.stderr
 
@@ -253,6 +258,7 @@ def test_quickstart_shared_requires_parent_ref():
 def test_production_dry_run_greenfield():
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.example.com",
@@ -292,6 +298,7 @@ def test_production_generated_url_secrets_are_hex():
     """Postgres/ClickHouse passwords must be URL-safe (Langfuse migration URLs)."""
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.example.com",
@@ -320,6 +327,7 @@ def test_production_generated_url_secrets_are_hex():
 def test_production_dry_run_skip_operators_and_tls():
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--skip-operators",
         "--topology",
@@ -347,6 +355,7 @@ def test_production_dry_run_skip_operators_and_tls():
 def test_production_image_pull_secret_quoted():
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.example.com",
@@ -401,6 +410,7 @@ def test_refuse_foreign_eg_greenfield_dies():
 def test_production_dry_run_generates_secrets_without_flag():
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.example.com",
@@ -418,6 +428,7 @@ def test_production_dry_run_generates_secrets_without_flag():
 def test_production_rejects_localhost_hosts():
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.localhost",
@@ -432,6 +443,7 @@ def test_production_rejects_localhost_hosts():
 def test_production_requires_jwt():
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.example.com",
@@ -443,7 +455,7 @@ def test_production_requires_jwt():
 
 
 def test_production_requires_hosts():
-    proc = _run(PROD, "--dry-run", "--generate-passwords")
+    proc = _run(PROD, "--skip-gvisor", "--dry-run", "--generate-passwords")
     assert proc.returncode != 0
     assert "hosts-agents" in proc.stderr
 
@@ -839,6 +851,8 @@ def test_production_help_mentions_storage_instances_and_health():
     assert "databases.postgresql.instances" in out
     assert "/health" in out
     assert "/api/public/health" in out
+    assert "--install-gvisor" in out
+    assert "--skip-gvisor" in out
 
 
 def test_gvisor_preflight_does_not_adopt_unowned_runtimeclass(tmp_path: Path):
@@ -896,6 +910,128 @@ sys.exit(99)
     assert "will not adopt" in proc.stderr
 
 
+def test_gvisor_preflight_without_opt_in_does_not_choose_daemonset(tmp_path: Path):
+    import os
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(
+        bin_dir / "kubectl",
+        r"""#!/usr/bin/env python3
+import sys
+args = sys.argv[1:]
+joined = " ".join(args)
+if args[:1] == ["cluster-info"]:
+    sys.exit(0)
+if args[:2] == ["get", "nodes"] and "sandbox.gke.io/runtime=gvisor" in joined:
+    sys.exit(0)
+if args[:2] == ["get", "nodes"] and "containerRuntimeVersion" in joined:
+    print("containerd://1.7.0")
+    sys.exit(0)
+if args[:2] == ["get", "runtimeclass"]:
+    sys.exit(1)
+sys.stderr.write("unexpected %s\n" % args)
+sys.exit(99)
+""",
+    )
+    env = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+    proc = subprocess.run(
+        [str(ROOT / "scripts" / "gvisor-preflight.sh"), "--output", "helm"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env={**os.environ, **env, "INSTALL_LOG_FILE": "off"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "security.sandbox.provisioning.mode=none" in proc.stdout
+    opted = subprocess.run(
+        [str(ROOT / "scripts" / "gvisor-preflight.sh"), "--output", "helm"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env={**os.environ, **env, "INSTALL_LOG_FILE": "off", "GVISOR_INSTALL_OPT_IN": "true"},
+    )
+    assert opted.returncode == 0, opted.stderr
+    assert "security.sandbox.provisioning.mode=daemonset" in opted.stdout
+
+
+def test_gvisor_choose_refuses_empty_selector_on_multi_node(tmp_path: Path):
+    import os
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(
+        bin_dir / "kubectl",
+        r"""#!/usr/bin/env python3
+import sys
+args = sys.argv[1:]
+if args[:2] == ["get", "nodes"]:
+    sys.stdout.write("node-a\nnode-b\n")
+    sys.exit(0)
+sys.exit(0)
+""",
+    )
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_GVISOR_INSTALL=1
+CLUSTER_INSTALL_DRY_RUN=0
+cluster_install_gvisor_choose
+""",
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+    assert proc.returncode != 0
+    err = proc.stderr
+    assert "node-a" in err
+    assert "node-b" in err
+    assert "sandbox pool" in err
+
+
+def test_gvisor_choose_allows_one_node_without_selector(tmp_path: Path):
+    import os
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    _write_exe(
+        bin_dir / "kubectl",
+        r"""#!/usr/bin/env python3
+import sys
+if sys.argv[1:3] == ["get", "nodes"]:
+    sys.stdout.write("only-node\n")
+    sys.exit(0)
+sys.exit(0)
+""",
+    )
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_GVISOR_INSTALL=1
+CLUSTER_INSTALL_DRY_RUN=0
+cluster_install_gvisor_choose
+printf '%s\n' "${CLUSTER_INSTALL_HELM_SETS[@]}"
+""",
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "only-node" in proc.stdout
+    assert "restart the container runtime" in proc.stdout
+    assert "security.sandbox.provisioning.mode=daemonset" in proc.stdout
+
+
+def test_gvisor_choose_without_flag_exits_before_install():
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_DRY_RUN=1
+cluster_install_gvisor_choose
+echo should-not-reach
+"""
+    )
+    assert proc.returncode != 0
+    assert "should-not-reach" not in proc.stdout
+    assert "--install-gvisor" in proc.stderr
+    assert "--skip-gvisor" in proc.stderr
+
+
 def test_production_dry_run_stays_offline(tmp_path: Path):
     import os
 
@@ -908,6 +1044,7 @@ def test_production_dry_run_stays_offline(tmp_path: Path):
     )
     proc = _run(
         PROD,
+        "--skip-gvisor",
         "--dry-run",
         "--hosts-agents",
         "agents.example.com",

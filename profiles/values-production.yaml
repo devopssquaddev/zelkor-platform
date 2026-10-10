@@ -45,7 +45,6 @@ security:
     enabled: true
     failClosed: false
     provisioning:
-      mode: daemonset
       verifyChecksum: true
     executionLog:
       includeStdoutPreview: false

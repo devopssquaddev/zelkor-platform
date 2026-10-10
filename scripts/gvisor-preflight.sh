@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Resolve gVisor provisioning mode before Helm (auto -> daemonset | preinstalled | none).
+# daemonset (install runsc and restart the node runtime) only when GVISOR_INSTALL_OPT_IN=true.
 set -euo pipefail
 
 KUBECTL=(kubectl)
 FAIL_CLOSED="${GVISOR_FAIL_CLOSED:-false}"
 OUTPUT_FORMAT="${GVISOR_PREFLIGHT_OUTPUT:-shell}"
+OPT_IN="${GVISOR_INSTALL_OPT_IN:-false}"
 
 usage() {
   cat <<'EOF'
@@ -12,7 +14,9 @@ Usage: ./scripts/gvisor-preflight.sh [--kubeconfig PATH] [--kube-context NAME]
        [--fail-closed] [--output shell|helm]
 
 Exports GVISOR_PROVISIONING_MODE and GVISOR_CREATE_RUNTIME_CLASS, or prints --set flags.
-Helm chart renders mode=auto as daemonset when preflight is skipped.
+A working RuntimeClass resolves to preinstalled. containerd alone resolves to daemonset
+only when GVISOR_INSTALL_OPT_IN=true. Otherwise the mode is none.
+Helm chart mode=auto does not install runsc when preflight is skipped.
 EOF
 }
 
@@ -102,24 +106,30 @@ EOF
   return 1
 }
 
-MODE="daemonset"
+MODE=""
 CREATE_RC="true"
 
 if ! "${KUBECTL[@]}" cluster-info >/dev/null 2>&1; then
-  warn_or_fail "cluster unreachable; defaulting to daemonset mode"
+  warn_or_fail "cluster unreachable; not installing gVisor on nodes"
+  if [[ "$OPT_IN" == "true" ]]; then
+    MODE="daemonset"
+  else
+    MODE="none"
+    CREATE_RC="false"
+  fi
 else
   if "${KUBECTL[@]}" get nodes -l sandbox.gke.io/runtime=gvisor --no-headers 2>/dev/null | grep -q .; then
     MODE="preinstalled"
     CREATE_RC="false"
-    log "GKE Sandbox node label detected"
+    log "GKE Sandbox node label detected; nodes will not be changed"
   elif "${KUBECTL[@]}" get runtimeclass gvisor >/dev/null 2>&1 && smoke_gvisor; then
     MODE="preinstalled"
     if gvisor_runtimeclass_owned_by_release; then
       CREATE_RC="true"
-      log "RuntimeClass gvisor smoke pod succeeded; this release already renders it"
+      log "RuntimeClass gvisor smoke pod succeeded; this release already renders it; nodes will not be changed"
     else
       CREATE_RC="false"
-      log "RuntimeClass gvisor already exists and is not owned by this release; Helm will not adopt it"
+      log "RuntimeClass gvisor already exists and is not owned by this release; Helm will not adopt it; nodes will not be changed"
     fi
   fi
 
@@ -130,6 +140,21 @@ else
     CREATE_RC="false"
   elif ! echo "${runtimes}" | grep -qi 'containerd'; then
     warn_or_fail "no containerd nodes detected; gVisor installer may not work"
+    if [[ -z "$MODE" ]]; then
+      MODE="none"
+      CREATE_RC="false"
+    fi
+  fi
+
+  if [[ -z "$MODE" ]]; then
+    if [[ "$OPT_IN" == "true" ]]; then
+      MODE="daemonset"
+      log "opt-in: will install runsc and restart the container runtime on selected nodes"
+    else
+      MODE="none"
+      CREATE_RC="false"
+      log "gVisor is not installed; pass --install-gvisor to change nodes, or --skip-gvisor"
+    fi
   fi
 fi
 

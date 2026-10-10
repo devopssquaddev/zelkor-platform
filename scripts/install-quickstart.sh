@@ -32,6 +32,12 @@ Options:
   --install-ai-gateway         Shared topology: install AI Gateway + patch EG
   --image-pull-secret NAME     Optional. CE GHCR images are public.
   --strict                     Fail on preflight warnings
+  --install-gvisor             Install runsc on selected nodes and restart
+                               their container runtime. Requires
+                               security.sandbox.nodes.selector on a
+                               multi-node cluster.
+  --skip-gvisor                Do not install gVisor. Generated code is not
+                               kernel-isolated.
   --kubeconfig PATH
   --kube-context NAME
   --set key=value              Extra Helm --set (repeatable)
@@ -50,6 +56,10 @@ while [[ $# -gt 0 ]]; do
     continue
   fi
   case "$1" in
+    --install-gvisor|--skip-gvisor)
+      cluster_install_try_gvisor_flag "$1"
+      shift
+      ;;
     -h|--help) usage; exit 0 ;;
     *) cluster_install_die "unknown flag: $1" ;;
   esac
@@ -63,7 +73,11 @@ if [[ -z "$HOSTS_LANGFUSE" ]]; then
 fi
 
 cluster_install_setup_log
+if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 ]]; then
+  export GVISOR_INSTALL_OPT_IN=true
+fi
 cluster_install_prepare
+cluster_install_gvisor_choose
 
 echo "install-quickstart: topology=${CLUSTER_INSTALL_TOPOLOGY} namespace=${CLUSTER_INSTALL_NAMESPACE} release=${CLUSTER_INSTALL_RELEASE}"
 echo "install-quickstart: LLM providers: ${LLM_PROVIDER_SUMMARY} (DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL})"

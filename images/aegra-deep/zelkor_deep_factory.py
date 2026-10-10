@@ -80,7 +80,13 @@ def model_id_from_agent(agent: Dict[str, Any]) -> str:
     if isinstance(raw, dict):
         raw = raw.get("model_id") or raw.get("model") or ""
     stripped = _strip_provider(str(raw or ""))
-    return env_default or stripped or "gpt-4o-mini"
+    model = env_default or stripped
+    if not model:
+        raise RuntimeError(
+            "no LLM model: set DEFAULT_LLM_MODEL or agent.json model "
+            "(runtime.model.model_id)"
+        )
+    return model
 
 
 def model_spec(agent: Dict[str, Any]) -> Dict[str, Any]:

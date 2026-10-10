@@ -3704,6 +3704,42 @@
                       },
                       "additionalProperties": false
                     },
+                    "resources": {
+                      "type": "object",
+                      "description": "Values under security.sandbox.provisioning.installer.resources.",
+                      "properties": {
+                        "requests": {
+                          "type": "object",
+                          "description": "Values under security.sandbox.provisioning.installer.resources.requests.",
+                          "properties": {
+                            "cpu": {
+                              "type": "string",
+                              "description": "Value for security.sandbox.provisioning.installer.resources.requests.cpu."
+                            },
+                            "memory": {
+                              "type": "string",
+                              "description": "Value for security.sandbox.provisioning.installer.resources.requests.memory."
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "limits": {
+                          "type": "object",
+                          "description": "Values under security.sandbox.provisioning.installer.resources.limits.",
+                          "properties": {
+                            "cpu": {
+                              "type": "string",
+                              "description": "Value for security.sandbox.provisioning.installer.resources.limits.cpu."
+                            },
+                            "memory": {
+                              "type": "string",
+                              "description": "Value for security.sandbox.provisioning.installer.resources.limits.memory."
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    },
                     "containerd": {
                       "type": "object",
                       "description": "Values under security.sandbox.provisioning.installer.containerd.",
