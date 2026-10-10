@@ -796,8 +796,14 @@ step_begin platform_helm
 log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
 if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
+  export GVISOR_INSTALL_OPT_IN=true
   # shellcheck disable=SC1090
   eval "$(bash "$ZELKOR_REPO_ROOT/scripts/gvisor-preflight.sh" --kube-context "$KCTX" --output shell)" || true
+  if [[ "${GVISOR_PROVISIONING_MODE:-daemonset}" == "preinstalled" ]]; then
+    log "gVisor runtime already present; containerd inside the kind node will not restart"
+  else
+    log "gVisor: containerd inside the kind node will restart"
+  fi
   HELM_EXTRA_ARGS+=(
     --set "security.sandbox.provisioning.mode=${GVISOR_PROVISIONING_MODE:-daemonset}"
     --set "security.sandbox.createRuntimeClass=${GVISOR_CREATE_RUNTIME_CLASS:-true}"

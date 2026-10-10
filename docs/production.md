@@ -29,32 +29,40 @@ NetworkPolicies are **disabled by default**. Set `security.networkPolicies.enabl
 
 ## Sandbox Runtime (gVisor)
 
-Zelkor Community Edition uses gVisor to isolate generated code. Sandbox workers are pinned to the `gvisor` Kubernetes `RuntimeClass`, and they will **never** silently fall back to an unisolated runtime (`runc`). 
+Zelkor Community Edition isolates generated code with gVisor. Sandbox workers use RuntimeClass `gvisor` and do not fall back to the normal container runtime.
 
-### How it installs
+Installing gVisor writes `runsc` onto nodes and restarts their container runtime. Workloads on those nodes are rescheduled. The production installer does not do that unless you ask.
 
-On standard containerd clusters (k3s, RKE2, kubeadm, EKS, AKS), the Zelkor installer **automatically provisions** the runtime out of the box. 
-1. A preflight check detects containerd.
-2. A privileged DaemonSet downloads the pinned `runsc` binaries.
-3. It writes a containerd drop-in configuration and restarts the container runtime.
-4. Helm registers the `gvisor` RuntimeClass.
+Pick one:
 
-### Prerequisites and Limitations
-
-- **Containerd is required:** OpenShift and CRI-O are **unsupported**. If `runsc` cannot be installed, sandbox workers will stay `Pending` or `ContainerCreating`.
-- **Managed sandbox pools:** If you use GKE Sandbox (nodes labeled `sandbox.gke.io/runtime=gvisor`) or GKE Autopilot, Zelkor detects the pre-existing runtime and delegates to it without running the installer.
-- **Talos Linux:** Must be preinstalled via the `siderolabs/gvisor` system extension because Talos lacks systemd units for the installer to restart.
-- **Air-gapped clusters:** The installer requires access to `storage.googleapis.com` to download gVisor. If unreachable, you must override `security.sandbox.provisioning.baseUrl` to an internal mirror, otherwise the DaemonSet will loop indefinitely.
-
-### Node Selection
-
-If gVisor should only run on specific nodes (for example, if some nodes have SELinux Enforcing which blocks `runsc`), constrain it by setting a node selector:
+1. The cluster already has a working RuntimeClass `gvisor` (GKE Sandbox, Talos, or a node image you prepared). The installer detects it and leaves the nodes alone.
+2. Install onto a sandbox pool. This restarts the container runtime on the selected nodes:
 
 ```bash
---set "security.sandbox.nodes.selector.kubernetes\.io/hostname=sandbox-node-1"
+--install-gvisor \
+  --set "security.sandbox.nodes.selector.kubernetes\.io/hostname=sandbox-node-1"
 ```
 
-This single knob pins both the installer DaemonSet and the sandbox worker pods to the allowed nodes. Other nodes are left completely unmodified.
+3. Skip kernel isolation. The platform still installs. Generated code is not sandboxed:
+
+```bash
+--skip-gvisor
+```
+
+If you pass neither flag and the cluster has no working gVisor runtime, the installer stops before Helm and prints those two commands.
+
+A one-node cluster may use `--install-gvisor` without a selector. The installer names that node and says its runtime will restart. On more than one node, an empty selector is refused so the control plane is not restarted with the workers.
+
+After a successful install, the node is labeled `zelkor.io/gvisor-ready=true`. Sandbox workers run only on labeled nodes. A node where install fails is not labeled.
+
+### Prerequisites and limitations
+
+- **Containerd.** k3s, RKE2, kubeadm, EKS, and AKS. OpenShift and CRI-O are unsupported.
+- **GKE Sandbox** (node label `sandbox.gke.io/runtime=gvisor`) and **Talos** (`siderolabs/gvisor`) are detected. Zelkor does not install `runsc` there.
+- **SELinux Enforcing** often accepts the `runsc` files and still refuses to start a gVisor pod. Point the selector at nodes that can run it.
+- **Air-gap.** The installer downloads from `storage.googleapis.com` unless you set `security.sandbox.provisioning.baseUrl` to a mirror.
+- **Helm without the script.** Chart default `security.sandbox.provisioning.mode` is `auto`, which does not install `runsc`. Set `mode: daemonset` and a node selector when GitOps should do the node install.
+- **Taints.** The installer does not tolerate every taint. A tainted sandbox pool needs `security.sandbox.nodes.tolerations`.
 
 ## Deploy with the production script
 
@@ -97,7 +105,7 @@ Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script
 - **ServiceMonitor**: Use `--service-monitor` to enable Prometheus metrics scraping.
 - **Existing operators**: Pass `--skip-operators` when CloudNativePG, ClickHouse Operator, or cert-manager are already on the cluster.
 - **Storage**: Leave the three volume classes empty only when the default StorageClass can provision. If you set one of `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, or `seaweedfs.persistence.storageClass`, set all three. Postgres stays at 3 instances unless the installer prints `--set databases.postgresql.instances=N`.
-- **gVisor**: Set `security.sandbox.nodes.selector` to nodes that have RuntimeClass `gvisor`.
+- **gVisor**: Pass `--install-gvisor` with a node selector, or `--skip-gvisor`. See [Sandbox Runtime (gVisor)](#sandbox-runtime-gvisor).
 - **Layered edge**: `--topology layered` prints the Envoy dataplane Service and an Ingress example (namespace `envoy-gateway-system`, preserve Host). The script does not apply it. Health checks are `https://<agents-host>/health` and `https://<langfuse-host>/api/public/health`. Do not wrap the dataplane in another ClusterIP Endpoints list.
 - **LLM keys on upgrade**: keep passing `--set-file` for `workspace.models.providers.*.apiKey`, or omit the key. An overlay with `apiKey: ""` deletes the AI Gateway route ([route not found](./kb/ai-gateway-route-not-found.md)).
 

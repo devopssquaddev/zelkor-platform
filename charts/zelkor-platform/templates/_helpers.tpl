@@ -1086,13 +1086,14 @@ resources:
 {{- end }}
 
 {{/*
-gVisor provisioning mode: auto renders as daemonset (preflight resolves auto before Helm when possible).
+gVisor provisioning mode. auto does not install runsc. Preflight or an explicit
+mode=daemonset opt-in selects the node installer.
 */}}
 {{- define "zelkor-platform.gvisorProvisioningMode" -}}
 {{- $prov := .Values.security.sandbox.provisioning | default dict -}}
 {{- $mode := $prov.mode | default "auto" -}}
 {{- if eq $mode "auto" -}}
-daemonset
+auto
 {{- else -}}
 {{ $mode }}
 {{- end -}}
@@ -1159,11 +1160,18 @@ nodeSelector:
 {{ toYaml $selector | indent 2 }}
 {{- end }}
 {{- $tols := $nodes.tolerations | default list }}
-tolerations:
 {{- if $tols }}
+tolerations:
 {{ toYaml $tols | indent 2 }}
 {{- end }}
-  - operator: Exists
+{{- end }}
+
+{{/*
+Label the installer sets on a node after runsc is in the effective containerd config.
+RuntimeClass scheduling requires it in daemonset mode so workers skip nodes where install failed.
+*/}}
+{{- define "zelkor-platform.gvisorReadyLabelKey" -}}
+zelkor.io/gvisor-ready
 {{- end }}
 
 {{/*
@@ -1173,11 +1181,17 @@ RuntimeClass scheduling block (indented under RuntimeClass spec).
 {{- $nodes := .Values.security.sandbox.nodes | default dict }}
 {{- $selector := $nodes.selector | default dict }}
 {{- $tols := $nodes.tolerations | default list }}
-{{- if or $selector $tols }}
+{{- $ready := eq (include "zelkor-platform.gvisorInstallerEnabled" .) "true" }}
+{{- if or $selector $tols $ready }}
 scheduling:
-{{- if $selector }}
+{{- if or $selector $ready }}
   nodeSelector:
+{{- if $selector }}
 {{ toYaml $selector | indent 4 }}
+{{- end }}
+{{- if $ready }}
+    {{ include "zelkor-platform.gvisorReadyLabelKey" . }}: "true"
+{{- end }}
 {{- end }}
 {{- if $tols }}
   tolerations:

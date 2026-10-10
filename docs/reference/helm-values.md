@@ -79,7 +79,7 @@ Infrastructure the chart owns outside the three intent layers:
 | `databases.mode` | `in-cluster-basic` vs operator-backed modes |
 | `postgresql`, `valkey`, `clickhouse`, `qdrant`, `seaweedfs` | Datastore pins and URLs |
 | `security.networkPolicies` | Agent default-deny egress; gateway allow lists for extra MCP |
-| `security.sandbox` | gVisor runtime class for sandbox workers |
+| `security.sandbox` | gVisor for sandbox workers. `provisioning.mode: auto` does not install `runsc`. `daemonset` installs it on `nodes.selector` and labels successes `zelkor.io/gvisor-ready=true` |
 | `highAvailability`, `observability` | Replicas and monitoring hooks |
 
 ## `extraManifests`

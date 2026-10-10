@@ -605,6 +605,7 @@ security:
     createRuntimeClass: true
     overhead: {}
     nodes:
+      # Used when provisioning.mode is daemonset. Empty selects every schedulable node.
       selector: {}
       tolerations: []
     provisioning:
@@ -617,6 +618,13 @@ security:
           repository: alpine
           tag: '3.24.2'
           digest: ''
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         containerd:
           dropInDir: ''
           configPaths: []

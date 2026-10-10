@@ -51,6 +51,12 @@ Options:
   --image-pull-secret NAME     Optional. CE GHCR images are public. Use for a
                                private mirror or a licensed image later.
   --strict                     Fail on preflight warnings (metrics-server)
+  --install-gvisor             Install runsc on selected nodes and restart
+                               their container runtime. Requires
+                               security.sandbox.nodes.selector on a
+                               multi-node cluster.
+  --skip-gvisor                Do not install gVisor. Generated code is not
+                               kernel-isolated.
   --kubeconfig PATH
   --kube-context NAME
   --set key=value              Extra Helm --set (repeatable)
@@ -99,6 +105,10 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --service-monitor) SERVICE_MONITOR=1; shift ;;
+    --install-gvisor|--skip-gvisor)
+      cluster_install_try_gvisor_flag "$1"
+      shift
+      ;;
     --jwt-issuer)
       [[ $# -ge 2 ]] || cluster_install_die "missing value for --jwt-issuer"
       JWT_ISSUER="$2"
@@ -143,7 +153,11 @@ cluster_install_apply_jwt_cli_flags
 cluster_install_require_external_jwt "$PRODUCTION_VALUES"
 
 cluster_install_setup_log
+if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 ]]; then
+  export GVISOR_INSTALL_OPT_IN=true
+fi
 cluster_install_prepare
+cluster_install_gvisor_choose
 
 if [[ "$TLS_ENABLED" -eq 1 ]]; then
   CLUSTER_INSTALL_HELM_SETS+=(

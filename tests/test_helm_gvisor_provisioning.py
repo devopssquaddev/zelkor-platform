@@ -69,19 +69,35 @@ def _gvisor_rc(docs: list[dict]) -> dict | None:
     return None
 
 
-def test_defaults_renders_installer_runtimeclass_and_verify():
+def test_auto_does_not_render_node_installer():
     proc = _helm()
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert _gvisor_ds(docs) is None
+    assert "zelkor-platform-gvisor-installer" not in _names(docs, "ClusterRole")
+    rc = _gvisor_rc(docs)
+    assert rc is not None
+    assert rc["handler"] == "runsc"
+    assert rc.get("scheduling") is None
+
+
+def test_daemonset_renders_installer_runtimeclass_and_verify():
+    proc = _helm("--set", "security.sandbox.provisioning.mode=daemonset")
     assert proc.returncode == 0, proc.stderr
     docs = _docs(proc.stdout)
     ds = _gvisor_ds(docs)
     assert ds is not None
     spec = ds["spec"]["template"]["spec"]
     assert spec.get("nodeSelector") in (None, {})
+    assert spec.get("tolerations") in (None, [])
+    assert spec["serviceAccountName"] == "zelkor-platform-gvisor-installer"
     assert "zelkor-platform-gvisor-installer" in ds["metadata"]["name"]
+    roles = _names(docs, "ClusterRole")
+    assert "zelkor-platform-gvisor-installer" in roles
     rc = _gvisor_rc(docs)
     assert rc is not None
     assert rc["handler"] == "runsc"
-    assert rc.get("scheduling") is None
+    assert rc["scheduling"]["nodeSelector"] == {"zelkor.io/gvisor-ready": "true"}
     assert "zelkor-platform-gvisor-verify" in _names(docs, "Job")
     verify = next(d for d in _kinds(docs, "Job") if d["metadata"]["name"] == "zelkor-platform-gvisor-verify")
     assert verify["spec"]["template"]["spec"]["runtimeClassName"] == "gvisor"
@@ -90,7 +106,7 @@ def test_defaults_renders_installer_runtimeclass_and_verify():
 
 
 def test_gvisor_installer_selector_matches_pod_labels():
-    proc = _helm()
+    proc = _helm("--set", "security.sandbox.provisioning.mode=daemonset")
     assert proc.returncode == 0, proc.stderr
     ds = _gvisor_ds(_docs(proc.stdout))
     assert ds is not None
@@ -175,8 +191,19 @@ def test_sandbox_worker_token_from_secret():
         }
 
 
-def test_production_overlay_enables_gvisor_checksum_verify():
+def test_production_overlay_does_not_install_gvisor():
     proc = _helm("-f", str(PRODUCTION))
+    assert proc.returncode == 0, proc.stderr
+    assert _gvisor_ds(_docs(proc.stdout)) is None
+
+
+def test_production_overlay_enables_gvisor_checksum_verify():
+    proc = _helm(
+        "-f",
+        str(PRODUCTION),
+        "--set",
+        "security.sandbox.provisioning.mode=daemonset",
+    )
     assert proc.returncode == 0, proc.stderr
     ds = _gvisor_ds(_docs(proc.stdout))
     assert ds is not None
@@ -187,8 +214,20 @@ def test_production_overlay_enables_gvisor_checksum_verify():
     assert env.get("VERIFY_CHECKSUM") == "true"
 
 
+def test_preinstalled_runtimeclass_does_not_require_ready_label():
+    proc = _helm("--set", "security.sandbox.provisioning.mode=preinstalled")
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert _gvisor_ds(docs) is None
+    rc = _gvisor_rc(docs)
+    assert rc is not None
+    assert rc.get("scheduling") is None
+
+
 def test_node_selector_applies_to_installer_and_runtimeclass():
     proc = _helm(
+        "--set",
+        "security.sandbox.provisioning.mode=daemonset",
         "--set",
         r"security.sandbox.nodes.selector.zelkor\.io/sandbox=true",
     )
@@ -199,4 +238,6 @@ def test_node_selector_applies_to_installer_and_runtimeclass():
     assert ds["spec"]["template"]["spec"]["nodeSelector"]["zelkor.io/sandbox"] in (True, "true")
     rc = _gvisor_rc(docs)
     assert rc is not None
-    assert rc["scheduling"]["nodeSelector"]["zelkor.io/sandbox"] in (True, "true")
+    scheduling = rc["scheduling"]["nodeSelector"]
+    assert scheduling["zelkor.io/sandbox"] in (True, "true")
+    assert scheduling["zelkor.io/gvisor-ready"] == "true"
