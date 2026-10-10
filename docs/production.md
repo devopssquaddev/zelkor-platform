@@ -12,7 +12,7 @@ edition: ce
 
 Deploy the production shape of Zelkor Community Edition. This runs databases via Kubernetes operators (CloudNativePG, ClickHouse Operator) and enables High Availability (HA) and NetworkPolicies. The workload is a normal Helm release.
 
-**Zelkor sandboxes the agent you already wrote.** It wraps the agent in a comprehensive security and operational perimeter without a rewrite. The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
+**Zelkor sandboxes the agent you already wrote.** The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime. It can run this highly available operator shape out of the box.
 * **Pro** adds SSO, team controls (budgets and approvals), and team GitOps on top of this shape.
@@ -22,10 +22,10 @@ Deploy the production shape of Zelkor Community Edition. This runs databases via
 
 - Kubernetes v1.28+. The production profile runs 3 Postgres instances. The installer stops when the Postgres StorageClass is not on that many Ready nodes and tells you the `--set` to pass.
 - A default StorageClass that can provision a volume, or all three class keys: `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, `seaweedfs.persistence.storageClass`.
-- `metrics-server` installed (required for HPA).
-- A JWT Identity Provider (IdP) for tenant authentication, with a downloaded JWKS JSON file (or an internal OIDC issuer like Keycloak for isolated environments).
+- `metrics-server` (required for the high-availability autoscaler). The installer warns if it is missing and continues unless you pass `--strict`.
+- A JWT identity provider, with a downloaded JWKS file (or an in-cluster OIDC issuer such as Keycloak when the cluster cannot reach an external one).
 
-NetworkPolicies are **disabled by default**. Set `security.networkPolicies.enabled: true` in your values to enforce [Network Boundaries](architecture-network.md) and isolate pod traffic.
+The production profile sets `security.networkPolicies.enabled: true`. Agent pods then cannot reach datastores or the public internet except through the AI Gateway and the MCP gateway. See [Network Boundaries](architecture-network.md).
 
 ## Sandbox Runtime (gVisor)
 
@@ -57,7 +57,8 @@ After a successful install, the node is labeled `zelkor.io/gvisor-ready=true`. S
 
 ### Prerequisites and limitations
 
-- **Containerd.** k3s, RKE2, kubeadm, EKS, and AKS. OpenShift and CRI-O are unsupported.
+- **Containerd.** k3s, RKE2, kubeadm, EKS, and AKS.
+- **OpenShift and CRI-O** are unsupported.
 - **GKE Sandbox** (node label `sandbox.gke.io/runtime=gvisor`) and **Talos** (`siderolabs/gvisor`) are detected. Zelkor does not install `runsc` there.
 - **SELinux Enforcing** often accepts the `runsc` files and still refuses to start a gVisor pod. Point the selector at nodes that can run it.
 - **Air-gap.** The installer downloads from `storage.googleapis.com` unless you set `security.sandbox.provisioning.baseUrl` to a mirror.
@@ -68,7 +69,9 @@ After a successful install, the node is labeled `zelkor.io/gvisor-ready=true`. S
 
 The `install-production.sh` script bootstraps the required operators, installs Envoy Gateway, and deploys the platform using the `values-production.yaml` profile.
 
-# Replace placeholders with your actual hosts, keys, and JWT settings
+Add one gVisor choice from [Sandbox Runtime (gVisor)](#sandbox-runtime-gvisor). With no working runtime and neither flag, the script stops before Helm.
+
+Replace the placeholders with your hosts, provider key, and JWT settings:
 
 ```bash
 git clone https://github.com/devopssquaddev/zelkor-platform.git
@@ -84,20 +87,21 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
   --generate-passwords
 ```
 
-This script maps the JWT flags to the underlying Helm keys (`platform.tenants.jwt.issuer`, `audiences[0]`, and `jwksConfigMap`). 
+The script maps those JWT flags to `platform.tenants.jwt.issuer`, `audiences[0]`, and `jwksConfigMap`. `--jwt-issuer` must match the token `iss`. Prefer `--jwks-file`. Remote JWKS needs HTTPS plus `jwksEgressCIDRs` when NetworkPolicies are on ([JWT rejected](./kb/jwt-rejected.md)).
 
-> **Note on JWT Issuers:** Production installs strictly enforce identity verification. If you do not have an external IdP (like Auth0 or Entra ID) and are deploying to an isolated or air-gapped environment, you have two alternatives: 
-> 1. Run a lightweight internal OIDC provider (like Keycloak or Zitadel) in your cluster and point `--jwt-issuer` to it.
-> 2. Use Zelkor's native dev signing (not recommended for true production). To bypass the issuer requirement, pass the `localSigning` override instead of the `--jwt-*` flags:
-> ```bash
-> OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
->   --hosts-agents agents.example.com \
->   --hosts-langfuse langfuse.example.com \
->   --set "platform.tenants.jwt.localSigning.enabled=true" \
->   --generate-passwords
-> ```
+If the cluster cannot reach an external identity provider (Auth0, Entra ID), run an internal one (Keycloak or Zitadel) and point `--jwt-issuer` at it. For a cluster with no identity provider at all, `localSigning` makes the platform sign tokens itself. That is the same mechanism as local development. Omit the `--jwt-*` flags:
 
-Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script will configure Envoy Gateway using a standard LoadBalancer by default. If you have an existing Ingress controller, you can use the `--topology layered` option.
+```bash
+OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
+  --hosts-agents agents.example.com \
+  --hosts-langfuse langfuse.example.com \
+  --set "platform.tenants.jwt.localSigning.enabled=true" \
+  --generate-passwords
+```
+
+This command also needs a gVisor flag. See [Tenant Isolation Reference](reference/tenants.md).
+
+`--generate-passwords` prints the install secrets once (`POSTGRES_PASSWORD` and the rest). They are stored in cluster Secrets either way. The default topology is greenfield: Envoy Gateway is the LoadBalancer. When an Ingress controller already owns the edge, pass `--topology layered` (the script prints an Ingress and does not apply it).
 
 ## Optional configurations
 
@@ -108,8 +112,6 @@ Store the generated passwords (such as `POSTGRES_PASSWORD`) securely. The script
 - **gVisor**: Pass `--install-gvisor` with a node selector, or `--skip-gvisor`. See [Sandbox Runtime (gVisor)](#sandbox-runtime-gvisor).
 - **Layered edge**: `--topology layered` prints the Envoy dataplane Service and an Ingress example (namespace `envoy-gateway-system`, preserve Host). The script does not apply it. Health checks are `https://<agents-host>/health` and `https://<langfuse-host>/api/public/health`. Do not wrap the dataplane in another ClusterIP Endpoints list.
 - **LLM keys on upgrade**: keep passing `--set-file` for `workspace.models.providers.*.apiKey`, or omit the key. An overlay with `apiKey: ""` deletes the AI Gateway route ([route not found](./kb/ai-gateway-route-not-found.md)).
-
-`--jwt-issuer` must match the token `iss`. Prefer `--jwks-file`. Remote JWKS needs HTTPS plus `jwksEgressCIDRs` when NetworkPolicies are on ([JWT rejected](./kb/jwt-rejected.md)).
 
 ## Next steps
 

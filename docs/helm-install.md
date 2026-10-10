@@ -14,8 +14,8 @@ Evaluate Zelkor Community Edition on an existing Kubernetes cluster. This guide 
 
 **Zelkor sandboxes the agent you already wrote.** It wraps the agent in a comprehensive security and operational perimeter without a rewrite. The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
 
-* **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps. Community Edition can still run this operator-free evaluation shape (and the [production operator shape](production.md)); Pro adds SSO and team GitOps on that shape.
+* **Community Edition** is the self-hosted runtime. This page installs the evaluation shape. The [production install](production.md) is the highly available operator shape, still Community Edition.
+* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps on top of that shape.
 * **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 Published north-south hosts are `gateway.hosts.agents` and `gateway.hosts.langfuse` (Agent Protocol and Langfuse UI). Agent workers, MCP, NeMo, and datastores stay ClusterIP. See [Gateway Topologies](topologies.md).

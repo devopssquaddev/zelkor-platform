@@ -15,7 +15,7 @@ Zelkor routes incoming Agent Protocol traffic to the correct agent deployment us
 The core advantage: the agent you already wrote is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.
 * **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 ## How a client call reaches a graph

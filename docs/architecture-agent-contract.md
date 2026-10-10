@@ -71,5 +71,5 @@ The Model Context Protocol (MCP) plane governs how the agent executes infrastruc
 These planes form the base sandbox. Zelkor editions build upon this foundation:
 
 - **Community Edition:** The self-hosted runtime providing the base sandbox (intercept, wrap, MCP).
-- **Pro:** Adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+- **Pro:** Adds SSO, team controls (budgets and approvals), and team GitOps.
 - **Enterprise:** Adds strict isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).

@@ -17,7 +17,7 @@ Zelkor isolates these tenants across the platform. One verified identity scopes 
 The core advantage: the agent you already wrote is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and production HA / GitOps.
+* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.
 * **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
 
 *How a tenant identity scopes a run. The agent code never supplies the `tenant_id` to the tools; it is enforced by the platform.*
@@ -41,7 +41,7 @@ sequenceDiagram
     Note over MCP: Tenant identity passed<br/>via headers.
     
     MCP->>Store: execute query
-    Note over Store: RLS/filters applied<br/>using tenant_id.
+    Note over Store: Postgres sets app.current_tenant.<br/>Qdrant filters payload tenant_id.
     Store-->>MCP: data
     MCP-->>Wrap: tools/call result
     Wrap-->>Client: response
@@ -60,8 +60,8 @@ When the agent calls a tool via the Model Context Protocol (MCP), it cannot pass
 ## Native Store Filtering
 
 Native MCP servers (like Postgres and Qdrant) apply this tenant identity directly to their queries. 
-- In **Postgres**, queries are scoped using Row-Level Security (RLS) or explicit `WHERE tenant_id = ...` clauses injected by the MCP server.
-- In **Qdrant**, vector searches include a strict payload filter for the tenant.
+- In **Postgres**, each call sets `app.current_tenant` to the verified tenant. The server does not rewrite the SQL. Row-level security applies only when your policies read that setting.
+- In **Qdrant**, search and scroll filter on payload `tenant_id`. Upsert stamps that field from the verified tenant.
 
 Extra MCP backends (Bring Your Own) receive the tenant identity in headers but are responsible for applying their own filters (see [Extra Backends](mcp-extra-backends.md)).
 

@@ -40,7 +40,7 @@ Those four arrows are the only paths out of the agent. It cannot reach another n
 | Edition | What you get |
 | :--- | :--- |
 | **Community Edition** | The self-hosted runtime in this repo: gateway, tools, sandbox, traces, Helm install |
-| **Pro** | SSO, team controls (budgets and approvals), and production HA / GitOps on top of CE |
+| **Pro** | SSO, team controls (budgets and approvals), and team GitOps on top of CE |
 | **Enterprise** | Isolation and compliance on Pro: hardware sandbox, mTLS, retained audit, BAA |
 
 CE is enough to evaluate and to run production-shaped installs. Pro and Enterprise add control-plane and compliance layers — not a different product story.
