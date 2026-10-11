@@ -51,11 +51,16 @@ def wait_for_llm_connection(name: str = "zelkor-ai-gateway", timeout: float = 12
     return False
 
 
-def langfuse_get(path: str, params: dict[str, Any] | None = None) -> httpx.Response:
+def langfuse_get(
+    path: str,
+    params: dict[str, Any] | None = None,
+    *,
+    auth: tuple[str, str] | None = None,
+) -> httpx.Response:
     return httpx.get(
         f"{GATEWAY_BASE_URL}{path}",
         headers=langfuse_headers(),
-        auth=langfuse_auth(),
+        auth=auth or langfuse_auth(),
         params=params,
         timeout=20.0,
     )
@@ -80,6 +85,7 @@ def list_observations(
     name: str | None = None,
     session_id: str | None = None,
     user_id: str | None = None,
+    auth: tuple[str, str] | None = None,
 ) -> list[dict]:
     params: dict[str, Any] = {
         "limit": min(limit, 80),
@@ -98,7 +104,7 @@ def list_observations(
     if filters:
         params["filter"] = json.dumps(filters)
     try:
-        resp = langfuse_get("/api/public/v2/observations", params=params)
+        resp = langfuse_get("/api/public/v2/observations", params=params, auth=auth)
     except httpx.ConnectError:
         pytest.skip(f"Langfuse not reachable at {GATEWAY_BASE_URL}")
     if resp.status_code != 200 and "timed out" in resp.text.lower():
@@ -106,7 +112,7 @@ def list_observations(
         params["limit"] = min(int(params["limit"]), 20)
         params["fields"] = "core,basic,trace_context"
         params.pop("filter", None)
-        resp = langfuse_get("/api/public/v2/observations", params=params)
+        resp = langfuse_get("/api/public/v2/observations", params=params, auth=auth)
     if resp.status_code != 200 and "timed out" in resp.text.lower():
         pytest.skip(f"Langfuse observations query timed out: {resp.text[:200]}")
     assert resp.status_code == 200, resp.text
@@ -146,8 +152,15 @@ def list_traces(
     name: str | None = None,
     session_id: str | None = None,
     user_id: str | None = None,
+    auth: tuple[str, str] | None = None,
 ) -> list[dict]:
-    rows = list_observations(limit=min(max(limit * 3, 30), 80), name=name, session_id=session_id, user_id=user_id)
+    rows = list_observations(
+        limit=min(max(limit * 3, 30), 80),
+        name=name,
+        session_id=session_id,
+        user_id=user_id,
+        auth=auth,
+    )
     traces = _traces_from_observations(rows)
     return traces[:limit]
 

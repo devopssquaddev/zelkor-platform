@@ -1,56 +1,27 @@
-"""L5 live: from worker/agent pods, Envoy :9856 and backend :8080 must be refused."""
+"""S-10 / P8: from sandbox worker, Envoy :9856 and backend :8080 must be refused."""
 from __future__ import annotations
-
-import os
 
 import pytest
 
-from tests.helpers.kube import kubectl_run
-
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("ZELKOR_TEST_BYPASS_TARGETS"),
-    reason="ZELKOR_TEST_BYPASS_TARGETS not set (comma host:port pairs for L5)",
-)
+from tests.helpers.ce8 import exec_python, network_policies_enabled, s10_from_pods, s10_targets
 
 
-def _targets() -> list[tuple[str, int]]:
-    raw = os.environ.get("ZELKOR_TEST_BYPASS_TARGETS", "")
-    out: list[tuple[str, int]] = []
-    for part in raw.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        host, port_s = part.rsplit(":", 1)
-        out.append((host, int(port_s)))
-    return out
-
-
-def _from_pods() -> list[str]:
-    raw = os.environ.get("ZELKOR_TEST_BYPASS_FROM", "")
-    return [p.strip() for p in raw.split(",") if p.strip()]
-
-
-_CASES = [
-    (pod, host, port)
-    for pod in (_from_pods() or ["skip"])
-    for host, port in (_targets() or [("skip", 0)])
-]
-
-
-@pytest.mark.parametrize("pod,host,port", _CASES)
-def test_l5_bypass_port_refused(pod: str, host: str, port: int):
-    if pod == "skip" or host == "skip":
-        pytest.skip("ZELKOR_TEST_BYPASS_FROM / targets missing")
-    probe = (
-        "import socket,sys\n"
-        f"s=socket.socket(); s.settimeout(5.0)\n"
-        f"err=s.connect_ex(({host!r},{port}))\n"
-        "s.close(); sys.stdout.write(str(err))\n"
-    )
-    res = kubectl_run(
-        ["exec", pod, "--", "python3", "-S", "-c", probe],
-        timeout=20,
-    )
-    assert res.returncode == 0, res.stderr or res.stdout
-    err = int((res.stdout or "").strip().splitlines()[-1])
-    assert err != 0, f"expected refusal from {pod} to {host}:{port}, got connect_ex=0"
+def test_s10_bypass_port_refused():
+    if not network_policies_enabled():
+        pytest.skip("security.networkPolicies.enabled is off")
+    pods = s10_from_pods()
+    targets = s10_targets()
+    failures: list[str] = []
+    for pod in pods:
+        for host, port in targets:
+            script = (
+                "import socket,sys\n"
+                "s=socket.socket(); s.settimeout(5.0)\n"
+                f"err=s.connect_ex(({host!r},{port}))\n"
+                "s.close(); sys.stdout.write(str(err))\n"
+            )
+            out = exec_python(pod, script, timeout=20)
+            err = int(out.splitlines()[-1])
+            if err == 0:
+                failures.append(f"{pod} -> {host}:{port}")
+    assert not failures, f"expected refusal, got connect_ex=0 for {failures}"

@@ -74,6 +74,19 @@ def _helm(*extra: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=False, capture_output=True, text=True)
 
 
+def test_zelkor_agent_uses_agent_labels_not_aegra_component():
+    """S-09: customer agents match agent-egress, not platform Aegra Postgres egress."""
+    proc = _helm_agent()
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    deploys = _kinds(docs, "Deployment")
+    assert deploys
+    for dep in deploys:
+        labels = dep["spec"]["template"]["metadata"]["labels"]
+        assert labels.get("zelkor.io/workload-type") == "agent", labels
+        assert labels.get("app.kubernetes.io/component") == "aegra", labels
+
+
 def _helm_agent(*extra: str) -> subprocess.CompletedProcess[str]:
     cmd = ["helm", "template", "demo-agent", str(AGENT), "--namespace", "zelkor"]
     for item in AGENT_SETS:
