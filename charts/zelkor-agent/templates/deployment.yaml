@@ -41,6 +41,7 @@ spec:
     metadata:
       labels:
         {{- include "zelkor-agent.selectorLabels" . | nindent 8 }}
+        zelkor.io/workload-type: agent
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
