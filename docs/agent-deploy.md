@@ -31,7 +31,7 @@ sharedRoute:
 
 image:
   repository: my-registry/my-agent
-  tag: "2.3.1"
+  tag: "2.3.2"
 
 platform:
   # The name of the platform Helm release (e.g., zelkor-platform).
@@ -67,6 +67,14 @@ zelkor env use production
 # Build and deploy the agent
 zelkor deploy --timeout 60s
 ```
+
+To put the worker in another namespace, create and label that namespace (`zelkor.io/namespace-role: agent`), set `platform.isolation.agentNamespaces: true` on the platform release, then:
+
+```bash
+zelkor deploy --namespace team-research
+```
+
+`zelkor env` stays the **platform** namespace. The CLI fills `platform.namespace`, in-cluster `*-ai-gateway` / `*-mcp` FQDNs (`{svc}.{platformNs}.svc.cluster.local`, matching the HTTPRoute Host), copies verify ConfigMaps and image pull Secrets, and copies the platform NetworkPolicy flag. Do not point `OPENAI_BASE_URL` at the Envoy dataplane. GitOps in another namespace sets `platform.namespace` on `zelkor-agent`; the chart compiles those FQDNs.
 
 The `deploy` command builds the image, pushes it to the registry, and runs `helm upgrade` on the `zelkor-agent` chart. It automatically copies the platform's Langfuse OTEL configuration so your traces appear in the Langfuse UI, and it wires up the platform's MCP gateway so your agent can use native tools or registered extra backends.
 
@@ -122,7 +130,7 @@ helm uninstall my-agent --namespace zelkor
 To remove an agent deployed via the CLI:
 
 ```bash
-zelkor undeploy
+zelkor undeploy --namespace team-research
 ```
 
 This removes the agent's Deployment and its HTTPRoute registration, restoring the platform's default routing behavior for that graph ID.

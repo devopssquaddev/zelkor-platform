@@ -57,6 +57,17 @@
       "type": "object",
       "description": "Values under platform.",
       "properties": {
+        "isolation": {
+          "type": "object",
+          "description": "Values under platform.isolation.",
+          "properties": {
+            "agentNamespaces": {
+              "type": "boolean",
+              "description": "When true, dest-deny allows Namespaces labeled zelkor.io/namespace-role=agent to reach the checkpointer."
+            }
+          },
+          "additionalProperties": false
+        },
         "mTLS": {
           "type": "object",
           "description": "Values under platform.mTLS.",
@@ -4805,19 +4816,6 @@
           },
           "additionalProperties": false
         },
-        "volumeSizeLimitMB": {
-          "type": "integer",
-          "description": "Value for seaweedfs.volumeSizeLimitMB. SeaweedFS 4.48 rejects values above 30000."
-        },
-        "volumeMax": {
-          "type": "integer",
-          "description": "Value for seaweedfs.volumeMax. Passed as weed -volume.max."
-        },
-        "nodeSelector": {
-          "type": "object",
-          "description": "Values under seaweedfs.nodeSelector.",
-          "properties": {}
-        },
         "objectIdentity": {
           "type": "object",
           "description": "Values under seaweedfs.objectIdentity.",
@@ -4832,6 +4830,26 @@
             }
           },
           "additionalProperties": false
+        },
+        "volumeSizeLimitMB": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for seaweedfs.volumeSizeLimitMB. SeaweedFS 4.48 rejects values above 30000."
+        },
+        "volumeMax": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "Value for seaweedfs.volumeMax. Passed as weed -volume.max."
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Values under seaweedfs.nodeSelector.",
+          "properties": {
+          }
         },
         "persistence": {
           "type": "object",

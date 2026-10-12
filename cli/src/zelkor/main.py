@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse, urlunparse
 
 import yaml
 
@@ -63,6 +65,7 @@ class PlatformInfo:
     agent_route_names: list[str] = field(default_factory=list)
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
     helm_values: dict[str, Any] = field(default_factory=dict)
+    network_policies_enabled: bool = False
 
 
 def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = "") -> Path:
@@ -223,6 +226,9 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
+    info.network_policies_enabled = bool(
+        ((values.get("security") or {}).get("networkPolicies") or {}).get("enabled")
+    )
     info.gateway_namespace = env.namespace
     logger.info("agents host=%s", info.agents_host or "(empty)")
     logger.info("get aegra deployment")
@@ -470,7 +476,167 @@ def fill_empty(dst: Any, src: Any) -> Any:
 _FILE_WINS = frozenset({"graphId", "image", "runtimeClassName", "extraEnv"})
 
 
-def discovered_worker_values(info: PlatformInfo) -> dict[str, Any]:
+def env_for_namespace(env: Env, namespace: str) -> Env:
+    ns = (namespace or "").strip() or env.namespace
+    if ns == env.namespace:
+        return env
+    return Env(name=env.name, kube_context=env.kube_context, namespace=ns, kubeconfig=env.kubeconfig)
+
+
+def rewrite_in_cluster_url(url: str, platform_ns: str) -> str:
+    if not url or not platform_ns:
+        return url
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if not host or host.endswith(".svc.cluster.local"):
+        return url
+    if host.endswith(".svc"):
+        new_host = f"{host}.cluster.local"
+    elif "." not in host:
+        new_host = f"{host}.{platform_ns}.svc.cluster.local"
+    else:
+        return url
+    auth = ""
+    if parsed.username is not None:
+        auth = parsed.username
+        if parsed.password is not None:
+            auth += f":{parsed.password}"
+        auth += "@"
+    port = parsed.port
+    netloc = f"{auth}{new_host}:{port}" if port else f"{auth}{new_host}"
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+def bind_worker_to_agent_namespace(info: PlatformInfo, agent_ns: str, platform_ns: str) -> PlatformInfo:
+    if not agent_ns or agent_ns == platform_ns:
+        return info
+    rel = info.release
+    info.openai_base_url = f"http://{rel}-ai-gateway.{platform_ns}.svc.cluster.local:80/v1"
+    info.mcp_url = rewrite_in_cluster_url(info.mcp_url, platform_ns) or f"http://{rel}-mcp.{platform_ns}.svc.cluster.local"
+    info.langfuse_base_url = f"http://{rel}-langfuse.{platform_ns}.svc.cluster.local:3000"
+    info.database_url = rewrite_in_cluster_url(info.database_url, platform_ns)
+    info.redis_url = rewrite_in_cluster_url(info.redis_url, platform_ns)
+    return info
+
+
+def fill_langfuse_from_secret(env: Env, info: PlatformInfo, runner: Optional[RunFn] = None) -> None:
+    if info.langfuse_public_key and info.langfuse_secret_key:
+        return
+    name = f"{info.release}-langfuse-otel"
+    got = _run(kube_argv(env, "get", "secret", name, "-o", "json"), runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    if got.returncode != 0:
+        return
+    data = (json.loads(got.stdout or "{}") or {}).get("data") or {}
+    def _b64(key: str) -> str:
+        raw = data.get(key) or ""
+        if not raw:
+            return ""
+        try:
+            return base64.b64decode(raw).decode("utf-8")
+        except Exception:
+            return ""
+    info.langfuse_public_key = info.langfuse_public_key or _b64("LANGFUSE_PUBLIC_KEY")
+    info.langfuse_secret_key = info.langfuse_secret_key or _b64("LANGFUSE_SECRET_KEY")
+    info.langfuse_base_url = info.langfuse_base_url or _b64("LANGFUSE_BASE_URL")
+    info.otel_targets = info.otel_targets or _b64("OTEL_TARGETS") or info.otel_targets
+
+
+def copy_verify_configmaps(
+    env: Env,
+    dest_ns: str,
+    names: list[str],
+    *,
+    runner: Optional[RunFn] = None,
+) -> None:
+    if dest_ns == env.namespace:
+        return
+    dest_env = env_for_namespace(env, dest_ns)
+    for name in names:
+        got = _run(
+            kube_argv(env, "get", "cm", name, "-o", "json"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        if got.returncode != 0:
+            logger.info("skip copy configmap %s (not in platform ns)", name)
+            continue
+        obj = json.loads(got.stdout or "{}") or {}
+        meta = obj.setdefault("metadata", {})
+        meta["namespace"] = dest_ns
+        for key in ("resourceVersion", "uid", "creationTimestamp", "managedFields", "selfLink"):
+            meta.pop(key, None)
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(obj, fh)
+            path = fh.name
+        try:
+            _run(
+                kube_argv(dest_env, "apply", "-f", path),
+                runner=runner,
+                timeout=KUBE_RUN_TIMEOUT_SEC,
+            )
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+
+def copy_named_secrets(
+    env: Env,
+    dest_ns: str,
+    names: list[str],
+    *,
+    runner: Optional[RunFn] = None,
+) -> None:
+    if dest_ns == env.namespace:
+        return
+    dest_env = env_for_namespace(env, dest_ns)
+    for name in names:
+        if not name:
+            continue
+        got = _run(
+            kube_argv(env, "get", "secret", name, "-o", "json"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        if got.returncode != 0:
+            logger.info("skip copy secret %s (not in platform ns)", name)
+            continue
+        obj = json.loads(got.stdout or "{}") or {}
+        meta = obj.setdefault("metadata", {})
+        meta["namespace"] = dest_ns
+        for key in ("resourceVersion", "uid", "creationTimestamp", "managedFields", "selfLink"):
+            meta.pop(key, None)
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(obj, fh)
+            path = fh.name
+        try:
+            _run(
+                kube_argv(dest_env, "apply", "-f", path),
+                runner=runner,
+                timeout=KUBE_RUN_TIMEOUT_SEC,
+            )
+        finally:
+            Path(path).unlink(missing_ok=True)
+
+
+def find_agent_release_namespace(
+    env: Env, release: str, *, runner: Optional[RunFn] = None
+) -> str:
+    listed = _run(
+        helm_argv(env, "list", "-A", "-o", "json"),
+        runner=runner,
+        check=False,
+        timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    if listed.returncode != 0:
+        return env.namespace
+    for rel in json.loads(listed.stdout or "[]"):
+        if str(rel.get("name") or "") == release:
+            return str(rel.get("namespace") or env.namespace)
+    return env.namespace
+
+
+def discovered_worker_values(info: PlatformInfo, *, platform_namespace: str = "") -> dict[str, Any]:
     platform: dict[str, Any] = {
         "releaseName": info.release,
         "databaseUrl": info.database_url,
@@ -480,6 +646,8 @@ def discovered_worker_values(info: PlatformInfo) -> dict[str, Any]:
         "valkeyUrl": info.redis_url,
         "mcpInject": True,
     }
+    if platform_namespace:
+        platform["namespace"] = platform_namespace
     if info.default_llm_model:
         platform["defaultLlmModel"] = info.default_llm_model
     if info.langfuse_base_url:
@@ -498,6 +666,7 @@ def discovered_worker_values(info: PlatformInfo) -> dict[str, Any]:
         },
         "platform": platform,
         "auth": auth_values(info),
+        "security": {"networkPolicies": {"enabled": info.network_policies_enabled}},
     }
     if info.image_pull_secrets:
         overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
@@ -761,15 +930,17 @@ def _helm_upgrade_agent(
     platform_release: str,
     as_default: bool,
     runner: Optional[RunFn] = None,
+    agent_namespace: str = "",
 ) -> None:
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
         yaml.safe_dump(overlay, fh)
         values_file = fh.name
     try:
-        logger.info("helm upgrade --install %s", release)
+        agent_env = env_for_namespace(env, agent_namespace)
+        logger.info("helm upgrade --install %s namespace=%s", release, agent_env.namespace)
         _run(
             helm_argv(
-                env,
+                agent_env,
                 "upgrade",
                 "--install",
                 release,
@@ -786,7 +957,7 @@ def _helm_upgrade_agent(
             plat_args = helm_argv(env, "upgrade", platform_release, str(platform_chart), "--reuse-values")
             plat_args.extend(["--set", "workload.agents.attachDefaultRoute=false"])
             _run(plat_args, runner=runner, capture=False, timeout=HELM_UPGRADE_TIMEOUT_SEC)
-        _wait_agent_rollout(env, release, runner=runner)
+        _wait_agent_rollout(agent_env, release, runner=runner)
     finally:
         Path(values_file).unlink(missing_ok=True)
 
@@ -805,6 +976,7 @@ def deploy_agent(
     max_tokens: int = 0,
     approval_threshold: str = "",
     image_registry: str = "",
+    agent_namespace: str = "",
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
@@ -819,6 +991,22 @@ def deploy_agent(
     release = helm_release_name(shape.graph_id)
     logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
+    agent_ns = (agent_namespace or "").strip() or env.namespace
+    fill_langfuse_from_secret(env, info, runner=runner)
+    bind_worker_to_agent_namespace(info, agent_ns, env.namespace)
+    if agent_ns != env.namespace:
+        copy_verify_configmaps(
+            env,
+            agent_ns,
+            [f"{info.release}-tenant-jwks", f"{info.release}-tenant-jwt"],
+            runner=runner,
+        )
+        copy_named_secrets(
+            env,
+            agent_ns,
+            [str(item.get("name") or "") for item in info.image_pull_secrets],
+            runner=runner,
+        )
     _require_registered_extras(info, shape.mcp_servers)
     as_default = should_attach_as_default(info.agent_route_names, release)
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
@@ -850,6 +1038,7 @@ def deploy_agent(
             "asDefault": as_default,
         },
         "platform": {
+            "namespace": env.namespace,
             "databaseUrl": info.database_url,
             "openaiBaseUrl": info.openai_base_url,
             "mcpUrl": info.mcp_url,
@@ -863,6 +1052,7 @@ def deploy_agent(
             **({"otelTargets": info.otel_targets} if info.otel_targets else {}),
         },
         "auth": auth_values(info),
+        "security": {"networkPolicies": {"enabled": info.network_policies_enabled}},
     }
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
@@ -886,6 +1076,7 @@ def deploy_agent(
         platform_release=info.release,
         as_default=as_default,
         runner=runner,
+        agent_namespace=agent_ns,
     )
     return {"release": release, "graph_id": shape.graph_id, "as_default": as_default, "image": image_ref}
 
@@ -911,6 +1102,7 @@ def deploy_from_values(
     extra_values: Optional[list[Path]] = None,
     image_registry: str = "",
     skip_build: Optional[bool] = None,
+    agent_namespace: str = "",
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
@@ -956,8 +1148,26 @@ def deploy_from_values(
             file_values["image"] = image
             logger.info("image.pullPolicy=Never after kind load")
     info = discover_platform(env, runner=runner)
+    agent_ns = (agent_namespace or "").strip() or env.namespace
+    fill_langfuse_from_secret(env, info, runner=runner)
+    bind_worker_to_agent_namespace(info, agent_ns, env.namespace)
+    if agent_ns != env.namespace:
+        copy_verify_configmaps(
+            env,
+            agent_ns,
+            [f"{info.release}-tenant-jwks", f"{info.release}-tenant-jwt"],
+            runner=runner,
+        )
+        copy_named_secrets(
+            env,
+            agent_ns,
+            [str(item.get("name") or "") for item in info.image_pull_secrets],
+            runner=runner,
+        )
     _require_registered_extras(info, mcp_servers_from_tools(values_path.parent))
-    overlay = merge_catalog_values(file_values, discovered_worker_values(info))
+    overlay = merge_catalog_values(
+        file_values, discovered_worker_values(info, platform_namespace=env.namespace)
+    )
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
     release = helm_release_name(graph_id)
     _helm_upgrade_agent(
@@ -969,6 +1179,7 @@ def deploy_from_values(
         platform_release=info.release,
         as_default=as_default,
         runner=runner,
+        agent_namespace=agent_ns,
     )
     if digest:
         ref = f"{repo}@{digest}"
@@ -984,13 +1195,16 @@ def cmd_undeploy(
     graph_id_flag: str = "",
     platform_chart: Path,
     runner: Optional[RunFn] = None,
+    agent_namespace: str = "",
 ) -> int:
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
-    logger.info("undeploy release=%s", release)
+    agent_ns = (agent_namespace or "").strip() or find_agent_release_namespace(env, release, runner=runner)
+    agent_env = env_for_namespace(env, agent_ns)
+    logger.info("undeploy release=%s namespace=%s", release, agent_env.namespace)
     info = discover_platform(env, runner=runner)
     got = _run(
-        helm_argv(env, "get", "values", release, "-o", "yaml"),
+        helm_argv(agent_env, "get", "values", release, "-o", "yaml"),
         runner=runner,
         check=False,
         timeout=KUBE_RUN_TIMEOUT_SEC,
@@ -1001,7 +1215,7 @@ def cmd_undeploy(
     values = yaml.safe_load(got.stdout or "") or {}
     as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
     logger.info("helm uninstall %s", release)
-    _run(helm_argv(env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    _run(helm_argv(agent_env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
     if as_default:
         _run(
             helm_argv(
@@ -1029,11 +1243,14 @@ def cmd_logs(
     follow: bool = True,
     tail: str = "",
     runner: Optional[RunFn] = None,
+    agent_namespace: str = "",
 ) -> int:
     shape = detect(root, graph_id_flag)
     release = helm_release_name(shape.graph_id)
+    agent_ns = (agent_namespace or "").strip() or find_agent_release_namespace(env, release, runner=runner)
+    agent_env = env_for_namespace(env, agent_ns)
     deploy = f"deployment/{agent_deployment_name(release)}"
-    argv = kube_argv(env, "logs", deploy)
+    argv = kube_argv(agent_env, "logs", deploy)
     if follow:
         argv.append("-f")
     if tail:
@@ -1093,18 +1310,22 @@ def cmd_env(args: argparse.Namespace, store_path: Path | None) -> int:
     return 1
 
 
-def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
+def cmd_status(env: Env, runner: Optional[RunFn] = None, agent_namespace: str = "") -> int:
     logger.info("status env=%s namespace=%s", env.name, env.namespace)
-    listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner, timeout=KUBE_RUN_TIMEOUT_SEC)
+    listed = _run(helm_argv(env, "list", "-A", "-o", "json"), runner=runner, timeout=KUBE_RUN_TIMEOUT_SEC)
     print("Helm releases:")
     for rel in json.loads(listed.stdout or "[]"):
         chart = str(rel.get("chart") or "")
+        ns = str(rel.get("namespace") or "")
+        if agent_namespace and ns not in (env.namespace, agent_namespace):
+            continue
         if "zelkor-agent" in chart or str(rel.get("name") or "").endswith("zelkor-agent"):
-            print(f"  {rel.get('name')}  {chart}  {rel.get('status')}")
+            print(f"  {rel.get('name')}  {ns}  {chart}  {rel.get('status')}")
         if chart.startswith("zelkor-platform"):
-            print(f"  {rel.get('name')}  {chart}  {rel.get('status')}")
+            print(f"  {rel.get('name')}  {ns}  {chart}  {rel.get('status')}")
     routes = _run(
-        kube_argv(env, "get", "httproute", "-o", "json"),
+        ["kubectl", "--request-timeout", KUBE_REQUEST_TIMEOUT, "--context", env.kube_context, "get", "httproute", "-A", "-o", "json"]
+        + (["--kubeconfig", env.kubeconfig] if env.kubeconfig else []),
         runner=runner,
         check=False,
         timeout=KUBE_RUN_TIMEOUT_SEC,
@@ -1114,7 +1335,8 @@ def cmd_status(env: Env, runner: Optional[RunFn] = None) -> int:
         for route in (json.loads(routes.stdout or "{}") or {}).get("items") or []:
             hosts = (route.get("spec") or {}).get("hostnames") or []
             name = (route.get("metadata") or {}).get("name")
-            print(f"  {name}  {', '.join(hosts)}")
+            rns = (route.get("metadata") or {}).get("namespace")
+            print(f"  {rns}/{name}  {', '.join(hosts)}")
     return 0
 
 
@@ -1316,14 +1538,17 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     p_run.add_argument("--graph-id", default="")
     p_undeploy = sub.add_parser("undeploy", help="helm uninstall the agent release")
     p_undeploy.add_argument("--graph-id", default="")
+    p_undeploy.add_argument("--namespace", default="", help="agent release namespace (default: discover)")
     p_undeploy.add_argument("directory", nargs="?", default=".")
     p_logs = sub.add_parser("logs", help="follow the agent Deployment")
     p_logs.add_argument("--graph-id", default="")
+    p_logs.add_argument("--namespace", default="", help="agent release namespace (default: discover)")
     p_logs.add_argument("--tail", default="")
     p_logs.add_argument("--follow", dest="follow", action="store_true", default=True)
     p_logs.add_argument("--no-follow", dest="follow", action="store_false")
     p_logs.add_argument("directory", nargs="?", default=".")
-    sub.add_parser("status", help="agent Helm releases and HTTPRoutes")
+    p_status = sub.add_parser("status", help="agent Helm releases and HTTPRoutes")
+    p_status.add_argument("--namespace", default="", help="filter agent releases to this namespace")
     sub.add_parser("doctor", help="check discovered platform endpoints")
     sub.add_parser("version", help="CLI and platform chart version")
 
@@ -1366,6 +1591,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
 
     for p in (sub.choices["dev"], sub.choices["deploy"]):
         p.add_argument("--graph-id", default="")
+        p.add_argument("--namespace", default="", help="agent Helm namespace (env stays the platform ns)")
         p.add_argument("--timeout", default="", help="workload.intent.timeout (Envoy/Aegra)")
         p.add_argument("--max-tokens", type=int, default=0, help="workload.intent.maxTokens")
         p.add_argument("--approval-threshold", default="", help="workload.intent.approval.threshold (Pro)")
@@ -1410,7 +1636,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     logger.info("using env=%s context=%s namespace=%s", env.name, env.kube_context, env.namespace)
 
     if args.cmd == "status":
-        return cmd_status(env, runner=runner)
+        return cmd_status(env, runner=runner, agent_namespace=getattr(args, "namespace", "") or "")
     if args.cmd == "doctor":
         return cmd_doctor(env, runner=runner)
     if args.cmd == "undeploy":
@@ -1427,6 +1653,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 graph_id_flag=args.graph_id,
                 platform_chart=platform_chart,
                 runner=runner,
+                agent_namespace=getattr(args, "namespace", "") or "",
             )
         except (FileNotFoundError, DetectError) as exc:
             print(str(exc), file=sys.stderr)
@@ -1440,6 +1667,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 follow=args.follow,
                 tail=args.tail,
                 runner=runner,
+                agent_namespace=getattr(args, "namespace", "") or "",
             )
         except DetectError as exc:
             print(str(exc), file=sys.stderr)
@@ -1474,6 +1702,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 runner=runner,
                 approval_threshold=getattr(args, "approval_threshold", "") or "",
                 image_registry=getattr(args, "registry", "") or "",
+                agent_namespace=getattr(args, "namespace", "") or "",
             )
         else:
             result = deploy_agent(
@@ -1489,6 +1718,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 max_tokens=int(getattr(args, "max_tokens", 0) or 0),
                 approval_threshold=getattr(args, "approval_threshold", "") or "",
                 image_registry=getattr(args, "registry", "") or "",
+                agent_namespace=getattr(args, "namespace", "") or "",
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

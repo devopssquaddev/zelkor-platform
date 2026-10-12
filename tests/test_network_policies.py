@@ -163,3 +163,153 @@ def test_network_policies_present_when_enabled(kubecontext):
             peers.append(labels)
     assert not any(p.get("zelkor.io/workload-type") == "agent" for p in peers), peers
     assert any(p.get("app.kubernetes.io/component") == "postgresql" for p in peers), peers
+
+
+def _peer_ns_labels(policy: dict) -> list[dict]:
+    labels: list[dict] = []
+    for rule in (policy.get("spec") or {}).get("ingress") or []:
+        for peer in rule.get("from") or []:
+            sel = (peer.get("namespaceSelector") or {}).get("matchLabels") or {}
+            if sel:
+                labels.append(sel)
+    return labels
+
+
+def test_dest_deny_absent_when_np_off():
+    proc = _helm(
+        "-f",
+        str(QUICKSTART),
+        "--set",
+        "security.networkPolicies.enabled=false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert _named(docs, "NetworkPolicy", "default-deny-ingress") is None
+    assert _named(docs, "NetworkPolicy", "postgres-dest-deny") is None
+
+
+def test_dest_deny_kind_hostnetwork_skips_envoy_peer_policies():
+    """K17: acceptUnprotectedBackends means Envoy is the node IP; dest-deny must not close MCP/Aegra."""
+    proc = _helm(
+        "-f",
+        str(QUICKSTART),
+        "--set",
+        "security.networkPolicies.enabled=true",
+        "--set",
+        "security.mcp.acceptUnprotectedBackends=true",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    deny = _named(docs, "NetworkPolicy", "default-deny-ingress")
+    assert deny is not None
+    exprs = (deny.get("spec") or {}).get("podSelector", {}).get("matchExpressions") or []
+    notin = next((e for e in exprs if e.get("operator") == "NotIn"), None)
+    assert notin is not None, deny.get("spec")
+    assert "mcp-postgres" in (notin.get("values") or [])
+    assert "aegra" in (notin.get("values") or [])
+    assert _named(docs, "NetworkPolicy", "aegra-dest-deny") is None
+    assert _named(docs, "NetworkPolicy", "langfuse-dest-deny") is None
+    assert _named(docs, "NetworkPolicy", "guardrails-dest-deny") is None
+    assert _named(docs, "NetworkPolicy", "postgres-dest-deny") is not None
+
+
+def test_dest_deny_no_cross_ns_when_isolation_off():
+    proc = _helm(
+        "-f",
+        str(QUICKSTART),
+        "-f",
+        str(GREENFIELD),
+        "--set",
+        "security.networkPolicies.enabled=true",
+        "--set",
+        "security.mcp.acceptUnprotectedBackends=false",
+        "--set",
+        "platform.isolation.agentNamespaces=false",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    deny = _named(docs, "NetworkPolicy", "default-deny-ingress")
+    assert deny is not None
+    pg = _named(docs, "NetworkPolicy", "postgres-dest-deny")
+    assert pg is not None
+    ns_labels = _peer_ns_labels(pg)
+    assert not any(l.get("zelkor.io/namespace-role") == "agent" for l in ns_labels), ns_labels
+    lf = _named(docs, "NetworkPolicy", "langfuse-dest-deny")
+    assert lf is not None
+    lf_pods = {
+        ((peer.get("podSelector") or {}).get("matchLabels") or {}).get("app.kubernetes.io/component")
+        for rule in (lf.get("spec") or {}).get("ingress") or []
+        for peer in rule.get("from") or []
+    }
+    assert {"aegra", "guardrails", "langfuse-bootstrap"} <= lf_pods
+    qdrant = _named(docs, "NetworkPolicy", "qdrant-dest-deny")
+    assert qdrant is not None
+    q_labels = {
+        ((peer.get("podSelector") or {}).get("matchLabels") or {}).get("zelkor.io/workload-type")
+        for rule in (qdrant.get("spec") or {}).get("ingress") or []
+        for peer in rule.get("from") or []
+    }
+    assert "datastore-init" in q_labels
+    assert "agent" not in q_labels
+    pg_types = {
+        ((peer.get("podSelector") or {}).get("matchLabels") or {}).get("zelkor.io/workload-type")
+        for rule in (pg.get("spec") or {}).get("ingress") or []
+        for peer in rule.get("from") or []
+    }
+    assert {"agent", "datastore-init"} <= pg_types
+
+
+def test_dest_deny_isolation_allows_compiled_agent_label():
+    proc = _helm(
+        "-f",
+        str(QUICKSTART),
+        "-f",
+        str(GREENFIELD),
+        "--set",
+        "security.networkPolicies.enabled=true",
+        "--set",
+        "security.mcp.acceptUnprotectedBackends=false",
+        "--set",
+        "platform.isolation.agentNamespaces=true",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    pg = _named(docs, "NetworkPolicy", "postgres-dest-deny")
+    vk = _named(docs, "NetworkPolicy", "valkey-dest-deny")
+    aegra = _named(docs, "NetworkPolicy", "aegra-dest-deny")
+    assert pg and vk and aegra
+    pg_ns = _peer_ns_labels(pg)
+    assert any(l.get("zelkor.io/namespace-role") == "agent" for l in pg_ns), pg_ns
+    vk_ns = _peer_ns_labels(vk)
+    assert any(l.get("zelkor.io/namespace-role") == "agent" for l in vk_ns), vk_ns
+    aegra_ns = _peer_ns_labels(aegra)
+    assert not any(l.get("zelkor.io/namespace-role") == "agent" for l in aegra_ns), aegra_ns
+    qdrant = _named(docs, "NetworkPolicy", "qdrant-dest-deny")
+    assert qdrant is not None
+    assert not any(l.get("zelkor.io/namespace-role") == "agent" for l in _peer_ns_labels(qdrant))
+    lf = _named(docs, "NetworkPolicy", "langfuse-dest-deny")
+    assert lf is not None
+    lf_pods = [
+        ((peer.get("podSelector") or {}).get("matchLabels") or {}).get("app.kubernetes.io/component")
+        for rule in (lf.get("spec") or {}).get("ingress") or []
+        for peer in rule.get("from") or []
+    ]
+    assert "aegra" in lf_pods and "guardrails" in lf_pods, lf_pods
+
+
+def test_dest_deny_operator_peers_when_operator_cr():
+    proc = _helm(
+        "-f",
+        str(QUICKSTART),
+        "--set",
+        "security.networkPolicies.enabled=true",
+        "--set",
+        "databases.mode=operator-cr",
+    )
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    cnpg = _named(docs, "NetworkPolicy", "cnpg-dest-deny")
+    assert cnpg is not None
+    assert any(
+        l.get("kubernetes.io/metadata.name") == "cnpg-system" for l in _peer_ns_labels(cnpg)
+    )

@@ -122,6 +122,46 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- end -}}
 {{- end }}
 
+{{- define "zelkor-platform.isolationAgentNamespaces" -}}
+{{- $iso := ((.Values.platform).isolation | default dict) -}}
+{{- if $iso.agentNamespaces -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.operatorCr" -}}
+{{- if eq ((.Values.databases).mode | default "") "operator-cr" -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.envoyDataplaneNamespace" -}}
+{{- ((.Values.gateway.dataplane).namespace | default "envoy-gateway-system") -}}
+{{- end }}
+
+{{- define "zelkor-platform.destDenySameNsAgentPeers" -}}
+- podSelector:
+    matchLabels:
+      zelkor.io/workload-type: agent
+{{- end }}
+
+{{- define "zelkor-platform.destDenySameNsInitPeers" -}}
+- podSelector:
+    matchLabels:
+      zelkor.io/workload-type: datastore-init
+{{- end }}
+
+{{- define "zelkor-platform.destDenyAgentPeers" -}}
+- namespaceSelector:
+    matchLabels:
+      zelkor.io/namespace-role: agent
+  podSelector:
+    matchLabels:
+      zelkor.io/workload-type: agent
+- namespaceSelector:
+    matchLabels:
+      zelkor.io/namespace-role: agent
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: aegra
+{{- end }}
+
 {{- define "zelkor-platform.compile.intent" -}}
 {{- $intent := (.Values.workload.intent | default dict) -}}
 {{- $_ := set .Values "__workloadIntent" $intent -}}

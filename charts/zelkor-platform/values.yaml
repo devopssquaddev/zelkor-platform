@@ -4,7 +4,7 @@ extraManifests: []
 # V2 intent API: platform.*, workspace.*, workload.* (compiled to internal templates at render).
 # Substrate keys (postgresql, gateway, databases, security.sandbox, …) stay at the root.
 #
-# First-party images published as ghcr.io/devopssquaddev/zelkor-*:2.3.1 (Chart.yaml appVersion). Kind inherits these tags; IMAGE_TAG=dev is opt-in.
+# First-party images published as ghcr.io/devopssquaddev/zelkor-*:2.3.2 (Chart.yaml appVersion). Kind inherits these tags; IMAGE_TAG=dev is opt-in.
 
 global:
   tier: oss
@@ -12,6 +12,8 @@ global:
   imagePullSecrets: []
   initContainerImage: busybox:1.38.0
 platform:
+  isolation:
+    agentNamespaces: false
   mTLS:
     enabled: false
   tenants:
@@ -81,7 +83,7 @@ platform:
           sampling: 0.1
         image:
           repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-          tag: 2.3.1
+          tag: 2.3.2
           digest: ''
       extraProjects: []
       nextauthUrl: ''
@@ -206,7 +208,7 @@ workspace:
       replicaCount: 1
       image:
         repository: ghcr.io/devopssquaddev/zelkor-guardrails
-        tag: 2.3.1
+        tag: 2.3.2
         digest: ''
       configsDir: "/etc/nemoguardrails/configs"
       defaultConfigId: content_safety
@@ -261,7 +263,7 @@ workspace:
     extraBackends: []
     image:
       repository: ghcr.io/devopssquaddev/zelkor-mcp
-      tag: 2.3.1
+      tag: 2.3.2
       digest: ''
     postgresMCP:
       enabled: true
@@ -376,7 +378,7 @@ workspace:
       strictIsolation: false
       workerImage:
         repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-        tag: 2.3.1
+        tag: 2.3.2
         digest: ''
       resources:
         requests:
@@ -508,12 +510,12 @@ workload:
       enabled: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra
-      tag: 2.3.1
+      tag: 2.3.2
       digest: ''
     cli:
       image:
         repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-        tag: 2.3.1
+        tag: 2.3.2
         digest: ''
     resources:
       requests:

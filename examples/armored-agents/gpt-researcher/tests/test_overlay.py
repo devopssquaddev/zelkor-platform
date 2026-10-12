@@ -44,6 +44,46 @@ def _docs(rendered: str) -> list:
     return [d for d in yaml.safe_load_all(rendered) if d]
 
 
+def test_overlay_cross_namespace_fqdn_and_checkpointer_egress():
+    docs = _docs(
+        _helm(
+            "--namespace",
+            "gptr",
+            "--set",
+            "platform.namespace=zelkor",
+            "--set",
+            "security.networkPolicies.enabled=true",
+        )
+    )
+    dumped = yaml.dump(docs)
+    assert "zelkor-platform-ai-gateway.zelkor.svc.cluster.local" in dumped
+    assert "zelkor-platform-mcp.zelkor.svc.cluster.local" in dumped
+    assert "envoy-gateway-system" in dumped
+    nps = [d for d in docs if d.get("kind") == "NetworkPolicy"]
+    assert nps
+    egress = next(d for d in nps if d["metadata"]["name"].endswith("-egress"))
+    dumped_e = yaml.dump(egress)
+    assert "5432" in dumped_e
+    assert "6379" in dumped_e
+    assert "qdrant" not in dumped_e.lower()
+    ingress = next(d for d in nps if d["metadata"]["name"].endswith("-ingress"))
+    froms = ingress["spec"]["ingress"][0]["from"]
+    assert any(
+        (p.get("namespaceSelector") or {}).get("matchLabels", {}).get("kubernetes.io/metadata.name")
+        == "envoy-gateway-system"
+        for p in froms
+    )
+    assert all("aegra" not in yaml.dump(p.get("podSelector") or {}) for p in froms)
+
+
+def test_values_yaml_has_no_namespace_or_np_knobs():
+    text = VALUES.read_text(encoding="utf-8")
+    assert "agentNamespaces" not in text
+    assert "networkPolicies" not in text
+    assert "platform.namespace" not in text
+    assert "gptr" not in text.lower() or "gpt-researcher" in text
+
+
 def test_overlay_render_gvisor_clusterip():
     docs = _docs(_helm())
     svc = next(d for d in docs if d.get("kind") == "Service")
