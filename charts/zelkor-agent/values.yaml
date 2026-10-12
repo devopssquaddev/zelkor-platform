@@ -36,7 +36,7 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "2.3.1"
+  tag: "2.3.2"
   digest: ""
   pullPolicy: ""
 
@@ -59,7 +59,14 @@ nJobsPerWorker: 10
 workerDrainTimeout: 30
 terminationGracePeriodSeconds: 35
 
+security:
+  networkPolicies:
+    enabled: false
+
 platform:
+  # Platform Helm release namespace. Empty → this release namespace.
+  # CLI sets this when `zelkor deploy --namespace` differs from the platform env.
+  namespace: ""
   # Platform Helm release name. When set and URLs below are empty, constructs
   # {release}-ai-gateway / {release}-mcp / {release}-langfuse and
   # sharedRoute {release}-gateway. GitOps workers envFrom {release}-langfuse-otel.

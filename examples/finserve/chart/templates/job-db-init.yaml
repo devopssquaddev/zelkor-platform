@@ -11,6 +11,7 @@ spec:
     metadata:
       labels:
         {{- include "finserve.labels" . | nindent 8 }}
+        zelkor.io/workload-type: datastore-init
     spec:
       restartPolicy: OnFailure
       containers:

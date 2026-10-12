@@ -66,6 +66,15 @@ zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml
 zelkor run --graph-id gpt-researcher --input "Summarize the latest gVisor isolation model"
 ```
 
+Optional other namespace (operator labels the ns; CLI compiles FQDNs):
+
+```bash
+kubectl create namespace gptr
+kubectl label namespace gptr zelkor.io/namespace-role=agent
+# platform overlay: platform.isolation.agentNamespaces: true
+zelkor deploy -f examples/armored-agents/gpt-researcher/values.yaml --namespace gptr
+```
+
 `deploy -f` fails if `tavily` is missing from `workspace.tools.extraBackends`. It builds the sibling `Dockerfile` at the repo root, then kind-loads (kind) or pushes (`--registry` / `ZELKOR_IMAGE_REGISTRY` off kind). Skip the build with `ZELKOR_SKIP_BUILD=1` when the wrap image is already in the registry.
 
 See [Deploy an Agent](../../../docs/agent-deploy.md). If `tools/list` has no `tavily__*` prefix, [hosted extra MCP tools missing](../../../docs/kb/hosted-mcp-tls.md).

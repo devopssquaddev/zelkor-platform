@@ -32,6 +32,9 @@ from zelkor.main import (  # noqa: E402
     in_cluster_openai_base_url,
     kube_argv,
     main,
+    bind_worker_to_agent_namespace,
+    env_for_namespace,
+    rewrite_in_cluster_url,
     merge_catalog_values,
     _deploy_ready,
     _wait_agent_rollout,
@@ -388,6 +391,36 @@ def test_in_cluster_openai_base_url_uses_ai_gateway_service():
 
     env = Env(name="local", kube_context="kind-zelkor", namespace="default")
     assert in_cluster_openai_base_url(env, runner=runner) == "http://zelkor-platform-ai-gateway:80/v1"
+
+
+def test_rewrite_in_cluster_url_adds_platform_ns():
+    assert (
+        rewrite_in_cluster_url("postgresql://u:p@zelkor-platform-postgresql:5432/aegra", "zelkor")
+        == "postgresql://u:p@zelkor-platform-postgresql.zelkor.svc.cluster.local:5432/aegra"
+    )
+    assert (
+        rewrite_in_cluster_url("http://already.zelkor.svc:80", "zelkor")
+        == "http://already.zelkor.svc.cluster.local:80"
+    )
+
+
+def test_bind_worker_urls_use_ai_gateway_fqdn_not_envoy():
+    info = PlatformInfo(release="zelkor-platform", mcp_url="http://zelkor-platform-mcp")
+    bind_worker_to_agent_namespace(info, "gptr", "zelkor")
+    assert info.openai_base_url == "http://zelkor-platform-ai-gateway.zelkor.svc.cluster.local:80/v1"
+    assert "envoy-gateway-system" not in info.openai_base_url
+    assert info.mcp_url == "http://zelkor-platform-mcp.zelkor.svc.cluster.local"
+    same = PlatformInfo(release="zelkor-platform", openai_base_url="http://zelkor-platform-ai-gateway:80/v1")
+    bind_worker_to_agent_namespace(same, "zelkor", "zelkor")
+    assert same.openai_base_url == "http://zelkor-platform-ai-gateway:80/v1"
+
+
+def test_env_for_namespace_keeps_context():
+    env = Env(name="demo", kube_context="k3s", namespace="zelkor", kubeconfig="/tmp/kc")
+    other = env_for_namespace(env, "gptr")
+    assert other.namespace == "gptr"
+    assert other.kube_context == "k3s"
+    assert env_for_namespace(env, "zelkor") is env
 
 
 def test_auth_values_copy_platform_jwt_contract():

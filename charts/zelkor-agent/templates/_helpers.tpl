@@ -91,12 +91,37 @@ app.kubernetes.io/component: aegra
 {{- ((.Values.platform).releaseName | default "") | toString -}}
 {{- end }}
 
+{{- define "zelkor-agent.platformNamespace" -}}
+{{- $ns := ((.Values.platform).namespace | default "") | toString | trim -}}
+{{- if $ns -}}
+{{- $ns -}}
+{{- else -}}
+{{- .Release.Namespace -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.crossNamespace" -}}
+{{- if ne (include "zelkor-agent.platformNamespace" .) .Release.Namespace -}}true{{- else -}}false{{- end -}}
+{{- end }}
+
+{{- define "zelkor-agent.clusterHost" -}}
+{{- $name := .name -}}
+{{- $root := .root -}}
+{{- $pns := include "zelkor-agent.platformNamespace" $root -}}
+{{- if eq $pns $root.Release.Namespace -}}
+{{- $name -}}
+{{- else -}}
+{{- printf "%s.%s.svc.cluster.local" $name $pns -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-agent.openaiBaseUrl" -}}
 {{- $explicit := ((.Values.platform).openaiBaseUrl | default "") | toString -}}
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else if (include "zelkor-agent.platformReleaseName" .) -}}
-{{- printf "http://%s-ai-gateway:80/v1" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- $host := include "zelkor-agent.clusterHost" (dict "root" . "name" (printf "%s-ai-gateway" (include "zelkor-agent.platformReleaseName" .))) -}}
+{{- printf "http://%s:80/v1" $host -}}
 {{- else -}}
 {{- "" -}}
 {{- end -}}
@@ -107,7 +132,8 @@ app.kubernetes.io/component: aegra
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else if (include "zelkor-agent.platformReleaseName" .) -}}
-{{- printf "http://%s-mcp" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- $host := include "zelkor-agent.clusterHost" (dict "root" . "name" (printf "%s-mcp" (include "zelkor-agent.platformReleaseName" .))) -}}
+{{- printf "http://%s" $host -}}
 {{- else -}}
 {{- "" -}}
 {{- end -}}
@@ -130,7 +156,8 @@ app.kubernetes.io/component: aegra
 {{- if $explicit -}}
 {{- $explicit -}}
 {{- else if (include "zelkor-agent.platformReleaseName" .) -}}
-{{- printf "http://%s-langfuse:3000" (include "zelkor-agent.platformReleaseName" .) -}}
+{{- $host := include "zelkor-agent.clusterHost" (dict "root" . "name" (printf "%s-langfuse" (include "zelkor-agent.platformReleaseName" .))) -}}
+{{- printf "http://%s:3000" $host -}}
 {{- else -}}
 {{- "" -}}
 {{- end -}}

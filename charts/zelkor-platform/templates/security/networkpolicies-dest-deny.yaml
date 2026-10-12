@@ -1,0 +1,338 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- if and .Values.security.networkPolicies.enabled (or .Values.aegra.enabled .Values.mcp.enabled) }}
+{{- $fullname := include "zelkor-platform.fullname" . }}
+{{- $ns := .Release.Namespace }}
+{{- $envoyNs := include "zelkor-platform.envoyDataplaneNamespace" . }}
+{{- $isolation := eq (include "zelkor-platform.isolationAgentNamespaces" .) "true" }}
+{{- $operator := eq (include "zelkor-platform.operatorCr" .) "true" }}
+{{- $labHostNetwork := (.Values.security.mcp).acceptUnprotectedBackends | default false }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-default-deny-ingress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+{{- if $labHostNetwork }}
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: NotIn
+        values:
+          - mcp-postgres
+          - mcp-qdrant
+          - mcp-sandbox
+          - mcp-aigateway
+          - mcp-object
+          - aegra
+          - langfuse
+          - guardrails
+{{- else }}
+  podSelector: {}
+{{- end }}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-postgres-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [postgresql]
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: postgresql
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: aegra
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-postgres
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse-bootstrap
+        {{- include "zelkor-platform.destDenySameNsAgentPeers" . | nindent 8 }}
+        {{- include "zelkor-platform.destDenySameNsInitPeers" . | nindent 8 }}
+        {{- if $isolation }}
+        {{- include "zelkor-platform.destDenyAgentPeers" . | nindent 8 }}
+        {{- end }}
+        {{- if $operator }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 5432
+{{- if $operator }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-cnpg-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: cnpg.io/cluster
+        operator: Exists
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: aegra
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-postgres
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse-bootstrap
+        - podSelector:
+            matchExpressions:
+              - key: cnpg.io/cluster
+                operator: Exists
+        {{- include "zelkor-platform.destDenySameNsAgentPeers" . | nindent 8 }}
+        {{- include "zelkor-platform.destDenySameNsInitPeers" . | nindent 8 }}
+        {{- if $isolation }}
+        {{- include "zelkor-platform.destDenyAgentPeers" . | nindent 8 }}
+        {{- end }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 8000
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-valkey-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: valkey
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: valkey
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: aegra
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+        {{- include "zelkor-platform.destDenySameNsAgentPeers" . | nindent 8 }}
+        {{- if $isolation }}
+        {{- include "zelkor-platform.destDenyAgentPeers" . | nindent 8 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-qdrant-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: qdrant
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-qdrant
+        {{- include "zelkor-platform.destDenySameNsInitPeers" . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: 6333
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-clickhouse-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: clickhouse
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+        {{- if $operator }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: clickhouse-operator
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8123
+        - protocol: TCP
+          port: 9000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-seaweedfs-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: seaweedfs
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: mcp-object
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+      ports:
+        - protocol: TCP
+          port: 8333
+        - protocol: TCP
+          port: 8888
+        - protocol: TCP
+          port: 80
+{{- if not $labHostNetwork }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-aegra-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: aegra
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $envoyNs | quote }}
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-langfuse-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: langfuse
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $envoyNs | quote }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse-bootstrap
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: langfuse
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: aegra
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: guardrails
+        {{- include "zelkor-platform.destDenySameNsAgentPeers" . | nindent 8 }}
+        {{- if $isolation }}
+        {{- include "zelkor-platform.destDenyAgentPeers" . | nindent 8 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-guardrails-dest-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: guardrails
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $envoyNs | quote }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: aegra
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ai-gateway
+        {{- include "zelkor-platform.destDenySameNsAgentPeers" . | nindent 8 }}
+        {{- if $isolation }}
+        {{- include "zelkor-platform.destDenyAgentPeers" . | nindent 8 }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8000
+{{- end }}
+{{- end }}
