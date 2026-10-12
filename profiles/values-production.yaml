@@ -81,7 +81,6 @@ platform:
           seedFromMcp: false
         evaluators:
           seedCode: true
-          sampling: 1
         image:
           tag: 2.3.1
           digest: sha256:03ebb6ca4cf610d28be22ba80261296e6dcba90b33768efde77755026442d3ff
