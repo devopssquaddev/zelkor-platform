@@ -82,7 +82,7 @@ def test_uat22_seed_on_enables_dispatcher_and_bootstrap(profile: Path):
         assert env["LANGFUSE_CODE_EVAL_DISPATCHER"] == "insecure-local"
         assert env["QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED"] == "true"
     assert _bootstrap_env(docs)["SEED_CODE_EVALUATORS"] == "true"
-    expected_sampling = "1" if profile.name in {"values-local.yaml", "values-production.yaml"} else "0.1"
+    expected_sampling = "1" if profile.name == "values-local.yaml" else "0.1"
     assert _bootstrap_env(docs)["SEED_CODE_EVAL_SAMPLING"] == expected_sampling
 
 

@@ -71,4 +71,4 @@ A native prefix is the tool name the platform assigns, such as `postgres__`, `qd
 
 `zelkor-tool-succeeded` runs only on a tool span that is already an error, and the value is always **false**. A healthy tool call has no score of that name.
 
-Quickstart and production turn these scores on. Set `platform.telemetry.langfuse.surfaces.evaluators.seedCode` to `false` to leave them off. The chart samples **10%** of matching observations (`evaluators.sampling: 0.1`). Local kind and Path B production overlays set `sampling: 1`.
+Quickstart and production turn these scores on. Set `platform.telemetry.langfuse.surfaces.evaluators.seedCode` to `false` to leave them off. The chart samples **10%** of matching observations (`evaluators.sampling: 0.1`). The local kind overlay sets `sampling: 1`.
