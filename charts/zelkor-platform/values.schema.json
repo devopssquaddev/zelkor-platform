@@ -410,6 +410,12 @@
                         "seedCode": {
                           "type": "boolean",
                           "description": "Value for platform.telemetry.langfuse.surfaces.evaluators.seedCode."
+                        },
+                        "sampling": {
+                          "type": "number",
+                          "description": "Value for platform.telemetry.langfuse.surfaces.evaluators.sampling.",
+                          "minimum": 0,
+                          "maximum": 1
                         }
                       },
                       "additionalProperties": false

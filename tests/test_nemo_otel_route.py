@@ -6,6 +6,7 @@ _root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_root / "images" / "common"))
 sys.path.insert(0, str(_root / "images" / "guardrails"))
 
+from langfuse_keep import LangfuseKeep, is_chat_completions_span, is_http_client_hop  # noqa: E402
 from otel_project_route import (  # noqa: E402
     basic_auth_header,
     identity_from_headers,
@@ -60,6 +61,12 @@ def test_is_orphan_http_client():
         kind = type("K", (), {"name": "CLIENT"})()
         parent = None
 
+    class _BarePost:
+        name = "POST"
+        kind = type("K", (), {"name": "CLIENT"})()
+        parent = None
+        attributes = {"http.url": "http://nemo/v1/chat/completions"}
+
     class _Nested:
         name = "POST /v1/chat/completions http send"
         kind = type("K", (), {"name": "CLIENT"})()
@@ -71,8 +78,65 @@ def test_is_orphan_http_client():
         parent = None
 
     assert is_orphan_http_client(_Orphan())
+    assert is_orphan_http_client(_BarePost())
     assert not is_orphan_http_client(_Nested())
     assert not is_orphan_http_client(_Server())
+
+
+class _Ctx:
+    def __init__(self, tid: int) -> None:
+        self.trace_id = tid
+
+
+class _HopSpan:
+    def __init__(self, name: str, tid: int, attributes=None, kind="CLIENT") -> None:
+        self.name = name
+        self.context = _Ctx(tid)
+        self.attributes = attributes or {}
+        self.kind = type("K", (), {"name": kind})()
+        self.parent = None
+
+
+def test_bare_post_with_chat_url_is_not_chat_keep():
+    bare = _HopSpan(
+        "POST",
+        9,
+        {"http.url": "http://zelkor-platform-guardrails-nemo:8000/v1/chat/completions"},
+    )
+    assert is_http_client_hop(bare)
+    assert not is_chat_completions_span(bare)
+    assert is_http_client_hop(_HopSpan("POST http send", 9))
+    assert is_chat_completions_span(_HopSpan("POST /v1/chat/completions", 9, kind="SERVER"))
+
+
+def test_keep_drops_untitled_post_batch():
+    keep = LangfuseKeep()
+    root = _HopSpan(
+        "POST",
+        21,
+        {"http.url": "http://nemo/v1/chat/completions"},
+    )
+    child = _HopSpan("POST http send", 21)
+    leaked = _HopSpan(
+        "POST http send",
+        22,
+        {"langfuse.trace.name": "finserve-research"},
+    )
+    kept = keep.filter_batch([child, root, leaked])
+    assert [s.name for s in kept] == []
+
+
+def test_keep_nested_http_send_under_chat_server():
+    keep = LangfuseKeep()
+    send = _HopSpan("POST /v1/chat/completions http send", 8)
+    recv = _HopSpan("POST /v1/chat/completions http receive", 8)
+    server = _HopSpan("POST /v1/chat/completions", 8, kind="SERVER")
+    kept = keep.filter_batch([send, recv, server])
+    assert [s.name for s in kept] == [
+        "POST /v1/chat/completions http send",
+        "POST /v1/chat/completions http receive",
+        "POST /v1/chat/completions",
+    ]
 
 
 def test_drop_probe_span_includes_fastapi_children():

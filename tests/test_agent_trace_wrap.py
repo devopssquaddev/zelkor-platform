@@ -10,13 +10,16 @@ _root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_root / "images" / "common"))
 sys.path.insert(0, str(_root / "images" / "aegra"))
 
+from langfuse_keep import is_inbound_http_server  # noqa: E402
 from trace_wrap import (  # noqa: E402
     ProbeFilterSpanProcessor,
     assistant_output_text,
     begin_run_tools,
     clip_io,
+    disable_inbound_http_instrumentors,
     excluded_probe_paths,
     identity_headers,
+    install_langfuse_export_filter,
     install_probe_span_filter,
     is_probe_span,
     openinference_span_for_run,
@@ -259,6 +262,104 @@ def test_probe_filter_skips_export():
     inner.on_end.assert_not_called()
 
 
+def test_is_inbound_http_server_names_and_kind():
+    assert is_inbound_http_server(_NamedSpan("GET"))
+    assert is_inbound_http_server(_NamedSpan("POST /"))
+    assert is_inbound_http_server(_NamedSpan("GET /wp-login.php"))
+    assert is_inbound_http_server(_NamedSpan("GET /wp-json/"))
+    assert is_inbound_http_server(_NamedSpan("GET /runs"))
+    assert is_inbound_http_server(_NamedSpan("GET /openapi.json"))
+    leaked = _NamedSpan(
+        "GET /wp-login.php", {"langfuse.trace.name": "finserve-advisor"}
+    )
+    assert is_inbound_http_server(leaked)
+    assert not is_inbound_http_server(_NamedSpan("POST /v1/chat/completions"))
+    assert not is_inbound_http_server(
+        _NamedSpan("POST /v1/chat/completions http send")
+    )
+    assert not is_inbound_http_server(
+        _NamedSpan("finserve-advisor", {"langfuse.trace.name": "finserve-advisor"})
+    )
+    server = _NamedSpan("HTTP GET", {"http.route": "/wp-login.php"})
+    server.kind = type("K", (), {"name": "SERVER"})()
+    assert is_inbound_http_server(server)
+
+
+def test_keep_drops_inbound_http_even_with_leaked_identity():
+    inner = MagicMock()
+    filt = ProbeFilterSpanProcessor(inner)
+    for name in (
+        "GET",
+        "POST /",
+        "GET /wp-login.php",
+        "GET /wp-json/",
+        "GET /runs",
+        "GET /openapi.json",
+    ):
+        span = _NamedSpan(name, trace_id=30)
+        filt.on_start(span)
+        filt.on_end(span)
+    leaked = _NamedSpan(
+        "GET /wp-login.php",
+        {"langfuse.trace.name": "finserve-advisor"},
+        trace_id=31,
+    )
+    filt.on_start(leaked)
+    filt.on_end(leaked)
+    pregel = _NamedSpan(
+        "finserve-advisor",
+        {"langfuse.trace.name": "finserve-advisor"},
+        trace_id=32,
+    )
+    filt.on_start(pregel)
+    filt.on_end(pregel)
+    envelope = _NamedSpan("POST /threads/t1/runs", trace_id=32)
+    filt.on_start(envelope)
+    filt.on_end(envelope)
+    child = _NamedSpan("ChatOpenAI", trace_id=32)
+    filt.on_start(child)
+    filt.on_end(child)
+    chat = _NamedSpan("POST /v1/chat/completions", trace_id=33)
+    filt.on_start(chat)
+    filt.on_end(chat)
+    assert [c.args[0].name for c in inner.on_end.call_args_list] == [
+        "finserve-advisor",
+        "ChatOpenAI",
+        "POST /v1/chat/completions",
+    ]
+
+
+def test_langfuse_export_filter_drops_http(monkeypatch):
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.trace.export import SpanExportResult
+
+    sent: list[list[str]] = []
+
+    def capture(self, spans):
+        sent.append([span.name for span in spans])
+        return SpanExportResult.SUCCESS
+
+    monkeypatch.setattr(OTLPSpanExporter, "export", capture)
+    install_langfuse_export_filter._done = False  # type: ignore[attr-defined]
+    install_langfuse_export_filter()
+    try:
+        exporter = OTLPSpanExporter.__new__(OTLPSpanExporter)
+        http = _NamedSpan("GET /wp-login.php", trace_id=1)
+        pregel = _NamedSpan(
+            "finserve-advisor",
+            {"langfuse.trace.name": "finserve-advisor"},
+            trace_id=2,
+        )
+        OTLPSpanExporter.export(exporter, [http, pregel])
+        assert sent == [["finserve-advisor"]]
+    finally:
+        install_langfuse_export_filter._done = False  # type: ignore[attr-defined]
+
+
+def test_disable_inbound_http_instrumentors_is_safe():
+    disable_inbound_http_instrumentors()
+
+
 def test_keep_filter_exports_identity_and_chat_not_crud():
     inner = MagicMock()
     filt = ProbeFilterSpanProcessor(inner)
@@ -348,6 +449,8 @@ def test_sitecustomize_and_dockerfile_ship_trace_wrap():
     assert "astream_events" in wrap
     assert "langfuse.observation.input" in wrap
     assert "install_probe_span_filter" in wrap
+    assert "install_langfuse_export_filter" in wrap
+    assert "disable_inbound_http_instrumentors" in wrap
     assert "langfuse_keep.py" in dockerfile
     assert "trace_wrap.py" in dockerfile
     assert "chmod 644" in dockerfile

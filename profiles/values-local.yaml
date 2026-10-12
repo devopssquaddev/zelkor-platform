@@ -102,6 +102,7 @@ platform:
           seedFromMcp: true
         evaluators:
           seedCode: true
+          sampling: 1
       nextauthUrl: http://langfuse.localhost:8088
       nextauthSecret: zelkor-langfuse-nextauth-secret-12345
       salt: zelkor-langfuse-salt-123456789

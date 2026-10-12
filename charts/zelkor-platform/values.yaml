@@ -78,6 +78,7 @@ platform:
           authToken: ''
         evaluators:
           seedCode: false
+          sampling: 0.1
         image:
           repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
           tag: 2.3.1

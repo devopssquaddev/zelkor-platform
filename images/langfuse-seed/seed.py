@@ -37,6 +37,15 @@ CUSTOM_MODELS = [m.strip() for m in os.getenv("LANGFUSE_CUSTOM_MODELS", "").spli
 SEED_CONNECTION = os.getenv("SEED_LLM_CONNECTION", "").lower() in ("1", "true", "yes")
 SEED_TOOLS = os.getenv("SEED_MCP_TOOLS", "").lower() in ("1", "true", "yes")
 SEED_EVALS = os.getenv("SEED_CODE_EVALUATORS", "").lower() in ("1", "true", "yes")
+
+
+def eval_sampling() -> float:
+    raw = (os.getenv("SEED_CODE_EVAL_SAMPLING") or "0.1").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.1
+    return min(1.0, max(0.0, value))
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 PROJECT_ID = os.getenv("LANGFUSE_PROJECT_ID", "").strip()
 ORG_ID = os.getenv("LANGFUSE_ORG_ID", "").strip()
@@ -655,7 +664,25 @@ _TYPE_GENERATION = {
 }
 _LEVEL_ERROR = {"type": "stringOptions", "column": "level", "operator": "any of", "value": ["ERROR"]}
 _ROOT = {"type": "boolean", "column": "isRootObservation", "operator": "=", "value": True}
+_ENV_NOT_CODE_EVAL = {
+    "type": "stringOptions",
+    "column": "environment",
+    "operator": "none of",
+    "value": ["langfuse-code-eval"],
+}
+_HAS_TOOL_NAMES = {
+    "type": "stringObject",
+    "column": "metadata",
+    "key": "tool_names",
+    "operator": "is set",
+    "value": "",
+}
 _PREFIX_LINE = 'const PREFIXES = ["postgres__", "qdrant__", "sandbox__", "aigateway__"];'
+
+
+def _rule(*filters: dict) -> list:
+    return [_ENV_NOT_CODE_EVAL, *filters]
+
 
 # filename, score name, description, rule filter
 EVAL_CATALOG = (
@@ -663,49 +690,49 @@ EVAL_CATALOG = (
         "refusal",
         "zelkor-refusal-present",
         "Blocked GENERATION observations include platform refusal text.",
-        [_TYPE_GENERATION],
+        _rule(_TYPE_GENERATION),
     ),
     (
         "mcp_prefix",
         "zelkor-mcp-prefix",
         "Agent tool observations use a native MCP prefix (postgres__/qdrant__/sandbox__/aigateway__).",
-        [_TYPE_TOOL],
+        _rule(_TYPE_TOOL),
     ),
     (
         "tenant",
         "zelkor-tenant-userid",
         "Agent traces stamp userId / tenant metadata.",
-        [_ROOT],
+        _rule(_ROOT, _HAS_TOOL_NAMES),
     ),
     (
         "tool_succeeded",
         "zelkor-tool-succeeded",
         "TOOL observations are not in error.",
-        [_TYPE_TOOL, _LEVEL_ERROR],
+        _rule(_TYPE_TOOL, _LEVEL_ERROR),
     ),
     (
         "tool_repeat",
         "zelkor-tool-repeat",
         "A tool name is not repeated in the run.",
-        [_TYPE_TOOL],
+        _rule(_TYPE_TOOL),
     ),
     (
         "sandbox_clean",
         "zelkor-sandbox-clean",
         "TOOL observations do not set sandbox.violation.",
-        [_TYPE_TOOL],
+        _rule(_TYPE_TOOL),
     ),
     (
         "step_budget",
         "zelkor-step-budget",
         "Pregel root tool_names length is at most 25.",
-        [_ROOT],
+        _rule(_ROOT, _HAS_TOOL_NAMES),
     ),
     (
         "tool_names",
         "zelkor-tool-names",
         "Pregel root tool_names is a JSON array of strings.",
-        [_ROOT],
+        _rule(_ROOT, _HAS_TOOL_NAMES),
     ),
 )
 
@@ -833,6 +860,7 @@ def _upsert_eval_rule(
     existing: List[dict],
 ) -> None:
     assignment = [{"evaluatorId": evaluator_id, "variableMapping": None}]
+    sampling = eval_sampling()
     match = next((row for row in existing if row.get("name") == name), None)
     keys = (project["publicKey"], project["secretKey"])
     if match is None:
@@ -842,6 +870,7 @@ def _upsert_eval_rule(
             {
                 "name": name,
                 "enabled": True,
+                "sampling": sampling,
                 "filter": filters,
                 "evaluatorAssignments": assignment,
             },
@@ -858,7 +887,17 @@ def _upsert_eval_rule(
     same_filter = json.dumps(match.get("filter") or [], sort_keys=True) == json.dumps(
         filters, sort_keys=True
     )
-    if match.get("enabled") is True and same_filter and current_ids == {evaluator_id}:
+    try:
+        current_sampling = float(match.get("sampling"))
+    except (TypeError, ValueError):
+        current_sampling = 1.0
+    same_sampling = abs(current_sampling - sampling) < 1e-9
+    if (
+        match.get("enabled") is True
+        and same_filter
+        and same_sampling
+        and current_ids == {evaluator_id}
+    ):
         return
     rule_id = str(match.get("id") or "")
     _request(
@@ -866,6 +905,7 @@ def _upsert_eval_rule(
         f"/api/public/v2/evaluation-rules/{urllib.parse.quote(rule_id, safe='')}",
         {
             "enabled": True,
+            "sampling": sampling,
             "filter": filters,
             "evaluatorAssignments": assignment,
         },

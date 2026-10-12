@@ -1,7 +1,9 @@
 """Langfuse OTEL export allowlist: agent identity or /v1/chat/completions.
 
-Probes are always dropped. Other HTTP (openapi, metrics, Agent Protocol CRUD)
-is dropped unless the span already belongs to a kept trace.
+Probes and Aegra inbound HTTP SERVER spans never export. Untitled NeMo
+CLIENT hops (bare ``POST``, ``http send``) never independently keep a
+trace. Other untitled HTTP is dropped unless the span already belongs
+to a kept trace.
 """
 from __future__ import annotations
 
@@ -79,8 +81,58 @@ def has_agent_identity(span: Any) -> bool:
     return False
 
 
+def is_http_client_hop(span: Any) -> bool:
+    """httpx CLIENT send/receive or a bare METHOD name (``POST``).
+
+    These never independently keep a trace. Nested hops under a kept
+    ``POST /v1/chat/completions`` SERVER still export when the tid is kept.
+    """
+    name = str(getattr(span, "name", "") or "").strip()
+    lowered = name.lower()
+    if "http send" in lowered or "http receive" in lowered:
+        return True
+    parts = name.split()
+    if parts and parts[0].upper() in _HTTP_METHODS and len(parts) == 1:
+        return "SERVER" not in _span_kind_name(span)
+    return False
+
+
 def is_chat_completions_span(span: Any) -> bool:
+    """True for the NeMo FastAPI SERVER hop, not a bare CLIENT ``POST``."""
+    name = str(getattr(span, "name", "") or "").strip()
+    lowered = name.lower()
+    if "http send" in lowered or "http receive" in lowered:
+        return False
+    parts = name.split()
+    if parts and parts[0].upper() in _HTTP_METHODS and len(parts) == 1:
+        return False
     return span_http_path(span) == _CHAT_PATH
+
+
+def _span_kind_name(span: Any) -> str:
+    kind = getattr(span, "kind", None)
+    return str(getattr(kind, "name", None) or kind or "")
+
+
+def is_inbound_http_server(span: Any) -> bool:
+    """Aegra FastAPI/ASGI SERVER hits — never independently keepable.
+
+    Bare ``METHOD`` / ``METHOD /path`` names are inbound. Extra tokens
+    (``POST /v1/chat/completions http send``) are client hops, not this.
+    ``/v1/chat/completions`` stays keepable for NeMo.
+    """
+    if is_chat_completions_span(span):
+        return False
+    name = str(getattr(span, "name", "") or "").strip()
+    parts = name.split()
+    if parts and parts[0].upper() in _HTTP_METHODS and len(parts) <= 2:
+        return True
+    if "SERVER" not in _span_kind_name(span):
+        return False
+    attrs = getattr(span, "attributes", None) or {}
+    if attrs.get("http.method") or attrs.get("http.route") or attrs.get("http.target"):
+        return True
+    return span_http_path(span) is not None
 
 
 class TraceIdLru:
@@ -111,8 +163,11 @@ class LangfuseKeep:
 
     def note(self, span: Any) -> bool:
         """Mark the trace if this span is independently keepable. Return keep."""
-        if is_probe_span(span):
+        if is_probe_span(span) or is_inbound_http_server(span):
             return False
+        if is_http_client_hop(span):
+            tid = span_trace_id(span)
+            return bool(tid and tid in self._kept)
         if has_agent_identity(span) or is_chat_completions_span(span):
             tid = span_trace_id(span)
             if tid:
@@ -122,12 +177,16 @@ class LangfuseKeep:
         return bool(tid and tid in self._kept)
 
     def should_export(self, span: Any) -> bool:
+        if is_probe_span(span) or is_inbound_http_server(span):
+            return False
         return self.note(span)
 
     def prepare_batch(self, spans: Iterable[Any]) -> None:
         """Mark keep ids before filtering a batch (children may precede roots)."""
         for span in spans:
-            if is_probe_span(span):
+            if is_probe_span(span) or is_inbound_http_server(span):
+                continue
+            if is_http_client_hop(span):
                 continue
             if has_agent_identity(span) or is_chat_completions_span(span):
                 tid = span_trace_id(span)
