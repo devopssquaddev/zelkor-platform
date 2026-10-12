@@ -17,6 +17,8 @@ import pytest
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
 V2_FIELDS = "core,basic,io,trace_context"
+CODE_EVAL_ENVIRONMENT = "langfuse-code-eval"
+CODE_EVAL_NAME_PREFIX = "Execute evaluator"
 
 
 def langfuse_auth() -> tuple[str, str]:
@@ -78,6 +80,28 @@ def _from_start_time(minutes: int = 10) -> str:
     return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def is_code_eval_observation(obs: dict) -> bool:
+    """Langfuse 4.50 writes one execution trace per code-evaluator job."""
+    if str(obs.get("environment") or "") == CODE_EVAL_ENVIRONMENT:
+        return True
+    name = str(obs.get("name") or "")
+    trace_name = str(obs.get("traceName") or "")
+    return name.startswith(CODE_EVAL_NAME_PREFIX) or trace_name.startswith(CODE_EVAL_NAME_PREFIX)
+
+
+def is_code_eval_trace(trace: dict) -> bool:
+    if str(trace.get("environment") or "") == CODE_EVAL_ENVIRONMENT:
+        return True
+    if str(trace.get("name") or "").startswith(CODE_EVAL_NAME_PREFIX):
+        return True
+    rows = [row for row in (trace.get("observations") or []) if isinstance(row, dict)]
+    return bool(rows) and all(is_code_eval_observation(row) for row in rows)
+
+
+def drop_code_eval_observations(rows: list[dict]) -> list[dict]:
+    return [row for row in rows if not is_code_eval_observation(row)]
+
+
 def list_observations(
     *,
     limit: int = 100,
@@ -116,7 +140,7 @@ def list_observations(
     if resp.status_code != 200 and "timed out" in resp.text.lower():
         pytest.skip(f"Langfuse observations query timed out: {resp.text[:200]}")
     assert resp.status_code == 200, resp.text
-    return resp.json().get("data") or []
+    return drop_code_eval_observations(resp.json().get("data") or [])
 
 
 def _traces_from_observations(rows: list[dict]) -> list[dict]:
@@ -161,7 +185,7 @@ def list_traces(
         user_id=user_id,
         auth=auth,
     )
-    traces = _traces_from_observations(rows)
+    traces = [trace for trace in _traces_from_observations(rows) if not is_code_eval_trace(trace)]
     return traces[:limit]
 
 
@@ -219,6 +243,7 @@ def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
     """ERROR-level observations and failed tool outputs (not guardrail refusals)."""
     if rows is None:
         rows = list_observations(limit=100)
+    rows = drop_code_eval_observations(rows)
     bad = []
     seen: set[str] = set()
     for obs in rows:
@@ -327,17 +352,32 @@ def is_health_probe_trace(trace: dict, observations: list | None = None) -> bool
     return False
 
 
+_HTTP_METHODS = frozenset(
+    {"get", "head", "post", "put", "patch", "delete", "options"}
+)
+
+
+def _is_untitled_http_obs_name(name: str) -> bool:
+    text = name.lower().strip()
+    if "http send" in text or "http receive" in text:
+        return True
+    parts = text.split()
+    return len(parts) == 1 and parts[0] in _HTTP_METHODS
+
+
 def is_orphan_http_client_trace(trace: dict, observations: list | None = None) -> bool:
-    """Untitled one-span http send/receive (NeMo CLIENT root)."""
+    """Untitled NeMo CLIENT ``POST`` / ``http send`` trace (no graph identity)."""
     rows = observations if observations is not None else trace.get("observations") or []
     if not rows:
         return False
-    if any(o.get("parentObservationId") for o in rows if isinstance(o, dict)):
-        return False
-    names = [str(o.get("name") or "").lower() for o in rows if isinstance(o, dict)]
+    if any(str(o.get("traceName") or "").strip() for o in rows if isinstance(o, dict)):
+        tnames = {str(o.get("traceName") or "").strip() for o in rows if isinstance(o, dict)}
+        if tnames - {"", "POST", "GET", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}:
+            return False
+    names = [str(o.get("name") or "") for o in rows if isinstance(o, dict)]
     if not names:
         return False
-    return all("http send" in n or "http receive" in n for n in names)
+    return all(_is_untitled_http_obs_name(n) for n in names)
 
 
 def graph_root_output_is_assistant(output: Any) -> bool:

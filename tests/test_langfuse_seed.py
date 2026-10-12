@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "images" / "langfus
 
 from seed import (  # noqa: E402
     EVAL_CATALOG,
+    eval_sampling,
     extra_backend_names,
     keep_mcp_tool,
     load_evaluator_source,
@@ -611,7 +612,17 @@ def test_mcp_prefix_source_bakes_extra_backend(monkeypatch):
     assert "function evaluate" in src
 
 
+def test_eval_sampling_defaults_and_lab_override(monkeypatch):
+    monkeypatch.delenv("SEED_CODE_EVAL_SAMPLING", raising=False)
+    assert eval_sampling() == 0.1
+    monkeypatch.setenv("SEED_CODE_EVAL_SAMPLING", "1")
+    assert eval_sampling() == 1.0
+    monkeypatch.setenv("SEED_CODE_EVAL_SAMPLING", "bogus")
+    assert eval_sampling() == 0.1
+
+
 def test_seed_evaluators_upserts_jobs_once(monkeypatch):
+    monkeypatch.delenv("SEED_CODE_EVAL_SAMPLING", raising=False)
     calls = []
     stored = {"configs": [], "evaluators": [], "rules": []}
 
@@ -640,6 +651,7 @@ def test_seed_evaluators_upserts_jobs_once(monkeypatch):
                 "id": f"rule-{body['name']}",
                 "name": body["name"],
                 "enabled": True,
+                "sampling": body.get("sampling"),
                 "filter": body["filter"],
                 "evaluatorAssignments": body["evaluatorAssignments"],
             }
@@ -670,3 +682,23 @@ def test_seed_evaluators_upserts_jobs_once(monkeypatch):
         if method == "POST" and path == "/api/public/v2/evaluators"
     )
     assert not any(method == "PATCH" for method, _path, _body in calls)
+    posted_filters = [
+        body["filter"]
+        for method, path, body in calls
+        if method == "POST" and path == "/api/public/v2/evaluation-rules"
+    ]
+    posted_sampling = [
+        body.get("sampling")
+        for method, path, body in calls
+        if method == "POST" and path == "/api/public/v2/evaluation-rules"
+    ]
+    assert posted_sampling
+    assert all(sample == 0.1 for sample in posted_sampling)
+    assert posted_filters
+    for filters in posted_filters:
+        assert any(
+            item.get("column") == "environment"
+            and item.get("operator") == "none of"
+            and "langfuse-code-eval" in (item.get("value") or [])
+            for item in filters
+        )

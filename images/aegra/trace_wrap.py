@@ -16,8 +16,11 @@ from typing import Any
 from langfuse_keep import (  # noqa: F401
     LangfuseKeep,
     excluded_probe_paths,
+    is_inbound_http_server,
     is_probe_span,
 )
+
+_EXPORT_KEEP = LangfuseKeep()
 
 _log = logging.getLogger("zelkor-aegra-wrap")
 
@@ -105,6 +108,8 @@ class ProbeFilterSpanProcessor:
 
     Aegra runs bare ``uvicorn`` (not ``opentelemetry-instrument``), so Helm
     ``OTEL_PYTHON_*_EXCLUDED_URLS`` is ignored. Wrap the SDK multi-processor.
+    Inbound HTTP SERVER never exports (``langfuse_keep``). Last-mile filter is
+    ``install_langfuse_export_filter`` on ``OTLPSpanExporter.export``.
 
     Span.end() calls ``_on_ending`` on ``TracerProvider._active_span_processor``
     (not ``on_end``). Forward that hook or every request 500s.
@@ -153,6 +158,46 @@ def install_probe_span_filter(provider: Any) -> None:
     wrapped = ProbeFilterSpanProcessor(inner)
     provider._active_span_processor = wrapped
     _log.info("Langfuse keep-span filter installed")
+
+
+def disable_inbound_http_instrumentors() -> None:
+    """Drop FastAPI/ASGI SERVER instrumentors if a dependency loaded them."""
+    for mod_name, cls_name in (
+        ("opentelemetry.instrumentation.fastapi", "FastAPIInstrumentor"),
+        ("opentelemetry.instrumentation.asgi", "ASGIInstrumentor"),
+    ):
+        try:
+            mod = __import__(mod_name, fromlist=[cls_name])
+            inst = getattr(mod, cls_name, None)
+            if inst is None:
+                continue
+            obj = inst() if isinstance(inst, type) else inst
+            uninstrument = getattr(obj, "uninstrument", None)
+            if callable(uninstrument):
+                uninstrument()
+                _log.info("disabled inbound HTTP instrumentor %s", cls_name)
+        except Exception:
+            _log.debug("inbound HTTP instrumentor %s not present", cls_name)
+
+
+def install_langfuse_export_filter() -> None:
+    """Last-mile keep: tracers that captured the unwrapped processor still drop HTTP."""
+    if getattr(install_langfuse_export_filter, "_done", False):
+        return
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.trace.export import SpanExportResult
+
+    orig = OTLPSpanExporter.export
+
+    def _export(self, spans):  # type: ignore[no-untyped-def]
+        kept = _EXPORT_KEEP.filter_batch(spans)
+        if not kept:
+            return SpanExportResult.SUCCESS
+        return orig(self, kept)
+
+    OTLPSpanExporter.export = _export  # type: ignore[method-assign]
+    install_langfuse_export_filter._done = True  # type: ignore[attr-defined]
+    _log.info("Langfuse keep-export filter installed")
 
 
 def bound_contextvars() -> dict[str, Any]:
@@ -696,9 +741,17 @@ def patch_otel_setup() -> None:
         if provider is None:
             return
         try:
+            disable_inbound_http_instrumentors()
+        except Exception:
+            _log.exception("inbound HTTP instrumentor disable failed")
+        try:
             install_probe_span_filter(provider)
         except Exception:
             _log.exception("probe span filter install failed")
+        try:
+            install_langfuse_export_filter()
+        except Exception:
+            _log.exception("Langfuse export filter install failed")
         try:
             wrap_pregel_current_span(provider)
             _log.info("Pregel current-span wrap ok")

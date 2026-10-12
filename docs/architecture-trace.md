@@ -48,7 +48,7 @@ sequenceDiagram
 
 You deploy the agent as a ClusterIP workload. It is not the public edge. The platform injects OpenTelemetry headers (the ids that tie spans to this run) into that pod. The real provider key and the model call stay on the AI Gateway. See [Drop-In Agent Contract](architecture-agent-contract.md) and [North-South Exposure](architecture-exposure.md).
 
-The AI Gateway records the prompt and completion that actually went to the provider, and NeMo Guardrails records the prompt check. The graph worker records the run. Langfuse joins those spans on the thread id (`sessionId`) and the `run_id`. Tool calls use the `MCP_URL` the platform injects. You do not instrument the agent.
+The AI Gateway records the prompt and completion that actually went to the provider, and NeMo Guardrails records the prompt check. The graph worker records the run. Langfuse joins those spans on the thread id (`sessionId`) and the `run_id`. Tool calls use the `MCP_URL` the platform injects. You do not instrument the agent. Inbound HTTP on the graph worker (health checks, scanners, Agent Protocol envelope) is not ingested — the waterfall starts at the run root. Untitled NeMo client hops named only `POST` or `http send` are not ingested either; the chat check stays on `POST /v1/chat/completions` under that run.
 
 ## Trace Scores
 
@@ -71,4 +71,4 @@ A native prefix is the tool name the platform assigns, such as `postgres__`, `qd
 
 `zelkor-tool-succeeded` runs only on a tool span that is already an error, and the value is always **false**. A healthy tool call has no score of that name.
 
-Quickstart and production turn these scores on. Set `platform.telemetry.langfuse.surfaces.evaluators.seedCode` to `false` to leave them off.
+Quickstart and production turn these scores on. Set `platform.telemetry.langfuse.surfaces.evaluators.seedCode` to `false` to leave them off. The chart samples **10%** of matching observations (`evaluators.sampling: 0.1`). Local kind and Path B production overlays set `sampling: 1`.

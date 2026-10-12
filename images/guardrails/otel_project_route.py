@@ -2,7 +2,8 @@
 
 Keeps graph+NeMo in one project when agents use extraProjects keys.
 Stamps langfuse.trace.name / session / user on every NeMo span.
-Drops parentless httpx CLIENT http send/receive (untitled one-span traces).
+Drops untitled CLIENT ``POST`` / ``http send`` roots (empty Langfuse rows).
+Nested hops under FastAPI ``POST /v1/chat/completions`` stay.
 """
 from __future__ import annotations
 
@@ -75,9 +76,18 @@ def pk_from_span(span: Any, default: str) -> str:
 
 
 def is_orphan_http_client(span: Any) -> bool:
-    """True for parentless httpx CLIENT http send/receive (Langfuse one-span junk)."""
-    name = str(getattr(span, "name", "") or "").lower()
-    if "http send" not in name and "http receive" not in name:
+    """True for parentless untitled CLIENT hops (``POST``, ``http send``)."""
+    name = str(getattr(span, "name", "") or "").strip()
+    lowered = name.lower()
+    parts = name.split()
+    is_hop = "http send" in lowered or "http receive" in lowered
+    is_bare_method = (
+        bool(parts)
+        and parts[0].upper()
+        in {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+        and len(parts) == 1
+    )
+    if not is_hop and not is_bare_method:
         return False
     kind = getattr(span, "kind", None)
     kind_name = str(getattr(kind, "name", None) or kind)

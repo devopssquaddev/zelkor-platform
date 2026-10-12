@@ -11,8 +11,19 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "images" / "langfuse-seed"))
 
-from seed import EVAL_CATALOG  # noqa: E402
-from tests.helpers.langfuse import GATEWAY_BASE_URL, langfuse_get
+from seed import (  # noqa: E402
+    EVAL_CATALOG,
+    _ENV_NOT_CODE_EVAL,
+    _HAS_TOOL_NAMES,
+    _ROOT,
+)
+from tests.helpers.langfuse import (
+    GATEWAY_BASE_URL,
+    drop_code_eval_observations,
+    is_code_eval_observation,
+    is_code_eval_trace,
+    langfuse_get,
+)
 from tests.test_helm_values_schema import PROFILES, _docs, _helm
 
 _ON = (
@@ -57,6 +68,7 @@ def test_uat22_chart_default_leaves_dispatcher_off():
         assert "LANGFUSE_CODE_EVAL_DISPATCHER" not in env
         assert "QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED" not in env
     assert "SEED_CODE_EVALUATORS" not in _bootstrap_env(docs)
+    assert "SEED_CODE_EVAL_SAMPLING" not in _bootstrap_env(docs)
 
 
 @pytest.mark.parametrize("profile", _ON, ids=lambda path: path.name)
@@ -70,6 +82,8 @@ def test_uat22_seed_on_enables_dispatcher_and_bootstrap(profile: Path):
         assert env["LANGFUSE_CODE_EVAL_DISPATCHER"] == "insecure-local"
         assert env["QUEUE_CONSUMER_CODE_EVAL_EXECUTION_QUEUE_IS_ENABLED"] == "true"
     assert _bootstrap_env(docs)["SEED_CODE_EVALUATORS"] == "true"
+    expected_sampling = "1" if profile.name in {"values-local.yaml", "values-production.yaml"} else "0.1"
+    assert _bootstrap_env(docs)["SEED_CODE_EVAL_SAMPLING"] == expected_sampling
 
 
 @pytest.mark.parametrize("profile", _OFF, ids=lambda path: path.name)
@@ -80,6 +94,37 @@ def test_uat22_fast_profile_leaves_dispatcher_off(profile: Path):
     for env in _langfuse_envs(docs):
         assert "LANGFUSE_CODE_EVAL_DISPATCHER" not in env
     assert _bootstrap_env(docs).get("SEED_CODE_EVALUATORS", "false") == "false"
+
+
+def test_uat22_catalog_rules_exclude_code_eval_and_http_roots():
+    root_names = {"zelkor-tenant-userid", "zelkor-step-budget", "zelkor-tool-names"}
+    for _filename, score_name, _description, filters in EVAL_CATALOG:
+        assert _ENV_NOT_CODE_EVAL in filters, score_name
+        columns = {item.get("column") for item in filters}
+        assert "environment" in columns
+        if score_name in root_names:
+            assert _ROOT in filters
+            assert _HAS_TOOL_NAMES in filters
+        else:
+            assert _ROOT not in filters
+            assert _HAS_TOOL_NAMES not in filters
+
+
+def test_uat22_helpers_drop_execute_evaluator_rows():
+    eval_obs = {
+        "id": "e1",
+        "name": "Execute evaluator: zelkor-tenant-userid",
+        "environment": "langfuse-code-eval",
+        "traceName": "Execute evaluator: zelkor-tenant-userid",
+    }
+    agent_obs = {"id": "a1", "name": "finserve-advisor", "environment": "default"}
+    assert is_code_eval_observation(eval_obs)
+    assert not is_code_eval_observation(agent_obs)
+    assert drop_code_eval_observations([eval_obs, agent_obs]) == [agent_obs]
+    assert is_code_eval_trace(
+        {"name": "Execute evaluator: zelkor-step-budget", "observations": [eval_obs]}
+    )
+    assert not is_code_eval_trace({"name": "finserve-advisor", "observations": [agent_obs]})
 
 
 def test_uat22_catalog_sources_ship_in_the_seed_image():
@@ -124,4 +169,21 @@ def test_uat22_live_jobs_are_typescript_and_enabled():
         assert rule.get("enabled") is True
         columns = {item.get("column") for item in (rule.get("filter") or []) if isinstance(item, dict)}
         assert columns
-        assert columns <= {"type", "level", "isRootObservation"}
+        assert columns <= {"type", "level", "isRootObservation", "environment", "metadata"}
+        assert "environment" in columns
+        env = next(
+            item
+            for item in (rule.get("filter") or [])
+            if isinstance(item, dict) and item.get("column") == "environment"
+        )
+        assert env.get("operator") == "none of"
+        assert "langfuse-code-eval" in (env.get("value") or [])
+        assert 0 < float(rule.get("sampling")) <= 1
+        if "isRootObservation" in columns:
+            meta = next(
+                item
+                for item in (rule.get("filter") or [])
+                if isinstance(item, dict) and item.get("column") == "metadata"
+            )
+            assert meta.get("key") == "tool_names"
+            assert meta.get("operator") == "is set"
