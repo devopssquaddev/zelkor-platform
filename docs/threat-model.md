@@ -1,3 +1,13 @@
+---
+title: Zelkor Platform Threat Model
+description: The assets we protect, trust boundaries we enforce, and security promises we make.
+type: explanation
+sidebar_group: Architecture
+sidebar_order: 15
+audience: human
+edition: all
+---
+
 # Zelkor Platform Threat Model
 
 This document outlines the threat model for the Zelkor Platform Community Edition (CE). It defines the assets we protect, the trust boundaries we enforce, and the security promises we make. 
@@ -38,17 +48,17 @@ There is no security through obscurity. A control that depends on the attacker n
 
 ## 3. Security Promises (CE)
 
-When deployed in a production configuration (NetworkPolicies enabled, no development tokens or header-trust overrides), Zelkor CE guarantees the following:
+When deployed in a production configuration ([NetworkPolicies](architecture-network.md) enabled, no development tokens or header-trust overrides), Zelkor CE is designed and tested to ensure the following:
 
-- **Tenant Isolation:** Tenant B cannot get, search, or stream Tenant A's threads or runs.
+- **Tenant Isolation:** Tenant B cannot get, search, or stream Tenant A's threads or runs (see [Tenant Isolation](architecture-tenants.md)).
 - **Authentication:** Unsigned requests, invalid tokens, or missing tenant identities are rejected.
 - **Model Gateway:** Every agent LLM call uses the in-cluster AI Gateway. Completions cannot bypass the gateway to reach the provider directly.
 - **Tool Identity:** Tool call tenant identity is injected by the platform. The model, client, or agent environment cannot override it.
 - **Database MCP:** Identity matching and tenant scoping are enforced. Arbitrary writes via the query interface are rejected.
 - **Vector MCP:** Vector upsert and search operations are forced to use the caller's tenant filter.
-- **Code Execution:** Untrusted code execution runs in a gVisor sandbox.
+- **Code Execution:** Untrusted code execution runs in a [gVisor sandbox](architecture-sandbox.md).
 - **Network Isolation:** Agent pods cannot reach platform datastores, sandbox workers, extra-backend services, or the public internet except through the AI Gateway and MCP gateway.
-- **Exposure:** Production installs expose no public routes for internal services (e.g., databases, native MCPs, safety rails).
+- **Exposure:** Production installs expose no public routes for internal services (e.g., databases, native MCPs, safety rails) (see [North-South Exposure](architecture-exposure.md)).
 - **Guardrails:** Enabled safety and topic rails refuse in-scope harmful or off-topic content.
 - **Observability:** INFO+ logs and default traces do not contain credentials or prompt bodies. Provider keys live in platform secrets, not agent pod environments.
 

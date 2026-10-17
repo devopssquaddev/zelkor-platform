@@ -80,6 +80,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [North-South Exposure](architecture-exposure.md) | What Zelkor publishes to the internet versus what stays inside the cluster |
 | [Tenant Isolation](architecture-tenants.md) | How one tenant identity is applied on a run |
 | [Agent Datastores](architecture-datastores.md) | Stateful infrastructure (Postgres, Qdrant) and BYO options |
+| [Threat Model](threat-model.md) | Assets, boundaries, and security promises |
 
 ## Troubleshooting (KB)
 
