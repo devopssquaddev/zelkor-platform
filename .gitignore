@@ -30,6 +30,10 @@ red-team-report.xml
 website/.vitepress/cache/
 website/.vitepress/dist/
 website/node_modules/
+site/.vitepress/cache/
+site/.vitepress/dist/
+site/node_modules/
+site/npm-debug.log
 
 # Local kind/kubeconfig overrides
 kubeconfig
