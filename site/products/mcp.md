@@ -1,6 +1,6 @@
 ---
 title: MCP Tool Gateway
-description: One MCP_URL for Postgres, Qdrant, S3/SeaweedFS, the gVisor sandbox, and external MCP servers.
+description: One governed MCP endpoint for databases, vector search, files, and external tools.
 page: product
 slug: mcp
 ---

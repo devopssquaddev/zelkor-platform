@@ -1,6 +1,6 @@
 ---
 title: Multi-Tenant Auth
-description: Fail-closed JWT tenant isolation from /runs to Postgres RLS, Qdrant, and S3.
+description: Cryptographic tenant isolation from the front door down to the database row.
 page: product
 slug: tenancy
 ---

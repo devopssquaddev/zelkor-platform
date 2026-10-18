@@ -1,6 +1,6 @@
 ---
 title: Observability
-description: One run, one waterfall trace in self-hosted Langfuse v4—with zero tracing SDK in your agent code.
+description: One trace per agent run in self-hosted Langfuse—with zero SDKs in your code.
 page: product
 slug: observability
 ---

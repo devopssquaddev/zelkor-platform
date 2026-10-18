@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'Zelkor',
   description:
-    'Kubernetes runtime for LangGraph, LangChain, and Deep Agents. Zero upstream LLM keys in agent pods. Zelkor 2.3.2.',
+    'Kubernetes runtime for LangGraph, LangChain, and Deep Agents. No provider API keys in agent pods.',
   appearance: false,
   cleanUrls: true,
   srcExclude: ['README.md'],
@@ -12,7 +12,7 @@ export default defineConfig({
     [
       'script',
       {},
-      `(function(){try{var v=localStorage.getItem('zelkor-site-variant-v6');var a=(!v||v==='6'||v==='v6')?'v6':(v>='1'&&v<='5'?v:'v6');document.documentElement.setAttribute('data-variant',a)}catch(e){document.documentElement.setAttribute('data-variant','v6')}})()`,
+      `(function(){try{var v=localStorage.getItem('zelkor-site-variant-v7');var a=(!v||v==='7'||v==='v7')?'v7':(v==='6'||v==='v6')?'v6':(v>='1'&&v<='5'?v:'v7');document.documentElement.setAttribute('data-variant',a)}catch(e){document.documentElement.setAttribute('data-variant','v7')}})()`,
     ],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     [

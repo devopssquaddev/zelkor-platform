@@ -5,7 +5,7 @@ import { VARIANT_META, setVariant, variantId } from '../variant'
 <template>
   <div class="switcher-bar">
     <div class="switcher-inner">
-      <span class="switcher-label">6-variant preview</span>
+      <span class="switcher-label">7-variant preview</span>
       <div class="switcher-pills" role="group" aria-label="Copy and theme variant">
         <button
           v-for="item in VARIANT_META"

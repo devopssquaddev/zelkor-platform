@@ -9,18 +9,21 @@ export const VARIANT_META = [
   { id: 4 as const, name: 'Signal Crimson-Slate', short: 'Signal' },
   { id: 5 as const, name: 'Emerald Control Plane', short: 'Emerald' },
   { id: 6 as const, name: 'Emerald Defense', short: '6 · Emerald' },
+  { id: 7 as const, name: 'Emerald Buyer', short: '7 · Buyer' },
 ]
 
 export type VariantId = (typeof VARIANT_META)[number]['id']
 
-const KEY = 'zelkor-site-variant-v6'
+const KEY = 'zelkor-site-variant-v7'
 
-export const variantId = ref<VariantId>(6)
+export const variantId = ref<VariantId>(7)
 
 export const copy = computed<VariantCopy>(() => variants[variantId.value])
 
 export function variantAttr(id: VariantId): string {
-  return id === 6 ? 'v6' : String(id)
+  if (id === 7) return 'v7'
+  if (id === 6) return 'v6'
+  return String(id)
 }
 
 export function setVariant(id: VariantId) {
@@ -30,12 +33,16 @@ export function setVariant(id: VariantId) {
 export function initVariant() {
   if (typeof window === 'undefined') return
   const raw = window.localStorage.getItem(KEY)
+  if (raw === 'v7' || raw === '7') {
+    variantId.value = 7
+    return
+  }
   if (raw === 'v6' || raw === '6') {
     variantId.value = 6
     return
   }
   const n = Number(raw)
-  if (n >= 1 && n <= 6) variantId.value = n as VariantId
+  if (n >= 1 && n <= 7) variantId.value = n as VariantId
 }
 
 watch(

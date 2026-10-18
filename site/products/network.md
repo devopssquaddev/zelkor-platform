@@ -1,6 +1,6 @@
 ---
 title: Network Isolation
-description: Default-deny agent egress with standard Kubernetes NetworkPolicy. Zero public routes to internal tools.
+description: Lock down agent egress with standard Kubernetes NetworkPolicy.
 page: product
 slug: network
 ---

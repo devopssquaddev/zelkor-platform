@@ -1,6 +1,6 @@
 ---
 title: AI Gateway
-description: Zero upstream LLM keys in agent pods. Deterministic RPM limits and NVIDIA NeMo Guardrails at /v1.
+description: Keep LLM provider keys out of agent pods and stop runaway loops at the door.
 page: product
 slug: gateway
 ---

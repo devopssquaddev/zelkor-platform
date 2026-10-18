@@ -1,6 +1,6 @@
 ---
 title: Healthcare
-description: Clinical and research agents inside strict tenant, network, and redaction boundaries.
+description: Clinical and research agents inside tenant, network, and log-redaction boundaries.
 page: solution
 slug: healthcare
 ---

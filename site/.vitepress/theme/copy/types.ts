@@ -86,7 +86,7 @@ export type EditionCard = {
 }
 
 export type VariantCopy = {
-  id: 1 | 2 | 3 | 4 | 5 | 6
+  id: 1 | 2 | 3 | 4 | 5 | 6 | 7
   name: string
   short: string
   announcement: { badge: string; text: string; linkLabel: string; href: string }
