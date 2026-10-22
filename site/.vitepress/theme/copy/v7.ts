@@ -96,10 +96,10 @@ export const v7: VariantCopy = {
     { slug: 'platform-engineering', title: 'Platform Engineering', blurb: 'One Helm chart. Resource limits on every container. Standard Kubernetes primitives.' },
   ],
   home: {
-    eyebrow: 'Kubernetes runtime for LangGraph, LangChain & Deep Agents',
+    eyebrow: 'The self-hosted agent runtime',
     h1: 'Ship agents, not cluster breaches.',
     subtitle:
-      'Bring the LangGraph, LangChain, or Deep Agents application you already wrote. Zelkor runs it on Kubernetes without rewriting your state machine, keeps model keys out of agent pods, isolates untrusted Python in a separate sandbox, and binds every tool call to a verified tenant.',
+      'Bring the agent you already wrote — it can\'t break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.',
     primaryCta: { label: 'Deploy on Kubernetes', href: '/docs/quickstart' },
     secondaryCta: { label: 'Book Architecture Review', href: '/contact' },
     githubCta: { label: 'View on GitHub →', href: '#github' },
@@ -263,7 +263,7 @@ export const v7: VariantCopy = {
   products: {
     sandbox: {
       slug: 'sandbox',
-      eyebrow: 'Product · Code Sandbox',
+      eyebrow: 'Capability · Code Sandbox',
       h1: 'Run untrusted Python in a dedicated gVisor pool, never inside your agent pod.',
       subtitle:
         'Your LangGraph, LangChain, or Deep Agents container stays on the standard Kubernetes runtime so your libraries work without friction. Whenever the agent runs generated Python, the code is sent over MCP to a separate pool of gVisor worker pods.',
@@ -299,7 +299,7 @@ export const v7: VariantCopy = {
     },
     gateway: {
       slug: 'gateway',
-      eyebrow: 'Product · AI Gateway',
+      eyebrow: 'Capability · AI Gateway',
       h1: 'Keep LLM provider keys out of agent pods and stop runaway loops at the door.',
       subtitle:
         'Built on Envoy AI Gateway, Zelkor holds your upstream model credentials in gateway Secrets, caps request rates before calls leave the cluster, and checks prompts with NVIDIA NeMo Guardrails.',
@@ -335,7 +335,7 @@ export const v7: VariantCopy = {
     },
     mcp: {
       slug: 'mcp',
-      eyebrow: 'Product · MCP Tool Gateway',
+      eyebrow: 'Capability · MCP Tool Gateway',
       h1: 'One governed MCP endpoint for databases, vector search, files, and external tools.',
       subtitle:
         'Zelkor gives every agent a single MCP endpoint for Postgres, Qdrant, S3 object storage, the gVisor code sandbox, and external MCP servers—holding backend secrets at the gateway and never leaking your caller’s JWT to third parties.',
@@ -371,7 +371,7 @@ export const v7: VariantCopy = {
     },
     tenancy: {
       slug: 'tenancy',
-      eyebrow: 'Product · Multi-Tenant Auth',
+      eyebrow: 'Capability · Multi-Tenant Auth',
       h1: 'Cryptographic tenant isolation from the front door down to the database row.',
       subtitle:
         'Zelkor verifies caller JWTs at ingress, isolates conversation threads and runs per tenant, derives tool tenancy solely from the verified user, and enforces that tenant across Postgres, Qdrant, and S3.',
@@ -407,7 +407,7 @@ export const v7: VariantCopy = {
     },
     observability: {
       slug: 'observability',
-      eyebrow: 'Product · Observability',
+      eyebrow: 'Capability · Observability',
       h1: 'One trace per agent run in self-hosted Langfuse—with zero SDKs in your code.',
       subtitle:
         'Zelkor links agent runs, AI gateway calls, guardrail checks, and MCP tool executions into a single trace inside self-hosted Langfuse, while keeping prompts and keys out of default logs.',
@@ -443,7 +443,7 @@ export const v7: VariantCopy = {
     },
     network: {
       slug: 'network',
-      eyebrow: 'Product · Network Isolation',
+      eyebrow: 'Capability · Network Isolation',
       h1: 'Lock down agent egress with standard Kubernetes NetworkPolicy.',
       subtitle:
         'Zelkor blocks agent pods from calling the public internet, vector stores, sandbox workers, or external tools directly—allowing outbound traffic only to the AI gateway, the MCP gateway, and run state storage.',
