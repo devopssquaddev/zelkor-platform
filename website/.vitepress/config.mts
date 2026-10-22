@@ -159,6 +159,7 @@ export default defineConfig({
   themeConfig: {
     sidebar: buildSidebar(),
     nav: [
+      { text: 'zelkor.io', link: 'https://zelkor.io' },
       { text: 'Docs', link: '/' },
       { text: 'GitHub', link: 'https://github.com/devopssquaddev/zelkor-platform' },
     ],
