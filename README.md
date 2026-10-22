@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Chart](https://img.shields.io/badge/chart-2.3.2-informational)](charts/zelkor-platform/Chart.yaml)
 
-You get a **self-hosted agent runtime on your Kubernetes cluster**: bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.
+You get **the self-hosted agent runtime** on your Kubernetes cluster: bring the agent you already wrote — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.
 
 You configure three things — a **model**, a **tool**, and an **agent**. The laptop install and a shared cluster use the same objects and the same Helm charts. Community Edition is Apache-2.0 and runs from this repository without a sales step.
 

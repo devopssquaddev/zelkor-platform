@@ -12,7 +12,7 @@ edition: all
 
 One run is one trace. You bring the agent you already wrote. You do not add tracing code to it.
 
-The agent is sandboxed: it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated.
+Zelkor is **the self-hosted agent runtime**: bring the agent you already wrote — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation. Tenants stay isolated.
 
 * **Community Edition** is the self-hosted runtime.
 * **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.

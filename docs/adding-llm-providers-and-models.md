@@ -221,7 +221,7 @@ Set `workspace.models.rateLimit.enabled=false` to omit the cap. **Pro** adds per
 
 Agents use OpenAI-compatible clients pointed at the platform AI Gateway base URL. The gateway expects the shared **consumer key** from `workspace.models.consumerKey` (install scripts set this when you pass `AI_GATEWAY_CONSUMER_KEY` or let the script generate one). Do not mount provider API keys on agent Deployments.
 
-How the hop fits the sandbox: [Drop-In Agent Contract](architecture-agent-contract.md).
+How the hop fits the runtime: [Drop-In Agent Contract](architecture-agent-contract.md).
 
 ## Verify
 

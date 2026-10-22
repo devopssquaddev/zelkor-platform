@@ -1,6 +1,6 @@
 # Claude Code — Zelkor platform
 
-Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.**
+Zelkor's label and core advantage: **The self-hosted agent runtime** — **bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.**
 
 Before **installing or uninstalling** Zelkor CE on a cluster, read [docs/agent-install.md](docs/agent-install.md).
 

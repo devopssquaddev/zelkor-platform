@@ -12,7 +12,7 @@ edition: all
 
 Zelkor is designed to govern your agents securely. To achieve this, it strictly limits what is exposed to the internet (north-south traffic). Everything that agents, Langfuse, NeMo, or MCP call in-cluster stays as a ClusterIP service.
 
-The core advantage: the agent you already wrote is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+The core advantage: **the self-hosted agent runtime** — bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
 * **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.

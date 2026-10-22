@@ -12,7 +12,7 @@ edition: all
 
 Zelkor routes incoming Agent Protocol traffic to the correct agent deployment using Envoy Gateway. This ensures that a single public endpoint can serve many independently released agents.
 
-The core advantage: the agent you already wrote is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
+The core advantage: **the self-hosted agent runtime** — bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
 * **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.

@@ -2,7 +2,7 @@
 
 This is the **public open-source repository** for the Zelkor platform. Product code, Helm charts, and public documentation live here.
 
-Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.**
+Zelkor's label and core advantage: **The self-hosted agent runtime** — **bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.**
 
 ## Repository Layout
 

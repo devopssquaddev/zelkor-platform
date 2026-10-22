@@ -12,7 +12,7 @@ edition: ce
 
 This guide is for coding agents. It explains how to install and uninstall the Zelkor Community Edition platform on an existing Kubernetes cluster.
 
-Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.**
+Zelkor — **the self-hosted agent runtime**: **bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.**
 
 ## Prerequisites
 

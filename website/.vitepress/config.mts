@@ -145,7 +145,7 @@ function mermaidAndGithubMarkdown(md: {
 
 export default defineConfig({
   title: 'Zelkor',
-  description: 'Self-hosted runtime for AI agents on Kubernetes',
+  description: 'The self-hosted agent runtime',
   srcDir: '../docs',
   rewrites: {
     'README.md': 'index.md',

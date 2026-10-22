@@ -12,7 +12,7 @@ edition: ce
 
 Evaluate Zelkor Community Edition on an existing Kubernetes cluster. This guide installs the evaluation shape (`databases.mode: in-cluster-basic`), which runs stateful components as simple StatefulSets without operators. The workload is a normal Helm release.
 
-**Zelkor sandboxes the agent you already wrote.** It wraps the agent in a comprehensive security and operational perimeter without a rewrite. The agent can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation.
+**Zelkor is the self-hosted agent runtime.** Bring the agent you already wrote — it can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation; tenants stay isolated.
 
 * **Community Edition** is the self-hosted runtime. This page installs the evaluation shape. The [production install](production.md) is the highly available operator shape, still Community Edition.
 * **Pro** adds SSO, team controls (budgets and approvals), and team GitOps on top of that shape.

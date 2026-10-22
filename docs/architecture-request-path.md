@@ -12,7 +12,7 @@ edition: all
 
 This page details how an external chat or run request flows through Zelkor to the agent, and how the agent reaches the model provider. 
 
-The core advantage is enforced on this path: the agent you already wrote is sandboxed, and provider keys stay on the gateway.
+The core advantage is enforced on this path: **the self-hosted agent runtime** runs the agent you already wrote while provider keys, prompt verification, and rate limits stay on the gateway.
 
 *How a client call reaches the model: The call is routed to the agent, which then makes an intercepted call through the AI Gateway.*
 ```mermaid

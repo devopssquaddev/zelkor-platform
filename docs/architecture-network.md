@@ -12,7 +12,7 @@ edition: all
 
 When NetworkPolicies are on, the agent cannot bypass the gateways. The production install turns them on. A chart install that leaves `security.networkPolicies.enabled` false does not restrict pod traffic.
 
-The core advantage: your agent is sandboxed and cannot reach unauthorized data or dial out to the internet directly.
+The core advantage: **the self-hosted agent runtime** — bring the agent you already wrote; it cannot reach unauthorized data or dial out to the internet directly.
 
 *Who may talk to whom: NetworkPolicies drop all outbound traffic from the agent except to the platform gateways.*
 ```mermaid

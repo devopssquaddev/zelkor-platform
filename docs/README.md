@@ -10,7 +10,7 @@ edition: all
 
 # Documentation
 
-Zelkor is a self-hosted runtime for AI agents on Kubernetes. You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster. Bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated (the agent cannot pick another tenant, see the [tenant hop](architecture-tenants.md)).
+Zelkor is **the self-hosted agent runtime**. You set a **model**, a **tool**, and an **agent**; those same objects run from the laptop Community Edition install to a shared cluster. Bring the agent you already wrote — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated (the agent cannot pick another tenant, see the [tenant hop](architecture-tenants.md)).
 
 ## Editions
 
@@ -75,7 +75,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [MCP Governance](architecture-mcp.md) | How a tool call is isolated and authenticated |
 | [External and Third-Party MCP](architecture-external-mcp.md) | How Zelkor isolates and governs third-party SaaS and external MCP servers |
 | [Run Trace](architecture-trace.md) | What one run looks like in Langfuse |
-| [Drop-In Agent Contract](architecture-agent-contract.md) | How Zelkor sandboxes and governs your agent (Intercept, Wrap, MCP) |
+| [Drop-In Agent Contract](architecture-agent-contract.md) | How the runtime wraps and governs your agent (Intercept, Wrap, MCP) |
 | [Envoy Graph Routing](architecture-routing.md) | How Envoy routes incoming calls to the correct agent deployment |
 | [North-South Exposure](architecture-exposure.md) | What Zelkor publishes to the internet versus what stays inside the cluster |
 | [Tenant Isolation](architecture-tenants.md) | How one tenant identity is applied on a run |

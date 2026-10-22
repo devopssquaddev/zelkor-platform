@@ -12,7 +12,7 @@ edition: ce
 
 The `zelkor` CLI packages LangGraph, Aegra, and Deep Agents projects into a **`zelkor-agent` Helm release**. It discovers the live platform (database URL, AI Gateway `/v1`, `MCP_URL`, agents Host) from Kubernetes — it does **not** install the platform chart.
 
-Your agent keeps running on Zelkor’s sandbox: calls go through the AI Gateway and MCP gateway; the CLI copies platform auth and trace settings onto the worker Deployment.
+Your agent runs on **the self-hosted agent runtime**: calls go through the AI Gateway and MCP gateway; the CLI copies platform auth and trace settings onto the worker Deployment.
 
 ## Prerequisites
 
