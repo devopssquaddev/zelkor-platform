@@ -1,6 +1,6 @@
 ---
 title: Drop-In Agent Contract
-description: How Zelkor sandboxes and governs your agent using Intercept, Wrap, and MCP planes.
+description: How the self-hosted agent runtime wraps and governs your agent using Intercept, Wrap, and MCP planes.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 30
@@ -10,9 +10,9 @@ edition: all
 
 # Drop-In Agent Contract
 
-Zelkor’s core advantage is **"Bring Your Own Agent, We Provide the Armor."** You drop your LangChain, LangGraph, or Aegra agent onto the platform, and Zelkor sandboxes it without requiring you to rewrite your code. 
+Zelkor is **the self-hosted agent runtime**. You drop the LangChain, LangGraph, or Deep Agents workload you already wrote onto the platform without rewriting your code.
 
-The agent is sandboxed across multiple dimensions: it cannot break out of its runtime, it cannot reach unauthorized data or networks, its prompts are verified, its budget is controlled, and every action is under observation; [tenants stay isolated](architecture-tenants.md) (the agent cannot pick another tenant).
+The runtime enforces boundaries across every path out of the agent: it cannot break out, reach unauthorized data or networks, its prompts are verified, its budget is controlled, and every action is under observation; [tenants stay isolated](architecture-tenants.md) (the agent cannot pick another tenant).
 
 ## The Three Planes of Governance
 
@@ -68,8 +68,8 @@ The Model Context Protocol (MCP) plane governs how the agent executes infrastruc
 
 ## Editions as Layers
 
-These planes form the base sandbox. Zelkor editions build upon this foundation:
+These planes form the base runtime. Zelkor editions build upon this foundation:
 
-- **Community Edition:** The self-hosted runtime providing the base sandbox (intercept, wrap, MCP).
+- **Community Edition:** The self-hosted agent runtime (intercept, wrap, MCP).
 - **Pro:** Adds SSO, team controls (budgets and approvals), and team GitOps.
 - **Enterprise:** Adds strict isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).

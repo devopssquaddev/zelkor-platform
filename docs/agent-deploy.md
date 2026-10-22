@@ -12,7 +12,7 @@ edition: ce
 
 This guide is for coding agents. It explains how to deploy and remove a customer agent on the Zelkor platform.
 
-Zelkor's core advantage: **bring the agent you already wrote; it is sandboxed — it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.**
+Zelkor — **the self-hosted agent runtime**: **bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.**
 
 Zelkor uses a **ClusterIP** worker pattern. Each independently released agent is its own Kubernetes Deployment, built from the Zelkor Aegra runtime image. The platform's Envoy Gateway routes incoming Agent Protocol calls to the correct worker based on the `X-Graph-ID` header.
 

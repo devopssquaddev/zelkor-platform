@@ -14,7 +14,7 @@ edition: all
 
 When an agent needs to execute generated Python code or manipulate files, it does not do so in its own container. Zelkor isolates code execution to protect the cluster and the agent itself.
 
-The core advantage: the agent you wrote is sandboxed, and any code it generates cannot break out or compromise the system.
+The core advantage: **the self-hosted agent runtime** — bring the agent you already wrote, and any code it generates executes in an isolated sandbox pod so it cannot break out or compromise the system.
 
 ```mermaid
 ---

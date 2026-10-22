@@ -10,6 +10,8 @@ Published corpus: `docs/**`, root `README.md`, example READMEs. The website publ
 
 Authoring contract and persona review live in the **internal** workspace (multi-root: `zelkor-dev.code-workspace`). Do not copy them into this repo.
 
+Canonical short label for entry pages and marketing: **"The self-hosted agent runtime"** (do not reduce the platform to "a sandbox"). Core advantage: *bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation; tenants stay isolated.*
+
 | Need | Location (internal repo) |
 | :--- | :--- |
 | Living spec | `internal/requirements/dev/product_documentation.md` |
