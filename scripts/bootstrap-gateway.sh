@@ -11,8 +11,8 @@ source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 # shellcheck source=lib/gateway-policies.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
 
-ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.2}"
-AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.1.0}"
+ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.3}"
+AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.2.0}"
 ROLLOUT_WAIT_TIMEOUT="${ROLLOUT_WAIT_TIMEOUT:-5m}"
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
@@ -140,36 +140,32 @@ for i, item in enumerate(json.loads(os.environ["LISTENERS_JSON"])):
 
 _aigw_mcp_seed_from_helm() {
   helm "${HELM_ARGS[@]}" get values aieg -n envoy-ai-gateway-system -o json 2>/dev/null \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("mcp") or {}).get("sessionEncryption", {}).get("seed") or "")' \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(((d.get("controller") or {}).get("mcp") or {}).get("sessionEncryption", {}).get("seed") or "")' \
     2>/dev/null || true
 }
 
+# AI Gateway >= v1.2.0 generates a random MCP session seed on install and keeps it in the
+# <fullname>-mcp-session-encryption Secret. Only an explicit ZELKOR_MCP_SESSION_SEED overrides it.
 _ensure_aigw_mcp_session_seed() {
+  [[ -n "${ZELKOR_MCP_SESSION_SEED:-}" ]] || return 0
   if ! deployment_available envoy-ai-gateway-system ai-gateway-controller; then
     return 0
   fi
-  local current
-  current="$(_aigw_mcp_seed_from_helm)"
-  if [[ -n "$current" && "$current" != "default-insecure-seed" ]]; then
+  if [[ "$(_aigw_mcp_seed_from_helm)" == "$ZELKOR_MCP_SESSION_SEED" ]]; then
     echo "MCP session encryption seed already set on aieg release"
     return 0
   fi
   local seed_file
   seed_file="$(mktemp)"
   trap 'rm -f "$seed_file"' RETURN
-  if [[ -n "${ZELKOR_MCP_SESSION_SEED:-}" ]]; then
-    printf '%s' "$ZELKOR_MCP_SESSION_SEED" >"$seed_file"
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32 >"$seed_file"
-  else
-    head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' >"$seed_file"
-  fi
+  printf '%s' "$ZELKOR_MCP_SESSION_SEED" >"$seed_file"
   echo "Setting MCP session encryption seed on envoy-ai-gateway (aieg) release..."
   helm upgrade aieg oci://docker.io/envoyproxy/ai-gateway-helm \
     "${HELM_ARGS[@]}" \
+    --version "$AI_GATEWAY_HELM_VERSION" \
     --namespace envoy-ai-gateway-system \
     --reuse-values \
-    --set-file "mcp.sessionEncryption.seed=${seed_file}" \
+    --set-file "controller.mcp.sessionEncryption.seed=${seed_file}" \
     --wait --timeout 5m
 }
 
@@ -208,7 +204,7 @@ provider:
   kubernetes:
     rateLimitDeployment:
       container:
-        image: docker.io/envoyproxy/ratelimit:0482748e
+        image: docker.io/envoyproxy/ratelimit:5ae0682e
       patch:
         type: StrategicMerge
         value:
@@ -219,7 +215,7 @@ provider:
                 - imagePullPolicy: IfNotPresent
                   name: envoy-ratelimit
     shutdownManager:
-      image: envoyproxy/gateway:v1.9.2
+      image: envoyproxy/gateway:v1.9.3
   type: Kubernetes
 rateLimit:
   failClosed: false
@@ -270,7 +266,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: docker.io/valkey/valkey:7.2.14-alpine
+          image: docker.io/valkey/valkey:9.1.2-alpine
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 6379

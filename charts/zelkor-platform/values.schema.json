@@ -4836,7 +4836,7 @@
             "integer",
             "string"
           ],
-          "description": "Value for seaweedfs.volumeSizeLimitMB. SeaweedFS 4.48 rejects values above 30000."
+          "description": "Value for seaweedfs.volumeSizeLimitMB. SeaweedFS 4.48+ rejects values above 30000."
         },
         "volumeMax": {
           "type": [

@@ -43,7 +43,7 @@ spec:
     spec:
       containers:
         - name: qdrant
-          image: "{{ .Values.qdrant.image.repository | default "qdrant/qdrant" }}:{{ .Values.qdrant.image.tag | default "v1.9.2" }}"
+          image: "{{ .Values.qdrant.image.repository | default "qdrant/qdrant" }}:{{ .Values.qdrant.image.tag | default "v1.20.0" }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           ports:
             - containerPort: 6333

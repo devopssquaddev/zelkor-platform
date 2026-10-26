@@ -32,7 +32,7 @@ spec:
               echo "Langfuse is reachable."
       containers:
         - name: seed
-          image: python:3.14.8-slim-trixie
+          image: python:3.14.9-slim-trixie
           imagePullPolicy: IfNotPresent
           {{- with .Values.langfuseSeed.resources }}
           resources:

@@ -253,15 +253,15 @@ def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     assert "boot.py" in dockerfile
     assert (ROOT / "images/guardrails/boot.py").exists()
     assert (ROOT / "images/guardrails/otel_project_route.py").exists()
-    assert "opentelemetry-distro==0.65b0" in reqs
-    assert "opentelemetry-instrumentation-fastapi==0.65b0" in reqs
-    assert "opentelemetry-instrumentation-asgi==0.65b0" in reqs
-    assert "opentelemetry-instrumentation-httpx==0.65b0" in reqs
-    assert "prometheus-fastapi-instrumentator==8.0.2" in reqs
+    assert "opentelemetry-distro==0.66b1" in reqs
+    assert "opentelemetry-instrumentation-fastapi==0.66b1" in reqs
+    assert "opentelemetry-instrumentation-asgi==0.66b1" in reqs
+    assert "opentelemetry-instrumentation-httpx==0.66b1" in reqs
+    assert "prometheus-fastapi-instrumentator==8.1.0" in reqs
     assert '"nemoguardrails", "server"' in dockerfile
     assert "--disable-chat-ui" in dockerfile
     aegra_reqs = (ROOT / "images/aegra/requirements.txt").read_text()
-    assert "opentelemetry-instrumentation-httpx==0.65b0" in aegra_reqs
+    assert "opentelemetry-instrumentation-httpx==0.66b1" in aegra_reqs
 
 
 def _helm(*args: str) -> str:

@@ -22,8 +22,8 @@ spec:
       podTemplate: clickhouse
   configuration:
     profiles:
-      # Langfuse 4.24 inserts DateTime64 ticks as numbers; CH 26.8+ defaults to
-      # input_format_read_datetime_number_as_raw_value=0 and rejects OTEL events.
+      # Langfuse < 4.28 inserted DateTime64 ticks as numbers, which CH 26.8+ rejects by
+      # default. Langfuse >= 4.28 writes strings; kept as a harmless compat setting.
       default/input_format_read_datetime_number_as_raw_value: "1"
     users:
       {{ $user }}/password: {{ include "zelkor-platform.clickhousePassword" . | quote }}
@@ -41,7 +41,7 @@ spec:
         spec:
           containers:
             - name: clickhouse
-              image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "26.9.10.4-alpine" }}"
+              image: "{{ .Values.clickhouse.image.repository | default "clickhouse/clickhouse-server" }}:{{ .Values.clickhouse.image.tag | default "26.9.25.15-alpine" }}"
     volumeClaimTemplates:
       - name: data
         spec:
