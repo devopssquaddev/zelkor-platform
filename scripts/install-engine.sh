@@ -48,7 +48,7 @@ IMAGE_TAG="${IMAGE_TAG:-$(zelkor_chart_app_version)}"
 HELM_RELEASE_NAME="${HELM_RELEASE_NAME:-zelkor-platform}"
 GATEWAY_NAMESPACE="${GATEWAY_NAMESPACE:-default}"
 # Pinned gVisor point release for kind sandbox bootstrap (see internal/plan/component_compatibility_matrix.md)
-GVISOR_RELEASE="${GVISOR_RELEASE:-20260928}"
+GVISOR_RELEASE="${GVISOR_RELEASE:-20261019}"
 DOCKER_PLATFORM="${DOCKER_PLATFORM:-$(case "$(uname -m)" in aarch64|arm64) echo linux/arm64 ;; *) echo linux/amd64 ;; esac)}"
 # A lost watch is not a failed rollout: re-check real status before giving up.
 WAIT_RECHECK_GRACE="${WAIT_RECHECK_GRACE:-90}"
@@ -688,26 +688,24 @@ install_gvisor_on_kind_node() {
     log "gVisor release ${GVISOR_RELEASE} already on kind node; skipping install"
   else
     log "Configuring gVisor (runsc) release ${GVISOR_RELEASE} on kind node..."
-    if ! docker exec "${CLUSTER_NAME}-control-plane" sh -c "
-      set -e
-      ARCH=\$(uname -m)
-      case \"\$ARCH\" in
-        aarch64|arm64) ARCH=aarch64 ;;
-        x86_64|amd64) ARCH=x86_64 ;;
-      esac
-      BASE=https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/\${ARCH}
-      if command -v zstd >/dev/null 2>&1; then
-        curl -fsSL \"\${BASE}/gvisor.tar.zstd\" -o /tmp/gvisor.tar.zstd
-        zstd -dc /tmp/gvisor.tar.zstd | tar -x -C /usr/local/bin
-        rm -f /tmp/gvisor.tar.zstd
-      else
-        curl -fsSL \"\${BASE}/gvisor.tar.bz2\" -o /tmp/gvisor.tar.bz2
-        tar -xjf /tmp/gvisor.tar.bz2 -C /usr/local/bin
-        rm -f /tmp/gvisor.tar.bz2
-      fi
-      chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
-      chmod -R a+rx /usr/local/bin/gvisor-bin
-    "; then
+    # kindest/node ships neither zstd nor bzip2: decompress on the host, untar plain tar in the node.
+    local _arch _base _decomp _ext
+    case "$(docker exec "${CLUSTER_NAME}-control-plane" uname -m)" in
+      aarch64|arm64) _arch=aarch64 ;;
+      *) _arch=x86_64 ;;
+    esac
+    _base="https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/${_arch}"
+    if command -v zstd >/dev/null 2>&1; then
+      _ext=zstd _decomp=(zstd -dc)
+    else
+      _ext=bz2 _decomp=(bzip2 -dc)
+    fi
+    if ! { curl -fsSL "${_base}/gvisor.tar.${_ext}" | "${_decomp[@]}" \
+        | docker exec -i "${CLUSTER_NAME}-control-plane" tar -x -C /usr/local/bin \
+      && docker exec "${CLUSTER_NAME}-control-plane" sh -c "
+        chmod a+rx /usr/local/bin/runsc /usr/local/bin/containerd-shim-runsc-v1
+        chmod -R a+rx /usr/local/bin/gvisor-bin
+      "; }; then
       log "WARNING: gVisor install failed (sandbox RuntimeClass may not work on this node)"
     fi
   fi
@@ -797,6 +795,10 @@ log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
 if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
   export GVISOR_INSTALL_OPT_IN=true
+  # Lets preflight see a RuntimeClass this release rendered on an earlier pass; otherwise it
+  # sets createRuntimeClass=false and Helm deletes the class.
+  export GVISOR_HELM_RELEASE="$HELM_RELEASE_NAME"
+  export GVISOR_HELM_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
   # shellcheck disable=SC1090
   eval "$(bash "$ZELKOR_REPO_ROOT/scripts/gvisor-preflight.sh" --kube-context "$KCTX" --output shell)" || true
   if [[ "${GVISOR_PROVISIONING_MODE:-daemonset}" == "preinstalled" ]]; then
