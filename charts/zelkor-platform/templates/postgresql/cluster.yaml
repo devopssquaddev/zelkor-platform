@@ -8,7 +8,7 @@
 {{- $storage := $pg.storage | default dict -}}
 {{- $size := $storage.size | default "10Gi" -}}
 {{- $sc := $storage.storageClass | default "" -}}
-{{- $image := $pg.imageName | default "ghcr.io/cloudnative-pg/postgresql:16.15" -}}
+{{- $image := $pg.imageName | default "ghcr.io/cloudnative-pg/postgresql:18.6" -}}
 {{- $barman := $pg.barman | default dict -}}
 {{- $barmanOn := $barman.enabled | default false -}}
 {{- if $barmanOn }}

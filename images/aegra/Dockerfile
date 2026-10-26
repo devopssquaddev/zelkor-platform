@@ -1,4 +1,4 @@
-FROM python:3.14.8-slim-trixie
+FROM python:3.14.9-slim-trixie
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
 LABEL org.opencontainers.image.description="Zelkor Aegra production runtime (aegra-api + tenant auth)"

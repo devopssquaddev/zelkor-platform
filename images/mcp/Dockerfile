@@ -1,4 +1,4 @@
-FROM python:3.13.16-slim-trixie
+FROM python:3.13.17-slim-trixie
 
 LABEL org.opencontainers.image.source="https://github.com/devopssquaddev/zelkor-platform"
 LABEL org.opencontainers.image.description="Zelkor native MCP servers (postgres, qdrant, sandbox, aigateway, object)"

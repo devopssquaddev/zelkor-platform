@@ -73,11 +73,11 @@ def test_in_cluster_basic_emits_sts_not_operator_crs():
 def test_clickhouse_26_8_sets_langfuse_datetime_compat():
     basic = _helm("--set", "databases.mode=in-cluster-basic")
     assert basic.returncode == 0, basic.stderr
-    assert "26.9.10.4-alpine" in basic.stdout
+    assert "26.9.25.15-alpine" in basic.stdout
     assert "input_format_read_datetime_number_as_raw_value" in basic.stdout
     op = _helm("--set", "databases.mode=operator-cr")
     assert op.returncode == 0, op.stderr
-    assert "26.9.10.4-alpine" in op.stdout
+    assert "26.9.25.15-alpine" in op.stdout
     assert "input_format_read_datetime_number_as_raw_value" in op.stdout
 
 
@@ -93,7 +93,7 @@ def test_operator_cr_emits_crs_and_first_party_valkey_qdrant():
     assert clusters
     assert clusters[0]["apiVersion"] == "postgresql.cnpg.io/v1"
     assert clusters[0]["spec"]["instances"] == 1
-    assert clusters[0]["spec"]["imageName"] == "ghcr.io/cloudnative-pg/postgresql:16.15"
+    assert clusters[0]["spec"]["imageName"] == "ghcr.io/cloudnative-pg/postgresql:18.6"
     assert (
         clusters[0]["spec"]["inheritedMetadata"]["labels"]["app.kubernetes.io/component"]
         == "postgresql"

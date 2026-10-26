@@ -1182,7 +1182,7 @@ false
 
 {{- define "zelkor-platform.gvisorRelease" -}}
 {{- $prov := .Values.security.sandbox.provisioning | default dict -}}
-{{ $prov.gvisorRelease | default "20260928" }}
+{{ $prov.gvisorRelease | default "20261019" }}
 {{- end }}
 
 {{- define "zelkor-platform.gvisorRuntimeClassName" -}}

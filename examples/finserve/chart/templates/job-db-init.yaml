@@ -16,7 +16,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: db-init
-          image: alpine:3.24.2
+          image: alpine:3.24.3
           {{- with .Values.dbInit.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

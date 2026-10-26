@@ -39,7 +39,7 @@ spec:
     spec:
       containers:
         - name: valkey
-          image: "{{ .Values.valkey.image.repository | default "valkey/valkey" }}:{{ .Values.valkey.image.tag | default "7.2.14-alpine" }}"
+          image: "{{ .Values.valkey.image.repository | default "valkey/valkey" }}:{{ .Values.valkey.image.tag | default "9.1.2-alpine" }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy | default "IfNotPresent" }}
           {{- $redisPass := .Values.valkey.auth.password | default "" }}
           command:

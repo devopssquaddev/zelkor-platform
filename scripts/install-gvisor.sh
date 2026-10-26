@@ -4,7 +4,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GVISOR_RELEASE="${GVISOR_RELEASE:-20260928}"
+GVISOR_RELEASE="${GVISOR_RELEASE:-20261019}"
 APPLY_RC=1
 KUBECTL=(kubectl)
 WAIT_TIMEOUT="${GVISOR_WAIT_TIMEOUT:-600}"
@@ -134,7 +134,7 @@ apply_legacy_installer() {
   python3 - "${DIR}/gvisor/daemonset.yaml" <<'PY'
 import os, pathlib, sys
 text = pathlib.Path(sys.argv[1]).read_text()
-text = text.replace('value: "20260928"', f'value: "{os.environ["GVISOR_RELEASE"]}"')
+text = text.replace('value: "20261019"', f'value: "{os.environ["GVISOR_RELEASE"]}"')
 pathlib.Path("/tmp/zelkor-gvisor-ds.yaml").write_text(text)
 PY
   "${KUBECTL[@]}" apply -f /tmp/zelkor-gvisor-ds.yaml
