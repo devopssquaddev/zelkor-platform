@@ -211,7 +211,19 @@ class Egress:
         if request.method != "POST":  # GET server stream / DELETE session: pass through
             upstream = http.build_request(request.method, self.cfg.mcp_upstream, headers=headers)
             resp = await http.send(upstream, stream=True)
-            return StreamingResponse(resp.aiter_raw(), status_code=resp.status_code,
+            import httpx
+
+            async def relay():
+                try:
+                    async for chunk in resp.aiter_raw():
+                        yield chunk
+                except httpx.TransportError as exc:  # upstream dropped the stream: end it, do not 500
+                    logger.warning("MCP stream closed by upstream: %s", type(exc).__name__,
+                                   extra={"event": "mcp_stream", "run_id": ctx.run_id})
+                finally:
+                    await resp.aclose()
+
+            return StreamingResponse(relay(), status_code=resp.status_code,
                                      headers=_clean_headers(dict(resp.headers)),
                                      background=None)
 

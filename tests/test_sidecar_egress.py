@@ -307,3 +307,26 @@ def test_child_spans_carry_trace_identity():
     assert child.attributes["langfuse.session.id"] == "t1"
     assert child.attributes["langfuse.user.id"] == "tenant-a"
     assert child.parent.span_id == spans["desk"].context.span_id
+
+
+class _BrokenStream(httpx.AsyncByteStream):
+    """Upstream SSE that sends one event, then drops the connection mid-body."""
+
+    async def __aiter__(self):
+        yield b"event: message\ndata: {}\n\n"
+        raise httpx.RemoteProtocolError("peer closed connection without sending complete message body")
+
+
+def test_mcp_get_stream_cut_by_upstream_ends_cleanly(caplog):
+    def upstream(request):
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_BrokenStream())
+
+    slot = RunSlot()
+    cfg = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck")
+    egress = Egress(slot, Tracing(tracer=None), cfg, http=httpx.AsyncClient(transport=httpx.MockTransport(upstream)))
+    _activate(slot)
+    with caplog.at_level("WARNING", logger="zelkor-sidecar"):
+        resp = TestClient(egress.app(), raise_server_exceptions=True).get("/run/active/mcp")
+    assert resp.status_code == 200
+    assert resp.content.startswith(b"event: message")
+    assert any("MCP stream closed by upstream" in r.getMessage() for r in caplog.records)
