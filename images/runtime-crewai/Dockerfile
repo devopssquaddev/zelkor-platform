@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 COPY images/runtime-common/zelkor_runtime_spec.py /opt/zelkor/zelkor_runtime_spec.py
 COPY images/common/zelkor_logging.py /opt/zelkor/zelkor_logging.py
 COPY images/runtime-crewai/zelkor_runtime.py /opt/zelkor/zelkor_runtime.py
+COPY images/runtime-crewai/quiet_console.py /opt/zelkor/quiet_console.py
 ENV PYTHONPATH=/opt/zelkor
 
 RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin zelkor \
