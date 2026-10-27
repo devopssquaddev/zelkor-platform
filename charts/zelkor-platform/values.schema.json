@@ -3474,6 +3474,13 @@
           "type": "object",
           "description": "Values under databases.postgresql.",
           "properties": {
+            "parameters": {
+              "type": "object",
+              "description": "CNPG postgresql.parameters. Values are strings.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
             "instances": {
               "type": [
                 "integer",

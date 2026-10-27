@@ -390,3 +390,19 @@ def test_bootstrap_operators_help(flag: str):
     assert proc.returncode == 0, proc.stderr
     assert "--skip-cnpg" in proc.stdout
     assert "ESO" in proc.stdout or "Valkey" in proc.stdout
+
+
+def test_postgres_parameters_default_empty_and_pass_through():
+    docs = _docs(_helm("--set", "databases.mode=operator-cr").stdout)
+    assert "postgresql" not in _kinds(docs, "Cluster")[0]["spec"]  # CNPG defaults (max_connections 100)
+    proc = _helm("--set", "databases.mode=operator-cr",
+                 "--set-string", "databases.postgresql.parameters.max_connections=250")
+    assert proc.returncode == 0, proc.stderr
+    spec = _kinds(_docs(proc.stdout), "Cluster")[0]["spec"]
+    assert spec["postgresql"]["parameters"] == {"max_connections": "250"}
+
+
+def test_production_overlay_sizes_postgres_connections_for_hpa():
+    # Aegra, Langfuse web and worker each scale to 8 pods; 100 slots ran out on a production install.
+    spec = _kinds(_docs(_helm("-f", str(PRODUCTION)).stdout), "Cluster")[0]["spec"]
+    assert int(spec["postgresql"]["parameters"]["max_connections"]) >= 300

@@ -22,6 +22,9 @@ databases:
   mode: operator-cr
   postgresql:
     instances: 3
+    # Aegra, Langfuse web and worker scale to 8 pods each, plus agents: 100 slots run out.
+    parameters:
+      max_connections: "300"
     storage:
       size: 50Gi
       storageClass: ''

@@ -26,6 +26,13 @@ spec:
   instances: {{ $instances }}
   imageName: {{ $image | quote }}
   enableSuperuserAccess: false
+  {{- with $pg.parameters }}
+  postgresql:
+    parameters:
+      {{- range $k, $v := . }}
+      {{ $k }}: {{ $v | toString | quote }}
+      {{- end }}
+  {{- end }}
   inheritedMetadata:
     labels:
       app.kubernetes.io/component: postgresql
