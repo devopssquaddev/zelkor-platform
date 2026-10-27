@@ -575,6 +575,8 @@ databases:
   mode: in-cluster-basic
   postgresql:
     instances: 1
+    # CNPG postgresql.parameters (strings). Empty keeps operator defaults (max_connections 100).
+    parameters: {}
     storage:
       size: 10Gi
       storageClass: ''
