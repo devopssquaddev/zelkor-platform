@@ -101,7 +101,10 @@ def test_invalid_deny_entries_fail_render():
     for bad in ("delete", "object__", "Object__x", "object__a*b", "__x"):
         r = _helm(*_deny(bad))
         assert r.returncode != 0, bad
-        assert "workspace.tools.policy.deny" in r.stderr, bad
+        # Template fail names the key; helm >= 3.18 schema errors use a JSON pointer.
+        assert (
+            "workspace.tools.policy.deny" in r.stderr or "/workspace/tools/policy/deny" in r.stderr
+        ), (bad, r.stderr)
 
 
 def test_rate_limit_must_be_positive_when_enabled():
