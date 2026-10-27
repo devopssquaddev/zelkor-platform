@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         {{- include "finserve.labels" . | nindent 8 }}
+        # Admitted by the platform Langfuse ingress policy; agent egress allows only Langfuse + gateways.
+        zelkor.io/workload-type: agent
     spec:
       restartPolicy: OnFailure
       initContainers:
@@ -42,23 +44,35 @@ spec:
             - /bin/bash
             - -c
             - |
-              pip install --no-cache-dir requests >/dev/null 2>&1
               cat << 'EOF' > /tmp/seed.py
+              # stdlib only: NetworkPolicies give this Job no package-index egress.
+              import base64
+              import json
               import os
               import time
-              import requests
-              from requests.auth import HTTPBasicAuth
+              import urllib.error
+              import urllib.request
 
               BASE_URL = os.environ["LANGFUSE_HOST"]
               PK = os.environ["LANGFUSE_PUBLIC_KEY"]
               SK = os.environ["LANGFUSE_SECRET_KEY"]
-              auth = HTTPBasicAuth(PK, SK)
+              AUTH = "Basic " + base64.b64encode(f"{PK}:{SK}".encode()).decode()
+
+              def call(method, path, body=None, timeout=10):
+                  data = json.dumps(body).encode() if body is not None else None
+                  req = urllib.request.Request(f"{BASE_URL}{path}", data=data, method=method,
+                                               headers={"Authorization": AUTH, "Content-Type": "application/json"})
+                  try:
+                      with urllib.request.urlopen(req, timeout=timeout) as resp:
+                          return resp.status, resp.read().decode()
+                  except urllib.error.HTTPError as e:
+                      return e.code, e.read().decode()
 
               print(f"Connecting to Langfuse at {BASE_URL}...")
               for attempt in range(20):
                   try:
-                      r = requests.get(f"{BASE_URL}/api/public/health", timeout=5)
-                      if r.status_code == 200:
+                      status, _ = call("GET", "/api/public/health", timeout=5)
+                      if status == 200:
                           print("Langfuse API is healthy.")
                           break
                   except Exception as e:
@@ -79,8 +93,8 @@ spec:
                   "isActive": True
               }
               try:
-                  res = requests.post(f"{BASE_URL}/api/public/v2/prompts", json=prompt_payload, auth=auth, timeout=10)
-                  print(f"Seed Prompt response: {res.status_code} - {res.text[:100]}")
+                  status, text = call("POST", "/api/public/v2/prompts", prompt_payload)
+                  print(f"Seed Prompt response: {status} - {text[:100]}")
               except Exception as e:
                   print(f"Failed to seed prompt: {e}")
 
@@ -89,8 +103,8 @@ spec:
                   "description": "Gold validation dataset for FinServe autonomous wealth management agent"
               }
               try:
-                  res = requests.post(f"{BASE_URL}/api/public/datasets", json=dataset_payload, auth=auth, timeout=10)
-                  print(f"Seed Dataset response: {res.status_code} - {res.text[:100]}")
+                  status, text = call("POST", "/api/public/datasets", dataset_payload)
+                  print(f"Seed Dataset response: {status} - {text[:100]}")
                   sample_items = [
                       {"input": {"query": "What is my total portfolio valuation and risk breakdown?"}, "expectedOutput": {"contains": ["Bank_Alpha", "Valuation", "Risk"]}},
                       {"input": {"query": "Show current holdings for my account."}, "expectedOutput": {"contains": ["Holdings", "Shares"]}},
@@ -99,7 +113,7 @@ spec:
                       {"input": {"query": "What is our asset allocation policy for high-growth tech?"}, "expectedOutput": {"contains": ["Allocation", "Policy"]}}
                   ]
                   for item in sample_items:
-                      requests.post(f"{BASE_URL}/api/public/dataset-items", json={"datasetName": "finserve-eval-dataset", "input": item["input"], "expectedOutput": item["expectedOutput"]}, auth=auth, timeout=10)
+                      call("POST", "/api/public/dataset-items", {"datasetName": "finserve-eval-dataset", "input": item["input"], "expectedOutput": item["expectedOutput"]})
                   print("Seeded dataset items successfully.")
               except Exception as e:
                   print(f"Failed to seed dataset items: {e}")
