@@ -21,6 +21,7 @@ RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
 
 COPY images/guardrails/otel_project_route.py /app/otel_project_route.py
 COPY images/guardrails/structured_output.py /app/structured_output.py
+COPY images/guardrails/quiet_verbose.py /app/quiet_verbose.py
 COPY images/guardrails/boot.py /app/boot.py
 COPY images/guardrails/sitecustomize.py /usr/local/lib/python3.13/site-packages/sitecustomize.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
