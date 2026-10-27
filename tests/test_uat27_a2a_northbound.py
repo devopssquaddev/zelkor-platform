@@ -76,3 +76,44 @@ def test_uat27_disabled_agent_has_no_a2a_surface():
         pytest.skip("A2A_OFF_GRAPH_ID not set")
     with _client() as c:
         assert c.get("/.well-known/agent-card.json", headers=_headers(graph)).status_code == 404
+
+
+def _message(text: str, ctx: str) -> dict:
+    return {"role": "user", "messageId": uuid.uuid4().hex, "contextId": ctx, "kind": "message",
+            "parts": [{"kind": "text", "text": text}]}
+
+
+def test_uat27_stream_ends_with_a_completed_task():
+    graph = _graph()
+    token = tenant_token("tenant-a")
+    body = {"jsonrpc": "2.0", "id": 1, "method": "message/stream",
+            "params": {"message": _message("Reply with exactly: pong", str(uuid.uuid4()))}}
+    states = []
+    with _client() as c, c.stream("POST", "/a2a", headers={**_headers(graph, token), "accept": "text/event-stream"}, json=body) as r:
+        assert r.status_code == 200, r.read()[:300]
+        for line in r.iter_lines():
+            if line.startswith("data:"):
+                result = json.loads(line[5:].strip()).get("result") or {}
+                state = (result.get("status") or {}).get("state")
+                if state:
+                    states.append(state)
+    assert states and states[-1] == "completed", states
+
+
+def test_uat27_cancel_stops_a_running_task():
+    graph = _graph()
+    token = tenant_token("tenant-a")
+    long = ("Call sandbox__execute_python once with timeout 120 and code: "
+            "import time; time.sleep(90); print(1)")
+    with _client() as c:
+        sent = c.post("/a2a", headers=_headers(graph, token), json={
+            "jsonrpc": "2.0", "id": 1, "method": "message/send",
+            "params": {"message": _message(long, str(uuid.uuid4())), "configuration": {"blocking": False}}}).json()
+        task = sent["result"]
+        assert task["status"]["state"] in ("submitted", "working"), task["status"]
+        cancel = c.post("/a2a", headers=_headers(graph, token), json={
+            "jsonrpc": "2.0", "id": 2, "method": "tasks/cancel", "params": {"id": task["id"]}}).json()
+        assert (cancel.get("result") or {}).get("status", {}).get("state") == "canceled", cancel
+        got = c.post("/a2a", headers=_headers(graph, token), json={
+            "jsonrpc": "2.0", "id": 3, "method": "tasks/get", "params": {"id": task["id"]}}).json()
+        assert got["result"]["status"]["state"] == "canceled", got
