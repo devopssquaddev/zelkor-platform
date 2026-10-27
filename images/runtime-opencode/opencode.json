@@ -1,0 +1,40 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "provider": {
+    "zelkor": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Zelkor AI Gateway",
+      "options": {
+        "baseURL": "{env:OPENAI_BASE_URL}",
+        "apiKey": "via-sidecar"
+      },
+      "models": {
+        "{env:ZELKOR_OPENCODE_MODEL}": {}
+      }
+    }
+  },
+  "model": "zelkor/{env:ZELKOR_OPENCODE_MODEL}",
+  "mcp": {
+    "zelkor": {
+      "type": "remote",
+      "url": "{env:MCP_URL}",
+      "enabled": true
+    }
+  },
+  "permission": {
+    "bash": "deny",
+    "edit": "deny",
+    "webfetch": "deny",
+    "external_directory": "deny"
+  },
+  "tools": {
+    "bash": false,
+    "edit": false,
+    "write": false,
+    "patch": false,
+    "webfetch": false,
+    "websearch": false
+  }
+}
