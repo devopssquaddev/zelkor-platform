@@ -26,7 +26,7 @@ FROM python:3.14.9-slim-trixie
 COPY --from=fetch /opt/opencode /opt/opencode
 COPY images/runtime-opencode/opencode.json /opt/zelkor/opencode.json
 COPY images/runtime-opencode/entrypoint.sh /opt/zelkor/entrypoint.sh
-RUN chmod 0755 /opt/zelkor/entrypoint.sh \
+RUN chmod 0755 /opt/zelkor/entrypoint.sh && chmod -R a+rX /opt/zelkor /opt/opencode \
     && useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin zelkor \
     && mkdir -p /app
 # Writable state lives under /tmp (emptyDir); the root filesystem can stay read-only.

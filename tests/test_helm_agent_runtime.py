@@ -89,3 +89,11 @@ def test_service_and_port_unchanged_for_sidecar_runtimes():
     r = _helm_agent("--set", "runtime=opencode")
     (svc,) = [x for x in yaml.safe_load_all(r.stdout) if x and x.get("kind") == "Service"]
     assert svc["spec"]["ports"][0]["targetPort"] == 8000
+
+
+def test_mcp_upstream_is_never_double_suffixed():
+    """The CLI passes platform.mcpUrl with /mcp already; the sidecar upstream must stay .../mcp."""
+    for url in ("http://zelkor-platform-mcp", "http://zelkor-platform-mcp/", "http://zelkor-platform-mcp/mcp"):
+        env = _env(_c(_deploy("--set", "runtime=a2a", "--set", f"platform.mcpUrl={url}"), "sidecar"))
+        assert env["ZELKOR_MCP_UPSTREAM"] == "http://zelkor-platform-mcp/mcp", url
+

@@ -123,6 +123,10 @@ class Tracing:
 
         parent = trace.set_span_in_context(ctx.root_span)
         span = self._tracer.start_span(name, context=parent, kind=getattr(trace.SpanKind, kind))
+        # Langfuse v4 (events) reads trace identity per span, not only from the root.
+        for key, value in self._identity(ctx).items():
+            if key.startswith("langfuse."):
+                span.set_attribute(key, value)
         span.set_attribute("langfuse.observation.type", observation_type)
         for key, value in (attrs or {}).items():
             span.set_attribute(key, value)

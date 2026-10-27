@@ -9,12 +9,13 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from functools import partial
 
 import uvicorn
 from fasta2a.broker import InMemoryBroker
 from fasta2a.pydantic_ai import agent_to_a2a
-from fasta2a.pydantic_ai._bridge import AgentWorker, worker_lifespan
+from fasta2a.pydantic_ai._bridge import AgentWorker
 from fasta2a.storage import InMemoryStorage
 from pydantic_ai import Agent
 from pydantic_ai.mcp import MCPToolset
@@ -57,6 +58,19 @@ class LoggingWorker(AgentWorker):
             raise
 
 
+@asynccontextmanager
+async def run_scoped_lifespan(app, worker):
+    """Start the task manager and worker but do not enter the agent's toolsets.
+
+    fasta2a's default lifespan opens MCP at startup; behind the sidecar there is no run
+    (and so no tenant identity) yet, and the sidecar refuses it. Pydantic AI opens the
+    MCP toolset inside each run instead.
+    """
+    async with app.task_manager:
+        async with worker.run():
+            yield
+
+
 def build_app():
     spec = load_spec()
     model = OpenAIChatModel(spec.model, provider=OpenAIProvider(base_url=spec.llm_base_url, api_key="via-sidecar"))
@@ -65,7 +79,7 @@ def build_app():
     storage, broker = UtcStorage(), InMemoryBroker()
     worker = LoggingWorker(agent=agent, broker=broker, storage=storage)
     return agent_to_a2a(agent, name=spec.name, url=f"http://{HOST}:{PORT}", storage=storage, broker=broker,
-                        lifespan=partial(worker_lifespan, worker=worker, agent=agent))
+                        lifespan=partial(run_scoped_lifespan, worker=worker))
 
 
 if __name__ == "__main__":

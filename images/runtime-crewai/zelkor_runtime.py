@@ -36,6 +36,10 @@ class CrewExecutor(AgentExecutor):
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         try:
+            # CrewAI resolves ``mcps`` only on kickoff; its A2A executor calls
+            # aexecute_task(tools=agent.tools). Resolve per turn, while the sidecar has an
+            # active run (MCP before a run has no tenant identity and is refused).
+            self.agent.tools = self.agent.get_mcp_tools(self.agent.mcps)
             await crew_execute(self.agent, context, event_queue)
         except Exception as exc:
             logger.error("task failed: %s: %s", type(exc).__name__, str(exc)[:300])

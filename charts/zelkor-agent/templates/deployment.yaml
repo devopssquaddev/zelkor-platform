@@ -237,7 +237,7 @@ spec:
             - name: ZELKOR_LLM_UPSTREAM
               value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
             - name: ZELKOR_MCP_UPSTREAM
-              value: {{ printf "%s/mcp" (include "zelkor-agent.mcpUrl" . | trimSuffix "/") | quote }}
+              value: {{ printf "%s/mcp" (include "zelkor-agent.mcpUrl" . | trimSuffix "/" | trimSuffix "/mcp") | quote }}
             - name: ZELKOR_CONSUMER_KEY
               value: {{ .Values.platform.consumerKey | quote }}
             - name: ZELKOR_RUN_TIMEOUT

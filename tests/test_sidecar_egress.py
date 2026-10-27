@@ -267,3 +267,43 @@ def test_run_slot_is_one_at_a_time():
         return order
 
     assert asyncio.run(go()) == ["a-in", "a-out", "b-in", "b-out"]
+
+
+def test_tool_messages_lose_non_standard_name_field():
+    """CrewAI sends {"role": "tool", "name": ...}; strict OpenAI-schema upstreams answer 422."""
+    up = Upstream()
+    client, slot = _egress(up)
+    _activate(slot)
+    client.post("/run/active/v1/chat/completions", json={"model": "m", "messages": [
+        {"role": "user", "content": "q", "name": "alice"},
+        {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function",
+                                                               "function": {"name": "t", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "name": "t", "content": "ok"},
+    ]})
+    sent = json.loads(up.requests[-1].content)["messages"]
+    assert "name" not in sent[2]
+    assert sent[0]["name"] == "alice"  # only tool messages are rewritten
+
+
+def test_child_spans_carry_trace_identity():
+    """Langfuse v4 events mode groups by per-span identity; children must carry it too."""
+    pytest.importorskip("opentelemetry.sdk")
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracing = Tracing(tracer=provider.get_tracer("t"))
+    ctx = RunContext(tenant_id="tenant-a", bearer=JWT, graph_id="desk", thread_id="t1", run_id="r1")
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    with tracing.child(ctx, "sandbox__execute_python", observation_type="tool"):
+        pass
+    tracing.end_root(ctx.root_span, ctx)
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    child = spans["sandbox__execute_python"]
+    assert child.attributes["langfuse.trace.name"] == "desk"
+    assert child.attributes["langfuse.session.id"] == "t1"
+    assert child.attributes["langfuse.user.id"] == "tenant-a"
+    assert child.parent.span_id == spans["desk"].context.span_id

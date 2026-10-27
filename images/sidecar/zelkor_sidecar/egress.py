@@ -80,6 +80,16 @@ def clamp_max_tokens(payload: Dict[str, Any], cap: int) -> None:
     payload["max_tokens"] = cap if not isinstance(value, int) else min(value, cap)
 
 
+def normalize_messages(payload: Dict[str, Any]) -> None:
+    """Drop fields some runtimes add that the OpenAI chat schema does not allow.
+
+    ``name`` on ``role: tool`` messages (CrewAI) is rejected by strict upstreams (422).
+    """
+    for msg in payload.get("messages") or []:
+        if isinstance(msg, dict) and msg.get("role") == "tool":
+            msg.pop("name", None)
+
+
 def completion_to_sse(completion: Dict[str, Any]) -> bytes:
     """Re-stream one chat.completion as OpenAI-style chunks (+ [DONE])."""
     base = {"id": completion.get("id", f"chatcmpl-{uuid.uuid4().hex}"),
@@ -308,6 +318,7 @@ class Egress:
             payload = json.loads(raw)
             model = str(payload.get("model") or "")
             clamp_max_tokens(payload, self.cfg.max_tokens)
+            normalize_messages(payload)
             if payload.get("stream") and payload.get("tools") and self.cfg.nemo_tools_no_stream:
                 payload["stream"] = False
                 payload.pop("stream_options", None)
