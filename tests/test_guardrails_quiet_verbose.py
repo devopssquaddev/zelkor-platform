@@ -27,6 +27,8 @@ def nemo(monkeypatch):
     verbose_mod.set_verbose = set_verbose
     llmrails_mod = types.ModuleType("nemoguardrails.rails.llm.llmrails")
     llmrails_mod.set_verbose = set_verbose
+    # The stand-in, like NeMo, lowers every root handler (pytest's capture handler too): restore after.
+    levels = [(h, h.level) for h in logging.getLogger().handlers]
     for name, mod in {
         "nemoguardrails": types.ModuleType("nemoguardrails"),
         "nemoguardrails.logging": types.ModuleType("nemoguardrails.logging"),
@@ -36,7 +38,9 @@ def nemo(monkeypatch):
         "nemoguardrails.rails.llm.llmrails": llmrails_mod,
     }.items():
         monkeypatch.setitem(sys.modules, name, mod)
-    return calls, verbose_mod, llmrails_mod
+    yield calls, verbose_mod, llmrails_mod
+    for handler, level in levels:
+        handler.setLevel(level)
 
 
 def _handler():
