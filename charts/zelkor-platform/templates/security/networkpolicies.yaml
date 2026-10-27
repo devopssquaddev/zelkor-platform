@@ -54,13 +54,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: guardrails
-      ports:
-        - protocol: TCP
-          port: 8000
+    {{- /* No direct NeMo: models only via the AI Gateway, which requires the caller key. */}}
     - to:
         - podSelector:
             matchLabels:
@@ -127,13 +121,7 @@ spec:
           port: 8080
         - protocol: TCP
           port: 10080
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: guardrails
-      ports:
-        - protocol: TCP
-          port: 8000
+    {{- /* No direct NeMo: models only via the AI Gateway, which requires the caller key. */}}
     - to:
         - podSelector:
             matchLabels:

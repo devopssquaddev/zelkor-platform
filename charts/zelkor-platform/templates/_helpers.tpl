@@ -1495,3 +1495,60 @@ Regex matches alone are not listed; completions then 500 with an empty body.
 {{- end -}}
 {{- end }}
 
+
+{{/*
+AI Gateway caller auth. Agents present the consumer key on the agent route (every rule -> NeMo).
+Only NeMo's own key opens the provider route on its separate hostname, so the bypass header grants nothing.
+*/}}
+{{- define "zelkor-platform.aiGatewayConsumerSecret" -}}
+{{- printf "%s-ai-gateway-consumer" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayNemoSecret" -}}
+{{- printf "%s-ai-gateway-nemo" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayNemoHost" -}}
+{{- printf "%s-ai-gateway-nemo" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayNemoHostnames" -}}
+{{- $short := include "zelkor-platform.aiGatewayNemoHost" . -}}
+{{- list $short (printf "%s.%s.svc.cluster.local" $short .Release.Namespace) | toJson -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayNemoUrl" -}}
+{{- if .Values.aiGateway.inClusterService.enabled -}}
+{{- printf "http://%s:%v/v1" (include "zelkor-platform.aiGatewayNemoHost" .) (.Values.aiGateway.inClusterService.port | default 80) -}}
+{{- else -}}
+{{- include "zelkor-platform.aiGatewayInternalUrl" . -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewaySecretKey" -}}
+{{- /* dict root name secret key value: explicit value, else the existing Secret, else generated. */ -}}
+{{- $v := .value | default "" -}}
+{{- if not $v -}}
+{{- $s := lookup "v1" "Secret" .root.Release.Namespace .secret -}}
+{{- if and $s $s.data (index $s.data .key) -}}
+{{- $v = index $s.data .key | b64dec -}}
+{{- end -}}
+{{- end -}}
+{{- if not $v -}}
+{{- $v = randAlphaNum 48 -}}
+{{- end -}}
+{{- $v -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayKeyEnv" -}}
+{{- /* dict root name secret key: env var from a caller-auth Secret (empty when the AI Gateway is off). */ -}}
+- name: {{ .name }}
+{{- if .root.Values.aiGateway.enabled }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ .secret }}
+      key: {{ .key }}
+{{- else }}
+  value: ""
+{{- end }}
+{{- end }}

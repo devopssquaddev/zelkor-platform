@@ -107,8 +107,7 @@ spec:
               value: "/app/aegra.json"
             - name: OPENAI_BASE_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
-            - name: OPENAI_API_KEY
-              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            {{- include "zelkor-platform.aiGatewayKeyEnv" (dict "root" . "name" "OPENAI_API_KEY" "secret" (include "zelkor-platform.aiGatewayConsumerSecret" .) "key" "agents") | nindent 12 }}
             - name: AI_GATEWAY_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
             - name: MCP_URL

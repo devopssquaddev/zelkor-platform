@@ -59,8 +59,7 @@ spec:
             {{- include "zelkor-platform.mcpPolicyEnv" (dict "root" . "backend" "aigateway") | nindent 12 }}
             - name: AI_GATEWAY_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
-            - name: AI_GATEWAY_API_KEY
-              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            {{- include "zelkor-platform.aiGatewayKeyEnv" (dict "root" . "name" "AI_GATEWAY_API_KEY" "secret" (include "zelkor-platform.aiGatewayConsumerSecret" .) "key" "agents") | nindent 12 }}
             - name: AIGATEWAY_ALLOWED_MODELS
               value: {{ join "," (.Values.mcp.aigatewayMCP.allowedModels | default list) | quote }}
           volumeMounts:

@@ -50,16 +50,7 @@ spec:
           port: 8080
         - protocol: TCP
           port: 10080
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: {{ $pns | quote }}
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/component: guardrails
-      ports:
-        - protocol: TCP
-          port: 8000
+    {{- /* No direct NeMo: models only via the AI Gateway with the consumer key. */}}
     - to:
         - namespaceSelector:
             matchLabels:

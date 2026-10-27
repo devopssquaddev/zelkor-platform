@@ -56,10 +56,17 @@ def _named(docs: list[dict], kind: str, name: str) -> dict:
     return matches[0]
 
 
+def _gateway_routes(docs: list[dict]) -> list[dict]:
+    """Agent route plus, with NeMo intercept, the NeMo-only provider route (caller auth split)."""
+    routes = [_named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")]
+    routes += [d for d in docs if d.get("kind") == "AIGatewayRoute"
+               and d["metadata"]["name"] == "zelkor-platform-aigateway-nemo-route"]
+    return routes
+
+
 def _route_matches(docs: list[dict]) -> list[str]:
-    route = _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")
     values: list[str] = []
-    for rule in route["spec"].get("rules") or []:
+    for rule in [r for route in _gateway_routes(docs) for r in route["spec"].get("rules") or []]:
         for match in rule.get("matches") or []:
             for header in match.get("headers") or []:
                 if header.get("name") == "x-ai-eg-model":
@@ -248,7 +255,7 @@ def _unknown_model_filter(docs: list[dict]) -> dict | None:
 
 
 def _aigateway_rules(docs: list[dict]) -> list[dict]:
-    return _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")["spec"].get("rules") or []
+    return [r for route in _gateway_routes(docs) for r in route["spec"].get("rules") or []]
 
 
 def test_nemo_derives_model_from_single_provider():
@@ -347,7 +354,7 @@ def test_unknown_bypass_reject_when_intercept_on():
         for rule in rules
         for m in rule.get("matches") or []
     )
-    catch = rules[-1]
+    catch = _named(docs, "AIGatewayRoute", "zelkor-platform-aigateway-route")["spec"]["rules"][-1]
     assert not catch.get("matches")
     assert catch["backendRefs"][0]["name"] == "zelkor-platform-backend-nemo"
 

@@ -1,5 +1,7 @@
 {{- include "zelkor-platform.compile" . -}}
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
+{{- /* Lives on the NeMo route's hostnames: only NeMo sends the bypass header that reaches providers. */ -}}
+{{- $nemoHosts := include "zelkor-platform.aiGatewayNemoHostnames" . | fromJsonArray -}}
 {{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
 {{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
 {{- if and .Values.aiGateway.enabled (gt (len $hostnames) 0) $hasProviders $intercept }}
@@ -31,7 +33,7 @@ spec:
   parentRefs:
     {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
   hostnames:
-    {{- range $hostnames }}
+    {{- range $nemoHosts }}
     - {{ . | quote }}
     {{- end }}
   rules:

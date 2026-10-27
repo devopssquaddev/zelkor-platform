@@ -1,0 +1,81 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- if .Values.aiGateway.enabled }}
+{{- $consumer := include "zelkor-platform.aiGatewayConsumerSecret" . -}}
+{{- $nemo := include "zelkor-platform.aiGatewayNemoSecret" . -}}
+{{- /* Client id -> key. Agents, MCP servers and Langfuse use "agents"; only NeMo gets "nemo". */}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $consumer }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+type: Opaque
+data:
+  agents: {{ include "zelkor-platform.aiGatewaySecretKey" (dict "root" . "secret" $consumer "key" "agents" "value" .Values.aiGateway.consumerKey) | b64enc | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $nemo }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+type: Opaque
+data:
+  nemo: {{ include "zelkor-platform.aiGatewaySecretKey" (dict "root" . "secret" $nemo "key" "nemo") | b64enc | quote }}
+{{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
+{{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
+{{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
+{{- if and (gt (len $hostnames) 0) $hasProviders }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aigateway-caller-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "zelkor-platform.fullname" . }}-aigateway-route
+  apiKeyAuth:
+    credentialRefs:
+      - name: {{ $consumer }}
+    extractFrom:
+      - headers: [authorization]
+    forwardClientIDHeader: x-zelkor-caller
+    sanitize: true
+{{- if $intercept }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aigateway-nemo-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "zelkor-platform.fullname" . }}-aigateway-nemo-route
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "zelkor-platform.fullname" . }}-unknown-model
+  apiKeyAuth:
+    credentialRefs:
+      - name: {{ $nemo }}
+    extractFrom:
+      - headers: [authorization]
+    forwardClientIDHeader: x-zelkor-caller
+    sanitize: true
+{{- end }}
+{{- end }}
+{{- end }}

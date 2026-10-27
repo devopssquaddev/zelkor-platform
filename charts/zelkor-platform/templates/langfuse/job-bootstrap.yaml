@@ -101,8 +101,7 @@ spec:
               value: {{ $llm.name | default "zelkor-ai-gateway" | quote }}
             - name: AI_GATEWAY_BASE_URL
               value: {{ include "zelkor-platform.openAiBaseUrl" . | quote }}
-            - name: AI_GATEWAY_CONSUMER_KEY
-              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            {{- include "zelkor-platform.aiGatewayKeyEnv" (dict "root" . "name" "AI_GATEWAY_CONSUMER_KEY" "secret" (include "zelkor-platform.aiGatewayConsumerSecret" .) "key" "agents") | nindent 12 }}
             - name: LANGFUSE_CUSTOM_MODELS
               value: {{ join "," ($llm.models | default list) | quote }}
             - name: SEED_LLM_CONNECTION

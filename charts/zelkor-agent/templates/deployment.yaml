@@ -120,8 +120,7 @@ spec:
             {{- end }}
             - name: OPENAI_BASE_URL
               value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
-            - name: OPENAI_API_KEY
-              value: {{ .Values.platform.consumerKey | quote }}
+            {{- include "zelkor-agent.consumerKeyEnv" (dict "root" . "name" "OPENAI_API_KEY") | nindent 12 }}
             - name: AI_GATEWAY_URL
               value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
             - name: MCP_URL
@@ -238,8 +237,7 @@ spec:
               value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
             - name: ZELKOR_MCP_UPSTREAM
               value: {{ printf "%s/mcp" (include "zelkor-agent.mcpUrl" . | trimSuffix "/" | trimSuffix "/mcp") | quote }}
-            - name: ZELKOR_CONSUMER_KEY
-              value: {{ .Values.platform.consumerKey | quote }}
+            {{- include "zelkor-agent.consumerKeyEnv" (dict "root" . "name" "ZELKOR_CONSUMER_KEY") | nindent 12 }}
             - name: ZELKOR_RUN_TIMEOUT
               value: {{ ($intent.timeout | default "") | quote }}
             - name: ZELKOR_MAX_TOKENS

@@ -21,7 +21,8 @@ spec:
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
-      name: {{ include "zelkor-platform.fullname" . }}-aigateway-route
+      {{- /* With intercept only NeMo -> provider calls are counted; they all use the NeMo route. */}}
+      name: {{ include "zelkor-platform.fullname" . }}-{{ ternary "aigateway-nemo-route" "aigateway-route" $intercept }}
   mergeType: StrategicMerge
   rateLimit:
     type: Global

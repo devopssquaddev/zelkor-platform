@@ -317,20 +317,11 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    {{- /* Only Envoy (AI Gateway backend) calls NeMo; agents go through the gateway's caller auth. */}}
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ $envoyNs | quote }}
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: aegra
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: ai-gateway
-        {{- include "zelkor-platform.destDenySameNsAgentPeers" . | nindent 8 }}
-        {{- if $isolation }}
-        {{- include "zelkor-platform.destDenyAgentPeers" . | nindent 8 }}
-        {{- end }}
       ports:
         - protocol: TCP
           port: 8000

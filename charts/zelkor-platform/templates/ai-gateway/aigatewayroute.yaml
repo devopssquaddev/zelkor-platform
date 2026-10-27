@@ -23,19 +23,8 @@ spec:
   rules:
     {{- $exact := include "zelkor-platform.aiGatewayExactModelMatches" . | fromJsonArray -}}
     {{- if $intercept }}
-    {{- /* NeMo upstream: bypass + model regex (two headers). The unknown-model HTTPRoute matches bypass alone so it stays less specific. Never add x-ai-eg-model ".+" on that route or here: equal header counts tie, and the older route wins across upgrades. */}}
-    {{- range $matches }}
-    - matches:
-        - headers:
-            - type: Exact
-              name: x-zelkor-guardrails-bypass
-              value: "1"
-            - type: RegularExpression
-              name: x-ai-eg-model
-              value: {{ .match | quote }}
-      backendRefs:
-        - name: {{ .backend }}
-    {{- end }}
+    {{- /* Agent route: no provider rules. A bypass header here still lands on NeMo; providers
+         are only on the NeMo route below, behind NeMo's own key. */}}
     {{- /* Exact default ids → NeMo: populates /v1/models; intercept without bypass. */}}
     {{- range $exact }}
     - matches:
@@ -81,5 +70,38 @@ spec:
     - backendRefs:
         - name: {{ include "zelkor-platform.aiGatewayDefaultBackend" . }}
     {{- end }}
+    {{- end }}
+{{- end }}
+{{- $nemoHosts := include "zelkor-platform.aiGatewayNemoHostnames" . | fromJsonArray -}}
+{{- if and .Values.aiGateway.enabled (gt (len $hostnames) 0) $hasProviders $intercept }}
+---
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: AIGatewayRoute
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-aigateway-nemo-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  parentRefs:
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
+  hostnames:
+    {{- range $nemoHosts }}
+    - {{ . | quote }}
+    {{- end }}
+  rules:
+    {{- /* NeMo upstream: bypass + model regex (two headers). The unknown-model HTTPRoute matches bypass alone so it stays less specific. Never add x-ai-eg-model ".+" on that route or here: equal header counts tie, and the older route wins across upgrades. */}}
+    {{- range $matches }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: x-zelkor-guardrails-bypass
+              value: "1"
+            - type: RegularExpression
+              name: x-ai-eg-model
+              value: {{ .match | quote }}
+      backendRefs:
+        - name: {{ .backend }}
     {{- end }}
 {{- end }}
