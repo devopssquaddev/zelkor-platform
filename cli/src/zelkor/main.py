@@ -1114,6 +1114,9 @@ def deploy_agent(
     overlay: dict[str, Any] = {
         "graphId": shape.graph_id,
         "runtime": runtime,
+        # Lab override (internal labs run :dev images); released installs use the chart tag.
+        **({"sidecar": {"image": {"tag": os.environ["ZELKOR_SIDECAR_TAG"]}}}
+           if runtime != "aegra" and os.getenv("ZELKOR_SIDECAR_TAG") else {}),
         "image": {"repository": image_repo, "tag": tag},
         "aegraConfig": "",
         "sharedRoute": {
