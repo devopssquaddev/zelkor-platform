@@ -8,6 +8,7 @@
 {{- $dsSecret := include "zelkor-agent.aegraDatastoreSecretName" . | trim }}
 {{- $jwtCm := include "zelkor-agent.tenantJwtConfigMapName" . | trim }}
 {{- $otelSecret := include "zelkor-agent.langfuseOtelSecretName" . | trim }}
+{{- $runtime := include "zelkor-agent.runtime" . }}
 {{- $useEnvFrom := or (and $otelSecret (not .Values.platform.langfuseBaseUrl)) (and $dsSecret (not $dbUrl)) (and $jwtCm (not $authIssuer)) }}
 apiVersion: v1
 kind: Service
@@ -52,6 +53,7 @@ spec:
       runtimeClassName: {{ $runtimeClass | quote }}
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 35 }}
+      {{- if eq $runtime "aegra" }}
       containers:
         - name: agent
           image: {{ include "zelkor-agent.image" .Values.image | quote }}
@@ -175,4 +177,137 @@ spec:
       {{- if $authVol }}
       volumes:
         {{ $authVol | nindent 8 }}
+      {{- end }}
+      {{- else }}
+      {{- $sc := .Values.sidecar | default dict }}
+      {{- $authVolMount := include "zelkor-agent.tenantAuthVolumeMount" . | trim }}
+      initContainers:
+        - name: migrate
+          image: {{ include "zelkor-agent.image" $sc.image | quote }}
+          imagePullPolicy: {{ $sc.image.pullPolicy | default .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          args: ["zelkor_sidecar.migrate"]
+          {{- if and $dsSecret (not $dbUrl) }}
+          envFrom:
+            - secretRef:
+                name: {{ $dsSecret | quote }}
+          {{- end }}
+          env:
+            {{- include "zelkor-agent.logEnv" . | nindent 12 }}
+            {{- if $dbUrl }}
+            - name: DATABASE_URL
+              value: {{ $dbUrl | quote }}
+            {{- end }}
+          {{- include "zelkor-agent.restrictedSecurityContext" . | nindent 10 }}
+      containers:
+        - name: sidecar
+          image: {{ include "zelkor-agent.image" $sc.image | quote }}
+          imagePullPolicy: {{ $sc.image.pullPolicy | default .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8000
+              name: http
+          {{- if $useEnvFrom }}
+          envFrom:
+            {{- if and $otelSecret (not .Values.platform.langfuseBaseUrl) }}
+            - secretRef:
+                name: {{ $otelSecret | quote }}
+                optional: true
+            {{- end }}
+            {{- if and $dsSecret (not $dbUrl) }}
+            - secretRef:
+                name: {{ $dsSecret | quote }}
+                optional: true
+            {{- end }}
+            {{- if and $jwtCm (not $authIssuer) }}
+            - configMapRef:
+                name: {{ $jwtCm | quote }}
+                optional: true
+            {{- end }}
+          {{- end }}
+          env:
+            {{- include "zelkor-agent.logEnv" . | nindent 12 }}
+            {{- include "zelkor-agent.tenantAuthEnv" . | nindent 12 }}
+            {{- if $dbUrl }}
+            - name: DATABASE_URL
+              value: {{ $dbUrl | quote }}
+            {{- end }}
+            - name: ZELKOR_RUNTIME
+              value: {{ $runtime | quote }}
+            - name: ZELKOR_GRAPH_ID
+              value: {{ $graphId | quote }}
+            - name: ZELKOR_LLM_UPSTREAM
+              value: {{ include "zelkor-agent.openaiBaseUrl" . | quote }}
+            - name: ZELKOR_MCP_UPSTREAM
+              value: {{ printf "%s/mcp" (include "zelkor-agent.mcpUrl" . | trimSuffix "/") | quote }}
+            - name: ZELKOR_CONSUMER_KEY
+              value: {{ .Values.platform.consumerKey | quote }}
+            - name: ZELKOR_RUN_TIMEOUT
+              value: {{ ($intent.timeout | default "") | quote }}
+            - name: ZELKOR_MAX_TOKENS
+              value: {{ ($intent.maxTokens | default 0) | quote }}
+            - name: ZELKOR_TOOL_PREFIXES
+              value: {{ .Values.platform.mcpInjectToolPrefixes | default "" | quote }}
+            - name: ZELKOR_TOOL_ALLOW_ALL
+              value: {{ ternary "true" "false" (.Values.platform.mcpInjectAllowAll | default false) | quote }}
+            - name: ZELKOR_NEMO_TOOLS_NO_STREAM
+              value: {{ ternary "true" "false" (ne (toString $sc.nemoToolsNoStream) "false") | quote }}
+            - name: ZELKOR_SIDECAR_DB_POOL
+              value: {{ ($sc.dbPoolSize | default 5) | quote }}
+            - name: ZELKOR_A2A_ENABLED
+              value: {{ ternary "true" "false" (($sc.a2a).enabled | default false) | quote }}
+            {{- if ($sc.a2a).enabled }}
+            - name: ZELKOR_A2A_PUBLIC_URL
+              value: {{ include "zelkor-agent.a2aPublicUrl" . | quote }}
+            {{- end }}
+            {{- include "zelkor-agent.langfuseEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: sidecar-tmp
+              mountPath: /tmp
+            {{- if $authVolMount }}
+            {{ $authVolMount | nindent 12 }}
+            {{- end }}
+          {{- include "zelkor-agent.containerProbes" (dict "root" . "values" .Values) | nindent 10 }}
+          {{- include "zelkor-agent.restrictedSecurityContext" . | nindent 10 }}
+          {{- with $sc.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        - name: agent
+          image: {{ include "zelkor-agent.image" .Values.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | default .Values.global.imagePullPolicy | default "IfNotPresent" }}
+          env:
+            {{- include "zelkor-agent.logEnv" . | nindent 12 }}
+            # Loopback only: the sidecar adds the consumer key and the run's tenant identity.
+            - name: OPENAI_BASE_URL
+              value: "http://127.0.0.1:8001/run/active/v1"
+            - name: OPENAI_API_KEY
+              value: "via-sidecar"
+            - name: MCP_URL
+              value: "http://127.0.0.1:8001/run/active/mcp"
+            - name: ZELKOR_GRAPH_ID
+              value: {{ $graphId | quote }}
+            {{- if .Values.platform.defaultLlmModel }}
+            - name: DEFAULT_LLM_MODEL
+              value: {{ .Values.platform.defaultLlmModel | quote }}
+            {{- end }}
+            {{- range .Values.extraEnv }}
+            - name: {{ .name | quote }}
+              value: {{ .value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: runtime-tmp
+              mountPath: /tmp
+          {{- include "zelkor-agent.restrictedSecurityContext" . | nindent 10 }}
+          {{- with $sc.runtimeResources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- $authVol := include "zelkor-agent.tenantAuthVolume" . | trim }}
+      volumes:
+        - name: sidecar-tmp
+          emptyDir: {}
+        - name: runtime-tmp
+          emptyDir: {}
+        {{- if $authVol }}
+        {{ $authVol | nindent 8 }}
+        {{- end }}
       {{- end }}

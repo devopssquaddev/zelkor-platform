@@ -40,6 +40,31 @@ image:
   digest: ""
   pullPolicy: ""
 
+# Agent runtime (CE-14). aegra: Aegra / LangGraph / Deep Agents in-process (unchanged).
+# a2a: any image serving A2A on 127.0.0.1:8080 (e.g. zelkor-runtime-pydantic-ai, zelkor-runtime-crewai).
+# opencode: zelkor-runtime-opencode. Non-aegra runtimes run behind zelkor-sidecar, which owns
+# :8000, tenant auth, threads/runs and the 127.0.0.1:8001 LLM/MCP egress; the runtime
+# container gets no DATABASE_URL, REDIS_URL, provider or consumer key.
+runtime: aegra
+
+sidecar:
+  image:
+    repository: ghcr.io/devopssquaddev/zelkor-sidecar
+    tag: "2.4.0"
+    digest: ""
+    pullPolicy: ""
+  # Non-stream the LLM call when it carries tools (NeMo intercept rejects tools + stream);
+  # the sidecar re-streams the answer. Same behaviour as the Aegra path.
+  nemoToolsNoStream: true
+  dbPoolSize: 5
+  a2a:
+    # Northbound A2A (Agent Card + JSON-RPC) on :8000 next to Agent Protocol.
+    enabled: false
+    # Card URL. Empty: https://{sharedRoute.host}/a2a?graph_id={graphId}
+    publicUrl: ""
+  resources: {}
+  runtimeResources: {}
+
 replicaCount: 1
 
 autoscaling:
