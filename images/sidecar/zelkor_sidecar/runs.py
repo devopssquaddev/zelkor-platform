@@ -32,6 +32,7 @@ class RunContext:
     traceparent: str = ""
     runtime: str = ""
     runtime_session_id: Optional[str] = None
+    runtime_task_id: Optional[str] = None
     tool_names: List[str] = field(default_factory=list)
     root_span: Any = None
     events: "asyncio.Queue[Any]" = field(default_factory=asyncio.Queue)
