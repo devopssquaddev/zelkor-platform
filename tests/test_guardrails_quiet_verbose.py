@@ -68,3 +68,9 @@ def test_debug_keeps_vendor_verbose(nemo, monkeypatch):
     assert quiet.install() is False
     llmrails_mod.set_verbose(True, llm_calls=True)
     assert calls == [(True, True)]
+
+
+def test_boot_installs_patch_before_the_nemo_cli():
+    # The server runs under opentelemetry-instrument, whose sitecustomize shadows ours.
+    src = (ROOT / "images" / "guardrails" / "boot.py").read_text()
+    assert src.index("install_quiet_verbose()") < src.index("from nemoguardrails.cli import app")
