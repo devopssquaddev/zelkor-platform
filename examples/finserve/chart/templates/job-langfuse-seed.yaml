@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         {{- include "finserve.labels" . | nindent 8 }}
+        # Admitted by the platform Langfuse ingress policy; agent egress allows only Langfuse + gateways.
+        zelkor.io/workload-type: agent
     spec:
       restartPolicy: OnFailure
       initContainers:
