@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import dataclasses
 import json
 import logging
 import os
@@ -364,7 +365,25 @@ def auth_values(info: PlatformInfo) -> dict[str, Any]:
     }
 
 
-def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) -> None:
+RUNTIMES = ("aegra", "a2a", "opencode")
+A2A_FRAMEWORKS = ("pydantic-ai", "crewai")
+
+
+def runtime_base_image(runtime: str, a2a_framework: str, tag: str) -> str:
+    """Base image a deploy-first project builds FROM (CE-14). Tag follows Chart appVersion."""
+    if runtime == "aegra":
+        return _deep_base_image(tag)
+    if runtime == "a2a":
+        if a2a_framework not in A2A_FRAMEWORKS:
+            raise RuntimeError(f"--a2a-framework must be one of {', '.join(A2A_FRAMEWORKS)}")
+        default = f"ghcr.io/devopssquaddev/zelkor-runtime-{a2a_framework}:{tag}"
+    else:
+        default = f"ghcr.io/devopssquaddev/zelkor-runtime-{runtime}:{tag}"
+    return os.getenv("ZELKOR_RUNTIME_IMAGE", "").strip() or default
+
+
+def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str, *,
+                         base_image: str, runtime: str = "aegra") -> None:
     ignore = {".git", ".zelkor", "__pycache__", ".venv", ".pytest_cache"}
     for item in src.iterdir():
         if item.name in ignore:
@@ -374,11 +393,10 @@ def _write_build_context(src: Path, dest: Path, shape_kind: str, graph_id: str) 
             shutil.copytree(item, target, ignore=shutil.ignore_patterns(*ignore, "*.pyc"))
         else:
             shutil.copy2(item, target)
-    (dest / "Dockerfile").write_text(
-        customer_dockerfile(os.getenv("ZELKOR_DEEP_IMAGE", "ghcr.io/devopssquaddev/zelkor-aegra-deep:1.2.5")),
-        encoding="utf-8",
-    )
-    if shape_kind == "deploy-first":
+    if runtime == "a2a" and (src / "Dockerfile").is_file():
+        return  # BYO A2A image: the project's own Dockerfile serves A2A on 127.0.0.1:8080
+    (dest / "Dockerfile").write_text(customer_dockerfile(base_image), encoding="utf-8")
+    if shape_kind == "deploy-first" and runtime == "aegra":
         (dest / "langgraph.json").write_text(
             json.dumps(deploy_first_langgraph(graph_id), indent=2),
             encoding="utf-8",
@@ -981,7 +999,8 @@ def _graph_declares_tools(root: Path) -> bool:
     return False
 
 
-def mcp_tool_scope(shape: Any, *, tools: str, all_tools: bool) -> dict[str, Any]:
+def mcp_tool_scope(shape: Any, *, tools: str, all_tools: bool,
+                   graph_may_declare: bool = True) -> dict[str, Any]:
     """CE-9: Mode B agents bind tools only by explicit scope. Returns agent `platform` values."""
     prefixes = [p.strip() for p in (tools or "").split(",") if p.strip()]
     if prefixes and all_tools:
@@ -997,7 +1016,7 @@ def mcp_tool_scope(shape: Any, *, tools: str, all_tools: bool) -> dict[str, Any]
         return {"mcpInjectToolPrefixes": ",".join(prefixes)}
     if all_tools:
         return {"mcpInjectAllowAll": True}
-    if _graph_declares_tools(shape.root):
+    if graph_may_declare and _graph_declares_tools(shape.root):
         return {}
     raise RuntimeError(
         "this agent binds platform MCP tools (Mode B) but declares none. "
@@ -1023,9 +1042,14 @@ def deploy_agent(
     agent_namespace: str = "",
     tool_prefixes: str = "",
     all_tools: bool = False,
+    runtime: str = "aegra",
+    a2a_framework: str = "pydantic-ai",
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
+    runtime = (runtime or "aegra").strip().lower()
+    if runtime not in RUNTIMES:
+        raise RuntimeError(f"--runtime must be one of {', '.join(RUNTIMES)}")
     registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
     if not _is_kind(env) and not registry:
         raise RuntimeError(
@@ -1034,7 +1058,17 @@ def deploy_agent(
     if not registry:
         registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
-    tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools)
+    if runtime != "aegra":
+        byo = runtime == "a2a" and (root / "Dockerfile").is_file()
+        if shape.kind != "deploy-first" and not byo:
+            raise RuntimeError(
+                f"--runtime {runtime} needs a deploy-first project (agent.json + AGENTS.md)"
+                + (" or your own Dockerfile serving A2A" if runtime == "a2a" else "")
+            )
+        # The sidecar enforces the tool scope for every non-Aegra runtime.
+        shape = dataclasses.replace(shape, mcp_inject=True)
+    tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools,
+                                graph_may_declare=runtime == "aegra")
     release = helm_release_name(shape.graph_id)
     logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
@@ -1062,7 +1096,10 @@ def deploy_agent(
     if not skip_build:
         with tempfile.TemporaryDirectory(prefix="zelkor-build-") as tmp:
             ctx = Path(tmp)
-            _write_build_context(root, ctx, shape.kind, shape.graph_id)
+            _write_build_context(root, ctx, shape.kind, shape.graph_id,
+                                 base_image=runtime_base_image(runtime, a2a_framework,
+                                                               _chart_app_version(agent_chart)),
+                                 runtime=runtime)
             logger.info("building %s", image_ref)
             logger.info("docker build first pull can take several minutes; layer progress follows")
             _run(["docker", "build", "--progress=plain", "-t", image_ref, str(ctx)], runner=runner)
@@ -1076,6 +1113,7 @@ def deploy_agent(
             _run(["kind", "load", "docker-image", image_ref, "--name", cluster], runner=runner)
     overlay: dict[str, Any] = {
         "graphId": shape.graph_id,
+        "runtime": runtime,
         "image": {"repository": image_repo, "tag": tag},
         "aegraConfig": "",
         "sharedRoute": {
@@ -1649,6 +1687,10 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
             default="",
             help="MCP backend prefixes the agent may bind (Mode B), e.g. postgres,sandbox",
         )
+        p.add_argument("--runtime", default="aegra", choices=["aegra", "a2a", "opencode"],
+                       help="agent runtime: aegra (LangGraph / Deep Agents), a2a (any A2A server), opencode")
+        p.add_argument("--a2a-framework", default="pydantic-ai", choices=["pydantic-ai", "crewai"],
+                       help="base image for a deploy-first --runtime a2a project")
         p.add_argument(
             "--all-tools",
             action="store_true",
@@ -1779,6 +1821,8 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 agent_namespace=getattr(args, "namespace", "") or "",
                 tool_prefixes=getattr(args, "tools", "") or "",
                 all_tools=bool(getattr(args, "all_tools", False)),
+                runtime=getattr(args, "runtime", "aegra") or "aegra",
+                a2a_framework=getattr(args, "a2a_framework", "pydantic-ai") or "pydantic-ai",
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
