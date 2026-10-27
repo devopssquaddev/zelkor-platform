@@ -1399,3 +1399,19 @@ def test_cli_parses_runtime_flags(monkeypatch):
     rc = m.main(["deploy", "--runtime", "a2a", "--a2a-framework", "crewai", "--tools", "postgres", "."])
     assert rc == 0
     assert (seen["runtime"], seen["a2a_framework"], seen["tool_prefixes"]) == ("a2a", "crewai", "postgres")
+
+
+def test_kind_node_cidrs_and_np_values():
+    from zelkor.main import _np_values, kind_node_cidrs
+
+    def runner(argv, **_kwargs):
+        assert "nodes" in argv
+        return SimpleNamespace(returncode=0, stdout="172.22.0.2\n172.22.0.3\nbogus\n", stderr="")
+
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    assert kind_node_cidrs(env, runner=runner) == ["172.22.0.2/32", "172.22.0.3/32"]
+    info = PlatformInfo(release="zelkor-platform")
+    info.network_policies_enabled = True
+    assert _np_values(info) == {"networkPolicies": {"enabled": True}}
+    info.gateway_host_cidrs = ["172.22.0.2/32"]
+    assert _np_values(info)["networkPolicies"]["hostNetworkGatewayCIDRs"] == ["172.22.0.2/32"]

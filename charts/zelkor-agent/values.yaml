@@ -87,6 +87,10 @@ terminationGracePeriodSeconds: 35
 security:
   networkPolicies:
     enabled: false
+    # Kind only: node addresses (/32) of a hostNetwork Envoy gateway. Its traffic does not
+    # come from the envoy-gateway-system namespace, so the ingress rule below would drop it.
+    # `zelkor deploy` fills this on kind clusters; leave empty everywhere else.
+    hostNetworkGatewayCIDRs: []
 
 platform:
   # Platform Helm release namespace. Empty → this release namespace.

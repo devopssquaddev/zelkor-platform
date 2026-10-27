@@ -97,3 +97,24 @@ def test_mcp_upstream_is_never_double_suffixed():
         env = _env(_c(_deploy("--set", "runtime=a2a", "--set", f"platform.mcpUrl={url}"), "sidecar"))
         assert env["ZELKOR_MCP_UPSTREAM"] == "http://zelkor-platform-mcp/mcp", url
 
+
+
+def _ingress(*extra):
+    r = _helm_agent("--set", "security.networkPolicies.enabled=true", *extra)
+    assert r.returncode == 0, r.stderr
+    (np,) = [x for x in yaml.safe_load_all(r.stdout) if x and x.get("kind") == "NetworkPolicy"
+             and x["metadata"]["name"].endswith("-ingress")]
+    return np["spec"]["ingress"][0]["from"]
+
+
+def test_ingress_default_is_gateway_namespace_only():
+    assert _ingress() == [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "envoy-gateway-system"}}}]
+
+
+def test_kind_host_network_gateway_cidrs_add_node_ip_blocks_only():
+    src = _ingress("--set", "security.networkPolicies.hostNetworkGatewayCIDRs[0]=172.22.0.2/32")
+    assert src[1] == {"ipBlock": {"cidr": "172.22.0.2/32"}}
+    for bad in ("0.0.0.0/0", "172.22.0.0/16", "10.0.0.1"):
+        r = _helm_agent("--set", "security.networkPolicies.enabled=true",
+                        "--set", f"security.networkPolicies.hostNetworkGatewayCIDRs[0]={bad}")
+        assert r.returncode != 0 and "/32" in r.stderr, bad

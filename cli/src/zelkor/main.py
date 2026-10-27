@@ -68,6 +68,7 @@ class PlatformInfo:
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
     helm_values: dict[str, Any] = field(default_factory=dict)
     network_policies_enabled: bool = False
+    gateway_host_cidrs: list[str] = field(default_factory=list)
 
 
 def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = "") -> Path:
@@ -192,6 +193,28 @@ def _container_env(deploy: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def kind_node_cidrs(env: Env, *, runner: Optional[RunFn] = None) -> list[str]:
+    """Kind only: node InternalIPs as /32 for a hostNetwork Envoy (agent ingress NetworkPolicy)."""
+    out = _run(
+        kube_argv(env, "get", "nodes", "-o",
+                  "jsonpath={range .items[*]}{.status.addresses[?(@.type=='InternalIP')].address}{'\\n'}{end}"),
+        runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    cidrs = []
+    for line in (getattr(out, "stdout", "") or "").split():
+        parts = line.strip().split(".")
+        if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+            cidrs.append(f"{line.strip()}/32")
+    return sorted(set(cidrs))
+
+
+def _np_values(info: "PlatformInfo") -> dict[str, Any]:
+    np: dict[str, Any] = {"enabled": info.network_policies_enabled}
+    if info.gateway_host_cidrs:
+        np["hostNetworkGatewayCIDRs"] = list(info.gateway_host_cidrs)
+    return {"networkPolicies": np}
+
+
 def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     logger.info(
         "discover platform env=%s context=%s namespace=%s",
@@ -232,6 +255,8 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         ((values.get("security") or {}).get("networkPolicies") or {}).get("enabled")
     )
     info.gateway_namespace = env.namespace
+    if info.network_policies_enabled and _is_kind(env):
+        info.gateway_host_cidrs = kind_node_cidrs(env, runner=runner)
     logger.info("agents host=%s", info.agents_host or "(empty)")
     logger.info("get aegra deployment")
     deploys = _run(
@@ -685,7 +710,7 @@ def discovered_worker_values(info: PlatformInfo, *, platform_namespace: str = ""
         },
         "platform": platform,
         "auth": auth_values(info),
-        "security": {"networkPolicies": {"enabled": info.network_policies_enabled}},
+        "security": _np_values(info),
     }
     if info.image_pull_secrets:
         overlay["global"] = {"imagePullSecrets": info.image_pull_secrets}
@@ -1141,7 +1166,7 @@ def deploy_agent(
             **({"otelTargets": info.otel_targets} if info.otel_targets else {}),
         },
         "auth": auth_values(info),
-        "security": {"networkPolicies": {"enabled": info.network_policies_enabled}},
+        "security": _np_values(info),
     }
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
