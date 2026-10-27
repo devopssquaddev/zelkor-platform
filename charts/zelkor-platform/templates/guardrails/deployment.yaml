@@ -19,6 +19,7 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/guardrails/configmap.yaml") . | sha256sum }}
+        checksum/ai-gateway-nemo: {{ include "zelkor-platform.aiGatewayKeyChecksum" (dict "root" . "key" "nemo") | quote }}
         checksum/langfuse-otel: {{ printf "%t%s" (.Values.langfuse.init.enabled | default false) ((.Values.langfuse.extraProjects | default list) | toJson) | sha256sum }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}

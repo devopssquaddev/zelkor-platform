@@ -181,7 +181,7 @@ def test_kind_profiles_inherit_release_image_tags():
     docs = _docs(proc.stdout)
     deploys = {d["metadata"]["name"] for d in _kinds(docs, "Deployment")}
     assert "zelkor-platform-mcp-aigateway" not in deploys
-    job = _named(docs, "Job", "zelkor-platform-langfuse-bootstrap")
+    job = next(d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith("zelkor-platform-langfuse-bootstrap-"))
     assert _env(job, "SEED_MCP_TOOLS") == "false"
 
 

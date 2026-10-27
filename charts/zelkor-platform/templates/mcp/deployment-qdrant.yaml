@@ -36,6 +36,8 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        checksum/ai-gateway-agents: {{ include "zelkor-platform.aiGatewayKeyChecksum" (dict "root" . "key" "agents") | quote }}
       labels:
         {{- include "zelkor-platform.labels" (dict "root" . "intent" "mcp.qdrantMCP") | nindent 8 }}
         app.kubernetes.io/component: mcp-qdrant
