@@ -56,6 +56,7 @@ spec:
               value: "9090"
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.mcp.qdrantMCP "name" "zelkor-mcp-qdrant") | nindent 12 }}
             {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.mcpPolicyEnv" (dict "root" . "backend" "qdrant") | nindent 12 }}
             - name: QDRANT_MCP_URL
               value: {{ include "zelkor-platform.qdrantUrl" . | quote }}
             - name: QDRANT_COLLECTION

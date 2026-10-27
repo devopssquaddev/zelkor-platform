@@ -185,3 +185,65 @@ false
 {{- end -}}
 {{- end -}}
 {{- end -}}
+
+{{- /*
+CE-9 tool policy. workspace.tools.policy.deny entries are agent-visible names:
+"<backend>__<tool>", "<backend>__<prefix>*" or "<backend>__*". Returns JSON
+{"exact": [{backend, tool}], "prefixes": [{backend, prefix}], "all": [backend]}.
+*/}}
+{{- define "zelkor-platform.mcpToolPolicy" -}}
+{{- $policy := (.Values.mcp.policy | default dict) -}}
+{{- $exact := list -}}
+{{- $prefixes := list -}}
+{{- $all := list -}}
+{{- range $idx, $raw := ($policy.deny | default list) -}}
+{{- $entry := toString $raw | trim -}}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]*[a-z0-9])?__([A-Za-z0-9_.-]+\\*?|\\*)$" $entry) -}}
+{{- fail (printf "workspace.tools.policy.deny[%d] %q must be \"<backend>__<tool>\", \"<backend>__<prefix>*\" or \"<backend>__*\"" $idx $entry) -}}
+{{- end -}}
+{{- $parts := splitn "__" 2 $entry -}}
+{{- $backend := $parts._0 -}}
+{{- $tool := $parts._1 -}}
+{{- if eq $tool "*" -}}
+{{- $all = append $all $backend -}}
+{{- else if hasSuffix "*" $tool -}}
+{{- $prefixes = append $prefixes (dict "backend" $backend "prefix" (trimSuffix "*" $tool)) -}}
+{{- else -}}
+{{- $exact = append $exact (dict "backend" $backend "tool" $tool) -}}
+{{- end -}}
+{{- end -}}
+{{- dict "exact" $exact "prefixes" $prefixes "all" $all | toJson -}}
+{{- end }}
+
+{{- /* Bare deny patterns for one native backend (MCP_DENY_TOOLS). Pass dict "root" . "backend" "<name>". */}}
+{{- define "zelkor-platform.mcpDenyToolsEnv" -}}
+{{- $p := include "zelkor-platform.mcpToolPolicy" .root | fromJson -}}
+{{- $out := list -}}
+{{- range $p.all }}{{- if eq . $.backend }}{{- $out = append $out "*" -}}{{- end }}{{- end -}}
+{{- range $p.exact }}{{- if eq .backend $.backend }}{{- $out = append $out .tool -}}{{- end }}{{- end -}}
+{{- range $p.prefixes }}{{- if eq .backend $.backend }}{{- $out = append $out (printf "%s*" .prefix) -}}{{- end }}{{- end -}}
+{{- join "," $out -}}
+{{- end }}
+
+{{- /* MCP_RATE_LIMIT_PER_MINUTE: 0 when disabled. */}}
+{{- define "zelkor-platform.mcpRateLimitEnv" -}}
+{{- $rl := ((.Values.mcp.policy | default dict).rateLimit | default dict) -}}
+{{- $on := ternary $rl.enabled true (hasKey $rl "enabled") -}}
+{{- if $on -}}
+{{- $n := (hasKey $rl "callsPerMinute") | ternary ($rl.callsPerMinute | int) 60 -}}
+{{- if lt $n 1 -}}
+{{- fail "workspace.tools.policy.rateLimit.callsPerMinute must be >= 1 when rateLimit.enabled is true" -}}
+{{- end -}}
+{{- $n -}}
+{{- else -}}
+0
+{{- end -}}
+{{- end }}
+
+{{- /* Shared env for every native MCP Deployment. Pass dict "root" . "backend" "<name>". */}}
+{{- define "zelkor-platform.mcpPolicyEnv" -}}
+- name: MCP_DENY_TOOLS
+  value: {{ include "zelkor-platform.mcpDenyToolsEnv" . | quote }}
+- name: MCP_RATE_LIMIT_PER_MINUTE
+  value: {{ include "zelkor-platform.mcpRateLimitEnv" .root | quote }}
+{{- end }}

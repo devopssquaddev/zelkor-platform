@@ -4,11 +4,14 @@ import logging
 import os
 import signal
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 import anyio
+
+from common.tool_policy import RateLimiter, ToolPolicy
 
 logger = logging.getLogger("zelkor-mcp")
 
@@ -36,6 +39,101 @@ def _reject_stray_tenant_id(arguments: dict) -> None:
         raise PermissionError("tenant_id argument is not allowed")
 
 
+def _json_size(value: Any) -> int:
+    try:
+        text = value if isinstance(value, str) else json.dumps(value)
+    except (TypeError, ValueError):
+        return 0
+    return len(text.encode("utf-8"))
+
+
+def _audit(level: int, name: str, tenant_id: str, status: str, started: float, *,
+           request_bytes: int, response_bytes: int = 0, deny_reason: str = "",
+           detail: str = "") -> None:
+    """One structured record per tools/call (CE-9c). Metadata only: never args or results (P11)."""
+    if status == "ok":
+        message = f"tools/call {name}"
+    elif status == "error":
+        message = f"MCP tool {name} failed: {detail}"
+    else:
+        message = f"MCP permission denied: tools/call {name} ({deny_reason})"
+        if detail:
+            message = f"{message}: {detail}"
+    logger.log(
+        level,
+        message,
+        extra={
+            "event": "tools_call",
+            "tool": name,
+            "tenant_id": tenant_id,
+            "status": status,
+            "deny_reason": deny_reason,
+            "elapsed_s": round(time.monotonic() - started, 4),
+            "request_bytes": request_bytes,
+            "response_bytes": response_bytes,
+        },
+    )
+
+
+async def run_tool_call(
+    tool_handler: "MCPToolHandler",
+    name: str,
+    arguments: Optional[dict],
+    tenant_id: Optional[str],
+    *,
+    limiter: anyio.CapacityLimiter,
+    policy: ToolPolicy,
+    rate: RateLimiter,
+) -> str:
+    """Tenant check, deny list, rate limit, dispatch, audit. Returns the result as text."""
+    started = time.monotonic()
+    args = dict(arguments or {})
+    request_bytes = _json_size(args)
+    if not tenant_id:
+        _audit(logging.WARNING, name, "", "denied", started,
+               request_bytes=request_bytes, deny_reason="no_tenant")
+        raise PermissionError("Missing tenant identity in Authorization")
+    if policy.deny_reason(name):
+        _audit(logging.WARNING, name, tenant_id, "denied", started,
+               request_bytes=request_bytes, deny_reason="policy")
+        raise PermissionError(f"tool {name} is denied by workspace.tools.policy.deny")
+    if not rate.allow(tenant_id, name):
+        _audit(logging.WARNING, name, tenant_id, "rate_limited", started,
+               request_bytes=request_bytes, deny_reason="rate_limit")
+        raise PermissionError(
+            f"rate limit exceeded for tool {name}: {rate.per_minute} calls per minute per tenant"
+        )
+    try:
+        _reject_stray_tenant_id(args)
+        with anyio.fail_after(TOOL_DEADLINE_S):
+            result = await anyio.to_thread.run_sync(
+                tool_handler.call_tool,
+                name,
+                args,
+                tenant_id,
+                limiter=limiter,
+            )
+    except PermissionError as exc:
+        _audit(logging.WARNING, name, tenant_id, "denied", started,
+               request_bytes=request_bytes, deny_reason="backend", detail=_redact(exc))
+        raise
+    except Exception as exc:
+        _audit(logging.WARNING, name, tenant_id, "error", started,
+               request_bytes=request_bytes, detail=f"{type(exc).__name__}: {_redact(exc)}")
+        raise
+    text = json.dumps(result) if not isinstance(result, str) else result
+    _audit(logging.INFO, name, tenant_id, "ok", started,
+           request_bytes=request_bytes, response_bytes=len(text.encode("utf-8")))
+    return text
+
+
+def _redact(exc: BaseException) -> str:
+    detail = str(exc).replace("\n", " ")
+    if "Authorization" in detail or "Bearer " in detail:
+        return type(exc).__name__
+    return detail[:160]
+
+
 def build_starlette_app(
     tool_handler: MCPToolHandler,
     tenant_extractor: Callable[[Dict[str, str]], Optional[str]],
@@ -55,6 +153,8 @@ def build_starlette_app(
 
     mcp_server = Server(server_name)
     limiter = anyio.CapacityLimiter(MAX_CONCURRENT_REQUESTS)
+    policy = ToolPolicy.from_env()
+    rate = RateLimiter.from_env()
     manager = StreamableHTTPSessionManager(
         mcp_server,
         stateless=True,
@@ -68,7 +168,7 @@ def build_starlette_app(
 
     @mcp_server.list_tools()
     async def _list_tools() -> list:
-        tools = tool_handler.list_tools()
+        tools = policy.filter_tools(tool_handler.list_tools())
         tenant_id = tenant_extractor(_headers())
         logger.info(
             "tools/list count=%s",
@@ -86,53 +186,15 @@ def build_starlette_app(
 
     @mcp_server.call_tool()
     async def _call_tool(name: str, arguments: dict | None) -> list:
-        tenant_id = tenant_extractor(_headers())
-        if not tenant_id:
-            exc = PermissionError("Missing tenant identity in Authorization")
-            logger.warning(
-                "MCP permission denied: %s",
-                exc,
-                extra={"event": "tools_call", "tenant_id": ""},
-            )
-            raise exc
-        args = dict(arguments or {})
-        try:
-            _reject_stray_tenant_id(args)
-            with anyio.fail_after(TOOL_DEADLINE_S):
-                result = await anyio.to_thread.run_sync(
-                    tool_handler.call_tool,
-                    name,
-                    args,
-                    tenant_id,
-                    limiter=limiter,
-                )
-        except PermissionError as exc:
-            logger.warning(
-                "MCP permission denied: %s",
-                exc,
-                extra={"event": "tools_call", "tenant_id": tenant_id or ""},
-            )
-            raise
-        except Exception as exc:
-            detail = str(exc).replace("\n", " ")
-            if "Authorization" in detail or "Bearer " in detail:
-                detail = type(exc).__name__
-            else:
-                detail = detail[:160]
-            logger.warning(
-                "MCP tool %s failed: %s: %s",
-                name,
-                type(exc).__name__,
-                detail,
-                extra={"event": "tools_call", "tenant_id": tenant_id or ""},
-            )
-            raise
-        logger.info(
-            "tools/call %s",
+        text = await run_tool_call(
+            tool_handler,
             name,
-            extra={"event": "tools_call", "tenant_id": tenant_id},
+            arguments,
+            tenant_extractor(_headers()),
+            limiter=limiter,
+            policy=policy,
+            rate=rate,
         )
-        text = json.dumps(result) if not isinstance(result, str) else result
         return [types.TextContent(type="text", text=text)]
 
     # Starlette Route treats bare functions as request→response; a callable

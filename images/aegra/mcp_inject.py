@@ -227,7 +227,19 @@ def _select_specs(
 ) -> list[Any]:
     if inject_tools:
         return _filter_specs_by_names(specs, inject_tools)
-    return _filter_specs_by_prefix(specs, prefixes)
+    if prefixes:
+        return _filter_specs_by_prefix(specs, prefixes)
+    # CE-9: no names and no prefixes binds no tools unless the operator opts in.
+    # Client-side only: the agent holds the tenant JWT; server-side per-agent policy is CE-14.
+    if os.getenv("MCP_INJECT_ALLOW_ALL", "").strip().lower() in ("1", "true", "yes"):
+        return list(specs)
+    if specs:
+        logger.warning(
+            "MCP inject: no MCP_INJECT_TOOLS or prefixes; binding no tools "
+            "(set MCP_INJECT_ALLOW_ALL=true / platform.mcpInjectAllowAll to bind all %d)",
+            len(specs),
+        )
+    return []
 
 
 def _caller_agent_module():

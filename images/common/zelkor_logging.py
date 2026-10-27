@@ -42,6 +42,9 @@ _CONTEXT_KEYS = (
     "since_send_s",
     "sse_drops",
     "status",
+    "deny_reason",
+    "request_bytes",
+    "response_bytes",
 )
 
 

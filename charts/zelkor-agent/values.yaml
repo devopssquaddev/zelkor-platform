@@ -84,6 +84,9 @@ platform:
   mcpAuthTokenSecretKey: token
   # Optional comma-separated MCP tool prefixes when graph modules omit MCP_INJECT_PREFIXES.
   mcpInjectToolPrefixes: ""
+  # CE-9: with no MCP_INJECT_TOOLS / prefixes the agent binds no tools. true binds every
+  # tool the tenant's MCP gateway lists (natives and extras). Not a security boundary.
+  mcpInjectAllowAll: false
   defaultLlmModel: ""
   # Empty + releaseName → http://{release}-langfuse:3000 and envFrom {release}-langfuse-otel.
   langfuseBaseUrl: ""

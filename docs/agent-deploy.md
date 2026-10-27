@@ -37,6 +37,9 @@ platform:
   # The name of the platform Helm release (e.g., zelkor-platform).
   # This allows the agent to inherit the platform's checkpointer, Valkey, and Langfuse OTEL config.
   releaseName: "zelkor-platform"
+  # MCP tools the agent binds when its graph sets neither MCP_INJECT_TOOLS nor
+  # MCP_INJECT_PREFIXES. Empty binds no tools; mcpInjectAllowAll: true binds all.
+  mcpInjectToolPrefixes: "postgres,sandbox"
 
 # Isolate the agent's job queue and SSE channels on the shared Valkey.
 redis:
@@ -64,14 +67,14 @@ The `zelkor` CLI provides a streamlined way to build and deploy agents without w
 zelkor env add production --kube-context my-context --namespace zelkor
 zelkor env use production
 
-# Build and deploy the agent
-zelkor deploy --timeout 60s
+# Build and deploy the agent; --tools names the MCP backends it may bind (or --all-tools)
+zelkor deploy --tools postgres,sandbox --timeout 60s
 ```
 
 To put the worker in another namespace, create and label that namespace (`zelkor.io/namespace-role: agent`), set `platform.isolation.agentNamespaces: true` on the platform release, then:
 
 ```bash
-zelkor deploy --namespace team-research
+zelkor deploy --tools postgres --namespace team-research
 ```
 
 `zelkor env` stays the **platform** namespace. The CLI fills `platform.namespace`, in-cluster `*-ai-gateway` / `*-mcp` FQDNs (`{svc}.{platformNs}.svc.cluster.local`, matching the HTTPRoute Host), copies verify ConfigMaps and image pull Secrets, and copies the platform NetworkPolicy flag. Do not point `OPENAI_BASE_URL` at the Envoy dataplane. GitOps in another namespace sets `platform.namespace` on `zelkor-agent`; the chart compiles those FQDNs.

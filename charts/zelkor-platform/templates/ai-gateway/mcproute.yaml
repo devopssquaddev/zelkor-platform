@@ -67,6 +67,39 @@ spec:
     authorization:
       defaultAction: Deny
       rules:
+{{- /* CE-9a: Deny rules first (AIGW evaluates in order, first match wins; tools/list
+     hides a tool whose tools/call would be denied). Exact names use target.tools (max 16
+     per rule); prefixes and whole backends use one CEL rule guarded by the method. */}}
+{{- $policy := include "zelkor-platform.mcpToolPolicy" . | fromJson -}}
+{{- $chunk := list -}}
+{{- range $i, $t := $policy.exact }}
+{{- $chunk = append $chunk $t -}}
+{{- if or (eq (len $chunk) 16) (eq (add1 $i) (len $policy.exact)) }}
+        - action: Deny
+          target:
+            tools:
+{{- range $chunk }}
+              - backend: {{ .backend | quote }}
+                tool: {{ .tool | quote }}
+{{- end }}
+{{- $chunk = list -}}
+{{- end }}
+{{- end }}
+{{- $terms := list -}}
+{{- range $policy.prefixes -}}
+{{- $terms = append $terms (printf "(request.mcp.backend == %q && request.mcp.tool.startsWith(%q))" .backend .prefix) -}}
+{{- end -}}
+{{- range $policy.all -}}
+{{- $terms = append $terms (printf "request.mcp.backend == %q" .) -}}
+{{- end -}}
+{{- if $terms }}
+{{- $denyCel := printf "request.mcp.method == \"tools/call\" && (%s)" (join " || " $terms) -}}
+{{- if gt (len $denyCel) 4096 -}}
+{{- fail "workspace.tools.policy.deny: prefix entries exceed the 4096-character MCPRoute CEL limit; use fewer prefixes" -}}
+{{- end }}
+        - action: Deny
+          cel: {{ $denyCel | quote }}
+{{- end }}
         - cel: {{ join " || " $cels | quote }}
   backendRefs:
 {{- $natives := include "zelkor-platform.mcpNativeBackends" . | fromJsonArray -}}
@@ -111,6 +144,18 @@ spec:
 {{- if $item.toolSelector.includeRegex }}
         includeRegex:
 {{- range $item.toolSelector.includeRegex }}
+          - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- if $item.toolSelector.exclude }}
+        exclude:
+{{- range $item.toolSelector.exclude }}
+          - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- if $item.toolSelector.excludeRegex }}
+        excludeRegex:
+{{- range $item.toolSelector.excludeRegex }}
           - {{ . | quote }}
 {{- end }}
 {{- end }}

@@ -16,6 +16,42 @@ spec:
   logging:
     level:
       default: {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.gateway "vendor" "envoy") }}
+  {{- if (.Values.mcp).enabled }}
+  {{- /* CE-9c: /mcp access log carries MCP metadata only (method, backend, tool, tenant,
+       status, timing, sizes) so Envoy-side denies and extras are audited. Never bodies,
+       params or Authorization (P11). Every other path keeps the EG default JSON log. */}}
+  telemetry:
+    accessLog:
+      settings:
+        - matches:
+            - "!request.path.startsWith('/mcp')"
+          sinks:
+            - type: File
+              file:
+                path: /dev/stdout
+        - matches:
+            - "request.path.startsWith('/mcp')"
+          format:
+            type: JSON
+            json:
+              event: mcp_access
+              start_time: "%START_TIME%"
+              mcp_method: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_method)%"
+              mcp_backend: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_backend)%"
+              mcp_tool_name: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_tool_name)%"
+              mcp_request_id: "%DYNAMIC_METADATA(io.envoy.ai_gateway:mcp_request_id)%"
+              tenant_id: "%REQ(X-TENANT-ID)%"
+              response_code: "%RESPONSE_CODE%"
+              response_code_details: "%RESPONSE_CODE_DETAILS%"
+              duration_ms: "%DURATION%"
+              bytes_received: "%BYTES_RECEIVED%"
+              bytes_sent: "%BYTES_SENT%"
+              x_request_id: "%REQ(X-REQUEST-ID)%"
+          sinks:
+            - type: File
+              file:
+                path: /dev/stdout
+  {{- end }}
   provider:
     type: Kubernetes
     kubernetes:

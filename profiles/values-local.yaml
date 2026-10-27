@@ -144,6 +144,11 @@ workspace:
           enabled: true
           captureContent: true
   tools:
+    # Lab suites burst native tools; chart default is 60 per tenant per tool.
+    policy:
+      rateLimit:
+        enabled: true
+        callsPerMinute: 600
     enabled: true
     objectMCP:
       enabled: true

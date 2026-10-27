@@ -261,6 +261,14 @@ workspace:
   tools:
     enabled: true
     extraBackends: []
+    # CE-9: tool policy for natives and extras. deny uses agent-visible names
+    # ("object__delete", "object__write*", "qdrant__*"); enforced at Envoy and mirrored
+    # by native backends. MCP readOnlyHint/destructiveHint are never trusted.
+    policy:
+      deny: []
+      rateLimit:
+        enabled: true
+        callsPerMinute: 60
     image:
       repository: ghcr.io/devopssquaddev/zelkor-mcp
       tag: 2.4.0
