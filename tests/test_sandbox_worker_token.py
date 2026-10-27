@@ -59,3 +59,32 @@ def test_worker_run_requires_token_when_set(monkeypatch):
         thread.join(timeout=5)
     finally:
         server.server_close()
+
+
+def test_worker_health_answers_during_a_long_run(monkeypatch):
+    """Liveness must not fail while /run executes (worker was killed on runs > ~30 s)."""
+    import time
+
+    from sandbox.worker import make_server
+
+    monkeypatch.setenv("SANDBOX_WORKER_TOKEN", "s3cret")
+    server = make_server(0, host="127.0.0.1")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    try:
+        payload = json.dumps({"code": "import time\ntime.sleep(3)\nprint(1)", "timeout": 10}).encode()
+        run = Request(f"http://127.0.0.1:{port}/run", data=payload, method="POST",
+                      headers={"X-Sandbox-Worker-Token": "s3cret", "Content-Type": "application/json"})
+        result = {}
+        runner = threading.Thread(target=lambda: result.setdefault("r", json.loads(urlopen(run, timeout=15).read())))
+        runner.start()
+        time.sleep(0.5)
+        started = time.monotonic()
+        with urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as resp:
+            assert resp.status == 200
+        assert time.monotonic() - started < 1.5
+        runner.join(timeout=15)
+        assert result["r"]["status"] == "success", result
+    finally:
+        server.shutdown()
+        server.server_close()

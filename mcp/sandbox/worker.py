@@ -7,7 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bootstrap_runner import parse_bootstrap_line  # noqa: E402
@@ -17,6 +18,9 @@ logger = logging.getLogger("zelkor-sandbox-worker")
 
 MAX_BODY_BYTES = int(os.getenv("SANDBOX_MAX_BODY_BYTES", "1048576"))
 _RUNNER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bootstrap_runner.py")
+# One execution at a time per worker; /health is served on its own thread so a long
+# run does not fail the liveness probe.
+_RUN_LOCK = threading.Lock()
 
 
 class WorkerHandler(BaseHTTPRequestHandler):
@@ -41,6 +45,10 @@ class WorkerHandler(BaseHTTPRequestHandler):
         if self.path != "/run":
             self._json(404, {"error": "not found"})
             return
+        with _RUN_LOCK:
+            self._run()
+
+    def _run(self):
 
         expected = os.getenv("SANDBOX_WORKER_TOKEN", "").strip()
         if not expected:
@@ -145,6 +153,12 @@ class WorkerHandler(BaseHTTPRequestHandler):
             shutil.rmtree(workdir, ignore_errors=True)
 
 
+def make_server(port: int, host: str = "0.0.0.0") -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer((host, port), WorkerHandler)
+    server.daemon_threads = True
+    return server
+
+
 if __name__ == "__main__":
     from zelkor_logging import configure_logging
 
@@ -156,4 +170,4 @@ if __name__ == "__main__":
         )
     port = int(os.getenv("PORT", "8081"))
     logger.info("sandbox worker listening on 0.0.0.0:%s", port, extra={"event": "startup"})
-    HTTPServer(("0.0.0.0", port), WorkerHandler).serve_forever()
+    make_server(port).serve_forever()
