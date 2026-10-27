@@ -55,7 +55,7 @@ def _bootstrap_env(docs: list) -> dict[str, str]:
     job = next(
         doc
         for doc in docs
-        if doc and doc.get("kind") == "Job" and doc["metadata"]["name"].endswith("-langfuse-bootstrap")
+        if doc and doc.get("kind") == "Job" and "-langfuse-bootstrap-" in doc["metadata"]["name"]
     )
     return _env(job["spec"]["template"]["spec"]["containers"][0])
 

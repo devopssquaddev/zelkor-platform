@@ -8,11 +8,14 @@
 {{- $evals := $surfaces.evaluators | default dict -}}
 {{- $extraProjects := .Values.langfuse.extraProjects | default list -}}
 {{- $armorOn := and $init.enabled (or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0)) -}}
-{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.orgId | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) ($evals.sampling | default 0.1 | toString) "ce12-armor-3" | sha256sum | trim -}}
+{{- $keySum := ternary (include "zelkor-platform.aiGatewayKeyChecksum" (dict "root" . "key" "agents")) "" .Values.aiGateway.enabled -}}
+{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.orgId | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) ($evals.sampling | default 0.1 | toString) "ce12-armor-3" $keySum | sha256sum | trim -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+  {{- /* Name carries the inputs' checksum: a changed input (e.g. a rotated gateway key, which the
+       seed stores in the Langfuse LLM connection) makes Helm replace the Job, so the seed re-runs. */}}
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-{{ $bootstrapChecksum | trunc 8 }}
   labels:
     {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
     app.kubernetes.io/component: langfuse-bootstrap

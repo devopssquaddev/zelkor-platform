@@ -138,3 +138,32 @@ def test_agent_chart_inherits_the_consumer_key_from_the_platform_release():
     assert side[("agent", "OPENAI_API_KEY")] == "via-sidecar"
     explicit = _agent_env("--set", "platform.consumerKey=ck-x", "--set", "platform.releaseName=zelkor-platform")
     assert any(v == "ck-x" for k, v in explicit.items() if k[1] == "OPENAI_API_KEY")
+
+
+def _annotations(docs, name):
+    return _named(docs, "Deployment", name)["spec"]["template"]["metadata"].get("annotations") or {}
+
+
+def _bootstrap_job(docs):
+    (job,) = [d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith("zelkor-platform-langfuse-bootstrap-")]
+    return job["metadata"]["name"]
+
+
+def test_rotating_the_consumer_key_restarts_its_users_and_reruns_the_seed():
+    one, same, two = (_render("--set", f"workspace.models.consumerKey={k}") for k in ("ck-1", "ck-1", "ck-2"))
+    for name in ("zelkor-platform-aegra", "zelkor-platform-mcp-aigateway", "zelkor-platform-mcp-qdrant"):
+        a1, a1b, a2 = (_annotations(d, name).get("checksum/ai-gateway-agents") for d in (one, same, two))
+        assert a1 and a1 == a1b != a2, name
+    assert "checksum/ai-gateway-nemo" in _annotations(one, "zelkor-platform-nemo")
+    # The seed stores the key in the Langfuse LLM connection: a new key means a new Job (re-run).
+    assert _bootstrap_job(one) == _bootstrap_job(same) != _bootstrap_job(two)
+
+
+def test_agent_pods_track_the_key_they_use():
+    def checksum(*extra):
+        r = _helm_agent(*extra)
+        assert r.returncode == 0, r.stderr
+        (d,) = [x for x in yaml.safe_load_all(r.stdout) if x and x.get("kind") == "Deployment"]
+        return d["spec"]["template"]["metadata"]["annotations"]["checksum/ai-gateway-consumer"]
+    assert checksum("--set", "platform.consumerKey=ck-1") == checksum("--set", "platform.consumerKey=ck-1")
+    assert checksum("--set", "platform.consumerKey=ck-1") != checksum("--set", "platform.consumerKey=ck-2")

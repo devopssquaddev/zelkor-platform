@@ -40,6 +40,8 @@ spec:
       {{- include "zelkor-agent.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/ai-gateway-consumer: {{ include "zelkor-agent.consumerKeyChecksum" . | quote }}
       labels:
         {{- include "zelkor-agent.selectorLabels" . | nindent 8 }}
         zelkor.io/workload-type: agent

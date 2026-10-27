@@ -219,7 +219,17 @@ Set `workspace.models.rateLimit.enabled=false` to omit the cap. **Pro** adds per
 
 ## Consumer key on agents
 
-Agents use OpenAI-compatible clients pointed at the platform AI Gateway base URL. The gateway expects the shared **consumer key** from `workspace.models.consumerKey` (install scripts set this when you pass `AI_GATEWAY_CONSUMER_KEY` or let the script generate one). Do not mount provider API keys on agent Deployments.
+Agents use OpenAI-compatible clients pointed at the platform AI Gateway base URL. The gateway **requires** the shared consumer key as `Authorization: Bearer <key>` and answers 401 without it. Do not mount provider API keys on agent Deployments.
+
+- **Where it lives:** Secret `<release>-ai-gateway-consumer`, key `agents`. The chart generates it unless you set `workspace.models.consumerKey` (install scripts set it from `AI_GATEWAY_CONSUMER_KEY` or generate one). With GitOps tools that render without cluster access, set the value explicitly so it does not change on every render.
+- **How agents get it:** `charts/zelkor-agent` with `platform.releaseName` reads that Secret, and `zelkor deploy` copies it into other agent namespaces. Your own pods that call `/v1` read the same Secret.
+- **Models only through NeMo:** with guardrails intercept on, provider routes sit behind a separate key that only the NeMo pods hold. The consumer key cannot reach a provider directly.
+
+### Rotate the consumer key
+
+1. `helm upgrade` the platform with a new `workspace.models.consumerKey`. Platform pods that use the key restart, and the Langfuse bootstrap Job re-runs to update the stored LLM connection.
+2. The previous key stays valid (Secret key `agents-previous`) until the next rotation, so agents keep working.
+3. Re-run `zelkor deploy` or `helm upgrade` each agent release (or `kubectl rollout restart` its Deployment) so it picks up the new key. Agents in other namespaces get a fresh copy of the Secret from `zelkor deploy`.
 
 How the hop fits the runtime: [Drop-In Agent Contract](architecture-agent-contract.md).
 

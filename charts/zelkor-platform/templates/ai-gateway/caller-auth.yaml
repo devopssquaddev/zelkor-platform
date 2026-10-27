@@ -2,6 +2,7 @@
 {{- if .Values.aiGateway.enabled }}
 {{- $consumer := include "zelkor-platform.aiGatewayConsumerSecret" . -}}
 {{- $nemo := include "zelkor-platform.aiGatewayNemoSecret" . -}}
+{{- $keys := include "zelkor-platform.aiGatewayKeys" . | fromJson -}}
 {{- /* Client id -> key. Agents, MCP servers and Langfuse use "agents"; only NeMo gets "nemo". */}}
 apiVersion: v1
 kind: Secret
@@ -13,7 +14,11 @@ metadata:
     app.kubernetes.io/component: ai-gateway
 type: Opaque
 data:
-  agents: {{ include "zelkor-platform.aiGatewaySecretKey" (dict "root" . "secret" $consumer "key" "agents" "value" .Values.aiGateway.consumerKey) | b64enc | quote }}
+  agents: {{ $keys.agents | b64enc | quote }}
+  {{- if $keys.previous }}
+  {{- /* Still accepted until the next rotation, so pods that have not restarted keep working. */}}
+  agents-previous: {{ $keys.previous | b64enc | quote }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Secret
@@ -25,7 +30,7 @@ metadata:
     app.kubernetes.io/component: ai-gateway
 type: Opaque
 data:
-  nemo: {{ include "zelkor-platform.aiGatewaySecretKey" (dict "root" . "secret" $nemo "key" "nemo") | b64enc | quote }}
+  nemo: {{ $keys.nemo | b64enc | quote }}
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
 {{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
 {{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
