@@ -142,6 +142,8 @@ spec:
                   name: {{ $mcpTokSec | quote }}
                   key: {{ (.Values.platform.mcpAuthTokenSecretKey | default "token") | quote }}
             {{- end }}
+            - name: MCP_INJECT_ALLOW_ALL
+              value: {{ ternary "true" "false" (.Values.platform.mcpInjectAllowAll | default false) | quote }}
             {{- if .Values.platform.mcpInjectToolPrefixes }}
             - name: MCP_INJECT_TOOL_PREFIXES
               value: {{ .Values.platform.mcpInjectToolPrefixes | quote }}

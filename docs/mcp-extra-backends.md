@@ -24,6 +24,10 @@ Bring the agent you already wrote: tool secrets stay on the MCP pod or gateway, 
 
 For an **in-cluster** server: run your vendor or custom MCP image as a normal Kubernetes workload. Store SaaS credentials in a Secret on that Deployment. Example Service name `acme-itsm-mcp` on port `8080`.
 
+- Pin the image by digest (`image: registry/acme-mcp@sha256:…`), not a tag. A moved tag changes the tools your agents can call without a platform change.
+- Expose it as a `ClusterIP` Service only. Do not give an extra MCP server an Ingress, a `LoadBalancer`, or a public route; agents reach it only through the MCP gateway.
+- Do not register an unauthenticated MCP server on the internet. A hosted extra needs an `apiKey` Secret.
+
 Zelkor does not ship ServiceNow, Jira, Salesforce, or Tavily MCP images.
 
 For a **hosted** MCP (Tavily, a partner URL): skip a wrapper Deployment. Create a Secret whose data key is **`apiKey`** (the gateway reads that key name), then register the FQDN below.
@@ -91,7 +95,22 @@ helm upgrade zelkor-platform charts/zelkor-platform \
 
 Gateway `tools/list` returns **`{name}__{tool}`** (for example `acme__create_incident`). `tools/call` strips the prefix and forwards JSON-RPC to your backend.
 
-Optional fields: `toolSelector`, `forwardHeaders` (not `Authorization` — use `apiKey` instead), `tls.caSecretRef` (private CA). Without `caSecretRef`, an FQDN extra uses system CAs (same as LLM provider backends). `egress.cidrs` / `ports` are optional GitOps notes for your own CNI; Community Edition does not apply them to Envoy. Isolation is the agent NetworkPolicy plus the registered FQDN on MCPRoute. See [External and Third-Party MCP](architecture-external-mcp.md).
+Optional fields: `toolSelector` (`include`, `includeRegex`, `exclude`, `excludeRegex`; exclude wins), `forwardHeaders` (not `Authorization` — use `apiKey` instead), `tls.caSecretRef` (private CA). Without `caSecretRef`, an FQDN extra uses system CAs (same as LLM provider backends). `egress.cidrs` / `ports` are optional GitOps notes for your own CNI; Community Edition does not apply them to Envoy. Isolation is the agent NetworkPolicy plus the registered FQDN on MCPRoute. See [External and Third-Party MCP](architecture-external-mcp.md).
+
+## Block write tools
+
+Deny a tool by its agent-visible name in `workspace.tools.policy.deny`. The gateway removes it from `tools/list` and rejects `tools/call`, whatever the server claims in `readOnlyHint` or `destructiveHint`:
+
+```yaml
+workspace:
+  tools:
+    policy:
+      deny:
+        - acme__delete_incident   # one tool
+        - acme__update_*          # prefix
+```
+
+See [Tool policy](reference/mcp-tools.md#tool-policy). The per-tenant rate limit applies to native tools only, not to extras.
 
 ## Match agent `tools.json` before deploy
 

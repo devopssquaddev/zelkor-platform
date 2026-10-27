@@ -1539,6 +1539,18 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "exclude": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "excludeRegex": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       }
                     }
                   },
@@ -1590,6 +1602,37 @@
                 "required": [
                   "name"
                 ]
+              }
+            },
+            "policy": {
+              "type": "object",
+              "description": "CE-9 MCP tool policy for every backend on the gateway.",
+              "additionalProperties": false,
+              "properties": {
+                "deny": {
+                  "type": "array",
+                  "description": "Agent-visible tool names to deny at the gateway and native backends: \"<backend>__<tool>\", \"<backend>__<prefix>*\" or \"<backend>__*\". MCP readOnlyHint/destructiveHint are ignored.",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?__([A-Za-z0-9_.-]+\\*?|\\*)$"
+                  },
+                  "maxItems": 64
+                },
+                "rateLimit": {
+                  "type": "object",
+                  "description": "Per-tenant, per-tool tools/call limit on each native MCP pod (in memory).",
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Enable the native tools/call rate limit."
+                    },
+                    "callsPerMinute": {
+                      "type": "integer",
+                      "description": "Calls per minute per tenant per tool, per native MCP pod."
+                    }
+                  }
+                }
               }
             },
             "image": {

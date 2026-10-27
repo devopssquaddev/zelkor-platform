@@ -63,6 +63,7 @@ spec:
               value: "9090"
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" $obj "name" "zelkor-mcp-object") | nindent 12 }}
             {{- include "zelkor-platform.tenantAuthEnv" . | nindent 12 }}
+            {{- include "zelkor-platform.mcpPolicyEnv" (dict "root" . "backend" "object") | nindent 12 }}
             - name: OBJECT_S3_ENDPOINT
               value: {{ $s3.endpoint | quote }}
             - name: OBJECT_S3_BUCKET

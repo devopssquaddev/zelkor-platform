@@ -103,6 +103,7 @@ def test_create_run_opens_one_session_lifecycle(
     import mcp_inject
 
     monkeypatch.setenv("MCP_URL", "http://mcp.test")
+    monkeypatch.setenv("MCP_INJECT_ALLOW_ALL", "true")
     factory = _make_mode_b_graph_factory(_fake_orig, ("m",), {}, (), ())
     cfg = {
         "configurable": {

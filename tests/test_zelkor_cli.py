@@ -1235,3 +1235,71 @@ def test_format_run_progress_events_and_custom():
     )
     assert format_run_progress({"event": "updates", "data": {"researcher": {"messages": [{"content": "secret"}]}}}) is None
 
+
+
+# --- CE-9: explicit MCP tool scope on `zelkor deploy` ----------------------------
+
+
+def _code_first(tmp_path, source: str = "graph = None\n"):
+    (tmp_path / "langgraph.json").write_text('{"graphs": {"desk": "./agent.py:graph"}}', encoding="utf-8")
+    (tmp_path / "agent.py").write_text(source, encoding="utf-8")
+    return detect(tmp_path, "")
+
+
+def test_tool_scope_requires_a_choice_for_mode_b(tmp_path):
+    from zelkor.main import mcp_tool_scope
+
+    shape = _code_first(tmp_path)
+    with pytest.raises(RuntimeError, match="--tools .*--all-tools"):
+        mcp_tool_scope(shape, tools="", all_tools=False)
+
+
+def test_tool_scope_prefixes_and_all(tmp_path):
+    from zelkor.main import mcp_tool_scope
+
+    shape = _code_first(tmp_path)
+    assert mcp_tool_scope(shape, tools="postgres, sandbox", all_tools=False) == {
+        "mcpInjectToolPrefixes": "postgres,sandbox"
+    }
+    assert mcp_tool_scope(shape, tools="", all_tools=True) == {"mcpInjectAllowAll": True}
+    with pytest.raises(RuntimeError, match="not both"):
+        mcp_tool_scope(shape, tools="postgres", all_tools=True)
+    with pytest.raises(RuntimeError, match="prefix"):
+        mcp_tool_scope(shape, tools="postgres__query", all_tools=False)
+
+
+def test_tool_scope_accepts_graph_declared_tools(tmp_path):
+    from zelkor.main import mcp_tool_scope
+
+    shape = _code_first(tmp_path, 'MCP_INJECT_TOOLS = ("postgres__query",)\ngraph = None\n')
+    assert mcp_tool_scope(shape, tools="", all_tools=False) == {}
+
+
+def test_tool_scope_skips_projects_without_mode_b(tmp_path):
+    from zelkor.main import mcp_tool_scope
+
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    (tmp_path / "tools.json").write_text('[{"name": "zelkor", "url": "http://mcp:8080"}]', encoding="utf-8")
+    shape = detect(tmp_path, "")
+    assert shape.mcp_inject is False
+    assert mcp_tool_scope(shape, tools="", all_tools=False) == {}
+
+
+def test_deploy_agent_fails_fast_without_tool_scope(tmp_path):
+    _code_first(tmp_path)
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+
+    def runner(argv, **_kwargs):
+        raise AssertionError(f"must not touch the cluster: {argv}")
+
+    with pytest.raises(RuntimeError, match="--all-tools"):
+        deploy_agent(
+            root=tmp_path,
+            env=env,
+            push=False,
+            skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=runner,
+        )

@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -962,6 +963,49 @@ def _helm_upgrade_agent(
         Path(values_file).unlink(missing_ok=True)
 
 
+_TOOL_PREFIX_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
+_SKIP_SCAN_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__"}
+
+
+def _graph_declares_tools(root: Path) -> bool:
+    """True when a graph module sets MCP_INJECT_TOOLS / MCP_INJECT_PREFIXES itself."""
+    for path in root.rglob("*.py"):
+        if _SKIP_SCAN_DIRS.intersection(path.relative_to(root).parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if "MCP_INJECT_TOOLS" in text or "MCP_INJECT_PREFIXES" in text:
+            return True
+    return False
+
+
+def mcp_tool_scope(shape: Any, *, tools: str, all_tools: bool) -> dict[str, Any]:
+    """CE-9: Mode B agents bind tools only by explicit scope. Returns agent `platform` values."""
+    prefixes = [p.strip() for p in (tools or "").split(",") if p.strip()]
+    if prefixes and all_tools:
+        raise RuntimeError("pass --tools or --all-tools, not both")
+    if not getattr(shape, "mcp_inject", False):
+        return {}
+    for prefix in prefixes:
+        if not _TOOL_PREFIX_RE.match(prefix):
+            raise RuntimeError(
+                f"--tools takes MCP backend prefixes such as postgres,sandbox (got {prefix!r})"
+            )
+    if prefixes:
+        return {"mcpInjectToolPrefixes": ",".join(prefixes)}
+    if all_tools:
+        return {"mcpInjectAllowAll": True}
+    if _graph_declares_tools(shape.root):
+        return {}
+    raise RuntimeError(
+        "this agent binds platform MCP tools (Mode B) but declares none. "
+        "Pass --tools <prefix,...> (for example --tools postgres,sandbox) or --all-tools, "
+        "or set MCP_INJECT_TOOLS in the graph module"
+    )
+
+
 def deploy_agent(
     *,
     root: Path,
@@ -977,6 +1021,8 @@ def deploy_agent(
     approval_threshold: str = "",
     image_registry: str = "",
     agent_namespace: str = "",
+    tool_prefixes: str = "",
+    all_tools: bool = False,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
@@ -988,6 +1034,7 @@ def deploy_agent(
     if not registry:
         registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
+    tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools)
     release = helm_release_name(shape.graph_id)
     logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
@@ -1045,6 +1092,7 @@ def deploy_agent(
             "consumerKey": info.consumer_key,
             "valkeyUrl": info.redis_url,
             "mcpInject": shape.mcp_inject,
+            **tool_scope,
             **({"defaultLlmModel": info.default_llm_model} if info.default_llm_model else {}),
             **({"langfuseBaseUrl": info.langfuse_base_url} if info.langfuse_base_url else {}),
             **({"langfusePublicKey": info.langfuse_public_key} if info.langfuse_public_key else {}),
@@ -1596,6 +1644,16 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         p.add_argument("--max-tokens", type=int, default=0, help="workload.intent.maxTokens")
         p.add_argument("--approval-threshold", default="", help="workload.intent.approval.threshold (Pro)")
         p.add_argument("--registry", default="", help="container registry for agent image (required off kind)")
+        p.add_argument(
+            "--tools",
+            default="",
+            help="MCP backend prefixes the agent may bind (Mode B), e.g. postgres,sandbox",
+        )
+        p.add_argument(
+            "--all-tools",
+            action="store_true",
+            help="bind every tool the MCP gateway lists for the tenant (natives and extras)",
+        )
         p.add_argument("directory", nargs="?", default=".")
     sub.choices["deploy"].add_argument(
         "-f",
@@ -1719,6 +1777,8 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 approval_threshold=getattr(args, "approval_threshold", "") or "",
                 image_registry=getattr(args, "registry", "") or "",
                 agent_namespace=getattr(args, "namespace", "") or "",
+                tool_prefixes=getattr(args, "tools", "") or "",
+                all_tools=bool(getattr(args, "all_tools", False)),
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

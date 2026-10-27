@@ -60,9 +60,10 @@ Creates `agent.json` and `AGENTS.md`. Add your graph source and optional `tools.
 From the project directory (parent of `charts/zelkor-agent` on your machine or set `ZELKOR_AGENT_CHART` / `--chart`):
 
 ```bash
-zelkor deploy --env staging --registry ghcr.io/myorg
+zelkor deploy --env staging --registry ghcr.io/myorg --tools postgres,sandbox
 ```
 
+- **MCP tool scope:** a graph that relies on Mode B inject must say which tools it binds: `--tools <prefix,...>` (MCP backend prefixes such as `postgres`, `sandbox`, `acme`) or `--all-tools` (every native and registered extra tool). A graph module that sets `MCP_INJECT_TOOLS` or `MCP_INJECT_PREFIXES` needs neither. Without a scope, deploy exits before building. Deep Agents projects whose `tools.json` lists the MCP server are not affected. To block a tool for every agent, use `workspace.tools.policy.deny` on the platform ([Tool policy](reference/mcp-tools.md#tool-policy)).
 - **Non-kind clusters:** `--registry` or `ZELKOR_IMAGE_REGISTRY` is required.
 - **Kind:** registry defaults to `ghcr.io/devopssquaddev`; image loads with `kind load` when not pushing.
 - **Skip local build:** `ZELKOR_SKIP_BUILD=1 zelkor deploy` when the image is already in the registry.
@@ -72,7 +73,7 @@ zelkor deploy --env staging --registry ghcr.io/myorg
 Optional workload intent (compiled to Helm values):
 
 ```bash
-zelkor deploy --timeout 120s --max-tokens 4096
+zelkor deploy --tools postgres --timeout 120s --max-tokens 4096
 ```
 
 `--approval-threshold` exits non-zero on Community Edition (Human-in-the-loop is Pro).

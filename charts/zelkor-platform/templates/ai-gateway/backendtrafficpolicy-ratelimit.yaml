@@ -1,6 +1,7 @@
 {{- include "zelkor-platform.compile" . -}}
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
 {{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
+{{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}
 {{- $rl := (.Values.aiGateway.rateLimit | default dict) -}}
 {{- $enabled := $rl.enabled | default false -}}
 {{- $rpm := $rl.requestsPerMinute | int -}}
@@ -26,7 +27,19 @@ spec:
     type: Global
     global:
       rules:
-        - limit:
+        {{- /* BUG-02: shared = one install-wide bucket across every aigateway-route rule
+             (Envoy Gateway otherwise keeps one counter per rule). With NeMo intercept, only
+             the NeMo -> provider hop (bypass header) counts; agent -> NeMo is uncounted, so
+             one /v1 call spends the cap once per upstream request. NeMo returns the 429. */}}
+        - shared: true
+          {{- if $intercept }}
+          clientSelectors:
+            - headers:
+                - name: x-zelkor-guardrails-bypass
+                  type: Exact
+                  value: "1"
+          {{- end }}
+          limit:
             requests: {{ $rpm }}
             unit: Minute
 {{- end }}
