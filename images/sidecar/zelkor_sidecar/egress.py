@@ -234,8 +234,17 @@ class Egress:
     async def mcp(self, request):
         from starlette.responses import JSONResponse, Response, StreamingResponse
 
+        if request.method == "GET":
+            # No server-initiated stream (MCP allows 405). Answering 409 here between runs made
+            # OpenCode mark the MCP server failed for good; results come back on POST responses.
+            return Response(status_code=405, headers={"allow": "POST, DELETE"})
         ctx = self.slot.active
         if ctx is None:
+            if request.method == "DELETE":  # session close between runs: nothing to send upstream
+                sid = request.headers.get("mcp-session-id")
+                if sid:
+                    self._sessions.pop(sid, None)
+                return Response(status_code=204)
             return JSONResponse({"error": "no active run"}, status_code=409)
         if not self.cfg.mcp_upstream:
             return JSONResponse({"error": "MCP upstream not configured"}, status_code=503)
@@ -248,7 +257,7 @@ class Egress:
             if request.method == "DELETE":
                 self._sessions.pop(runtime_sid, None)
 
-        if request.method != "POST":  # GET server stream / DELETE session: pass through
+        if request.method != "POST":  # DELETE session during a run: pass through
             upstream = http.build_request(request.method, self.cfg.mcp_upstream, headers=headers)
             resp = await http.send(upstream, stream=True)
             import httpx

@@ -317,7 +317,8 @@ class _BrokenStream(httpx.AsyncByteStream):
         raise httpx.RemoteProtocolError("peer closed connection without sending complete message body")
 
 
-def test_mcp_get_stream_cut_by_upstream_ends_cleanly(caplog):
+def test_mcp_passthrough_cut_by_upstream_ends_cleanly(caplog):
+    """In-run DELETE is relayed; an upstream that drops mid-body ends cleanly, not as a 500."""
     def upstream(request):
         return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_BrokenStream())
 
@@ -326,7 +327,7 @@ def test_mcp_get_stream_cut_by_upstream_ends_cleanly(caplog):
     egress = Egress(slot, Tracing(tracer=None), cfg, http=httpx.AsyncClient(transport=httpx.MockTransport(upstream)))
     _activate(slot)
     with caplog.at_level("WARNING", logger="zelkor-sidecar"):
-        resp = TestClient(egress.app(), raise_server_exceptions=True).get("/run/active/mcp")
+        resp = TestClient(egress.app(), raise_server_exceptions=True).delete("/run/active/mcp", headers={"mcp-session-id": "s1"})
     assert resp.status_code == 200
     assert resp.content.startswith(b"event: message")
     assert any("MCP stream closed by upstream" in r.getMessage() for r in caplog.records)
@@ -378,3 +379,32 @@ def test_mcp_session_from_another_run_is_reopened_with_the_current_bearer():
     assert ("initialize", "Bearer B", None) in gw.seen
     assert ("notifications/initialized", "Bearer B", "s2") in gw.seen
     assert gw.seen[-1] == ("tools/list", "Bearer B", "s2")
+
+
+def test_mcp_get_stream_is_405_and_never_reaches_upstream():
+    """No server stream (MCP allows 405). A 409 here made OpenCode mark the MCP server failed for good."""
+    gw = SessionGateway()
+    slot = RunSlot()
+    cfg = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck")
+    client = TestClient(Egress(slot, Tracing(tracer=None), cfg,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(gw))).app())
+    assert client.get("/run/active/mcp").status_code == 405  # no active run
+    slot.active = RunContext(tenant_id="tenant-a", bearer="Bearer A", graph_id="g", thread_id="t1", run_id="r1")
+    resp = client.get("/run/active/mcp", headers={"mcp-session-id": "s1"})
+    assert resp.status_code == 405 and "POST" in resp.headers.get("allow", "")
+    assert gw.seen == []
+
+
+def test_mcp_delete_outside_a_run_is_local():
+    gw = SessionGateway()
+    slot = RunSlot()
+    cfg = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck")
+    egress = Egress(slot, Tracing(tracer=None), cfg, http=httpx.AsyncClient(transport=httpx.MockTransport(gw)))
+    client = TestClient(egress.app())
+    slot.active = RunContext(tenant_id="tenant-a", bearer="Bearer A", graph_id="g", thread_id="t1", run_id="r1")
+    sid = client.post("/run/active/mcp", json=_rpc("initialize", protocolVersion="2025-06-18", capabilities={},
+                                                    clientInfo={"name": "rt", "version": "1"})).headers["mcp-session-id"]
+    slot.active = None
+    seen = len(gw.seen)
+    assert client.delete("/run/active/mcp", headers={"mcp-session-id": sid}).status_code == 204
+    assert len(gw.seen) == seen and sid not in egress._sessions
