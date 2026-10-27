@@ -122,6 +122,13 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: envoy-gateway-system
+        {{- range ($np.hostNetworkGatewayCIDRs | default list) }}
+        {{- if not (regexMatch "^([0-9]{1,3}\\.){3}[0-9]{1,3}/32$" (toString .)) }}
+        {{- fail (printf "security.networkPolicies.hostNetworkGatewayCIDRs entries must be single node addresses (x.x.x.x/32), got %q" (toString .)) }}
+        {{- end }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: 8000

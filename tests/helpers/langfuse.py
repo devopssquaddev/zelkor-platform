@@ -16,7 +16,7 @@ import pytest
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
-V2_FIELDS = "core,basic,io,trace_context"
+V2_FIELDS = "core,basic,io,trace_context,metadata"  # metadata carries the CE-13 sandbox stamp
 CODE_EVAL_ENVIRONMENT = "langfuse-code-eval"
 CODE_EVAL_NAME_PREFIX = "Execute evaluator"
 

@@ -323,3 +323,39 @@ readinessProbe:
   {{- tpl (toYaml .) $root | nindent 2 }}
 {{- end }}
 {{- end }}
+
+{{/*
+CE-14 runtime: aegra (in-process, unchanged) | a2a | opencode (behind zelkor-sidecar).
+*/}}
+{{- define "zelkor-agent.runtime" -}}
+{{- $rt := (.Values.runtime | default "aegra") | toString | trim | lower -}}
+{{- if not (has $rt (list "aegra" "a2a" "opencode")) -}}
+{{- fail (printf "runtime must be aegra, a2a or opencode (got %q)" $rt) -}}
+{{- end -}}
+{{- $rt -}}
+{{- end }}
+
+{{- define "zelkor-agent.a2aPublicUrl" -}}
+{{- $explicit := ((.Values.sidecar).a2a).publicUrl | default "" | toString | trim -}}
+{{- if $explicit -}}
+{{- $explicit -}}
+{{- else -}}
+{{- $host := ((.Values.sharedRoute).host | default "") | toString | trim -}}
+{{- if $host -}}
+{{- printf "https://%s/a2a?graph_id=%s" $host (include "zelkor-agent.primaryGraphId" .) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/* Hardened container securityContext for the sidecar and non-Aegra runtimes. */}}
+{{- define "zelkor-agent.restrictedSecurityContext" -}}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+{{- end }}

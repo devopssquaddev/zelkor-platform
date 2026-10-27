@@ -1303,3 +1303,117 @@ def test_deploy_agent_fails_fast_without_tool_scope(tmp_path):
             platform_chart=ROOT / "charts" / "zelkor-platform",
             runner=runner,
         )
+
+
+# --- CE-14: --runtime ---------------------------------------------------------------
+
+
+def _deploy_first(tmp_path):
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("Be brief.\n", encoding="utf-8")
+    return tmp_path
+
+
+def test_runtime_base_images_follow_chart_version(monkeypatch):
+    from zelkor.main import runtime_base_image
+
+    for var in ("ZELKOR_DEEP_IMAGE", "ZELKOR_RUNTIME_IMAGE"):
+        monkeypatch.delenv(var, raising=False)
+    assert runtime_base_image("aegra", "pydantic-ai", "2.4.0") == "ghcr.io/devopssquaddev/zelkor-aegra-deep:2.4.0"
+    assert runtime_base_image("a2a", "pydantic-ai", "2.4.0") == "ghcr.io/devopssquaddev/zelkor-runtime-pydantic-ai:2.4.0"
+    assert runtime_base_image("a2a", "crewai", "2.4.0") == "ghcr.io/devopssquaddev/zelkor-runtime-crewai:2.4.0"
+    assert runtime_base_image("opencode", "pydantic-ai", "2.4.0") == "ghcr.io/devopssquaddev/zelkor-runtime-opencode:2.4.0"
+    with pytest.raises(RuntimeError, match="a2a-framework"):
+        runtime_base_image("a2a", "langflow", "2.4.0")
+
+
+def test_build_context_for_sidecar_runtime_has_no_langgraph_json(tmp_path):
+    from zelkor.main import _write_build_context
+
+    src, dest = tmp_path / "src", tmp_path / "ctx"
+    src.mkdir()
+    dest.mkdir()
+    _deploy_first(src)
+    _write_build_context(src, dest, "deploy-first", "desk", base_image="ghcr.io/x/zelkor-runtime-opencode:2.4.0",
+                         runtime="opencode")
+    assert (dest / "Dockerfile").read_text().startswith("FROM ghcr.io/x/zelkor-runtime-opencode:2.4.0")
+    assert not (dest / "langgraph.json").exists()
+    assert (dest / "AGENTS.md").exists()
+
+
+def test_byo_a2a_dockerfile_is_kept(tmp_path):
+    from zelkor.main import _write_build_context
+
+    src, dest = tmp_path / "src", tmp_path / "ctx"
+    src.mkdir()
+    dest.mkdir()
+    (src / "Dockerfile").write_text("FROM my-a2a-agent:1\n", encoding="utf-8")
+    _write_build_context(src, dest, "deploy-first", "desk", base_image="unused", runtime="a2a")
+    assert (dest / "Dockerfile").read_text() == "FROM my-a2a-agent:1\n"
+
+
+def _no_cluster(argv, **_kwargs):
+    raise AssertionError(f"must not touch the cluster: {argv}")
+
+
+def test_sidecar_runtime_needs_deploy_first_project(tmp_path):
+    (tmp_path / "langgraph.json").write_text('{"graphs": {"desk": "./agent.py:graph"}}', encoding="utf-8")
+    (tmp_path / "agent.py").write_text("graph = None\n", encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    with pytest.raises(RuntimeError, match="deploy-first project"):
+        deploy_agent(root=tmp_path, env=env, push=False, skip_build=True, runtime="opencode",
+                     agent_chart=ROOT / "charts" / "zelkor-agent", platform_chart=ROOT / "charts" / "zelkor-platform",
+                     runner=_no_cluster)
+
+
+def test_sidecar_runtime_requires_tool_scope_even_with_tools_json(tmp_path):
+    _deploy_first(tmp_path)
+    (tmp_path / "tools.json").write_text('[{"name": "zelkor", "url": "http://mcp/mcp"}]', encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    with pytest.raises(RuntimeError, match="--all-tools"):
+        deploy_agent(root=tmp_path, env=env, push=False, skip_build=True, runtime="a2a",
+                     agent_chart=ROOT / "charts" / "zelkor-agent", platform_chart=ROOT / "charts" / "zelkor-platform",
+                     runner=_no_cluster)
+
+
+def test_unknown_runtime_is_rejected(tmp_path):
+    _deploy_first(tmp_path)
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    with pytest.raises(RuntimeError, match="--runtime must be one of"):
+        deploy_agent(root=tmp_path, env=env, push=False, skip_build=True, runtime="hermes",
+                     agent_chart=ROOT / "charts" / "zelkor-agent", platform_chart=ROOT / "charts" / "zelkor-platform",
+                     runner=_no_cluster)
+
+
+def test_cli_parses_runtime_flags(monkeypatch):
+    import zelkor.main as m
+
+    seen = {}
+
+    def fake_deploy(**kwargs):
+        seen.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(m, "deploy_agent", fake_deploy)
+    monkeypatch.setattr(m, "_env_from_args", lambda args, **_k: Env(name="l", kube_context="kind-zelkor", namespace="default"))
+    rc = m.main(["deploy", "--runtime", "a2a", "--a2a-framework", "crewai", "--tools", "postgres", "."])
+    assert rc == 0
+    assert (seen["runtime"], seen["a2a_framework"], seen["tool_prefixes"]) == ("a2a", "crewai", "postgres")
+
+
+def test_kind_node_cidrs_and_np_values():
+    from zelkor.main import _np_values, kind_node_cidrs
+
+    def runner(argv, **_kwargs):
+        assert "nodes" in argv
+        # InternalIP <space> podCIDR per node; host->local-pod traffic leaves from the podCIDR gateway
+        return SimpleNamespace(returncode=0, stdout="172.22.0.2 10.244.0.0/24\n172.22.0.3 10.244.1.0/24\nbogus\n",
+                               stderr="")
+
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    assert kind_node_cidrs(env, runner=runner) == ["10.244.0.1/32", "10.244.1.1/32", "172.22.0.2/32", "172.22.0.3/32"]
+    info = PlatformInfo(release="zelkor-platform")
+    info.network_policies_enabled = True
+    assert _np_values(info) == {"networkPolicies": {"enabled": True}}
+    info.gateway_host_cidrs = ["172.22.0.2/32"]
+    assert _np_values(info)["networkPolicies"]["hostNetworkGatewayCIDRs"] == ["172.22.0.2/32"]

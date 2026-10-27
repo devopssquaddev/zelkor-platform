@@ -52,6 +52,10 @@ ALL_IMAGES=(
   zelkor-example-finserve
   zelkor-example-finserve-coder
   zelkor-armored-gpt-researcher
+  zelkor-sidecar
+  zelkor-runtime-pydantic-ai
+  zelkor-runtime-crewai
+  zelkor-runtime-opencode
 )
 
 dockerfile_for() {
@@ -67,6 +71,10 @@ dockerfile_for() {
     zelkor-example-finserve-coder) echo images/example-finserve-coder/Dockerfile ;;
     zelkor-armored-gpt-researcher) echo examples/armored-agents/gpt-researcher/Dockerfile ;;
     zelkor-example-legal-redline) echo images/example-legal-redline/Dockerfile ;;
+    zelkor-sidecar) echo images/sidecar/Dockerfile ;;
+    zelkor-runtime-pydantic-ai) echo images/runtime-pydantic-ai/Dockerfile ;;
+    zelkor-runtime-crewai) echo images/runtime-crewai/Dockerfile ;;
+    zelkor-runtime-opencode) echo images/runtime-opencode/Dockerfile ;;
     *) return 1 ;;
   esac
 }

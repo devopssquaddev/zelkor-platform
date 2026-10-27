@@ -63,6 +63,7 @@ From the project directory (parent of `charts/zelkor-agent` on your machine or s
 zelkor deploy --env staging --registry ghcr.io/myorg --tools postgres,sandbox
 ```
 
+- **Runtime:** `--runtime aegra|a2a|opencode` (default `aegra`). `a2a` builds a deploy-first project on `zelkor-runtime-pydantic-ai` or, with `--a2a-framework crewai`, `zelkor-runtime-crewai`; a project with its own `Dockerfile` is built as-is. `opencode` builds on `zelkor-runtime-opencode`. See [Choose a runtime](agent-deploy.md#choose-a-runtime).
 - **MCP tool scope:** a graph that relies on Mode B inject must say which tools it binds: `--tools <prefix,...>` (MCP backend prefixes such as `postgres`, `sandbox`, `acme`) or `--all-tools` (every native and registered extra tool). A graph module that sets `MCP_INJECT_TOOLS` or `MCP_INJECT_PREFIXES` needs neither. Without a scope, deploy exits before building. Deep Agents projects whose `tools.json` lists the MCP server are not affected. To block a tool for every agent, use `workspace.tools.policy.deny` on the platform ([Tool policy](reference/mcp-tools.md#tool-policy)).
 - **Non-kind clusters:** `--registry` or `ZELKOR_IMAGE_REGISTRY` is required.
 - **Kind:** registry defaults to `ghcr.io/devopssquaddev`; image loads with `kind load` when not pushing.
