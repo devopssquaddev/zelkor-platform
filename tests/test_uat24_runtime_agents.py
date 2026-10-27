@@ -48,3 +48,14 @@ def test_uat24_agent_container_has_no_datastore_credentials(graph):
     sc = agent.get("securityContext") or {}
     assert sc.get("readOnlyRootFilesystem") is True, sc
     assert sc.get("allowPrivilegeEscalation") is False, sc
+
+
+def test_uat24_byo_a2a_image_is_governed_like_ours():
+    """A customer image serving A2A on 127.0.0.1:8080 (`zelkor deploy --runtime a2a` + own Dockerfile)."""
+    import os
+
+    graph = os.environ.get("BYO_A2A_GRAPH", "").strip()
+    if not graph:
+        pytest.skip("BYO_A2A_GRAPH not set")
+    test_uat24_sandbox_run_is_one_governed_trace(graph)
+    test_uat24_agent_container_has_no_datastore_credentials(graph)
