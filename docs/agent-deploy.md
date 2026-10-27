@@ -99,7 +99,7 @@ To put the worker in another namespace, create and label that namespace (`zelkor
 zelkor deploy --tools postgres --namespace team-research
 ```
 
-`zelkor env` stays the **platform** namespace. The CLI fills `platform.namespace`, in-cluster `*-ai-gateway` / `*-mcp` FQDNs (`{svc}.{platformNs}.svc.cluster.local`, matching the HTTPRoute Host), copies verify ConfigMaps and image pull Secrets, and copies the platform NetworkPolicy flag. Do not point `OPENAI_BASE_URL` at the Envoy dataplane. GitOps in another namespace sets `platform.namespace` on `zelkor-agent`; the chart compiles those FQDNs.
+`zelkor env` stays the **platform** namespace. The CLI fills `platform.namespace`, in-cluster `*-ai-gateway` / `*-mcp` FQDNs (`{svc}.{platformNs}.svc.cluster.local`, matching the HTTPRoute Host), copies verify ConfigMaps and image pull Secrets, and copies the platform NetworkPolicy flag. On kind only, where Envoy runs `hostNetwork`, it also sets `security.networkPolicies.hostNetworkGatewayCIDRs` to each node's InternalIP and podCIDR gateway (`/32`) so Envoy can reach the agent. Helm-only kind installs set that list themselves; other clusters leave it empty. Do not point `OPENAI_BASE_URL` at the Envoy dataplane. GitOps in another namespace sets `platform.namespace` on `zelkor-agent`; the chart compiles those FQDNs.
 
 The `deploy` command builds the image, pushes it to the registry, and runs `helm upgrade` on the `zelkor-agent` chart. It automatically copies the platform's Langfuse OTEL configuration so your traces appear in the Langfuse UI, and it wires up the platform's MCP gateway so your agent can use native tools or registered extra backends.
 
