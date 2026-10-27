@@ -260,6 +260,15 @@ class Egress:
             if mid in spans:
                 cm, span, name, key = spans.pop(mid)
                 is_error = "error" in message or bool(isinstance(result, dict) and result.get("isError"))
+                if isinstance(result, dict) and result.get("isError"):
+                    text = "".join(str(b.get("text", "")) for b in result.get("content") or [] if isinstance(b, dict))
+                    logger.warning("MCP tool %s failed: %s", name, text.replace("\n", " ")[:200],
+                                   extra={"event": "tools_call", "tool": name, "run_id": ctx.run_id, "status": "error"})
+                if "error" in message:
+                    err = message.get("error") or {}
+                    logger.warning("tool error from MCP gateway", extra={
+                        "event": "tools_call", "tool": name, "run_id": ctx.run_id, "status": "error",
+                        "deny_reason": f"{err.get('code')}: {str(err.get('message'))[:200]}"})
                 self._stamp(span, result)
                 span.set_attribute("langfuse.observation.metadata.mcp.tool", name)
                 if is_error:
@@ -290,6 +299,10 @@ class Egress:
                 if isinstance(message, dict):
                     visit(message)
             raw = json.dumps(obj).encode("utf-8")
+        if spans:
+            logger.warning("no MCP response for tools/call", extra={
+                "event": "tools_call", "run_id": ctx.run_id, "status": "error",
+                "deny_reason": f"http {resp.status_code} {ctype or '-'} {len(raw)}B"})
         for mid in list(spans):  # no response for a call (transport error): close as error
             cm, span, name, key = spans.pop(mid)
             span.set_attribute("langfuse.observation.level", "ERROR")
