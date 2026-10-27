@@ -1406,10 +1406,12 @@ def test_kind_node_cidrs_and_np_values():
 
     def runner(argv, **_kwargs):
         assert "nodes" in argv
-        return SimpleNamespace(returncode=0, stdout="172.22.0.2\n172.22.0.3\nbogus\n", stderr="")
+        # InternalIP <space> podCIDR per node; host->local-pod traffic leaves from the podCIDR gateway
+        return SimpleNamespace(returncode=0, stdout="172.22.0.2 10.244.0.0/24\n172.22.0.3 10.244.1.0/24\nbogus\n",
+                               stderr="")
 
     env = Env(name="local", kube_context="kind-zelkor", namespace="default")
-    assert kind_node_cidrs(env, runner=runner) == ["172.22.0.2/32", "172.22.0.3/32"]
+    assert kind_node_cidrs(env, runner=runner) == ["10.244.0.1/32", "10.244.1.1/32", "172.22.0.2/32", "172.22.0.3/32"]
     info = PlatformInfo(release="zelkor-platform")
     info.network_policies_enabled = True
     assert _np_values(info) == {"networkPolicies": {"enabled": True}}

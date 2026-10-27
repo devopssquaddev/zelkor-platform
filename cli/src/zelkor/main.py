@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import base64
 import dataclasses
+import ipaddress
 import json
 import logging
 import os
@@ -194,18 +195,32 @@ def _container_env(deploy: dict[str, Any]) -> dict[str, str]:
 
 
 def kind_node_cidrs(env: Env, *, runner: Optional[RunFn] = None) -> list[str]:
-    """Kind only: node InternalIPs as /32 for a hostNetwork Envoy (agent ingress NetworkPolicy)."""
+    """Kind only: /32 sources of a hostNetwork Envoy (agent ingress NetworkPolicy).
+
+    Per node: its InternalIP, and the first host of its podCIDR (kindnet routes host to
+    local-pod traffic with that source address).
+    """
     out = _run(
         kube_argv(env, "get", "nodes", "-o",
-                  "jsonpath={range .items[*]}{.status.addresses[?(@.type=='InternalIP')].address}{'\\n'}{end}"),
+                  "jsonpath={range .items[*]}{.status.addresses[?(@.type=='InternalIP')].address}"
+                  " {.spec.podCIDR}{'\\n'}{end}"),
         runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC,
     )
-    cidrs = []
-    for line in (getattr(out, "stdout", "") or "").split():
-        parts = line.strip().split(".")
-        if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
-            cidrs.append(f"{line.strip()}/32")
-    return sorted(set(cidrs))
+    cidrs = set()
+    for line in (getattr(out, "stdout", "") or "").splitlines():
+        for token in line.split():
+            try:
+                if "/" in token:
+                    net = ipaddress.ip_network(token, strict=False)
+                    if net.version == 4 and net.num_addresses > 2:
+                        cidrs.add(f"{net.network_address + 1}/32")
+                else:
+                    addr = ipaddress.ip_address(token)
+                    if addr.version == 4:
+                        cidrs.add(f"{addr}/32")
+            except ValueError:
+                continue
+    return sorted(cidrs)
 
 
 def _np_values(info: "PlatformInfo") -> dict[str, Any]:
