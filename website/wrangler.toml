@@ -9,3 +9,6 @@ not_found_handling = "404-page"
 [[routes]]
 pattern = "docs.zelkor.io"
 custom_domain = true
+
+# Required by `wrangler preview` (non-production branch builds). Empty = inherit top-level settings.
+[previews]
