@@ -120,3 +120,43 @@ def test_helpers():
     assert answer_text([{"type": "text", "text": "a"}, {"type": "text", "text": "b", "ignored": True}]) == "a"
     assert error_text({}) is None
     assert error_text({"error": "boom"}) == "boom"
+
+
+class McpFakeOpenCode(FakeOpenCode):
+    """OpenCode whose MCP server may be failed (it connected at startup, outside any run)."""
+
+    def __init__(self, status="failed", **kw):
+        super().__init__(**kw)
+        self.status = status
+        self.calls = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/mcp" and request.method == "GET":
+            self.calls.append("status")
+            return httpx.Response(200, json={"zelkor": {"status": self.status}})
+        if path == "/mcp/zelkor/connect" and request.method == "POST":
+            self.calls.append("connect")
+            self.status = "connected"
+            return httpx.Response(200, json=True)
+        if path.endswith("/message"):
+            self.calls.append(f"message:{self.status}")
+        return super().__call__(request)
+
+
+def test_failed_mcp_server_is_reconnected_inside_the_turn():
+    fake = McpFakeOpenCode(status="failed")
+    asyncio.run(_turn(_bridge(fake), _ctx(), [H[0]], [H[0]]))
+    assert fake.calls == ["status", "connect", "message:connected"]
+
+
+def test_connected_mcp_server_is_left_alone():
+    fake = McpFakeOpenCode(status="connected")
+    asyncio.run(_turn(_bridge(fake), _ctx(), [H[0]], [H[0]]))
+    assert fake.calls == ["status", "message:connected"]
+
+
+def test_opencode_without_mcp_status_endpoint_still_runs():
+    fake = FakeOpenCode()  # /mcp -> 404
+    events = asyncio.run(_turn(_bridge(fake), _ctx(), [H[0]], [H[0]]))
+    assert events and events[-1].kind == "message"

@@ -15,6 +15,7 @@ import logging
 import os
 import time
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -27,6 +28,7 @@ HOP_HEADERS = {"host", "content-length", "connection", "keep-alive", "transfer-e
                "te", "trailer", "upgrade", "proxy-authorization", "proxy-authenticate"}
 # Identity headers the runtime must never set itself (claimToHeaders, Langfuse identity).
 SPOOFABLE_PREFIXES = ("x-tenant-id", "x-zelkor-", "authorization", "traceparent", "tracestate", "baggage")
+MAX_TRACKED_SESSIONS = 256
 MCP_PASS_HEADERS = ("content-type", "accept", "mcp-session-id", "mcp-protocol-version", "last-event-id")
 WAIT_BEAT_S = 30.0
 
@@ -151,6 +153,9 @@ class Egress:
         self.tracing = tracing
         self.cfg = cfg
         self._http = http
+        # Runtime MCP session id -> {run, upstream, init}. The gateway binds a session to the
+        # bearer that opened it, while runtimes such as OpenCode keep one session across runs.
+        self._sessions: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 
     async def client(self):
         if self._http is None:
@@ -160,6 +165,36 @@ class Egress:
         return self._http
 
     # -- MCP --------------------------------------------------------------------------
+
+    async def _upstream_session(self, http, ctx: RunContext, sid: str) -> str:
+        """Upstream session for this runtime session in the current run (reopened per run)."""
+        entry = self._sessions.get(sid)
+        if entry is None:
+            return sid  # opened before this sidecar started: pass through unchanged
+        if entry["run"] == ctx.run_id:
+            return entry["upstream"]
+        base = {"authorization": ctx.bearer, "content-type": "application/json",
+                "accept": "application/json, text/event-stream"}
+        init = {"jsonrpc": "2.0", "id": f"zelkor-reinit-{uuid.uuid4().hex[:8]}", "method": "initialize",
+                "params": entry["init"]}
+        resp = await http.post(self.cfg.mcp_upstream, content=json.dumps(init).encode(), headers=base)
+        new = resp.headers.get("mcp-session-id")
+        if resp.status_code >= 400 or not new:
+            logger.warning("MCP session reopen failed", extra={
+                "event": "mcp_session", "run_id": ctx.run_id, "status": "error",
+                "deny_reason": f"http {resp.status_code}"})
+            return entry["upstream"]
+        note = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+        await http.post(self.cfg.mcp_upstream, content=json.dumps(note).encode(),
+                        headers={**base, "mcp-session-id": new})
+        entry.update(run=ctx.run_id, upstream=new)
+        logger.info("MCP session reopened for run", extra={"event": "mcp_session", "run_id": ctx.run_id})
+        return new
+
+    def _remember_session(self, ctx: RunContext, sid: str, init_params: Dict[str, Any]) -> None:
+        self._sessions[sid] = {"run": ctx.run_id, "upstream": sid, "init": init_params}
+        while len(self._sessions) > MAX_TRACKED_SESSIONS:
+            self._sessions.popitem(last=False)
 
     def _rewrite_request(self, ctx: RunContext, msg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Return a JSON-RPC error to send back instead of forwarding, or None to forward."""
@@ -199,16 +234,30 @@ class Egress:
     async def mcp(self, request):
         from starlette.responses import JSONResponse, Response, StreamingResponse
 
+        if request.method == "GET":
+            # No server-initiated stream (MCP allows 405). Answering 409 here between runs made
+            # OpenCode mark the MCP server failed for good; results come back on POST responses.
+            return Response(status_code=405, headers={"allow": "POST, DELETE"})
         ctx = self.slot.active
         if ctx is None:
+            if request.method == "DELETE":  # session close between runs: nothing to send upstream
+                sid = request.headers.get("mcp-session-id")
+                if sid:
+                    self._sessions.pop(sid, None)
+                return Response(status_code=204)
             return JSONResponse({"error": "no active run"}, status_code=409)
         if not self.cfg.mcp_upstream:
             return JSONResponse({"error": "MCP upstream not configured"}, status_code=503)
         http = await self.client()
         headers = _clean_headers(dict(request.headers), MCP_PASS_HEADERS)
         headers["authorization"] = ctx.bearer
+        runtime_sid = headers.get("mcp-session-id")
+        if runtime_sid:
+            headers["mcp-session-id"] = await self._upstream_session(http, ctx, runtime_sid)
+            if request.method == "DELETE":
+                self._sessions.pop(runtime_sid, None)
 
-        if request.method != "POST":  # GET server stream / DELETE session: pass through
+        if request.method != "POST":  # DELETE session during a run: pass through
             upstream = http.build_request(request.method, self.cfg.mcp_upstream, headers=headers)
             resp = await http.send(upstream, stream=True)
             import httpx
@@ -322,6 +371,11 @@ class Egress:
             ctx.emit("custom", {"kind": "tool", "name": name, "phase": "end", "is_error": True}, key + "-end")
         out_headers = {k: v for k, v in resp.headers.items()
                        if k.lower() in ("content-type", "mcp-session-id", "mcp-protocol-version")}
+        inits = [m for m in batch if isinstance(m, dict) and m.get("method") == "initialize"]
+        if runtime_sid:
+            out_headers["mcp-session-id"] = runtime_sid  # the runtime keeps its own id
+        elif inits and out_headers.get("mcp-session-id") and resp.status_code < 400:
+            self._remember_session(ctx, out_headers["mcp-session-id"], inits[0].get("params") or {})
         return Response(raw, status_code=resp.status_code, headers=out_headers)
 
     # -- LLM --------------------------------------------------------------------------

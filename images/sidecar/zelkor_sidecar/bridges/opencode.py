@@ -10,6 +10,7 @@ and seeded with the stored transcript.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 from ..events import RuntimeEvent, ai_message, text_of
@@ -33,6 +34,10 @@ def error_text(info: Dict[str, Any]) -> Optional[str]:
         data = err.get("data") if isinstance(err.get("data"), dict) else {}
         return f"{err.get('name', 'OpenCodeError')}: {data.get('message') or err.get('message') or ''}".strip()
     return str(err)
+
+
+# Name of the MCP server in images/runtime-opencode/opencode.json.
+MCP_SERVER = os.getenv("ZELKOR_OPENCODE_MCP_SERVER", "zelkor")
 
 
 class OpenCodeBridge(Bridge):
@@ -69,7 +74,30 @@ class OpenCodeBridge(Bridge):
         r.raise_for_status()
         return str(r.json()["id"]), True
 
+    async def _ensure_mcp(self) -> None:
+        """Reconnect OpenCode's MCP server inside the run if it is not connected.
+
+        OpenCode connects MCP at startup, when the sidecar has no run and refuses the handshake;
+        it then marks the server failed for the life of the process. Reconnecting here happens
+        while the run (and its bearer) is active, so the handshake goes through.
+        """
+        http = await self.client()
+        try:
+            r = await http.get("/mcp")
+            if r.status_code != 200:
+                return  # OpenCode without the MCP status API
+            status = (r.json().get(MCP_SERVER) or {}).get("status")
+            if status == "connected":
+                return
+            c = await http.post(f"/mcp/{MCP_SERVER}/connect")
+            logger.info("OpenCode MCP server reconnected", extra={
+                "event": "mcp_session", "status": "ok" if c.status_code < 400 else "error",
+                "deny_reason": f"was {status}; connect http {c.status_code}"})
+        except Exception as exc:  # noqa: BLE001 — the turn still runs; tools may be missing
+            logger.warning("OpenCode MCP status check failed: %s", type(exc).__name__)
+
     async def send_turn(self, ctx, *, history, new_messages):
+        await self._ensure_mcp()
         sid, created = await self._session(ctx)
         ctx.runtime_session_id = sid
         prior = history[: max(0, len(history) - len(new_messages))]
