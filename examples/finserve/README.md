@@ -13,6 +13,8 @@ This example demonstrates how Zelkor safely bridges un-sandboxed workflows with 
 - **Deep Agents & Code Execution**: The `finserve-coder` agent executes python safely via the gVisor sandbox.
 - **AI Gateway Interception**: Output generation model logic is routed centrally for observability and guardrails.
 
+To run the advisor and quant on CrewAI, Pydantic AI or OpenCode, see [runtimes/](runtimes/README.md).
+
 ## What to copy
 
 This demo is not the way you learn how to deploy the platform or ship your own agents. It is a full reference application with seed jobs and multiple workers. 
