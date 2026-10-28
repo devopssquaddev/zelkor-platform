@@ -30,3 +30,15 @@ def test_refusal_message_is_the_configured_one():
     flows = _flows("--set", "workspace.policies.nemo.selfCheck.enabled=true",
                    "--set", "workspace.policies.nemo.safetyRefusal=Blocked by policy.")
     assert '"Blocked by policy."' in flows.split("define bot refuse to respond", 1)[1].split("\n\n", 1)[0]
+
+
+def test_self_check_prompts_treat_the_text_as_data():
+    """Instruction-following models answered the user's request instead of Yes/No (wrong verdicts)."""
+    cm = _named(_docs(_helm(*OLLAMA, "--set", "workspace.policies.nemo.selfCheck.enabled=true")),
+                "ConfigMap", "zelkor-platform-nemo-config")
+    import yaml
+
+    tasks = {p["task"]: p["content"] for p in yaml.safe_load(cm["data"]["content_safety-prompts.yml"])["prompts"]}
+    assert "<message>\n{{ user_input }}\n</message>" in tasks["self_check_input"]
+    assert "<response>\n{{ bot_response }}\n</response>" in tasks["self_check_output"]
+    assert all("Answer with exactly one word, Yes or No." in c for c in tasks.values())
