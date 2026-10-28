@@ -29,6 +29,11 @@ DATABASE_URL = os.getenv("POSTGRES_MCP_URL", "")
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CATALOG_SCHEMAS = frozenset({"pg_catalog", "information_schema", "pg_toast"})
+# set_config() would re-point app.current_tenant mid-transaction; the others run SQL from a string.
+_TENANT_SWITCH = re.compile(
+    r"\b(set_config|query_to_xml\w*|query_to_xmlschema|ts_stat|dblink\w*)\b"
+)
+_UNICODE_ESCAPE = re.compile(r"\bu&[\"']", re.IGNORECASE)
 
 LIST_TABLES_SQL = """
 SELECT n.nspname AS schema, c.relname AS name
@@ -81,6 +86,8 @@ def _assert_read_only(sql: str) -> str:
     first = stripped.split(None, 1)[0].lower()
     if first not in ("select", "with"):
         raise PermissionError("Only SELECT queries are permitted")
+    if _UNICODE_ESCAPE.search(stripped) or _TENANT_SWITCH.search(stripped.replace('"', "").lower()):
+        raise PermissionError("set_config and dynamic SQL functions are not permitted")
     return stripped
 
 
@@ -135,6 +142,7 @@ def _with_tenant_txn(tenant_id: str, fn):
         conn.autocommit = False
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             try:
+                cur.execute("SET TRANSACTION READ ONLY")
                 cur.execute("SET LOCAL app.current_tenant = %s", (tenant_id,))
             except Exception as exc:
                 logger.warning(
@@ -147,6 +155,10 @@ def _with_tenant_txn(tenant_id: str, fn):
                     f"tenant isolation failed: could not set app.current_tenant"
                 ) from exc
             result = fn(cur)
+            cur.execute("SELECT current_setting('app.current_tenant', true) AS current_setting")
+            if (cur.fetchone() or {}).get("current_setting") != tenant_id:
+                logger.warning("app.current_tenant changed during query", extra={"tenant_id": tenant_id})
+                raise PermissionError("tenant isolation failed: app.current_tenant changed during query")
             conn.commit()
             return result
     except Exception:
