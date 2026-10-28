@@ -14,29 +14,31 @@ Zelkor uses NVIDIA NeMo Guardrails to intercept and verify prompts and completio
 
 ## Configuration
 
-Custom rails are configured in your platform values file under `workspace.policies.nemo`. You can supply Colang scripts and YAML configurations directly as multi-line strings.
+Custom rails go in your platform values file under `workspace.policies.nemo`. The chart validates these keys against its schema; any other key under `nemo` fails the install.
 
-Create an overlay file (e.g., `my-nemo-overlay.yaml`):
+| Key | What the chart does with it |
+| :--- | :--- |
+| `extraRailsConfig` | Merged under `rails.config` of the `content_safety` config (for example `regex_detection`). |
+| `extraInputFlows` | Flow names appended to the input rails, after `self check input`. |
+| `extraColang` | Colang text appended to the `content_safety` flows file. |
+| `selfCheck.model` | Model id for the yes/no self-check rails. Empty uses the NeMo model (`workspace.policies.nemo.model`, then `workspace.models.defaultModel`). Use a model id your AI Gateway routes. |
+| `safetyRefusal` | Text returned when a rail blocks a request. |
+
+Create an overlay file (e.g., `my-nemo-overlay.yaml`). This one blocks off-topic requests with NeMo's built-in regex input rail:
 
 ```yaml
 workspace:
   policies:
     nemo:
-      config:
-        # Your custom Colang and YAML content goes here.
-        # Do not dump massive Colang files directly into the values if they are complex;
-        # keep them focused on critical topical or safety rails.
-        "custom_rails.co": |
-          define user ask about politics
-            "What do you think about the election?"
-            "Who are you voting for?"
-
-          define flow politics
-            user ask about politics
-            bot refuse to respond about politics
-
-          define bot refuse to respond about politics
-            "I am a financial advisor agent. I cannot discuss politics."
+      extraInputFlows:
+        - regex check input
+      extraRailsConfig:
+        regex_detection:
+          input:
+            case_insensitive: true
+            patterns:
+              - "\\bpoem\\b"
+              - "\\bweather\\b"
 ```
 
 ## Apply the Overlay
