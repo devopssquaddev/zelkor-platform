@@ -36,7 +36,7 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "2.4.1"
+  tag: "2.4.2"
   digest: ""
   pullPolicy: ""
 
@@ -50,7 +50,7 @@ runtime: aegra
 sidecar:
   image:
     repository: ghcr.io/devopssquaddev/zelkor-sidecar
-    tag: "2.4.1"
+    tag: "2.4.2"
     digest: ""
     pullPolicy: ""
   # Non-stream the LLM call when it carries tools (NeMo intercept rejects tools + stream);
