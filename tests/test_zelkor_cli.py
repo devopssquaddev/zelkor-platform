@@ -1417,3 +1417,33 @@ def test_kind_node_cidrs_and_np_values():
     assert _np_values(info) == {"networkPolicies": {"enabled": True}}
     info.gateway_host_cidrs = ["172.22.0.2/32"]
     assert _np_values(info)["networkPolicies"]["hostNetworkGatewayCIDRs"] == ["172.22.0.2/32"]
+
+
+def test_runtime_deploy_off_kind_builds_from_runtime_base_and_pushes(tmp_path, monkeypatch):
+    """`zelkor deploy --runtime opencode` on a real cluster: build FROM the runtime base, push, no kind load."""
+    _deploy_first(tmp_path)
+    monkeypatch.delenv("ZELKOR_SKIP_BUILD", raising=False)
+    monkeypatch.delenv("ZELKOR_RUNTIME_IMAGE", raising=False)
+    captured: dict = {}
+    built: dict = {}
+    real = _discover_runner(captured)
+
+    def runner(argv, **kwargs):
+        if argv[:2] == ["docker", "build"]:
+            built["dockerfile"] = (Path(argv[-1]) / "Dockerfile").read_text(encoding="utf-8")
+        return real(argv, **kwargs)
+
+    deploy_agent(root=tmp_path, env=Env(name="prod", kube_context="k3s", namespace="zelkor"), push=True,
+                 runtime="opencode", tool_prefixes="postgres,sandbox", image_registry="registry.example.com/team",
+                 agent_chart=ROOT / "charts" / "zelkor-agent", platform_chart=ROOT / "charts" / "zelkor-platform",
+                 runner=runner)
+    cmds = captured.get("commands") or []
+    pushes = [c for c in cmds if c[:2] == ["docker", "push"]]
+    assert built["dockerfile"].startswith("FROM ghcr.io/devopssquaddev/zelkor-runtime-opencode:")
+    assert pushes and pushes[0][2].startswith("registry.example.com/team/zelkor-agent-desk:")
+    assert not any(c[:2] == ["kind", "load"] for c in cmds)
+    import yaml
+
+    values = yaml.safe_load(captured["values"])
+    assert values["runtime"] == "opencode"
+    assert values["image"]["repository"] == "registry.example.com/team/zelkor-agent-desk"
