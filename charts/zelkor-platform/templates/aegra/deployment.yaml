@@ -35,6 +35,8 @@ spec:
       app.kubernetes.io/component: aegra
   template:
     metadata:
+      annotations:
+        checksum/ai-gateway-agents: {{ include "zelkor-platform.aiGatewayKeyChecksum" (dict "root" . "key" "agents") | quote }}
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: aegra

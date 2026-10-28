@@ -1526,14 +1526,17 @@ cluster_install_wait_langfuse() {
 
 cluster_install_wait_langfuse_bootstrap() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
-  local job="${CLUSTER_INSTALL_RELEASE}-langfuse-bootstrap"
-  if ! kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
-    get job "$job" >/dev/null 2>&1; then
+  # The Job name carries a checksum of its inputs, so select it by label.
+  local job
+  job="$(kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" get job \
+    -l "app.kubernetes.io/component=langfuse-bootstrap,app.kubernetes.io/instance=${CLUSTER_INSTALL_RELEASE}" \
+    -o name 2>/dev/null | head -1)"
+  if [[ -z "$job" ]]; then
     return 0
   fi
   echo "install: waiting for Langfuse bootstrap Job"
   kubectl "${KUBECTL_ARGS[@]}" -n "$CLUSTER_INSTALL_NAMESPACE" \
-    wait "job/${job}" --for=condition=complete --timeout=20m || \
+    wait "$job" --for=condition=complete --timeout=20m || \
     cluster_install_warn_or_fail "Langfuse bootstrap Job did not complete"
 }
 

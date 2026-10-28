@@ -1552,3 +1552,31 @@ Only NeMo's own key opens the provider route on its separate hostname, so the by
   value: ""
 {{- end }}
 {{- end }}
+
+{{- define "zelkor-platform.aiGatewayKeys" -}}
+{{- /* Resolved once per render (JSON): agents, nemo, previous. "previous" keeps the last consumer
+     key valid after a rotation, so pods and agent releases that have not restarted yet still work. */ -}}
+{{- if not (hasKey .Values "_zelkorAiGatewayKeys") -}}
+{{- $consumer := include "zelkor-platform.aiGatewayConsumerSecret" . -}}
+{{- $agents := include "zelkor-platform.aiGatewaySecretKey" (dict "root" . "secret" $consumer "key" "agents" "value" .Values.aiGateway.consumerKey) -}}
+{{- $nemo := include "zelkor-platform.aiGatewaySecretKey" (dict "root" . "secret" (include "zelkor-platform.aiGatewayNemoSecret" .) "key" "nemo") -}}
+{{- $previous := "" -}}
+{{- $s := lookup "v1" "Secret" .Release.Namespace $consumer -}}
+{{- if and $s $s.data -}}
+{{- $old := index $s.data "agents" | default "" | b64dec -}}
+{{- if and $old (ne $old $agents) -}}
+{{- $previous = $old -}}
+{{- else -}}
+{{- $previous = index $s.data "agents-previous" | default "" | b64dec -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set .Values "_zelkorAiGatewayKeys" (dict "agents" $agents "nemo" $nemo "previous" $previous) -}}
+{{- end -}}
+{{- index .Values "_zelkorAiGatewayKeys" | toJson -}}
+{{- end }}
+
+{{- define "zelkor-platform.aiGatewayKeyChecksum" -}}
+{{- /* dict root key: restarts the pods that read this key when it rotates. */ -}}
+{{- $keys := include "zelkor-platform.aiGatewayKeys" .root | fromJson -}}
+{{- index $keys .key | sha256sum | trunc 16 -}}
+{{- end }}

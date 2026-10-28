@@ -378,3 +378,15 @@ else inherit {releaseName}-ai-gateway-consumer (zelkor deploy copies it into oth
   value: ""
 {{- end }}
 {{- end }}
+
+{{- define "zelkor-agent.consumerKeyChecksum" -}}
+{{- /* Restarts the agent on its next upgrade after the platform rotated the key (the platform keeps
+     the previous key valid until then). Empty under `helm template` (no cluster lookup). */ -}}
+{{- $rel := include "zelkor-agent.platformReleaseName" . -}}
+{{- if .Values.platform.consumerKey -}}
+{{- .Values.platform.consumerKey | sha256sum | trunc 16 -}}
+{{- else if $rel -}}
+{{- $s := lookup "v1" "Secret" .Release.Namespace (printf "%s-ai-gateway-consumer" $rel) -}}
+{{- if and $s $s.data -}}{{- index $s.data "agents" | default "" | sha256sum | trunc 16 -}}{{- end -}}
+{{- end -}}
+{{- end }}

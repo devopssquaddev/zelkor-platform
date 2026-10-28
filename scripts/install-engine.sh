@@ -320,16 +320,19 @@ wait_jobs_selector() {
 }
 
 wait_langfuse_bootstrap_job() {
-  local job="${HELM_RELEASE_NAME}-langfuse-bootstrap"
-  if ! kubectl --context "$KCTX" get job "$job" >/dev/null 2>&1; then
+  # The Job name carries a checksum of its inputs, so select it by label.
+  local sel="app.kubernetes.io/component=langfuse-bootstrap,app.kubernetes.io/instance=${HELM_RELEASE_NAME}"
+  local job
+  job="$(kubectl --context "$KCTX" get job -l "$sel" -o name 2>/dev/null | head -1)"
+  if [[ -z "$job" ]]; then
     return 0
   fi
-  log "  waiting: job/${job}"
-  if kubectl --context "$KCTX" wait --for=condition=complete "job/${job}" \
+  log "  waiting: ${job}"
+  if kubectl --context "$KCTX" wait --for=condition=complete "$job" \
     --timeout="$JOB_WAIT_TIMEOUT"; then
     return 0
   fi
-  handle_wait_failure optional "job/${job}" resource_healthy "job/${job}"
+  handle_wait_failure optional "$job" resource_healthy "$job"
 }
 
 helm_user_value() {
