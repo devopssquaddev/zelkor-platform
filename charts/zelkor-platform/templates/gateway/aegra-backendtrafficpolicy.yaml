@@ -22,4 +22,7 @@ spec:
       requestTimeout: {{ if $timeout }}{{ $timeout | quote }}{{ else }}0s{{ end }}
       maxStreamDuration: 0s
       streamIdleTimeout: {{ if $timeout }}{{ $timeout | quote }}{{ else }}1h{{ end }}
+      # Below uvicorn's 5s keep-alive: Envoy must close an idle upstream connection before the
+      # server does, or a reused half-closed connection answers 503 UC.
+      connectionIdleTimeout: 4s
 {{- end }}
