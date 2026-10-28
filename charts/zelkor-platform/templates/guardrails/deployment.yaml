@@ -62,10 +62,10 @@ spec:
           env:
             {{- include "zelkor-platform.logEnv" (dict "root" . "component" .Values.guardrails.nemo "name" "zelkor-nemo") | nindent 12 }}
             {{- include "zelkor-platform.otelProbeExcludeEnv" . | nindent 12 }}
-            - name: OPENAI_API_KEY
-              value: {{ .Values.aiGateway.consumerKey | default "" | quote }}
+            {{- /* NeMo's own key: the only identity the provider route accepts. */}}
+            {{- include "zelkor-platform.aiGatewayKeyEnv" (dict "root" . "name" "OPENAI_API_KEY" "secret" (include "zelkor-platform.aiGatewayNemoSecret" .) "key" "nemo") | nindent 12 }}
             - name: MAIN_MODEL_BASE_URL
-              value: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+              value: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
             - name: NEMO_GUARDRAILS_NO_USAGE_STATS
               value: "1"
             - name: ENABLE_PROMETHEUS_METRICS

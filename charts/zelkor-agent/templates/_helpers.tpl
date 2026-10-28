@@ -359,3 +359,22 @@ securityContext:
   seccompProfile:
     type: RuntimeDefault
 {{- end }}
+
+{{/*
+AI Gateway caller key (the gateway refuses /v1 without it). Explicit platform.consumerKey wins;
+else inherit {releaseName}-ai-gateway-consumer (zelkor deploy copies it into other namespaces).
+*/}}
+{{- define "zelkor-agent.consumerKeyEnv" -}}
+{{- $rel := include "zelkor-agent.platformReleaseName" .root -}}
+- name: {{ .name }}
+{{- if .root.Values.platform.consumerKey }}
+  value: {{ .root.Values.platform.consumerKey | quote }}
+{{- else if $rel }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ printf "%s-ai-gateway-consumer" $rel }}
+      key: agents
+{{- else }}
+  value: ""
+{{- end }}
+{{- end }}

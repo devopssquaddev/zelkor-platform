@@ -6,35 +6,35 @@ models:
     engine: openai
     model: {{ $mainModel | quote }}
     parameters:
-      base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+      base_url: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         X-Ai-Eg-Model: {{ $mainModel | quote }}
-        {{- if .Values.gateway.hosts.aiGateway }}
-        Host: {{ .Values.gateway.hosts.aiGateway | quote }}
+        {{- if not .Values.aiGateway.inClusterService.enabled }}
+        Host: {{ include "zelkor-platform.aiGatewayNemoHost" . | quote }}
         {{- end }}
 {{- if $selfCheck }}
   - type: self_check_input
     engine: openai
     model: {{ $selfCheckModel | quote }}
     parameters:
-      base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+      base_url: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         X-Ai-Eg-Model: {{ $selfCheckModel | quote }}
-        {{- if .Values.gateway.hosts.aiGateway }}
-        Host: {{ .Values.gateway.hosts.aiGateway | quote }}
+        {{- if not .Values.aiGateway.inClusterService.enabled }}
+        Host: {{ include "zelkor-platform.aiGatewayNemoHost" . | quote }}
         {{- end }}
   - type: self_check_output
     engine: openai
     model: {{ $selfCheckModel | quote }}
     parameters:
-      base_url: {{ include "zelkor-platform.aiGatewayInternalUrl" . | quote }}
+      base_url: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         X-Ai-Eg-Model: {{ $selfCheckModel | quote }}
-        {{- if .Values.gateway.hosts.aiGateway }}
-        Host: {{ .Values.gateway.hosts.aiGateway | quote }}
+        {{- if not .Values.aiGateway.inClusterService.enabled }}
+        Host: {{ include "zelkor-platform.aiGatewayNemoHost" . | quote }}
         {{- end }}
 {{- end }}
 

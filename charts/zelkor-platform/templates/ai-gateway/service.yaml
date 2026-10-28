@@ -17,5 +17,23 @@ spec:
     - name: http
       port: {{ .Values.aiGateway.inClusterService.port | default 80 }}
       protocol: TCP
+{{- if eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "zelkor-platform.aiGatewayNemoHost" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "aiGateway") | nindent 4 }}
+    app.kubernetes.io/component: ai-gateway
+spec:
+  type: ExternalName
+  externalName: {{ $targetHost }}
+  ports:
+    - name: http
+      port: {{ .Values.aiGateway.inClusterService.port | default 80 }}
+      protocol: TCP
+{{- end }}
 {{- end }}
 {{- end }}

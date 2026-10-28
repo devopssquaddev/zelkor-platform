@@ -26,7 +26,8 @@ def test_default_global_rpm_50_on_aigateway_httproute():
     refs = btp["spec"]["targetRefs"]
     assert len(refs) == 1
     assert refs[0]["kind"] == "HTTPRoute"
-    assert refs[0]["name"] == "zelkor-platform-aigateway-route"
+    # NeMo intercept (default): only NeMo -> provider calls are counted, all on the NeMo route.
+    assert refs[0]["name"] == "zelkor-platform-aigateway-nemo-route"
     assert refs[0]["name"] != "zelkor-platform-aegra-route"
     assert btp["spec"]["mergeType"] == "StrategicMerge"
     rl = btp["spec"]["rateLimit"]
@@ -90,4 +91,7 @@ def test_bug02_unknown_model_reject_route_not_targeted():
     docs = _docs(_helm(*PROVIDER))
     btp = _named(docs, "BackendTrafficPolicy", "zelkor-platform-aigateway-ratelimit")
     names = [r["name"] for r in btp["spec"]["targetRefs"]]
-    assert names == ["zelkor-platform-aigateway-route"]
+    assert names == ["zelkor-platform-aigateway-nemo-route"]
+    off = _docs(_helm(*PROVIDER, "--set", "workspace.policies.nemo.intercept.enabled=false"))
+    off_btp = _named(off, "BackendTrafficPolicy", "zelkor-platform-aigateway-ratelimit")
+    assert [r["name"] for r in off_btp["spec"]["targetRefs"]] == ["zelkor-platform-aigateway-route"]

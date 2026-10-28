@@ -1125,7 +1125,9 @@ def deploy_agent(
         copy_named_secrets(
             env,
             agent_ns,
-            [str(item.get("name") or "") for item in info.image_pull_secrets],
+            # AI Gateway caller key: the agent chart reads it from this Secret (gateway refuses /v1 without it).
+            [str(item.get("name") or "") for item in info.image_pull_secrets]
+            + [f"{info.release}-ai-gateway-consumer"],
             runner=runner,
         )
     _require_registered_extras(info, shape.mcp_servers)
@@ -1290,7 +1292,9 @@ def deploy_from_values(
         copy_named_secrets(
             env,
             agent_ns,
-            [str(item.get("name") or "") for item in info.image_pull_secrets],
+            # AI Gateway caller key: the agent chart reads it from this Secret (gateway refuses /v1 without it).
+            [str(item.get("name") or "") for item in info.image_pull_secrets]
+            + [f"{info.release}-ai-gateway-consumer"],
             runner=runner,
         )
     _require_registered_extras(info, mcp_servers_from_tools(values_path.parent))
