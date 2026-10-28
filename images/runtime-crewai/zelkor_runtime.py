@@ -22,6 +22,7 @@ from crewai.a2a.utils.task import cancel as crew_cancel
 from crewai.a2a.utils.task import execute as crew_execute
 from crewai.mcp import MCPServerHTTP
 
+import quiet_console
 from zelkor_runtime_spec import load_spec
 
 logger = logging.getLogger("zelkor-runtime-crewai")
@@ -35,6 +36,7 @@ class CrewExecutor(AgentExecutor):
         self.agent = agent
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
+        quiet_console.suppress()  # per turn: the flag is a ContextVar
         try:
             # CrewAI resolves ``mcps`` only on kickoff; its A2A executor calls
             # aexecute_task(tools=agent.tools). Resolve per turn, while the sidecar has an
@@ -50,6 +52,7 @@ class CrewExecutor(AgentExecutor):
 
 
 def build_app():
+    quiet_console.install()
     spec = load_spec()
     url = f"http://{HOST}:{PORT}"
     llm = LLM(model=f"openai/{spec.model}", base_url=spec.llm_base_url, api_key="via-sidecar")

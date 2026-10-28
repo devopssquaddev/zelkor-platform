@@ -131,3 +131,29 @@ def test_context_id_of_another_tenant_is_refused_and_tasks_are_scoped(app):
     assert TaskState.Name(task_b.status.state) == "TASK_STATE_REJECTED"
     assert leaked is False
     assert b_msgs == []
+
+
+def test_malformed_token_is_401_not_500(monkeypatch):
+    """S-80: a token the verifier cannot parse (e.g. alg: none) must fail closed as 401."""
+    import types
+
+    from zelkor_sidecar import inbound as inbound_mod
+
+    def broken(_headers):
+        raise ValueError("Not enough segments")
+
+    monkeypatch.setitem(sys.modules, "jwt_verifier", types.SimpleNamespace(resolve_tenant_from_headers=broken))
+    monkeypatch.setenv("ZELKOR_A2A_PUBLIC_URL", f"{BASE}/a2a?graph_id={GRAPH}")
+    store = MemoryStore()
+    inbound = Inbound(store, EchoExecutor(store), graph_id=GRAPH,
+                      tenant_resolver=inbound_mod.default_tenant_resolver)
+    app = inbound.app()
+    mount_a2a(app, inbound)
+
+    async def go():
+        async with _http(app, "eyJhbGciOiJub25lIn0.eyJ0ZW5hbnRfaWQiOiJ4In0.") as http:
+            rpc = await http.post("/a2a", json={"jsonrpc": "2.0", "id": 1, "method": "message/send", "params": {}})
+            threads = await http.post("/threads/search", json={})
+            return rpc.status_code, threads.status_code
+
+    assert asyncio.run(go()) == (401, 401)

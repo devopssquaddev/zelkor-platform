@@ -23,7 +23,12 @@ TenantResolver = Callable[[Dict[str, str]], str]
 def default_tenant_resolver(headers: Dict[str, str]) -> str:
     from jwt_verifier import resolve_tenant_from_headers  # flat copy from mcp/common
 
-    return resolve_tenant_from_headers(headers)
+    try:
+        return resolve_tenant_from_headers(headers)
+    except PermissionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — unparseable token / bad alg / JWKS: fail closed as 401, never 500
+        raise PermissionError(type(exc).__name__) from exc
 
 
 def _stream_modes(raw: Any) -> List[str]:
