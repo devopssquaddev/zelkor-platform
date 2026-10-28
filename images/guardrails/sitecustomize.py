@@ -21,3 +21,10 @@ try:
     install_structured_output()
 except Exception:
     _log.exception("NeMo structured output patch failed (sitecustomize)")
+
+try:
+    from quiet_verbose import install as install_quiet_verbose
+
+    install_quiet_verbose()
+except Exception:
+    _log.exception("NeMo verbose-mode patch failed (sitecustomize)")

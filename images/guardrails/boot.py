@@ -11,6 +11,10 @@ logger = logging.getLogger("zelkor-nemo")
 from otel_project_route import install
 
 install()
+# opentelemetry-instrument's sitecustomize shadows ours, so install here, before the CLI.
+from quiet_verbose import install as install_quiet_verbose
+
+install_quiet_verbose()
 logger.info("NeMo intercept ready", extra={"event": "startup"})
 sys.argv = ["nemoguardrails"] + sys.argv[1:]
 from nemoguardrails.cli import app  # noqa: E402
