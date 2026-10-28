@@ -58,7 +58,7 @@ The platform enforces tenant isolation differently depending on the tool backend
 
 Native servers apply strict filters based on the tenant ID. The agent cannot bypass these.
 
-- **Postgres:** Each call runs in a transaction that sets `app.current_tenant` to the verified tenant. The server does not rewrite the SQL. Row-level security applies only when your policies read `app.current_tenant`.
+- **Postgres:** Each call runs in a transaction that sets `app.current_tenant` to the verified tenant. The server does not rewrite the SQL. Row-level security applies only when your policies read `app.current_tenant` (including composite `<dept>:<user>` values via `split_part`; see [Department and User Boundaries Across Databases](../architecture-tenants.md#department-and-user-boundaries-across-databases)).
 - **Qdrant:** Search and scroll add a payload filter `tenant_id` equal to the verified tenant. Upsert stamps that field and ignores a tenant id supplied by the caller.
 
 ### Extra MCP Backends
