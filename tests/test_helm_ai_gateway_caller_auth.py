@@ -182,3 +182,22 @@ def test_any_seed_input_renames_the_bootstrap_job():
                     "--set", "workspace.tools.extraBackends[0].fqdn.port=443")
     assert _bootstrap_job(base) != _bootstrap_job(extra)
     assert _bootstrap_job(base) == _bootstrap_job(_render(*key))  # stable when nothing changed
+
+
+def test_bootstrap_job_takes_credentials_by_reference():
+    """Literal env values show up in `kubectl get job` and in Helm upgrade errors."""
+    docs = _render("--set", "platform.telemetry.langfuse.init.enabled=true",
+                   "--set", "platform.telemetry.langfuse.init.orgId=o", "--set", "platform.telemetry.langfuse.init.orgName=o",
+                   "--set", "platform.telemetry.langfuse.init.projectId=p", "--set", "platform.telemetry.langfuse.init.projectName=p",
+                   "--set", "platform.telemetry.langfuse.init.projectPublicKey=pk-lf-inline",
+                   "--set", "platform.telemetry.langfuse.init.projectSecretKey=sk-lf-inline",
+                   "--set", "platform.telemetry.langfuse.surfaces.llmConnection.enabled=true")
+    (job,) = [d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith("zelkor-platform-langfuse-bootstrap-")]
+    env = {e["name"]: e for e in job["spec"]["template"]["spec"]["containers"][0]["env"]}
+    for name in ("DATABASE_URL", "VALKEY_PASSWORD", "LANGFUSE_SALT", "MCP_AUTH_TOKEN", "LANGFUSE_PUBLIC_KEY",
+                 "LANGFUSE_SECRET_KEY", "AI_GATEWAY_CONSUMER_KEY"):
+        assert "value" not in env[name] and env[name]["valueFrom"]["secretKeyRef"], name
+    dumped = yaml.safe_dump(job)
+    assert "test-pg" not in dumped and "test-salt" not in dumped and "sk-lf-inline" not in dumped
+    secret = _named(docs, "Secret", "zelkor-platform-langfuse-bootstrap")
+    assert set(secret["stringData"]) == {"database-url", "valkey-password", "mcp-auth-token"}

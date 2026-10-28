@@ -6,6 +6,21 @@
      seed stores in the Langfuse LLM connection but which only changes the Secret. A changed hash
      renames the Job, so Helm replaces it instead of patching an immutable spec, and the seed re-runs. */ -}}
 {{- $bootstrapChecksum := printf "%s-%s" $pod $keySum | sha256sum | trim -}}
+{{- $tools := ((.Values.langfuse.surfaces | default dict).tools | default dict) -}}
+{{- /* Credentials by reference: literal env values show up in `kubectl get job` and in Helm errors. */}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
+    app.kubernetes.io/component: langfuse-bootstrap
+type: Opaque
+stringData:
+  database-url: {{ include "zelkor-platform.postgresUrl" (list . "langfuse") | quote }}
+  valkey-password: {{ include "zelkor-platform.valkeyPassword" . | quote }}
+  mcp-auth-token: {{ $tools.authToken | default "" | quote }}
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -48,7 +63,10 @@ spec:
             - name: LANGFUSE_HOST
               value: {{ printf "http://%s-langfuse:3000" (include "zelkor-platform.fullname" .) | quote }}
             - name: DATABASE_URL
-              value: {{ include "zelkor-platform.postgresUrl" (list . "langfuse") | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+                  key: database-url
             - name: SEED_ADMIN
               value: {{ $admin.enabled | quote }}
             {{- if $admin.enabled }}
@@ -79,14 +97,6 @@ spec:
               value: {{ required "langfuse.init.projectId is required when langfuse.init.enabled" $init.projectId | quote }}
             - name: LANGFUSE_PROJECT_NAME
               value: {{ required "langfuse.init.projectName is required when langfuse.init.enabled" $init.projectName | quote }}
-            {{- $pk := $init.projectPublicKey | default "" | toString | trim -}}
-            {{- $sk := $init.projectSecretKey | default "" | toString | trim -}}
-            {{- if and $pk $sk }}
-            - name: LANGFUSE_PUBLIC_KEY
-              value: {{ $pk | quote }}
-            - name: LANGFUSE_SECRET_KEY
-              value: {{ $sk | quote }}
-            {{- else }}
             - name: LANGFUSE_PUBLIC_KEY
               valueFrom:
                 secretKeyRef:
@@ -97,11 +107,13 @@ spec:
                 secretKeyRef:
                   name: {{ include "zelkor-platform.langfuseInitSecretName" . }}
                   key: secretKey
-            {{- end }}
             - name: LANGFUSE_INIT_USER_EMAIL
               value: {{ $init.userEmail | default "" | quote }}
             - name: LANGFUSE_SALT
-              value: {{ .Values.langfuse.salt | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse
+                  key: salt
             {{- end }}
             {{- if $armorOn }}
             - name: LANGFUSE_CONNECTION_NAME
@@ -124,7 +136,10 @@ spec:
             - name: MCP_SEED_TENANT
               value: {{ $tools.seedTenant | default "seed" | quote }}
             - name: MCP_AUTH_TOKEN
-              value: {{ $tools.authToken | default "" | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+                  key: mcp-auth-token
             - name: MCP_EXTRA_BACKENDS
               value: {{ .Values.__mcpExtraBackendSeedJson | default "[]" | quote }}
             - name: LANGFUSE_EXTRA_PROJECTS
@@ -134,6 +149,9 @@ spec:
             - name: VALKEY_PORT
               value: {{ include "zelkor-platform.valkeyPort" . | quote }}
             - name: VALKEY_PASSWORD
-              value: {{ include "zelkor-platform.valkeyPassword" . | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
+                  key: valkey-password
             {{- end }}
 {{- end }}
