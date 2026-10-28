@@ -86,7 +86,7 @@ platform:
           seedCode: true
         image:
           tag: 2.4.2
-          digest: sha256:3e84ab2fea25b10639bdfebdf96921a83bc7e5c866d24ae6f2edfabd1e7ba95e
+          digest: sha256:07a6e7ca6886a90331fd522ec754ed773872f841636a160c9748582aca33123b
   mTLS:
     enabled: false
 workspace:
@@ -96,21 +96,21 @@ workspace:
     nemo:
       image:
         tag: 2.4.2
-        digest: sha256:72c91b57397fdffa81df7d118e4220218c4556509cfe0d06210c277a0dd077ba
+        digest: sha256:669274b4ba890f9f66b7d1f78bcedb830180b4e6c79c2c3f1608d3b29a776c62
   tools:
     image:
       tag: 2.4.2
-      digest: sha256:fea99d673dafca9faef12d11599a0ba4180404a1d6624bcbd210e7b057e759dd
+      digest: sha256:04688775992a4c0fa953568265db23557cb64735858f3ad8dc272eb6ac6727ce
     sandboxMCP:
       workerImage:
         tag: 2.4.2
-        digest: sha256:b607349baa20a8bdc0fc6e4fcf8c77bd2576580251f67edcd7e518b93d9d49da
+        digest: sha256:cbc7c0b2b96873ef13231f3ce50ef8483a2efeeb9886551df63038cae37b2be1
 workload:
   agents:
     image:
       tag: 2.4.2
-      digest: sha256:fc54c45c910b5a7827ca7bcb4589ba62dbbc5ccbe2ca85801daf2a65ec98548f
+      digest: sha256:2d8b38772ab2c76cf0fc6a02a889bab7214c7930fd058895d2ae08cdf124daab
     cli:
       image:
         tag: 2.4.2
-        digest: sha256:3aed1034dc201f3849d0fd103ee6395f814c43ec49e043b3317bfbbc059b87ec
+        digest: sha256:efa02eae4c03e844c3734f8fbc85bbd58f9bcb7272aec01334cc32194a9474ff
