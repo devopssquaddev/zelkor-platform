@@ -419,6 +419,7 @@ def test_aegra_sse_backend_traffic_policy():
     timeout = policy["spec"]["timeout"]["http"]
     assert timeout["streamIdleTimeout"]
     assert timeout.get("requestTimeout") in ("0s", "0")
+    assert timeout["connectionIdleTimeout"] == "4s"  # below uvicorn's 5s keep-alive
     assert policy["spec"].get("requestBuffer") in (None, {})
 
 
@@ -567,6 +568,7 @@ def test_agent_chart_intent_timeout_on_shared_route():
     btp = next(d for d in docs if d.get("kind") == "BackendTrafficPolicy")
     assert btp["spec"]["timeout"]["http"]["requestTimeout"] == "120s"
     assert btp["spec"]["timeout"]["http"]["streamIdleTimeout"] == "120s"
+    assert btp["spec"]["timeout"]["http"]["connectionIdleTimeout"] == "4s"
 
 
 def test_agent_chart_approval_enabled_fails_on_ce():
