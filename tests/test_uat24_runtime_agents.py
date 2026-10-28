@@ -10,7 +10,8 @@ import pytest
 
 from tests.helpers.kube import kubectl_run
 from tests.helpers.runtime_agents import (
-    error_spans, require_kube, runtime_graphs, sandbox_run, tenant_id, tenant_token,
+    ESCAPE_PROMPT, REFUSAL, error_spans, final_text, require_kube, run, run_error, runtime_graphs,
+    sandbox_execution_metadata, sandbox_run, tenant_id, tenant_token, tool_spans, trace_for_thread,
 )
 
 
@@ -31,8 +32,21 @@ def test_uat24_sandbox_run_is_one_governed_trace(graph):
     assert users == {tenant_id(token)}, users
     assert len({o.get("traceId") for o in full}) == 1
     assert any(str(o.get("type")).upper() == "GENERATION" for o in full), "no LLM generation in the run trace"
-    assert sandbox and sandbox.get("violation") == "permission_denied_mknod", sandbox
+    assert sandbox and sandbox.get("outcome") == "denied", sandbox
     assert error_spans(full) == [], error_spans(full)
+
+
+@pytest.mark.parametrize("graph", _graphs() or [pytest.param("-", marks=pytest.mark.skip("ZELKOR_RUNTIME_GRAPHS not set"))])
+def test_uat24_escape_attempt_is_stopped_by_rail_or_sandbox(graph):
+    """Defense in depth: NeMo refuses the mknod request, or the sandbox denies and stamps it."""
+    thread, out = run(graph, tenant_token("tenant-a"), ESCAPE_PROMPT)
+    assert run_error(out) is None, run_error(out)
+    if REFUSAL in final_text(out):
+        return
+    full = trace_for_thread(thread, graph=graph, want_tool=True)
+    assert tool_spans(full), "not refused by NeMo and no sandbox call"
+    sandbox = sandbox_execution_metadata(full)
+    assert sandbox and sandbox.get("violation") == "permission_denied_mknod", sandbox
 
 
 @pytest.mark.parametrize("graph", _graphs() or [pytest.param("-", marks=pytest.mark.skip("ZELKOR_RUNTIME_GRAPHS not set"))])
