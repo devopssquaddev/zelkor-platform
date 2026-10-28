@@ -68,3 +68,76 @@ Extra MCP backends (Bring Your Own) receive the tenant identity in headers but a
 ## Langfuse Tracing
 
 Every run trace emitted to Langfuse is tagged with the user identity derived from the JWT. Traces are naturally partitioned, and one tenant cannot query or view traces belonging to another.
+
+## Department and User Boundaries Across Databases
+
+In an internal enterprise deployment, a single boundary is rarely enough:
+
+- **Department (`hr`, `sales`)** decides which database an agent may query and whether a caller sees all rows in that department.
+- **User (`emp_42`)** owns the conversation thread, the Langfuse trace, and self-service rows (such as an employee viewing their own payslip in HR while HR staff view all employees, and neither HR nor normal employees outside Sales can read Sales forecasts).
+
+If you set the Zelkor tenant to the department (`hr` or `sales`), every employee in that department shares the same `tenant_id` and can read each other's chat threads. Instead, keep the **individual user (or composite `dept:user`) as the verified tenant identity**, expose each database as its own MCP tool prefix (`postgres__*` for the native store, `sales__*` via [Register Extra MCP Backends](mcp-extra-backends.md)), and enforce the department vs. user split in the database policy.
+
+*How a composite `dept:user` identity isolates chat threads per employee while enforcing department-wide and self-service rules across two databases.*
+```mermaid
+---
+config:
+  theme: neutral
+---
+flowchart LR
+  jwt["Client JWT\ntenant_id: sales:emp_42"]
+  subgraph cluster ["Release namespace"]
+    wrap["Agent Worker\nDeployment"]
+    mcp["MCP Gateway\nClusterIP"]
+    pgMcp["mcp-postgres\nDeployment"]
+    salesMcp["sales-mcp\nClusterIP"]
+  end
+  subgraph stores ["Datastores"]
+    hrDb["HR Postgres\npayslips RLS"]
+    salesDb["Sales DB\nforecasts policy"]
+  end
+  jwt -->|Bearer| wrap
+  wrap -->|MCP| mcp
+  mcp -->|postgres__query| pgMcp
+  mcp -->|sales__query| salesMcp
+  pgMcp -->|app.current_tenant| hrDb
+  salesMcp -->|X-Tenant-ID| salesDb
+```
+
+### Example: Postgres RLS for HR Payslips vs. Sales Forecasts
+
+With `tenant_id` formatted as `<dept>:<employee_id>` (for example `sales:emp_42` or `hr:emp_99`), `zelkor-postgres-mcp` sets `SET LOCAL app.current_tenant = 'sales:emp_42'` on the transaction. PostgreSQL Row-Level Security (RLS) splits that setting into department and user without changing the agent code:
+
+```sql
+ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY payslip_isolation ON payslips
+  USING (
+    split_part(current_setting('app.current_tenant', true), ':', 1) = 'hr'
+    OR employee_id = split_part(current_setting('app.current_tenant', true), ':', 2)
+  );
+```
+
+For a separate Sales database (or a second schema), the policy checks only the department prefix:
+
+```sql
+ALTER TABLE forecasts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY sales_forecasts_isolation ON forecasts
+  USING (
+    split_part(current_setting('app.current_tenant', true), ':', 1) = 'sales'
+  );
+```
+
+| Caller | Verified `tenant_id` | Thread & Trace Owner | HR `payslips` (`postgres__query`) | Sales `forecasts` (`sales__query`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Sales employee** | `sales:emp_42` | `sales:emp_42` (private) | Own row only (`employee_id = 'emp_42'`) | All sales rows (`dept = 'sales'`) |
+| **HR specialist** | `hr:emp_99` | `hr:emp_99` (private) | All employee rows (`dept = 'hr'`) | **0 rows** (`dept != 'sales'`) |
+
+### Non-Postgres Databases (Oracle, SQL Server, MongoDB)
+
+When the second database is not PostgreSQL, register a thin MCP server for it under `workspace.tools.extraBackends` ([Register Extra MCP Backends](mcp-extra-backends.md)) and apply the same verified `X-Tenant-ID` header at the storage layer:
+
+- **Engines with session-level RLS (SQL Server, Oracle):** Set the session context from `X-Tenant-ID` before running `SELECT` (`EXEC sp_set_session_context @key=N'tenant_id', @value=..., @read_only=1` on SQL Server; `DBMS_SESSION.SET_IDENTIFIER(...)` with a VPD policy on Oracle, cleared when the connection returns to the pool).
+- **Document and key-value stores without engine RLS (MongoDB, Qdrant, S3):** Never expose raw query evaluation (`$where`, `$function`, unrestricted `runCommand`). The MCP wrapper parses `X-Tenant-ID` and wraps the caller's filter in `{"$and": [agent_filter, enforced_tenant_filter]}` in code, matching how native `zelkor-qdrant-mcp` stamps `payload.tenant_id`.
+
