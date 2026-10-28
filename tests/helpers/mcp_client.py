@@ -45,6 +45,14 @@ def _authorization_for(tenant_id: str) -> str:
     )
 
 
+def tenant_of(label: str) -> str:
+    """Tenant id the platform resolves for a test label (ZELKOR_TEST_TENANT_IDS JSON; default: the label)."""
+    try:
+        return json.loads(os.environ.get("ZELKOR_TEST_TENANT_IDS") or "{}").get(label, label)
+    except json.JSONDecodeError:
+        return label
+
+
 class MCPGatewayClient:
     def __init__(
         self,
