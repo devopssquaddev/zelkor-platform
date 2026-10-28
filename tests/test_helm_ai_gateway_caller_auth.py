@@ -167,3 +167,18 @@ def test_agent_pods_track_the_key_they_use():
         return d["spec"]["template"]["metadata"]["annotations"]["checksum/ai-gateway-consumer"]
     assert checksum("--set", "platform.consumerKey=ck-1") == checksum("--set", "platform.consumerKey=ck-1")
     assert checksum("--set", "platform.consumerKey=ck-1") != checksum("--set", "platform.consumerKey=ck-2")
+
+
+def test_any_seed_input_renames_the_bootstrap_job():
+    """The Job spec is immutable: a changed input must rename the Job, or `helm upgrade` fails while
+    the finished Job still exists (TTL). Adding an extra MCP backend used to keep the name."""
+    # Seed on; offline renders generate a key unless one is set.
+    key = ("--set", "workspace.models.consumerKey=ck-1", "--set", "platform.telemetry.langfuse.init.enabled=true",
+           "--set", "platform.telemetry.langfuse.init.orgId=o", "--set", "platform.telemetry.langfuse.init.orgName=o", "--set", "platform.telemetry.langfuse.init.projectId=p",
+           "--set", "platform.telemetry.langfuse.init.projectName=p", "--set", "platform.telemetry.langfuse.surfaces.llmConnection.enabled=true")
+    base = _render(*key)
+    extra = _render(*key, "--set", "workspace.tools.extraBackends[0].name=saas",
+                    "--set", "workspace.tools.extraBackends[0].fqdn.hostname=mcp.example.com",
+                    "--set", "workspace.tools.extraBackends[0].fqdn.port=443")
+    assert _bootstrap_job(base) != _bootstrap_job(extra)
+    assert _bootstrap_job(base) == _bootstrap_job(_render(*key))  # stable when nothing changed

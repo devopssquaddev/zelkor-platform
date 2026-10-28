@@ -1,20 +1,14 @@
 {{- include "zelkor-platform.compile" . -}}
 {{- if .Values.langfuse.enabled }}
-{{- $admin := .Values.langfuse.admin | default dict -}}
-{{- $surfaces := .Values.langfuse.surfaces | default dict -}}
-{{- $init := .Values.langfuse.init | default dict -}}
-{{- $llm := $surfaces.llmConnection | default dict -}}
-{{- $tools := $surfaces.tools | default dict -}}
-{{- $evals := $surfaces.evaluators | default dict -}}
-{{- $extraProjects := .Values.langfuse.extraProjects | default list -}}
-{{- $armorOn := and $init.enabled (or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0)) -}}
+{{- $pod := include "zelkor-platform.langfuseBootstrapPodTemplate" . -}}
 {{- $keySum := ternary (include "zelkor-platform.aiGatewayKeyChecksum" (dict "root" . "key" "agents")) "" .Values.aiGateway.enabled -}}
-{{- $bootstrapChecksum := printf "%t-%t-%t-%s-%s-%s-%s-%s-%s-%s" $admin.enabled $init.enabled $armorOn ($init.orgId | default "") ($llm.enabled | toString) ($tools.seedFromMcp | toString) ($evals.seedCode | toString) ($evals.sampling | default 0.1 | toString) "ce12-armor-3" $keySum | sha256sum | trim -}}
+{{- /* Hash of the rendered pod template (every env input, image, SA) plus the gateway key, which the
+     seed stores in the Langfuse LLM connection but which only changes the Secret. A changed hash
+     renames the Job, so Helm replaces it instead of patching an immutable spec, and the seed re-runs. */ -}}
+{{- $bootstrapChecksum := printf "%s-%s" $pod $keySum | sha256sum | trim -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  {{- /* Name carries the inputs' checksum: a changed input (e.g. a rotated gateway key, which the
-       seed stores in the Langfuse LLM connection) makes Helm replace the Job, so the seed re-runs. */}}
   name: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap-{{ $bootstrapChecksum | trunc 8 }}
   labels:
     {{- include "zelkor-platform.labels" (dict "root" . "intent" "langfuse") | nindent 4 }}
@@ -24,13 +18,23 @@ metadata:
 spec:
   ttlSecondsAfterFinished: 600
   backoffLimit: 10
+  {{ $pod | trim }}
+{{- end }}
+
+{{- define "zelkor-platform.langfuseBootstrapPodTemplate" -}}
+{{- $admin := .Values.langfuse.admin | default dict -}}
+{{- $surfaces := .Values.langfuse.surfaces | default dict -}}
+{{- $init := .Values.langfuse.init | default dict -}}
+{{- $llm := $surfaces.llmConnection | default dict -}}
+{{- $tools := $surfaces.tools | default dict -}}
+{{- $evals := $surfaces.evaluators | default dict -}}
+{{- $extraProjects := .Values.langfuse.extraProjects | default list -}}
+{{- $armorOn := and $init.enabled (or $llm.enabled $tools.seedFromMcp $evals.seedCode (gt (len $extraProjects) 0)) -}}
   template:
     metadata:
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: langfuse-bootstrap
-      annotations:
-        zelkor.io/bootstrap-checksum: {{ $bootstrapChecksum | quote }}
     spec:
       restartPolicy: OnFailure
       serviceAccountName: {{ include "zelkor-platform.fullname" . }}-langfuse-bootstrap
