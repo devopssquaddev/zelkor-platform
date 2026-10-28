@@ -853,7 +853,7 @@ def test_deploy_from_values_skips_docker(tmp_path):
     assert "zelkor-armored-gpt-researcher" in dumped
     assert "agents.example.com" in dumped
     assert "zelkor-platform" in dumped
-    assert "cluster-consumer" in dumped
+    assert "cluster-consumer" not in dumped  # key by reference, not a literal
 
 
 def test_deploy_from_values_fails_when_sibling_tools_json_missing_extra(tmp_path):
@@ -1446,4 +1446,14 @@ def test_runtime_deploy_off_kind_builds_from_runtime_base_and_pushes(tmp_path, m
 
     values = yaml.safe_load(captured["values"])
     assert values["runtime"] == "opencode"
+    # The gateway key goes by reference, never as a literal in Helm values / the pod spec.
+    assert values["platform"]["releaseName"] and "consumerKey" not in values["platform"]
     assert values["image"]["repository"] == "registry.example.com/team/zelkor-agent-desk"
+
+
+def test_discovered_worker_values_reference_the_consumer_key():
+    from zelkor.main import discovered_worker_values
+
+    platform = discovered_worker_values(PlatformInfo(release="zelkor-platform"))["platform"]
+    assert platform["releaseName"] == "zelkor-platform"
+    assert "consumerKey" not in platform

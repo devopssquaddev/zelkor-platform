@@ -51,7 +51,6 @@ class PlatformInfo:
     database_url: str = ""
     openai_base_url: str = ""
     mcp_url: str = ""
-    consumer_key: str = ""
     redis_url: str = ""
     agents_host: str = ""
     gateway_name: str = ""
@@ -288,7 +287,6 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.database_url = env_map.get("DATABASE_URL", "")
         info.openai_base_url = env_map.get("OPENAI_BASE_URL", "")
         info.mcp_url = env_map.get("MCP_URL", "")
-        info.consumer_key = env_map.get("OPENAI_API_KEY", "")
         info.redis_url = env_map.get("REDIS_URL", "")
         info.jwt_issuer = env_map.get("AUTH_JWT_ISSUER", "")
         aud_raw = env_map.get("AUTH_JWT_AUDIENCES", "")
@@ -701,7 +699,8 @@ def discovered_worker_values(info: PlatformInfo, *, platform_namespace: str = ""
         "databaseUrl": info.database_url,
         "openaiBaseUrl": info.openai_base_url,
         "mcpUrl": info.mcp_url,
-        "consumerKey": info.consumer_key,
+        # No consumerKey literal: the chart reads {releaseName}-ai-gateway-consumer by reference, so
+        # the key stays out of Helm values and the Deployment, and a rotation restarts the agent.
         "valkeyUrl": info.redis_url,
         "mcpInject": True,
     }
@@ -1169,10 +1168,10 @@ def deploy_agent(
         },
         "platform": {
             "namespace": env.namespace,
+            "releaseName": info.release,  # consumer key by reference (Secret copied into agent_ns)
             "databaseUrl": info.database_url,
             "openaiBaseUrl": info.openai_base_url,
             "mcpUrl": info.mcp_url,
-            "consumerKey": info.consumer_key,
             "valkeyUrl": info.redis_url,
             "mcpInject": shape.mcp_inject,
             **tool_scope,
