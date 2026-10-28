@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mcp"))
 
-from tests.helpers.mcp_client import MCPGatewayClient
+from tests.helpers.mcp_client import MCPGatewayClient, tenant_of
 from wrappers.qdrant_server import QdrantMCPServer, stamp_upsert_payload
 
 
@@ -48,7 +48,7 @@ def test_mcp_qdrant_search_does_not_leak_other_tenant():
     except ConnectionError as exc:
         pytest.skip(str(exc))
     for doc in result.get("documents") or []:
-        assert doc.get("tenant_id") == "tenant_a"
+        assert doc.get("tenant_id") == tenant_of("tenant_a")
 
 
 def test_mcp_qdrant_upsert_rejects_stray_tenant_id():
@@ -78,10 +78,10 @@ def test_mcp_qdrant_upsert_then_search_does_not_leak_other_tenant():
         if "embedding" in str(exc).lower() or "unavailable" in str(exc).lower():
             pytest.skip(str(exc))
         raise
-    assert stored.get("tenant_id") == "tenant_b"
+    assert stored.get("tenant_id") == tenant_of("tenant_b")
     leaked = reader.call_tool("qdrant__search_documents", {"query": token, "limit": 10})
     for doc in leaked.get("documents") or []:
-        assert doc.get("tenant_id") == "tenant_a"
+        assert doc.get("tenant_id") == tenant_of("tenant_a")
         blob = str(doc)
         assert token not in blob
     own = writer.call_tool("qdrant__search_documents", {"query": token, "limit": 10})
