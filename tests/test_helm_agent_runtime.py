@@ -47,7 +47,7 @@ def test_sidecar_layout(runtime):
     assert [c["name"] for c in spec["containers"]] == ["sidecar", "agent"]
 
     sidecar, agent = _c(spec, "sidecar"), _c(spec, "agent")
-    assert sidecar["image"].startswith("ghcr.io/devopssquaddev/zelkor-sidecar:2.4.0")
+    assert sidecar["image"].startswith("ghcr.io/devopssquaddev/zelkor-sidecar:2.4.1")
     assert sidecar["ports"] == [{"containerPort": 8000, "name": "http"}]
     assert sidecar["readinessProbe"]["httpGet"]["port"] == 8000
     s_env = _env(sidecar)

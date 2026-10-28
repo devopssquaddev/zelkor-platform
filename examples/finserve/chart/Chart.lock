@@ -1,12 +1,12 @@
 dependencies:
 - name: zelkor-agent
   repository: file://../../../charts/zelkor-agent
-  version: 2.4.0
+  version: 2.4.1
 - name: zelkor-agent
   repository: file://../../../charts/zelkor-agent
-  version: 2.4.0
+  version: 2.4.1
 - name: zelkor-agent
   repository: file://../../../charts/zelkor-agent
-  version: 2.4.0
-digest: sha256:a84b5c35d693c4fe92a687c0836470a59d08bb09160908e6587e9e04bf49f9e2
-generated: "2026-10-26T17:01:29.517103+01:00"
+  version: 2.4.1
+digest: sha256:49869e0e6f1d26816624bfd4b31de782fb712241a1cebe9f0e9ce1d29e748c3e
+generated: "2026-10-28T08:26:34.544615+01:00"
