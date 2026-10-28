@@ -9,3 +9,5 @@ Minimal deploy-first agents (`agent.json` + `AGENTS.md`) for the non-Aegra runti
 | `opencode/` | OpenCode | `zelkor deploy --runtime opencode --tools postgres,sandbox` |
 
 The model is the platform default (`DEFAULT_LLM_MODEL`). See [Choose a runtime](../../docs/agent-deploy.md#choose-a-runtime).
+
+For FinServe's advisor and quant on these runtimes, see [examples/finserve/runtimes](../finserve/runtimes/README.md).

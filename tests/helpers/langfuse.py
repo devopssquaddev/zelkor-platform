@@ -252,7 +252,9 @@ def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
         oid = str(obs.get("id") or id(obs))
         level = str(obs.get("level") or "").upper()
         blob = _observation_blob(obs).lower()
-        is_bad = level == "ERROR" or "exception" in blob or "traceback" in blob
+        # Inputs are prompts; an agent's system prompt may say "Exception: ..." (OpenCode).
+        result = f"{obs.get('statusMessage') or ''} {obs.get('output') or ''}".lower()
+        is_bad = level == "ERROR" or "exception" in result or "traceback" in result
         if is_bad:
             if "blocked" in blob or "refused" in blob or "content_safety" in blob:
                 continue

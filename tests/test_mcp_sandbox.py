@@ -145,3 +145,18 @@ def test_sandbox_mcp_coerces_invalid_environment(monkeypatch):
     assert captured["code"] == "print('sandbox-ok')"
     assert captured["tenant_id"] == "Bank_Alpha"
     assert out["stdout"] == "ok"
+
+
+def test_sandbox_mcp_timeout_schema_says_seconds():
+    """Models guessed milliseconds (timeout=10000) when the schema had only a maximum."""
+    import sys
+    from pathlib import Path
+
+    mcp_root = Path(__file__).resolve().parents[1] / "mcp"
+    sys.path.insert(0, str(mcp_root))
+    from sandbox.server import MAX_TIMEOUT, SandboxMCPServer
+
+    (tool,) = SandboxMCPServer().list_tools()
+    timeout = tool["inputSchema"]["properties"]["timeout"]
+    assert "seconds" in timeout["description"]
+    assert str(MAX_TIMEOUT) in timeout["description"]

@@ -35,6 +35,10 @@ class SandboxMCPServer(MCPToolHandler):
                             "type": "integer",
                             "minimum": 1,
                             "maximum": MAX_TIMEOUT,
+                            "description": (
+                                f"Run time limit in seconds (1-{MAX_TIMEOUT}, default 5). "
+                                "Not milliseconds."
+                            ),
                         },
                     },
                     "required": ["code"],
