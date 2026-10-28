@@ -15,6 +15,8 @@ import httpx
 import pytest
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
+# Path B serves Langfuse on its own hostname; kind shares the gateway base with a Host header.
+LANGFUSE_BASE_URL = os.environ.get("LANGFUSE_BASE_URL", "").strip().rstrip("/") or GATEWAY_BASE_URL
 LANGFUSE_HOST_HEADER = os.environ.get("LANGFUSE_HOST_HEADER", "langfuse.localhost")
 V2_FIELDS = "core,basic,io,trace_context,metadata"  # metadata carries the CE-13 sandbox stamp
 CODE_EVAL_ENVIRONMENT = "langfuse-code-eval"
@@ -60,7 +62,7 @@ def langfuse_get(
     auth: tuple[str, str] | None = None,
 ) -> httpx.Response:
     return httpx.get(
-        f"{GATEWAY_BASE_URL}{path}",
+        f"{LANGFUSE_BASE_URL}{path}",
         headers=langfuse_headers(),
         auth=auth or langfuse_auth(),
         params=params,
@@ -130,7 +132,7 @@ def list_observations(
     try:
         resp = langfuse_get("/api/public/v2/observations", params=params, auth=auth)
     except httpx.ConnectError:
-        pytest.skip(f"Langfuse not reachable at {GATEWAY_BASE_URL}")
+        pytest.skip(f"Langfuse not reachable at {LANGFUSE_BASE_URL}")
     if resp.status_code != 200 and "timed out" in resp.text.lower():
         params["fromStartTime"] = _from_start_time(2)
         params["limit"] = min(int(params["limit"]), 20)
