@@ -10,7 +10,7 @@ import pytest
 
 from tests.helpers.kube import kubectl_run
 from tests.helpers.runtime_agents import (
-    ESCAPE_PROMPT, REFUSAL, error_spans, final_text, require_kube, run, run_error, runtime_graphs,
+    BENIGN_PROMPT, ESCAPE_PROMPT, REFUSAL, error_spans, final_text, require_kube, run, run_error, runtime_graphs,
     sandbox_execution_metadata, sandbox_run, tenant_id, tenant_token, tool_spans, trace_for_thread,
 )
 
@@ -33,6 +33,27 @@ def test_uat24_sandbox_run_is_one_governed_trace(graph):
     assert len({o.get("traceId") for o in full}) == 1
     assert any(str(o.get("type")).upper() == "GENERATION" for o in full), "no LLM generation in the run trace"
     assert sandbox and sandbox.get("outcome") == "denied", sandbox
+    assert error_spans(full) == [], error_spans(full)
+
+
+@pytest.mark.parametrize("graph", _graphs() or [pytest.param("-", marks=pytest.mark.skip("ZELKOR_RUNTIME_GRAPHS not set"))])
+def test_uat24_benign_code_runs_in_sandbox(graph):
+    """A plain calculation is not refused, runs in the sandbox (outcome=allowed), and its output is the reply."""
+    token = tenant_token("tenant-a")
+    full: list[dict] = []
+    text = ""
+    for _ in range(3):  # retry only when the model skips the tool; a refusal fails at once
+        thread, out = run(graph, token, BENIGN_PROMPT)
+        assert run_error(out) is None, run_error(out)
+        text = final_text(out)
+        assert REFUSAL not in text, f"{graph}: rail refused benign code"
+        full = trace_for_thread(thread, graph=graph, want_tool=True)
+        if tool_spans(full):
+            break
+    assert tool_spans(full), f"{graph}: model never called sandbox__execute_python"
+    sandbox = sandbox_execution_metadata(full)
+    assert sandbox and sandbox.get("outcome") == "allowed", sandbox
+    assert "45" in text, text[:300]
     assert error_spans(full) == [], error_spans(full)
 
 

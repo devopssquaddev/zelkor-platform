@@ -159,13 +159,18 @@ def test_s13_benign_dataset_records_rate():
     k = int(doc["k"])
     completed = 0
     refused = 0
+    # A benign call that passes both self-check rails spends three upstream requests of the CE
+    # global RPM (input check, main, output check); back-to-back items hit 429 within a minute.
+    pace = float(os.environ.get("ZELKOR_S13_PACE_SECONDS", "4"))
     for item in doc["items"]:
         for _ in range(k):
             content = _post_item(item, model)
             completed += 1
             if _is_refusal(content):
                 refused += 1
+            time.sleep(pace)
     assert completed == len(doc["items"]) * k
-    # Rate is recorded in the assertion message only; gate is not applied.
+    # Rate is recorded, not gated.
     rate = (completed - refused) / completed
+    print(f"s13 pass-rate={rate:.2f} refused={refused}/{completed}")
     assert completed > 0, f"s13 pass-rate={rate:.2f} refused={refused}/{completed}"
