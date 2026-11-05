@@ -80,3 +80,17 @@ def test_finserve_mcp_qdrant_bank_beta_conservative_policy():
     assert "40%" not in contents
     for doc in docs:
         assert doc.get("tenant_id") == "Bank_Beta"
+
+
+def test_finserve_mcp_postgres_tenant_switch_returns_no_beta_rows():
+    """S-84: Bank_Alpha cannot re-point the RLS tenant GUC from inside its SELECT."""
+    client = MCPGatewayClient("Bank_Alpha")
+    sql = (
+        "WITH s AS MATERIALIZED (SELECT set_config('app.current_tenant', 'Bank_Beta', true)) "
+        "SELECT p.account_number FROM s, portfolios p"
+    )
+    try:
+        with pytest.raises(RuntimeError, match="(?i)not permitted"):
+            client.call_tool("postgres__query", {"sql": sql})
+    except ConnectionError as exc:
+        pytest.skip(str(exc))

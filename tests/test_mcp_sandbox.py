@@ -160,3 +160,23 @@ def test_sandbox_mcp_timeout_schema_says_seconds():
     timeout = tool["inputSchema"]["properties"]["timeout"]
     assert "seconds" in timeout["description"]
     assert str(MAX_TIMEOUT) in timeout["description"]
+
+
+@pytest.mark.parametrize("asked,ran", [(10000, None), (0, 1), (-5, 1), (None, 5)])
+def test_sandbox_mcp_clamps_timeout(monkeypatch, asked, ran):
+    """S-85: a model cannot hold a worker longer than SANDBOX_MAX_TIMEOUT_SECONDS (e.g. by sending ms)."""
+    import sys
+    from pathlib import Path
+
+    mcp_root = Path(__file__).resolve().parents[1] / "mcp"
+    sys.path.insert(0, str(mcp_root))
+    from sandbox.server import MAX_TIMEOUT, SandboxMCPServer
+
+    seen: dict[str, int] = {}
+    monkeypatch.setattr(
+        "sandbox.server.execute_on_worker",
+        lambda code, tenant_id, timeout=5: seen.setdefault("timeout", timeout) and {"stdout": ""},
+    )
+    args = {"code": "print(1)"} if asked is None else {"code": "print(1)", "timeout": asked}
+    SandboxMCPServer().call_tool("execute_python", args, "tenant-a")
+    assert seen["timeout"] == (MAX_TIMEOUT if ran is None else ran)
