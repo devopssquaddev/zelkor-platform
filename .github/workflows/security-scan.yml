@@ -1,0 +1,76 @@
+# CE-8a image CVE scan (Trivy) + CE-8b Python dependency audit (pip-audit) for the dev automation
+# harness (Loop 1 patch). This is the scan FEED the harness reads; a green scan is NEVER recorded
+# as an S-id PASS (the S-gate is a separate process — internal/requirements/security-assurance).
+# Findings become a harness PR or a GAP row, not a release gate here.
+name: security-scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday 06:00 UTC — the dev-harness Loop 1 slot
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "images/**/requirements.txt"
+      - "images/**/Dockerfile"
+      - "charts/zelkor-platform/values.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    # CE-8b: audit the pinned Python deps of every first-party image build context.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+      - name: Audit requirements
+        run: |
+          status=0
+          for req in images/*/requirements.txt; do
+            echo "::group::pip-audit ${req}"
+            pip-audit -r "${req}" --strict || status=1
+            echo "::endgroup::"
+          done
+          # Loop 1 reads the findings; a CVE here becomes a PR or a GAP, not a hard gate.
+          exit $status
+        continue-on-error: true
+
+  trivy-images:
+    # CE-8a: scan the first-party GHCR images at the chart appVersion. Fail on a CRITICAL in OUR
+    # image layers (roadmap CE-8a), not on every transitive base-image CVE.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - zelkor-mcp
+          - zelkor-aegra
+          - zelkor-aegra-cli
+          - zelkor-aegra-deep
+          - zelkor-guardrails
+          - zelkor-sandbox-worker
+          - zelkor-sidecar
+          - zelkor-langfuse-seed
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve CE image tag from Chart.yaml
+        id: tag
+        run: |
+          tag=$(awk -F'[:"[:space:]]+' '/^appVersion:/{print $2}' charts/zelkor-platform/Chart.yaml)
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/devopssquaddev/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
