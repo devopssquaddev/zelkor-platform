@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":pinVersions", ":disableDependencyDashboard"],
+  "description": "Third-party pin discovery for the Zelkor dev automation harness (Loop 2 currency). Self-hosted via .github/workflows/renovate.yml. The Mend GitHub App is NOT installed. First-party zelkor-* images and Chart version/appVersion are the CE triple (ce-versioning) and are excluded here; majors are left to the harness agent + compatibility matrix.",
+  "schedule": ["before 7am on monday"],
+  "timezone": "UTC",
+  "rangeStrategy": "pin",
+  "labels": ["dev-harness", "loop2-currency"],
+  "prConcurrentLimit": 8,
+  "prHourlyLimit": 0,
+  "dependencyDashboard": false,
+  "helm-values": {
+    "managerFilePatterns": ["/^charts/zelkor-platform/values\\.yaml$/"]
+  },
+  "helmv3": {
+    "managerFilePatterns": ["/^charts/zelkor-platform/Chart\\.yaml$/"]
+  },
+  "dockerfile": {
+    "managerFilePatterns": ["/^images/[^/]+/Dockerfile$/"]
+  },
+  "pip_requirements": {
+    "managerFilePatterns": ["/^images/[^/]+/requirements\\.txt$/"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Shell version pins in install.sh / bootstrap-*.sh, keyed by a `# renovate:` annotation above each VAR=\"${VAR:-vX.Y.Z}\" line.",
+      "managerFilePatterns": ["/^install\\.sh$/", "/^scripts/bootstrap-.*\\.sh$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+[A-Z_]+_(?:VERSION|RELEASE)=\"?\\$\\{[A-Z_]+:-(?<currentValue>[^}\"']+)\\}\"?"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "First-party Zelkor images are the CE triple; never bumped by Renovate (ce-versioning).",
+      "matchPackageNames": ["/^ghcr\\.io/devopssquaddev/zelkor-/"],
+      "enabled": false
+    },
+    {
+      "description": "Majors are decided by the harness agent against the compatibility matrix, not auto-proposed.",
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Group datastores + their operators so the intersection is reviewed together.",
+      "groupName": "datastore + operator",
+      "matchPackageNames": [
+        "/postgres/",
+        "/clickhouse/",
+        "/valkey/",
+        "/cloudnativepg/",
+        "/cnpg/"
+      ]
+    },
+    {
+      "description": "Group the gateway stack.",
+      "groupName": "gateway",
+      "matchPackageNames": ["/envoy/", "/ratelimit/", "/ai-gateway/"]
+    },
+    {
+      "description": "Group Python dependency bumps.",
+      "groupName": "python deps",
+      "matchManagers": ["pip_requirements"]
+    },
+    {
+      "description": "Group Helm subchart bumps.",
+      "groupName": "helm subcharts",
+      "matchManagers": ["helmv3"]
+    }
+  ]
+}
