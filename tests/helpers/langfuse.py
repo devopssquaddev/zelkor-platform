@@ -328,6 +328,13 @@ def sandbox_execution_metadata(observations: list) -> dict | None:
                 "violation": violation,
                 "name": name,
             }
+    # Aegra graphs: the LangChain TOOL span carries no stamp; the sandbox stamp lands on the run span.
+    for obs in observations:
+        meta = _observation_metadata(obs)
+        outcome = meta.get("sandbox.outcome") or meta.get("attributes.sandbox.outcome")
+        violation = meta.get("sandbox.violation") or meta.get("attributes.sandbox.violation")
+        if outcome or violation:
+            return {"outcome": outcome, "violation": violation, "name": str(obs.get("name") or "")}
     return None
 
 

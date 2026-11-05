@@ -24,6 +24,8 @@ from tests.helpers.langfuse import (
 )
 from tests.test_mcp_sandbox import ADVERSARIAL_MKNOD_SCRIPT
 
+REFUSAL = os.environ.get("NEMO_SAFETY_REFUSAL", "I can't help with that request.")
+
 
 def test_base03_agent_code_execution_smoke(kubecontext):
     """E2E smoke: quant graph routes a code execution request through MCP sandbox tooling."""
@@ -34,21 +36,24 @@ def test_base03_agent_code_execution_smoke(kubecontext):
         timeout=120.0,
         graph_id=GRAPH_QUANT,
     )
-    text = result["text"].lower()
-    assert result["text"]
-    assert "sandbox" in text or "ok" in text or "print" in text
+    text = result["text"]
+    assert REFUSAL not in text, f"{GRAPH_QUANT} refused benign sandbox code"
+    assert "sandbox-ok" in text, f"{GRAPH_QUANT} reply lacks the sandbox output: {text[:200]}"
 
     thread_id = result.get("thread_id") or ""
+    assert thread_id, "run returned no thread_id; the trace cannot be checked"
     time.sleep(8)
     traces = wait_for_traces(
         lambda t: str(t.get("sessionId") or "") == thread_id,
         timeout=60.0,
-        session_id=thread_id or None,
+        session_id=thread_id,
     )
-    if traces:
-        observations = trace_observations(trace_detail(traces[0]["id"]))
-        assert has_sandbox_mcp_span(observations), "quant run must call sandbox__execute_python"
-        assert not unexpected_error_observations(observations)
+    assert traces, f"no Langfuse trace for thread {thread_id}"
+    observations = trace_observations(trace_detail(traces[0]["id"]))
+    assert has_sandbox_mcp_span(observations), "quant run must call sandbox__execute_python"
+    sandbox = sandbox_execution_metadata(observations)
+    assert sandbox and sandbox.get("outcome") == "allowed", sandbox
+    assert not unexpected_error_observations(observations)
 
 
 def test_base03_coder_portfolio_python_smoke(kubecontext):
