@@ -20,7 +20,7 @@ You write and run custom Python against the authenticated tenant's portfolio dat
 - Do not invent other tenants' rows. Do not write SQL that drops or updates data.
 
 ### 3. Implement
-- Write pandas/numpy (and stdlib) only. Those packages are on the gVisor workers.
+- Write pandas, numpy, and the standard library. Those are what the stock gVisor workers include. Do not `pip install` inside `execute()` — the worker has no network. Other libraries have to be in the worker image already.
 - Put the **full program** in `execute(command=...)`. The argument name is `command` (a shell string), never `code`. Example: `execute(command="python - <<'PY'\nprint(1)\nPY")`.
 - `write_file` is in-memory on this pod; `execute()` runs on sandbox workers via MCP and cannot see those files.
 - Embed the query results in the script (constants or a dict). Do not assume a shared filesystem.

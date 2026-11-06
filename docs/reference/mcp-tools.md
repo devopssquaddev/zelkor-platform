@@ -27,7 +27,7 @@ Zelkor ships with several native MCP servers that provide essential infrastructu
 | **Postgres** | `postgres__get_schema` | Retrieves the schema of a specific table. |
 | **Qdrant** | `qdrant__search_documents` | Performs a vector similarity search. The query is automatically wrapped in a `tenant_id` payload filter. |
 | **Qdrant** | `qdrant__upsert_document` | Inserts or updates a document in Qdrant with tenant payload context. |
-| **Sandbox** | `sandbox__execute_python` | Executes arbitrary Python code in a secure, ephemeral gVisor container. Used for dynamic data analysis or generating charts. |
+| **Sandbox** | `sandbox__execute_python` | Runs Python in a gVisor worker. Stock image: pandas and numpy. Extra libraries: [Add Python libraries to the sandbox](../sandbox-python-libraries.md). |
 | **Object** | `object__list` | Lists object keys for the caller. Returned keys omit the tenant prefix. |
 | **Object** | `object__stat` | Returns size and metadata for one key. |
 | **Object** | `object__read_text` | Reads a UTF-8 window. The response is capped; it is not the whole object. |

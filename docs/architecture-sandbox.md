@@ -45,6 +45,8 @@ Instead of running arbitrary `exec()` calls in-memory, the agent uses the platfo
 
 In **Community Edition**, these workers use gVisor to intercept syscalls and isolate the kernel. In **Enterprise**, they use Kata Containers for hardware-level virtual machine isolation. Generated code cannot break out of that pod onto the node.
 
+The stock worker image includes pandas and numpy. It has no outbound network, so packages are installed in the image, not by the code that runs. Extra libraries are an image built `FROM` that worker. The warm pool runs that one image. Steps: [Add Python libraries to the sandbox](sandbox-python-libraries.md).
+
 ## Which nodes run the sandbox
 
 The agent pod stays on the normal runtime. Only the sandbox worker asks for RuntimeClass `gvisor`.

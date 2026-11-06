@@ -7,7 +7,7 @@ description: Load tenant portfolio rows then run pandas/numpy in execute().
 
 1. Query `portfolios` for the authenticated tenant. `holdings` is JSONB `{ticker: weight}`. `balance` is the account value.
 2. Copy those numbers into the `execute()` script. Files written with `write_file` are in-memory on the agent and are not visible to `execute()`.
-3. Workers have `pandas` and `numpy`. Example:
+3. Stock workers have `pandas` and `numpy` only. Do not `pip install` inside `execute()`. Example:
 
 ```python
 execute(command="""python - <<'PY'

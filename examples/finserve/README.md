@@ -10,7 +10,7 @@ This example demonstrates how Zelkor safely bridges un-sandboxed workflows with 
 - **Tenant Isolation**: Secure execution bounds ensure queries don't cross tenant boundaries (e.g., Bank_Alpha vs Bank_Beta).
 - **Multiple Agent Topologies**: Demonstrates routing traffic to multiple independent agent graphs (desk, quant, coder).
 - **PostgreSQL & Qdrant MCPs**: Agents securely fetch structured records and vector search results from isolated stores without holding DB credentials.
-- **Deep Agents & Code Execution**: The `finserve-coder` agent executes python safely via the gVisor sandbox.
+- **Deep Agents & Code Execution**: The `finserve-coder` agent executes python safely via the gVisor sandbox. Stock workers include pandas and numpy. Private packages are a separate worker image: [sandbox-python](../sandbox-python/README.md).
 - **AI Gateway Interception**: Output generation model logic is routed centrally for observability and guardrails.
 
 To run the advisor and quant on CrewAI, Pydantic AI or OpenCode, see [runtimes/](runtimes/README.md).
