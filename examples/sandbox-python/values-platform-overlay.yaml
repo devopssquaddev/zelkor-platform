@@ -1,0 +1,10 @@
+# Replace the sandbox warm pool image. Not applied by the platform install.
+# The pool is one image: every execute_python call sees these libraries.
+# pandas and numpy stay, because this image starts FROM the stock worker.
+workspace:
+  tools:
+    sandboxMCP:
+      workerImage:
+        repository: ghcr.io/devopssquaddev/zelkor-example-sandbox-python
+        tag: "2.4.2"
+        digest: ""

@@ -71,6 +71,7 @@ dockerfile_for() {
     zelkor-example-finserve-coder) echo images/example-finserve-coder/Dockerfile ;;
     zelkor-armored-gpt-researcher) echo examples/armored-agents/gpt-researcher/Dockerfile ;;
     zelkor-example-legal-redline) echo images/example-legal-redline/Dockerfile ;;
+    zelkor-example-sandbox-python) echo images/example-sandbox-python/Dockerfile ;;
     zelkor-sidecar) echo images/sidecar/Dockerfile ;;
     zelkor-runtime-pydantic-ai) echo images/runtime-pydantic-ai/Dockerfile ;;
     zelkor-runtime-crewai) echo images/runtime-crewai/Dockerfile ;;
@@ -104,6 +105,9 @@ for name in "${SELECTED[@]}"; do
         ;;
       zelkor-example-finserve-coder|zelkor-armored-gpt-researcher)
         extra_args+=(--build-arg "ZELKOR_AEGRA_DEEP_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra-deep:${IMAGE_TAG}")
+        ;;
+      zelkor-example-sandbox-python)
+        extra_args+=(--build-arg "ZELKOR_SANDBOX_WORKER_IMAGE=${IMAGE_REGISTRY}/zelkor-sandbox-worker:${IMAGE_TAG}")
         ;;
     esac
     if ((${#extra_args[@]} > 0)); then

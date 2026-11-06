@@ -48,6 +48,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Deploy an Agent (Agent Guide)](agent-deploy.md) | How coding agents deploy/remove customer agents |
 | [Use the zelkor CLI](cli.md) | Env targets, deploy, run, logs, doctor |
 | [Register extra MCP backends](mcp-extra-backends.md) | BYO ClusterIP MCP on the unified gateway |
+| [Add Python libraries to the sandbox](sandbox-python-libraries.md) | Private packages and pinned wheels on the gVisor worker |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
 | [Armored catalog](../examples/armored-agents/README.md) | Unmodified OSS agents as `zelkor deploy -f` overlays |
 
