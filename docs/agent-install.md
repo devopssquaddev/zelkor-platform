@@ -32,6 +32,8 @@ OPENAI_API_KEY=sk-... ./scripts/install-quickstart.sh \
 
 The script has built-in localhost defaults (like `agents.<namespace>.zelkor.local`) for local evaluation. If you want to use real domains, provide `--hosts-agents` and `--hosts-langfuse`. The script will generate passwords and output the Envoy dataplane services.
 
+Re-running either script against an existing release is safe. It reuses that release's passwords (unless you set them in the environment) and keeps its own GatewayClass. It only adopts a GatewayClass that another release owns.
+
 ## Install (Production)
 
 To install the platform in a production shape (operator-cr, HA, NetworkPolicies), use the production script. This requires real DNS names (not `*.localhost`).

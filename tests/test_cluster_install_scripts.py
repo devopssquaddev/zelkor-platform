@@ -4,6 +4,7 @@ Agent install contract: docs/agent-install.md
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -1056,3 +1057,112 @@ def test_production_dry_run_stays_offline(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     assert not marker.exists()
     assert "HELM" in proc.stdout
+
+
+_PREV_VALUES = """platform:
+  telemetry:
+    langfuse:
+      encryptionKey: aaaa
+      nextauthSecret: "b+/c="
+      salt: saltold
+postgresql:
+  auth:
+    password: pgold
+workspace:
+  models:
+    consumerKey: ck+old=
+  tools:
+    sandboxMCP:
+      workerToken: wtold
+"""
+
+
+def _rerun_bin(tmp_path: Path, gc_release: str) -> Path:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "prev.yaml").write_text(_PREV_VALUES, encoding="utf-8")
+    _write_exe(
+        bin_dir / "helm",
+        f"""#!/usr/bin/env bash
+[[ "$*" == *"get values zelkor-platform"* ]] && cat "{tmp_path / 'prev.yaml'}" && exit 0
+exit 1
+""",
+    )
+    _write_exe(
+        bin_dir / "kubectl",
+        f"""#!/usr/bin/env bash
+case "$*" in
+  *release-namespace*) printf '%s' zelkor ;;
+  *release-name*) printf '%s' "{gc_release}" ;;
+  *"get gatewayclass eg"*) exit 0 ;;
+  *) exit 1 ;;
+esac
+""",
+    )
+    return bin_dir
+
+
+def test_rerun_reuses_existing_release_secrets(tmp_path: Path):
+    import os
+
+    bin_dir = _rerun_bin(tmp_path, "zelkor-platform")
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_RELEASE=zelkor-platform
+CLUSTER_INSTALL_NAMESPACE=zelkor
+CLICKHOUSE_PASSWORD=fromenv
+cluster_install_load_prev_values
+cluster_install_langfuse_secrets
+cluster_install_platform_secrets
+printf '%s\\n' "${CLUSTER_INSTALL_HELM_SETS[@]}"
+""",
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "reusing its install secrets" in out
+    assert "postgresql.auth.password=pgold" in out
+    assert "platform.telemetry.langfuse.nextauthSecret=b+/c=" in out
+    assert "platform.telemetry.langfuse.salt=saltold" in out
+    assert "workspace.models.consumerKey=ck+old=" in out
+    assert "workspace.tools.sandboxMCP.workerToken=wtold" in out
+    assert "clickhouse.auth.password=fromenv" in out
+    # Not in the old release: still generated.
+    assert re.search(r"valkey\.auth\.password=[0-9a-f]{48}\n", out)
+
+
+def test_rerun_keeps_own_gatewayclass(tmp_path: Path):
+    import os
+
+    bin_dir = _rerun_bin(tmp_path, "zelkor-platform")
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_RELEASE=zelkor-platform
+CLUSTER_INSTALL_NAMESPACE=zelkor
+cluster_install_apply_kube_flags
+cluster_install_adopt_gatewayclass
+printf 'sets=%s\\n' "${CLUSTER_INSTALL_HELM_SETS[*]+${CLUSTER_INSTALL_HELM_SETS[*]}}"
+""",
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "chart keeps managing it" in proc.stdout
+    assert "createGatewayClass=false" not in proc.stdout
+
+
+def test_foreign_gatewayclass_is_adopted(tmp_path: Path):
+    import os
+
+    bin_dir = _rerun_bin(tmp_path, "customer-eg")
+    proc = _lib_bash(
+        """
+CLUSTER_INSTALL_RELEASE=zelkor-platform
+CLUSTER_INSTALL_NAMESPACE=zelkor
+cluster_install_apply_kube_flags
+cluster_install_adopt_gatewayclass
+printf 'sets=%s\\n' "${CLUSTER_INSTALL_HELM_SETS[*]}"
+""",
+        env={"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "gateway.createGatewayClass=false" in proc.stdout

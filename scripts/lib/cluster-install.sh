@@ -455,7 +455,53 @@ cluster_install_rand_hex32() {
   cluster_install_rand_hex 32
 }
 
+# Re-run of an existing release: reuse its install secrets instead of generating new
+# ones. New random passwords on a re-run (e.g. after a dropped connection) break auth:
+# CNPG syncs the role password, but Langfuse/Aegra keep the old one until restart.
+CLUSTER_INSTALL_PREV_VALUES=""
+
+cluster_install_load_prev_values() {
+  [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  CLUSTER_INSTALL_PREV_VALUES="$(helm ${HELM_KUBE_ARGS[@]+"${HELM_KUBE_ARGS[@]}"} get values \
+    "$CLUSTER_INSTALL_RELEASE" -n "$CLUSTER_INSTALL_NAMESPACE" -o yaml 2>/dev/null || true)"
+  if [[ -n "$CLUSTER_INSTALL_PREV_VALUES" && "$CLUSTER_INSTALL_PREV_VALUES" != "null" ]]; then
+    echo "install: release ${CLUSTER_INSTALL_RELEASE} exists; reusing its install secrets unless set in env"
+  fi
+}
+
+# Print a scalar at dotted path (a.b.c) from `helm get values -o yaml` output.
+cluster_install_prev_value() {
+  [[ -n "$CLUSTER_INSTALL_PREV_VALUES" ]] || return 0
+  printf '%s\n' "$CLUSTER_INSTALL_PREV_VALUES" | awk -v path="$1" '
+    BEGIN { n = split(path, want, ".") }
+    /^[[:space:]]*(#|$)/ { next }
+    {
+      match($0, /^ */); depth = RLENGTH / 2 + 1
+      line = substr($0, RLENGTH + 1)
+      i = index(line, ":"); if (i == 0) next
+      key = substr(line, 1, i - 1); val = substr(line, i + 1)
+      sub(/^ +/, "", val)
+      have[depth] = key
+      if (depth != n) next
+      for (d = 1; d <= n; d++) if (have[d] != want[d]) next
+      if (val ~ /^".*"$/ || val ~ /^\x27.*\x27$/) val = substr(val, 2, length(val) - 2)
+      print val; exit
+    }'
+}
+
+# Fill an empty env var from the existing release value at the given path.
+cluster_install_reuse_secret() {
+  local var="$1" path="$2" val
+  [[ -n "${!var:-}" ]] && return 0
+  val="$(cluster_install_prev_value "$path")"
+  [[ -n "$val" ]] && printf -v "$var" '%s' "$val"
+  return 0
+}
+
 cluster_install_langfuse_secrets() {
+  cluster_install_reuse_secret LANGFUSE_NEXTAUTH_SECRET platform.telemetry.langfuse.nextauthSecret
+  cluster_install_reuse_secret LANGFUSE_SALT platform.telemetry.langfuse.salt
+  cluster_install_reuse_secret LANGFUSE_ENCRYPTION_KEY platform.telemetry.langfuse.encryptionKey
   if [[ -z "${LANGFUSE_NEXTAUTH_SECRET:-}" ]]; then
     LANGFUSE_NEXTAUTH_SECRET="$(cluster_install_rand_b64)"
   fi
@@ -476,6 +522,13 @@ cluster_install_langfuse_secrets() {
 # Postgres/ClickHouse/SeaweedFS use hex: Langfuse embeds passwords in migration URLs
 # and base64 (+ / =) breaks ClickHouse auth. WORKER_TOKEN stays base64 (bearer, not URL).
 cluster_install_platform_secrets() {
+  cluster_install_reuse_secret POSTGRES_PASSWORD postgresql.auth.password
+  cluster_install_reuse_secret CLICKHOUSE_PASSWORD clickhouse.auth.password
+  cluster_install_reuse_secret VALKEY_PASSWORD valkey.auth.password
+  cluster_install_reuse_secret SEAWEEDFS_ACCESS_KEY seaweedfs.auth.accessKey
+  cluster_install_reuse_secret SEAWEEDFS_SECRET_KEY seaweedfs.auth.secretKey
+  cluster_install_reuse_secret WORKER_TOKEN workspace.tools.sandboxMCP.workerToken
+  cluster_install_reuse_secret AI_GATEWAY_CONSUMER_KEY workspace.models.consumerKey
   if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
     POSTGRES_PASSWORD="$(cluster_install_rand_hex 24)"
   fi
@@ -1258,6 +1311,17 @@ cluster_install_adopt_gatewayclass() {
   done
   [[ "$skip" -eq 1 ]] && return 0
   if kubectl "${KUBECTL_ARGS[@]}" get gatewayclass "$name" >/dev/null 2>&1; then
+    # Our own class from an earlier run of this release: keep emitting it (and the
+    # EnvoyProxy that names the dataplane Service). Adopt only a foreign class.
+    local rel ns
+    rel="$(kubectl "${KUBECTL_ARGS[@]}" get gatewayclass "$name" \
+      -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}' 2>/dev/null || true)"
+    ns="$(kubectl "${KUBECTL_ARGS[@]}" get gatewayclass "$name" \
+      -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-namespace}' 2>/dev/null || true)"
+    if [[ "$rel" == "$CLUSTER_INSTALL_RELEASE" && "$ns" == "$CLUSTER_INSTALL_NAMESPACE" ]]; then
+      echo "install: GatewayClass ${name} belongs to release ${rel}; chart keeps managing it"
+      return 0
+    fi
     echo "install: GatewayClass ${name} already exists; skipping chart emit (gateway.createGatewayClass=false)"
     CLUSTER_INSTALL_HELM_SETS+=(--set "gateway.createGatewayClass=false")
   fi
@@ -1591,6 +1655,7 @@ cluster_install_prepare() {
   cluster_install_preflight
   cluster_install_resolve_llm
   cluster_install_append_llm_helm_sets
+  cluster_install_load_prev_values
   cluster_install_langfuse_secrets
   cluster_install_platform_secrets
   cluster_install_object_mcp
