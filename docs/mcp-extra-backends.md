@@ -95,7 +95,7 @@ helm upgrade zelkor-platform charts/zelkor-platform \
 
 Gateway `tools/list` returns **`{name}__{tool}`** (for example `acme__create_incident`). `tools/call` strips the prefix and forwards JSON-RPC to your backend.
 
-Optional fields: `toolSelector` (`include`, `includeRegex`, `exclude`, `excludeRegex`; exclude wins), `forwardHeaders` (not `Authorization` — use `apiKey` instead), `tls.caSecretRef` (private CA). Without `caSecretRef`, an FQDN extra uses system CAs (same as LLM provider backends). `egress.cidrs` / `ports` are optional GitOps notes for your own CNI; Community Edition does not apply them to Envoy. Isolation is the agent NetworkPolicy plus the registered FQDN on MCPRoute. See [External and Third-Party MCP](architecture-external-mcp.md).
+Optional fields: `toolSelector` (`include`, `includeRegex`, `exclude`, `excludeRegex`; exclude wins), `forwardHeaders` (never `Authorization`, in any letter case — use `apiKey` instead), `tls.caSecretRef` (private CA). Without `caSecretRef`, an FQDN extra uses system CAs (same as LLM provider backends). `egress.cidrs` / `ports` are optional GitOps notes for your own CNI; Community Edition does not apply them to Envoy. Isolation is the agent NetworkPolicy plus the registered FQDN on MCPRoute. See [External and Third-Party MCP](architecture-external-mcp.md).
 
 ## Block write tools
 

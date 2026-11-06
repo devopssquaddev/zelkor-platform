@@ -65,7 +65,7 @@ false
 {{- range $fh := $item.forwardHeaders | default list -}}
 {{- $hn := $fh -}}
 {{- if kindIs "map" $fh -}}{{- $hn = $fh.name | default "" -}}{{- end -}}
-{{- if eq $hn "Authorization" -}}
+{{- if eq (lower (trim (toString $hn))) "authorization" -}}
 {{- fail (printf "workspace.tools.extraBackends[%d]: forwardHeaders must not include Authorization" $idx) -}}
 {{- end -}}
 {{- end -}}

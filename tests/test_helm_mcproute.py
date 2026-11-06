@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.test_helm_values_schema import PROFILES, _docs, _helm
 
 INLINE_JWKS = Path(__file__).resolve().parent / "fixtures" / "lab-inline-jwks.yaml"
@@ -131,6 +133,21 @@ def test_shared_gateway_requires_ack():
     )
     assert r.returncode != 0
     assert "sharedGatewayAck" in r.stderr
+
+
+@pytest.mark.parametrize("header", ["Authorization", "authorization", "AUTHORIZATION", " Authorization "])
+@pytest.mark.parametrize("as_map", [False, True])
+def test_extra_backend_forward_authorization_fails_any_case(header, as_map):
+    """F-003 / P12: header names are case-insensitive, so the guard must be too."""
+    key = "workspace.tools.extraBackends[0].forwardHeaders[0]" + (".name" if as_map else "")
+    r = _helm(
+        "--set", "workspace.tools.extraBackends[0].name=acme",
+        "--set-string", "workspace.tools.extraBackends[0].fqdn.hostname=mcp.acme.example",
+        "--set", "workspace.tools.extraBackends[0].fqdn.port=443",
+        "--set-string", f"{key}={header}",
+    )
+    assert r.returncode != 0, f"{header!r} rendered"
+    assert "must not include Authorization" in r.stderr
 
 
 def test_reserved_extra_backend_name_fails():
