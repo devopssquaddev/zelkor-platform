@@ -334,6 +334,25 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
                 if refs:
                     info.gateway_name = str(refs[0].get("name") or "")
                     info.gateway_namespace = str(refs[0].get("namespace") or env.namespace)
+    # Perimeter / no-Aegra install: the tenant-JWT contract does not live on an
+    # Aegra deployment (there is none). Source it from the platform's own Helm
+    # values so the wrapped sidecar still gets issuer/audiences/claims and mounts
+    # the {release}-tenant-jwks ConfigMap (which renders without Aegra). Without
+    # this the chart falls back to envFrom the (absent, Aegra-gated) tenant-jwt
+    # ConfigMap and the sidecar fail-closes at startup. Finding A.
+    if not info.jwt_issuer:
+        jwt = (((values.get("platform") or {}).get("tenants") or {}).get("jwt") or {})
+        info.jwt_issuer = str(jwt.get("issuer") or "")
+        auds = jwt.get("audiences") or []
+        info.jwt_audiences = [str(a) for a in auds] if isinstance(auds, list) else []
+        claims = jwt.get("tenantClaims") or []
+        if isinstance(claims, list) and claims:
+            info.jwt_tenant_claims = [str(c) for c in claims]
+        info.jwt_jwks_configmap = (
+            str(jwt.get("jwksConfigMap") or "").strip() or f"{info.release}-tenant-jwks"
+        )
+    if not info.gateway_name:
+        info.gateway_name = f"{info.release}-gateway"
     cluster_gw = in_cluster_openai_base_url(env, runner=runner)
     if cluster_gw:
         info.openai_base_url = cluster_gw
@@ -1188,6 +1207,13 @@ def deploy_agent(
         "security": _np_values(info),
     }
     if egress_only:
+        if not info.jwt_issuer:
+            raise RuntimeError(
+                "egress-only wrap needs the platform tenant-JWT contract, but none was "
+                "found. A perimeter install has no Aegra to inherit it from, so set "
+                "platform.tenants.jwt.{issuer,audiences} on the platform release "
+                "(the lab overlay profiles/values-local-perimeter.yaml already does)."
+            )
         overlay.setdefault("sidecar", {})["stateless"] = True
         overlay["platform"]["databaseUrl"] = ""
         overlay["platform"]["valkeyUrl"] = ""

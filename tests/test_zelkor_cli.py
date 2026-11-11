@@ -450,23 +450,24 @@ def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
     env = Env(name="local", kube_context="kind-zelkor", namespace="default")
     captured: dict = {}
 
+    # A real perimeter install has NO Aegra deployment, so the tenant-JWT contract
+    # lives only in the platform's own Helm values. The sidecar must still be wired
+    # from there (Finding A) — an Aegra-shaped mock would hide that.
     def runner(argv, **_kwargs):
         if "helm" in argv and "upgrade" in argv and "-f" in argv:
             captured["overlay"] = _yaml.safe_load(Path(argv[argv.index("-f") + 1]).read_text(encoding="utf-8"))
         stdout = ""
         if "helm" in argv and "list" in argv:
-            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.4.4", "status": "deployed"}])
+            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.5.0", "status": "deployed"}])
         elif "helm" in argv and "get" in argv and "values" in argv:
-            stdout = "gateway:\n  hosts:\n    agents: agents.example\n"
+            stdout = (
+                "gateway:\n  hosts:\n    agents: agents.example\n"
+                "platform:\n  tenants:\n    jwt:\n"
+                "      issuer: https://local.zelkor.invalid\n"
+                "      audiences:\n      - zelkor\n"
+            )
         elif "get" in argv and "deploy" in argv:
-            stdout = json.dumps({"items": [{
-                "metadata": {"name": "zelkor-platform-aegra", "labels": {"app.kubernetes.io/component": "aegra"}},
-                "spec": {"template": {"spec": {"containers": [{"env": [
-                    {"name": "DATABASE_URL", "value": "postgresql://x"},
-                    {"name": "REDIS_URL", "value": "redis://r"},
-                    {"name": "OPENAI_BASE_URL", "value": "http://gw/v1"},
-                    {"name": "MCP_URL", "value": "http://mcp:8080"},
-                ]}]}}}}]})
+            stdout = json.dumps({"items": []})  # perimeter: no Aegra
         elif "get" in argv and ("svc" in argv or "httproute" in argv):
             stdout = json.dumps({"items": []})
         return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
@@ -487,6 +488,37 @@ def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
     assert ov["platform"]["databaseUrl"] == ""
     assert ov["platform"]["valkeyUrl"] == ""
     assert ov["security"]["networkPolicies"]["enabled"] is True
+    # Finding A: the sidecar's tenant-JWT contract is wired from platform values,
+    # not from a (non-existent in perimeter) Aegra deployment.
+    assert ov["auth"]["issuer"] == "https://local.zelkor.invalid"
+    assert ov["auth"]["audiences"] == ["zelkor"]
+    assert ov["auth"]["jwksConfigMap"] == "zelkor-platform-tenant-jwks"
+
+
+def test_deploy_agent_egress_only_without_jwt_contract_fails_clearly(tmp_path):
+    # Perimeter with no Aegra AND no tenant-JWT in platform values: the egress-only
+    # wrap must stop with guidance, not let the sidecar fail-close at startup (Finding A).
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+
+    def runner(argv, **_kwargs):
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.5.0", "status": "deployed"}])
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "gateway:\n  hosts:\n    agents: agents.example\n"  # no platform.tenants.jwt
+        elif "get" in argv and ("deploy" in argv or "svc" in argv or "httproute" in argv):
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    with pytest.raises(RuntimeError, match="tenant-JWT contract"):
+        deploy_agent(
+            root=tmp_path, env=env, push=False, skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=runner, egress_only=True, all_tools=True,
+        )
 
 
 def test_deploy_agent_rejects_approval_threshold_on_ce(tmp_path):
