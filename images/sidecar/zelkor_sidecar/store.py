@@ -71,6 +71,9 @@ class Store:
     async def list_events(self, run_id: str) -> List[dict]:
         raise NotImplementedError
 
+    async def open(self) -> None:
+        return None
+
     async def close(self) -> None:
         return None
 

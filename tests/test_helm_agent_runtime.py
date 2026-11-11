@@ -111,6 +111,19 @@ def test_ingress_default_is_gateway_namespace_only():
     assert _ingress() == [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "envoy-gateway-system"}}}]
 
 
+def test_egress_only_stateless_sidecar_has_no_db():
+    # CE-15a-2 perimeter: stateless sidecar runs DB-less (no migrate, no DATABASE_URL, memory store).
+    spec = _deploy("--set", "runtime=a2a", "--set", "sidecar.stateless=true",
+                   "--set", "image.repository=ghcr.io/acme/agent")
+    assert "initContainers" not in spec
+    sidecar = _c(spec, "sidecar")
+    s_env = _env(sidecar)
+    assert s_env.get("ZELKOR_SIDECAR_STORE") == "memory"
+    assert "DATABASE_URL" not in s_env
+    # the agent is still wrapped: its egress goes through the sidecar loopback
+    assert _env(_c(spec, "agent"))["OPENAI_BASE_URL"] == "http://127.0.0.1:8001/run/active/v1"
+
+
 def test_kind_host_network_gateway_cidrs_add_node_ip_blocks_only():
     src = _ingress("--set", "security.networkPolicies.hostNetworkGatewayCIDRs[0]=172.22.0.2/32")
     assert src[1] == {"ipBlock": {"cidr": "172.22.0.2/32"}}

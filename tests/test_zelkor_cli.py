@@ -441,6 +441,54 @@ def test_upgrade_text_constant():
     assert "Pro" in UPGRADE
 
 
+def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
+    import yaml as _yaml
+
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    captured: dict = {}
+
+    def runner(argv, **_kwargs):
+        if "helm" in argv and "upgrade" in argv and "-f" in argv:
+            captured["overlay"] = _yaml.safe_load(Path(argv[argv.index("-f") + 1]).read_text(encoding="utf-8"))
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.4.4", "status": "deployed"}])
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "gateway:\n  hosts:\n    agents: agents.example\n"
+        elif "get" in argv and "deploy" in argv:
+            stdout = json.dumps({"items": [{
+                "metadata": {"name": "zelkor-platform-aegra", "labels": {"app.kubernetes.io/component": "aegra"}},
+                "spec": {"template": {"spec": {"containers": [{"env": [
+                    {"name": "DATABASE_URL", "value": "postgresql://x"},
+                    {"name": "REDIS_URL", "value": "redis://r"},
+                    {"name": "OPENAI_BASE_URL", "value": "http://gw/v1"},
+                    {"name": "MCP_URL", "value": "http://mcp:8080"},
+                ]}]}}}}]})
+        elif "get" in argv and ("svc" in argv or "httproute" in argv):
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    try:
+        deploy_agent(
+            root=tmp_path, env=env, push=False, skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=runner, egress_only=True, all_tools=True,
+        )
+    except RuntimeError:
+        pass  # the mocked rollout never reports ready; the overlay is captured at helm upgrade
+    assert "overlay" in captured, "helm upgrade was not reached"
+    ov = captured["overlay"]
+    assert ov["runtime"] == "a2a"  # egress-only promotes aegra -> a2a (needs a sidecar bridge)
+    assert ov["sidecar"]["stateless"] is True
+    assert ov["platform"]["databaseUrl"] == ""
+    assert ov["platform"]["valkeyUrl"] == ""
+    assert ov["security"]["networkPolicies"]["enabled"] is True
+
+
 def test_deploy_agent_rejects_approval_threshold_on_ce(tmp_path):
     (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
     (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")

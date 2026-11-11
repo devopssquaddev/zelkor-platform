@@ -1,6 +1,9 @@
 {{- $graphId := include "zelkor-agent.primaryGraphId" . }}
 {{- $intent := .Values.workload.intent | default dict }}
+{{- $stateless := ((.Values.sidecar).stateless | default false) }}
+{{- if not $stateless }}
 {{- include "zelkor-agent.validateDatastoreAttach" . }}
+{{- end }}
 {{- $dbUrl := ((.Values.platform).databaseUrl | default "") | toString | trim }}
 {{- $valkeyUrl := ((.Values.platform).valkeyUrl | default "") | toString | trim }}
 {{- $auth := .Values.auth | default dict }}
@@ -72,7 +75,7 @@ spec:
                 name: {{ $otelSecret | quote }}
                 optional: true
             {{- end }}
-            {{- if and $dsSecret (not $dbUrl) }}
+            {{- if and $dsSecret (not $dbUrl) (not $stateless) }}
             - secretRef:
                 name: {{ $dsSecret | quote }}
                 optional: true
@@ -182,6 +185,7 @@ spec:
       {{- else }}
       {{- $sc := .Values.sidecar | default dict }}
       {{- $authVolMount := include "zelkor-agent.tenantAuthVolumeMount" . | trim }}
+      {{- if not $stateless }}
       initContainers:
         - name: migrate
           image: {{ include "zelkor-agent.image" $sc.image | quote }}
@@ -199,6 +203,7 @@ spec:
               value: {{ $dbUrl | quote }}
             {{- end }}
           {{- include "zelkor-agent.restrictedSecurityContext" . | nindent 10 }}
+      {{- end }}
       containers:
         - name: sidecar
           image: {{ include "zelkor-agent.image" $sc.image | quote }}
@@ -213,7 +218,7 @@ spec:
                 name: {{ $otelSecret | quote }}
                 optional: true
             {{- end }}
-            {{- if and $dsSecret (not $dbUrl) }}
+            {{- if and $dsSecret (not $dbUrl) (not $stateless) }}
             - secretRef:
                 name: {{ $dsSecret | quote }}
                 optional: true
@@ -227,12 +232,16 @@ spec:
           env:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             {{- include "zelkor-agent.tenantAuthEnv" . | nindent 12 }}
-            {{- if $dbUrl }}
+            {{- if and $dbUrl (not $stateless) }}
             - name: DATABASE_URL
               value: {{ $dbUrl | quote }}
             {{- end }}
             - name: ZELKOR_RUNTIME
               value: {{ $runtime | quote }}
+            {{- if $stateless }}
+            - name: ZELKOR_SIDECAR_STORE
+              value: "memory"
+            {{- end }}
             - name: ZELKOR_GRAPH_ID
               value: {{ $graphId | quote }}
             - name: ZELKOR_LLM_UPSTREAM

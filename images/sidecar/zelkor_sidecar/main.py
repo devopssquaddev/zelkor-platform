@@ -23,23 +23,33 @@ def build_bridge(runtime: str):
     raise SystemExit(f"ZELKOR_RUNTIME must be a2a or opencode (got {runtime!r})")
 
 
+def build_store(store_mode: str | None = None):
+    """Select the thread/run store. 'memory' = stateless perimeter mode (no DB); default 'pg'."""
+    from .store import MemoryStore, PgStore
+
+    mode = (store_mode if store_mode is not None else os.getenv("ZELKOR_SIDECAR_STORE", "pg")).strip().lower()
+    if mode == "memory":
+        logger.info("stateless store (no DB)", extra={"event": "startup", "store": "memory"})
+        return MemoryStore()
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    if not dsn:
+        raise SystemExit("DATABASE_URL is required")
+    return PgStore(dsn, max_size=int(os.getenv("ZELKOR_SIDECAR_DB_POOL", "5")))
+
+
 async def serve() -> None:
     import uvicorn
 
     from .egress import Egress, EgressConfig
     from .inbound import Inbound, graph_id_from_env
     from .runs import RunExecutor, RunSlot
-    from .store import PgStore
     from .tracing import Tracing
 
     from jwt_verifier import validate_startup_config  # flat copy from mcp/common
 
     validate_startup_config()
-    dsn = os.getenv("DATABASE_URL", "").strip()
-    if not dsn:
-        raise SystemExit("DATABASE_URL is required")
     runtime = os.getenv("ZELKOR_RUNTIME", "")
-    store = PgStore(dsn, max_size=int(os.getenv("ZELKOR_SIDECAR_DB_POOL", "5")))
+    store = build_store()
     await store.open()
     bridge = build_bridge(runtime)
     tracing = Tracing.from_env()

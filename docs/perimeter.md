@@ -120,10 +120,10 @@ Laptop `kind`:
 OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter
 ```
 
-Then wrap an agent so its egress is forced through the gateway:
+Then wrap an agent so its egress is forced through the gateway. `--egress-only` runs the agent behind a stateless (no-database) sidecar and locks the pod's egress to the gateway; name the MCP tools it may use (or `--all-tools`):
 
 ```bash
-zelkor deploy my-agent --image your/agent:tag --egress-only
+zelkor deploy my-agent --egress-only --tools postgres,sandbox
 ```
 
 The installer skips the datastore, Langfuse, agent, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install.

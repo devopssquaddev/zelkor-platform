@@ -53,6 +53,10 @@ sidecar:
     tag: "2.4.4"
     digest: ""
     pullPolicy: ""
+  # CE-15a-2 perimeter: run the sidecar stateless (in-memory store, no Postgres, no migrate
+  # init-container). The agent's LLM/MCP egress is still forced through the sidecar; threads
+  # and runs are ephemeral per pod. `zelkor deploy --egress-only` sets this.
+  stateless: false
   # Non-stream the LLM call when it carries tools (NeMo intercept rejects tools + stream);
   # the sidecar re-streams the answer. Same behaviour as the Aegra path.
   nemoToolsNoStream: true

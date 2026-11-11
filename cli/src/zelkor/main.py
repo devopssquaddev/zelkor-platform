@@ -1083,10 +1083,13 @@ def deploy_agent(
     all_tools: bool = False,
     runtime: str = "aegra",
     a2a_framework: str = "pydantic-ai",
+    egress_only: bool = False,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
     runtime = (runtime or "aegra").strip().lower()
+    if egress_only and runtime == "aegra":
+        runtime = "a2a"  # the stateless (no-DB) sidecar wrap requires a non-aegra bridge
     if runtime not in RUNTIMES:
         raise RuntimeError(f"--runtime must be one of {', '.join(RUNTIMES)}")
     registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
@@ -1184,6 +1187,11 @@ def deploy_agent(
         "auth": auth_values(info),
         "security": _np_values(info),
     }
+    if egress_only:
+        overlay.setdefault("sidecar", {})["stateless"] = True
+        overlay["platform"]["databaseUrl"] = ""
+        overlay["platform"]["valkeyUrl"] = ""
+        overlay["security"].setdefault("networkPolicies", {})["enabled"] = True
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
             "intent": {
@@ -1742,6 +1750,11 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
             action="store_true",
             help="bind every tool the MCP gateway lists for the tenant (natives and extras)",
         )
+        p.add_argument(
+            "--egress-only",
+            action="store_true",
+            help="perimeter: wrap the agent behind a stateless (no-DB) sidecar and lock pod egress to the gateway",
+        )
         p.add_argument("directory", nargs="?", default=".")
     sub.choices["deploy"].add_argument(
         "-f",
@@ -1869,6 +1882,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 all_tools=bool(getattr(args, "all_tools", False)),
                 runtime=getattr(args, "runtime", "aegra") or "aegra",
                 a2a_framework=getattr(args, "a2a_framework", "pydantic-ai") or "pydantic-ai",
+                egress_only=bool(getattr(args, "egress_only", False)),
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
