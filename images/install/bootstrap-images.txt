@@ -4,5 +4,5 @@ docker.io/envoyproxy/gateway:v1.10.0
 docker.io/envoyproxy/ratelimit:5ae0682e
 docker.io/envoyproxy/ai-gateway-controller:v1.2.1
 docker.io/envoyproxy/ai-gateway-extproc:v1.2.1
-docker.io/envoyproxy/envoy@sha256:9d84a586119a27b50437dbb01eccd4722832741539b1ed53c8e9d6da6067a6e0
+docker.io/envoyproxy/envoy@sha256:09ca6f2140a61ad8df11779a4a30d52b48433d444466328494f9188c9c35eded
 docker.io/valkey/valkey:9.1.2-alpine
