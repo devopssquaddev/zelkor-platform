@@ -12,7 +12,11 @@ source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
 
 ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.3}"
-AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.2.0}"
+# Envoy AI Gateway is now "Agent Router" (Agentic AI Foundation); repo moved to
+# theagentrouter/agent-router. Same code, maintainers, Apache-2.0 license, and the
+# docker.io/envoyproxy/ai-gateway{,-crds}-helm OCI charts keep their names. v1.2.1 is an
+# upstream security/stability patch with no API/CRD changes. Pin: component_compatibility_matrix.md.
+AI_GATEWAY_HELM_VERSION="${AI_GATEWAY_HELM_VERSION:-v1.2.1}"
 ROLLOUT_WAIT_TIMEOUT="${ROLLOUT_WAIT_TIMEOUT:-5m}"
 HELM_INSTALL_TIMEOUT="${HELM_INSTALL_TIMEOUT:-15m}"
 
