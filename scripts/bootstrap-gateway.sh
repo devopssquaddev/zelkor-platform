@@ -11,7 +11,7 @@ source "${ZELKOR_REPO_ROOT}/scripts/lib/bootstrap-ownership.sh"
 # shellcheck source=lib/gateway-policies.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/gateway-policies.sh"
 
-ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.9.3}"
+ENVOY_GATEWAY_VERSION="${ENVOY_GATEWAY_VERSION:-v1.10.0}"
 # Envoy AI Gateway is now "Agent Router" (Agentic AI Foundation); repo moved to
 # theagentrouter/agent-router. Same code, maintainers, Apache-2.0 license, and the
 # docker.io/envoyproxy/ai-gateway{,-crds}-helm OCI charts keep their names. v1.2.1 is an
@@ -219,7 +219,7 @@ provider:
                 - imagePullPolicy: IfNotPresent
                   name: envoy-ratelimit
     shutdownManager:
-      image: envoyproxy/gateway:v1.9.3
+      image: envoyproxy/gateway:v1.10.0
   type: Kubernetes
 rateLimit:
   failClosed: false
