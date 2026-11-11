@@ -75,10 +75,19 @@ case "$INSTALL_PROFILE" in
     # Upgrade-only: never create kind or run download on full (see require_full_profile_prereqs).
     PREFETCH_IMAGES="${PREFETCH_IMAGES:-false}"
     ;;
+  perimeter)
+    # CE-15a zero-DB egress boundary: gateway + MCP (CE-9) + default-deny NetworkPolicy only.
+    VALUES_FILE="${VALUES_FILE:-profiles/values-local-perimeter.yaml}"
+    KIND_CONFIG="${KIND_CONFIG:-kind-config.yaml}"
+    INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-false}"
+    GVISOR_INSTALL="${GVISOR_INSTALL:-false}"
+    RUN_DEMO_TOUR="${RUN_DEMO_TOUR:-false}"
+    PERIMETER=true
+    ;;
   *)
-    echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" >&2
+    echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast, full, or perimeter)" >&2
     if declare -f ux_fail >/dev/null 2>&1; then
-      ux_fail "Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" || true
+      ux_fail "Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast, full, or perimeter)" || true
     fi
     exit 1
     ;;
@@ -935,15 +944,17 @@ fi
 step_end platform_helm
 
 log "Tracking platform rollout progress..."
-step_begin rollout_datastores
-# Langfuse consumes Postgres, ClickHouse, and S3; Valkey/Qdrant degrade without aborting.
-wait_group critical "[1/5] Databases (PostgreSQL, ClickHouse, SeaweedFS)" \
-  statefulset/zelkor-platform-postgresql \
-  statefulset/zelkor-platform-clickhouse \
-  deployment/zelkor-platform-seaweedfs
-skip_wait deployment/zelkor-platform-valkey "Langfuse wait is the real gate"
-skip_wait statefulset/zelkor-platform-qdrant "mcp-qdrant wait is the real gate"
-step_end rollout_datastores
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+  step_begin rollout_datastores
+  # Langfuse consumes Postgres, ClickHouse, and S3; Valkey/Qdrant degrade without aborting.
+  wait_group critical "[1/5] Databases (PostgreSQL, ClickHouse, SeaweedFS)" \
+    statefulset/zelkor-platform-postgresql \
+    statefulset/zelkor-platform-clickhouse \
+    deployment/zelkor-platform-seaweedfs
+  skip_wait deployment/zelkor-platform-valkey "Langfuse wait is the real gate"
+  skip_wait statefulset/zelkor-platform-qdrant "mcp-qdrant wait is the real gate"
+  step_end rollout_datastores
+fi
 
 discover_internal_gateway_url() {
   local svc=""
@@ -980,16 +991,18 @@ else
   log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until workspace.models.internalUrl is set."
 fi
 
-step_begin rollout_langfuse
-wait_group critical "[3/5] Observability (Langfuse web + worker)" \
-  deployment/zelkor-platform-langfuse \
-  deployment/zelkor-platform-langfuse-worker
-step_end rollout_langfuse
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+  step_begin rollout_langfuse
+  wait_group critical "[3/5] Observability (Langfuse web + worker)" \
+    deployment/zelkor-platform-langfuse \
+    deployment/zelkor-platform-langfuse-worker
+  step_end rollout_langfuse
 
-step_begin rollout_aegra
-log "  -> [4/5] Agent Orchestrator (Aegra)..."
-wait_one critical deployment/zelkor-platform-aegra
-step_end rollout_aegra
+  step_begin rollout_aegra
+  log "  -> [4/5] Agent Orchestrator (Aegra)..."
+  wait_one critical deployment/zelkor-platform-aegra
+  step_end rollout_aegra
+fi
 
 # shellcheck source=lib/mcp-dataplane-install.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/mcp-dataplane-install.sh"
@@ -998,7 +1011,7 @@ MCP_DP_RELEASE="$HELM_RELEASE_NAME"
 MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
 MCP_DP_KUBE_CONTEXT="$KCTX"
 step_begin rollout_mcp_nemo
-if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
+if [[ "${PERIMETER:-false}" != "true" ]] && kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
   wait_one optional deployment/zelkor-platform-nemo
 fi
 if mcp_dataplane_wait_all; then
@@ -1008,9 +1021,11 @@ else
 fi
 step_end rollout_mcp_nemo
 
-step_begin job_langfuse_bootstrap
-wait_langfuse_bootstrap_job
-step_end job_langfuse_bootstrap
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+  step_begin job_langfuse_bootstrap
+  wait_langfuse_bootstrap_job
+  step_end job_langfuse_bootstrap
+fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   step_begin finserve_helm

@@ -26,6 +26,7 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- fail "logging.* was removed in V2. Declare telemetry under platform.telemetry (level/format). See docs/helm-install.md." -}}
 {{- end -}}
 {{- $_ := set .Values "__compiled" true -}}
+{{- include "zelkor-platform.compile.profile" . -}}
 {{- include "zelkor-platform.compile.telemetry" . -}}
 {{- include "zelkor-platform.compile.tenants" . -}}
 {{- include "zelkor-platform.compile.models" . -}}
@@ -33,6 +34,54 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- include "zelkor-platform.compile.tools" . -}}
 {{- include "zelkor-platform.compile.workload" . -}}
 {{- include "zelkor-platform.compile.intent" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+CE-15a perimeter profile. profile=perimeter compiles a zero-DB Envoy AI & MCP egress boundary:
+keep the gateway, Envoy AI Gateway, MCP gateway (CE-9 deny/RPM/audit), aigateway MCP, and the
+default-deny NetworkPolicy; disable every stateful plane. Runs before the V2 downcast so the
+flipped workspace.* / workload.* / platform.* enables propagate to the flat tree.
+*/}}
+{{- define "zelkor-platform.compile.profile" -}}
+{{- $profile := ($.Values.profile | default "") | toString | trim -}}
+{{- if eq $profile "perimeter" -}}
+{{- range $k := (list "postgresql" "clickhouse" "valkey" "qdrant" "seaweedfs") -}}
+{{- $d := (index $.Values $k) | default dict -}}
+{{- $_ := set $d "enabled" false -}}
+{{- $_ := set $.Values $k $d -}}
+{{- end -}}
+{{- $tel := ($.Values.platform.telemetry | default dict) -}}
+{{- $lf := ($tel.langfuse | default dict) -}}
+{{- $_ := set $lf "enabled" false -}}
+{{- $lfw := ($lf.worker | default dict) -}}
+{{- $_ := set $lfw "enabled" false -}}
+{{- $_ := set $lf "worker" $lfw -}}
+{{- $_ := set $tel "langfuse" $lf -}}
+{{- $_ := set $.Values.platform "telemetry" $tel -}}
+{{- $agents := ($.Values.workload.agents | default dict) -}}
+{{- $_ := set $agents "enabled" false -}}
+{{- $_ := set $.Values.workload "agents" $agents -}}
+{{- $sec := ($.Values.security | default dict) -}}
+{{- $sb := ($sec.sandbox | default dict) -}}
+{{- $_ := set $sb "enabled" false -}}
+{{- $_ := set $sec "sandbox" $sb -}}
+{{- $np := ($sec.networkPolicies | default dict) -}}
+{{- $_ := set $np "enabled" true -}}
+{{- $_ := set $sec "networkPolicies" $np -}}
+{{- $_ := set $.Values "security" $sec -}}
+{{- $pol := ($.Values.workspace.policies | default dict) -}}
+{{- $nemo := ($pol.nemo | default dict) -}}
+{{- $_ := set $nemo "enabled" false -}}
+{{- $_ := set $pol "nemo" $nemo -}}
+{{- $_ := set $.Values.workspace "policies" $pol -}}
+{{- $tools := ($.Values.workspace.tools | default dict) -}}
+{{- range $t := (list "postgresMCP" "qdrantMCP" "sandboxMCP" "objectMCP") -}}
+{{- $td := (index $tools $t) | default dict -}}
+{{- $_ := set $td "enabled" false -}}
+{{- $_ := set $tools $t $td -}}
+{{- end -}}
+{{- $_ := set $.Values.workspace "tools" $tools -}}
 {{- end -}}
 {{- end }}
 

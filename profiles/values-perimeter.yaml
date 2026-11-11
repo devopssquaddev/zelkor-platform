@@ -1,0 +1,12 @@
+# Perimeter profile — zero-DB Envoy AI & MCP egress boundary (CE-15a).
+# Production-safe: sets only the profile. Supply a provider credential and a hostname:
+#
+#   helm upgrade --install zelkor-platform charts/zelkor-platform \
+#     -f profiles/values-perimeter.yaml \
+#     --set workspace.models.providers.openai.apiKey=sk-... \
+#     --set gateway.hosts.aiGateway=ai-gateway.example.com
+#
+# The profile disables all datastores, Langfuse, the agent runtime, sandbox, NeMo and the
+# data-plane MCP backends; it keeps the gateway, aigateway MCP (CE-9) and default-deny NetworkPolicy.
+---
+profile: perimeter

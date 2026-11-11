@@ -37,6 +37,10 @@ ux_resolve_install_flags() {
       : "${INSTALL_EXAMPLES:=true}"
       : "${RUN_DEMO_TOUR:=false}"
       ;;
+    perimeter)
+      : "${INSTALL_EXAMPLES:=false}"
+      : "${RUN_DEMO_TOUR:=false}"
+      ;;
   esac
   export INSTALL_EXAMPLES RUN_DEMO_TOUR
 }
@@ -654,6 +658,21 @@ install_rich() {
 
 install_main() {
   install_log_note_tty
+
+  # Accept --profile=<fast|full|perimeter> (or --profile <v>); maps to INSTALL_PROFILE.
+  # Everything else is passed through to the engine unchanged.
+  local -a _passthru=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile=*)
+        INSTALL_PROFILE="${1#*=}"; export INSTALL_PROFILE; shift ;;
+      --profile)
+        INSTALL_PROFILE="${2:?--profile requires a value (fast|full|perimeter)}"; export INSTALL_PROFILE; shift 2 ;;
+      *)
+        _passthru+=("$1"); shift ;;
+    esac
+  done
+  set -- ${_passthru[@]+"${_passthru[@]}"}
 
   if [[ -z "${INSTALL_UX:-}" ]]; then
     if [[ "${INSTALL_STDOUT_IS_TTY}" == "1" && -z "${NO_COLOR:-}" ]]; then

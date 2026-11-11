@@ -1,6 +1,12 @@
 # Raw Kubernetes objects rendered alongside generated manifests (escape hatch).
 extraManifests: []
 
+# Deployment profile. "" / "full" = the complete platform (default). "perimeter" compiles a
+# zero-DB Envoy AI & MCP egress boundary: keeps the gateway, MCP gateway (CE-9) and default-deny
+# NetworkPolicy; disables datastores, Langfuse, the agent runtime, sandbox, NeMo and data-plane MCP.
+# See docs/perimeter.md.
+profile: ""
+
 # V2 intent API: platform.*, workspace.*, workload.* (compiled to internal templates at render).
 # Substrate keys (postgresql, gateway, databases, security.sandbox, …) stay at the root.
 #

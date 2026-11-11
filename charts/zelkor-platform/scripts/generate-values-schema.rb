@@ -16,6 +16,7 @@ OPEN_MAP_KEYS = %w[
 ].freeze
 
 ENUMS = {
+  "profile" => ["", "full", "perimeter"],
   "platform.telemetry.level" => %w[DEBUG INFO WARNING ERROR CRITICAL],
   "platform.telemetry.format" => %w[json text],
   "databases.mode" => %w[in-cluster-basic operator-cr external],

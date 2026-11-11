@@ -63,6 +63,7 @@ def _helm(*extra: str, values_files: list[Path] | None = None) -> subprocess.Com
     lab_profiles = (
         "values-local.yaml",
         "values-local-fast.yaml",
+        "values-local-perimeter.yaml",
         "values-quickstart.yaml",
     )
     skip_jwt_sets = bool(

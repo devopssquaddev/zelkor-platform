@@ -1,5 +1,9 @@
 {{- include "zelkor-platform.compile" . -}}
 {{- $root := . -}}
+{{- $profile := (.Values.profile | default "") | toString | trim -}}
+{{- if and (ne $profile "") (ne $profile "full") (ne $profile "perimeter") -}}
+{{- fail (printf "profile=%q is not valid. Use \"perimeter\" for the zero-DB egress boundary, or omit for the full platform. See docs/perimeter.md." $profile) -}}
+{{- end -}}
 {{- if (.Values.aegra.enabled | default false) -}}
 {{- include "zelkor-platform.tenantJwtValidate" . -}}
 {{- end -}}
