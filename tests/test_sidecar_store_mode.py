@@ -29,3 +29,17 @@ def test_pg_mode_without_dsn_exits(monkeypatch):
     monkeypatch.setenv("ZELKOR_SIDECAR_STORE", "pg")
     with pytest.raises(SystemExit):
         build_store()
+
+
+def test_memory_store_stays_tenant_and_graph_scoped():
+    # S-86: the zero-DB store must keep P1 isolation — another tenant/graph sees a 404 (None).
+    import asyncio
+
+    async def go():
+        s = MemoryStore()
+        await s.create_thread("tenant-a", "g1", {}, "th1")
+        assert await s.get_thread("tenant-a", "g1", "th1") is not None
+        assert await s.get_thread("tenant-b", "g1", "th1") is None
+        assert await s.get_thread("tenant-a", "g2", "th1") is None
+
+    asyncio.run(go())
