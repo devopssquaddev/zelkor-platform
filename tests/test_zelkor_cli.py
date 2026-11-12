@@ -1264,6 +1264,39 @@ def test_token_mint_reads_issuer_audiences_and_ttl_from_cluster(monkeypatch, cap
     assert claims["tenant_id"] == "Bank_Alpha"
 
 
+def test_token_mint_works_in_perimeter_without_tenant_jwt_configmap(monkeypatch, capsys):
+    # Perimeter runs no Aegra, so {release}-tenant-jwt ConfigMap is absent. Minting must still
+    # succeed when --issuer/--audience are supplied, not hard-fail on the missing CM (Finding C).
+    import base64
+
+    from tests.helpers.jwt_keys import generate_rsa_keypair
+
+    kp = generate_rsa_keypair("1")
+
+    def fake_run(cmd, **_kwargs):
+        target = " ".join(cmd)
+        if " secret " in f" {target} " and "tenant-jwt-signing" in target:
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                {"data": {"privateKey": base64.b64encode(kp.private_pem).decode(),
+                          "kid": base64.b64encode(b"1").decode()}}))
+        if " configmap " in f" {target} " and "tenant-jwks" in target:
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                {"metadata": {"annotations": {}}, "data": {"jwks": json.dumps(kp.jwks)}}))
+        if " configmap " in f" {target} " and "tenant-jwt" in target and "tenant-jwks" not in target:
+            return SimpleNamespace(returncode=1, stdout="",
+                                   stderr='configmaps "zelkor-platform-tenant-jwt" not found')
+        return SimpleNamespace(returncode=1, stdout="", stderr=f"unexpected kubectl: {target}")
+
+    monkeypatch.setattr(token_cmd.subprocess, "run", fake_run)
+    args = SimpleNamespace(release="zelkor-platform", namespace="default", kubeconfig="", context="",
+                           tenant="tenant-a", issuer="https://local.zelkor.invalid", audience="zelkor",
+                           ttl="", out="")
+    monkeypatch.setenv("KUBECONTEXT", "kind-zelkor")
+    monkeypatch.delenv("KUBE_CONTEXT", raising=False)
+    assert token_cmd.cmd_token_mint(args) == 0
+    assert capsys.readouterr().out.strip().startswith("eyJ")  # a JWT was printed
+
+
 def test_token_mint_uses_default_namespace_when_unset(monkeypatch):
     seen_ns: list[str] = []
 
