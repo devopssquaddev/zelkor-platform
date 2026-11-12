@@ -268,6 +268,14 @@ spec:
               value: {{ include "zelkor-agent.a2aPublicUrl" . | quote }}
             {{- end }}
             {{- include "zelkor-agent.langfuseEnv" . | nindent 12 }}
+            {{- with (.Values.platform.otlpEndpoint | default "" | trim) }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with (.Values.platform.otlpHeaders | default "" | trim) }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: {{ . | quote }}
+            {{- end }}
           volumeMounts:
             - name: sidecar-tmp
               mountPath: /tmp

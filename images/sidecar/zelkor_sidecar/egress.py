@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from .runs import RunContext, RunSlot
-from .tracing import Tracing
+from .tracing import Tracing, set_span_error
 
 logger = logging.getLogger("zelkor-sidecar")
 
@@ -294,7 +294,8 @@ class Egress:
             ctx.emit("custom", {"kind": "tool", "name": name, "phase": "start"}, key + "-start")
             logger.info("tool start", extra={"event": "agent_step", "kind": "tool", "phase": "start",
                                              "tool": name, "tenant_id": ctx.tenant_id, "run_id": ctx.run_id})
-            cm = self.tracing.child(ctx, name, observation_type="tool")
+            cm = self.tracing.child(ctx, name, observation_type="tool",
+                                    attrs={"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": name})
             spans[mid] = (cm, cm.__enter__(), name, key)
 
         payload = json.dumps(body).encode("utf-8")
@@ -334,6 +335,7 @@ class Egress:
                 span.set_attribute("langfuse.observation.metadata.mcp.tool", name)
                 if is_error:
                     span.set_attribute("langfuse.observation.level", "ERROR")
+                    set_span_error(span, f"tool {name} failed")
                 cm.__exit__(None, None, None)
                 ctx.emit("custom", {"kind": "tool", "name": name, "phase": "end", "is_error": is_error},
                          key + "-end")
@@ -404,8 +406,11 @@ class Egress:
                 rewrite = True
             raw = json.dumps(payload).encode("utf-8")
         http = await self.client()
+        chat_attrs = {"gen_ai.operation.name": "chat"}
+        if model:
+            chat_attrs["gen_ai.request.model"] = model
         with self.tracing.child(ctx, f"chat {model}".strip(), observation_type="generation",
-                                attrs={"gen_ai.request.model": model} if model else None) as span:
+                                attrs=chat_attrs) as span:
             headers = _clean_headers(dict(request.headers), ("content-type", "accept"))
             headers["authorization"] = f"Bearer {self.cfg.consumer_key}" if self.cfg.consumer_key else ""
             headers.update(self.tracing.propagation_headers(ctx, span))
@@ -430,6 +435,7 @@ class Egress:
             await resp.aclose()
             if resp.status_code >= 400:
                 span.set_attribute("langfuse.observation.level", "ERROR")
+                set_span_error(span, f"upstream {resp.status_code}")
             return Response(body, status_code=resp.status_code,
                             headers={"content-type": ctype or "application/json"})
 

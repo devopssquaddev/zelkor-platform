@@ -1218,6 +1218,14 @@ def deploy_agent(
         overlay["platform"]["databaseUrl"] = ""
         overlay["platform"]["valkeyUrl"] = ""
         overlay["security"].setdefault("networkPolicies", {})["enabled"] = True
+        # CE-15a-3: perimeter has Langfuse off; if the platform configures a BYO OTLP
+        # collector, point the stateless sidecar at it so the run waterfall still exports.
+        otlp = (((info.helm_values.get("platform") or {}).get("telemetry") or {}).get("otlp") or {})
+        otlp_endpoint = str(otlp.get("endpoint") or "").strip()
+        if otlp_endpoint:
+            overlay["platform"]["otlpEndpoint"] = otlp_endpoint
+            if str(otlp.get("headers") or "").strip():
+                overlay["platform"]["otlpHeaders"] = str(otlp["headers"]).strip()
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
             "intent": {

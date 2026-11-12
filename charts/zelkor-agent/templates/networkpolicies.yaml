@@ -61,6 +61,17 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- /* CE-15a-3: optional egress to a BYO OTLP collector (sidecar trace export). */}}
+    {{- range $cidr := (.Values.security.networkPolicies.otlpCollectorCIDRs | default list) }}
+    - to:
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    {{- end }}
     {{- if $cross }}
     - to:
         - namespaceSelector:

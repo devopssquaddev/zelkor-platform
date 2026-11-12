@@ -285,8 +285,7 @@ def test_tool_messages_lose_non_standard_name_field():
     assert sent[0]["name"] == "alice"  # only tool messages are rewritten
 
 
-def test_child_spans_carry_trace_identity():
-    """Langfuse v4 events mode groups by per-span identity; children must carry it too."""
+def _recording_tracing():
     pytest.importorskip("opentelemetry.sdk")
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -295,7 +294,12 @@ def test_child_spans_carry_trace_identity():
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    tracing = Tracing(tracer=provider.get_tracer("t"))
+    return Tracing(tracer=provider.get_tracer("t")), exporter
+
+
+def test_child_spans_carry_trace_identity():
+    """Langfuse v4 events mode groups by per-span identity; children must carry it too."""
+    tracing, exporter = _recording_tracing()
     ctx = RunContext(tenant_id="tenant-a", bearer=JWT, graph_id="desk", thread_id="t1", run_id="r1")
     ctx.root_span = tracing.start_root(ctx, input_text="hi")
     with tracing.child(ctx, "sandbox__execute_python", observation_type="tool"):
@@ -303,10 +307,39 @@ def test_child_spans_carry_trace_identity():
     tracing.end_root(ctx.root_span, ctx)
     spans = {s.name: s for s in exporter.get_finished_spans()}
     child = spans["sandbox__execute_python"]
+    # CE-15a-3: standard OTel/Langfuse-v4 identity on every span (root name is the trace name).
+    assert child.attributes["user.id"] == "tenant-a"
+    assert child.attributes["session.id"] == "t1"
+    assert spans["desk"].attributes["user.id"] == "tenant-a"
+    assert spans["desk"].attributes["session.id"] == "t1"
+    # Langfuse-specific identity is still emitted (dropped only in the deferred full-profile slice).
     assert child.attributes["langfuse.trace.name"] == "desk"
     assert child.attributes["langfuse.session.id"] == "t1"
     assert child.attributes["langfuse.user.id"] == "tenant-a"
     assert child.parent.span_id == spans["desk"].context.span_id
+
+
+def test_from_env_selects_otlp_exporter_without_langfuse(monkeypatch):
+    # CE-15a-3: with no LANGFUSE_* but an OTLP endpoint, tracing is enabled (perimeter path).
+    pytest.importorskip("opentelemetry.sdk")
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-scope-orgid=acme")
+    assert Tracing.from_env().enabled is True
+
+
+def test_from_env_disabled_without_any_target(monkeypatch):
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL",
+                "OTEL_TARGETS", "OTEL_EXPORTER_OTLP_ENDPOINT"):
+        monkeypatch.delenv(var, raising=False)
+    assert Tracing.from_env().enabled is False
+
+
+def test_parse_otlp_headers():
+    from zelkor_sidecar.tracing import _parse_otlp_headers
+    assert _parse_otlp_headers("a=1, b=2") == {"a": "1", "b": "2"}
+    assert _parse_otlp_headers("") == {}
 
 
 class _BrokenStream(httpx.AsyncByteStream):
