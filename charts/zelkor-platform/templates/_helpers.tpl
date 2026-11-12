@@ -100,6 +100,22 @@ per-/v1 token visibility.
   type: TotalToken
 {{- end }}
 
+{{/*
+CE-15a-3b: opt-in BYO OTLP export via a GatewayConfig. Active only when a collector
+endpoint is set AND bundled Langfuse is off (single-sink CE gate). Requires compile to
+have run so .Values.langfuse reflects the telemetry downcast.
+*/}}
+{{- define "zelkor-platform.gatewayOtlpConfigName" -}}
+{{- printf "%s-gateway-config" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
+{{- define "zelkor-platform.gatewayOtlpEnabled" -}}
+{{- $otlp := ((.Values.platform.telemetry).otlp | default dict) -}}
+{{- if and .Values.gateway.enabled ($otlp.endpoint | default "" | trim) (not (.Values.langfuse).enabled) -}}
+true
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.compile.telemetry" -}}
 {{- $p := .Values.platform | default dict -}}
 {{- $tel := $p.telemetry | default dict -}}

@@ -51,6 +51,15 @@ platform:
     nemoOtel:
       enabled: true
       captureContent: false
+    # CE-15a-3: opt-in single-sink BYO OTLP export (perimeter, Langfuse off). When
+    # endpoint is set and langfuse.enabled is false, a GatewayConfig points the AI
+    # gateway's processor at this collector with gen_ai semconv. Dual-sink (Langfuse
+    # AND a collector) is Zelkor Pro (Pro-5) and fails validation on CE.
+    otlp:
+      enabled: false
+      endpoint: ""        # e.g. http://otel-collector.monitoring.svc:4318
+      headers: ""         # optional "key=value,key=value"
+      captureContent: false
     langfuse:
       enabled: true
       publicHttpRoute:

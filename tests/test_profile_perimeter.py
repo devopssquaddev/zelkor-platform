@@ -79,6 +79,38 @@ def test_perimeter_emits_llm_access_token_log():
     assert route is not None and route["spec"].get("llmRequestCosts")
 
 
+OTLP_ENDPOINT = "http://otel-collector.monitoring.svc:4318"
+
+
+def test_perimeter_otlp_renders_gatewayconfig_bound_to_gateway():
+    # CE-15a-3b: opt-in BYO OTLP export — a GatewayConfig points the AI gateway's
+    # processor at the collector with gen_ai semconv; the Gateway references it by annotation.
+    docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER,
+                       "--set", f"platform.telemetry.otlp.endpoint={OTLP_ENDPOINT}").stdout)
+    gc = _named(docs, "GatewayConfig", "gateway-config")
+    assert gc is not None
+    env = {e["name"]: e["value"] for e in gc["spec"]["extProc"]["kubernetes"]["env"]}
+    assert env["AI_GATEWAY_TRACING_SEMCONV"] == "gen_ai"
+    assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == OTLP_ENDPOINT
+    assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "false"
+    gw = _named(docs, "Gateway", "-gateway")
+    assert gw["metadata"]["annotations"]["aigateway.envoyproxy.io/gateway-config"] == gc["metadata"]["name"]
+
+
+def test_perimeter_without_otlp_has_no_gatewayconfig():
+    docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout)
+    assert _named(docs, "GatewayConfig", "gateway-config") is None
+
+
+def test_perimeter_otlp_capture_content_is_opt_in():
+    docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER,
+                       "--set", f"platform.telemetry.otlp.endpoint={OTLP_ENDPOINT}",
+                       "--set", "platform.telemetry.otlp.captureContent=true").stdout)
+    gc = _named(docs, "GatewayConfig", "gateway-config")
+    env = {e["name"]: e["value"] for e in gc["spec"]["extProc"]["kubernetes"]["env"]}
+    assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "true"
+
+
 def test_perimeter_mcproute_defaults_to_deny():
     docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout)
     route = _named(docs, "MCPRoute", "-mcp")

@@ -1,0 +1,31 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- /* CE-15a-3b: opt-in BYO OTLP export. A GatewayConfig points the AI gateway's external
+     processor at a customer OTLP collector using standard OTel GenAI semconv, so perimeter
+     (bundled Langfuse off) can render the run -> /v1 -> /mcp waterfall in Tempo/Jaeger/
+     Datadog/Honeycomb/Phoenix. Bound to the Gateway by the aigateway.envoyproxy.io/gateway-config
+     annotation (same namespace). Dual-sink (Langfuse AND a collector) is Pro-5 and is blocked
+     in validate.yaml. */}}
+{{- if eq (include "zelkor-platform.gatewayOtlpEnabled" .) "true" }}
+{{- $otlp := ((.Values.platform.telemetry).otlp | default dict) -}}
+apiVersion: aigateway.envoyproxy.io/v1beta1
+kind: GatewayConfig
+metadata:
+  name: {{ include "zelkor-platform.gatewayOtlpConfigName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "gateway") | nindent 4 }}
+spec:
+  extProc:
+    kubernetes:
+      env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ $otlp.endpoint | trim | quote }}
+        {{- with ($otlp.headers | default "" | trim) }}
+        - name: OTEL_EXPORTER_OTLP_HEADERS
+          value: {{ . | quote }}
+        {{- end }}
+        - name: AI_GATEWAY_TRACING_SEMCONV
+          value: "gen_ai"
+        - name: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT
+          value: {{ ($otlp.captureContent | default false) | toString | quote }}
+{{- end }}

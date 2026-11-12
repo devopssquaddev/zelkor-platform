@@ -247,6 +247,29 @@
               },
               "additionalProperties": false
             },
+            "otlp": {
+              "type": "object",
+              "description": "Values under platform.telemetry.otlp.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for platform.telemetry.otlp.enabled."
+                },
+                "endpoint": {
+                  "type": "string",
+                  "description": "Value for platform.telemetry.otlp.endpoint."
+                },
+                "headers": {
+                  "type": "string",
+                  "description": "Value for platform.telemetry.otlp.headers."
+                },
+                "captureContent": {
+                  "type": "boolean",
+                  "description": "Value for platform.telemetry.otlp.captureContent."
+                }
+              },
+              "additionalProperties": false
+            },
             "langfuse": {
               "type": "object",
               "description": "Values under platform.telemetry.langfuse.",
