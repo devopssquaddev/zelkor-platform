@@ -66,6 +66,19 @@ def test_perimeter_keeps_the_boundary():
     assert _named(docs, "BackendTrafficPolicy", "aigateway-ratelimit") is not None
 
 
+def test_perimeter_emits_llm_access_token_log():
+    # CE-15a-3: perimeter (Langfuse off) still exposes per-/v1 token usage via the
+    # always-on llm_access access log + the route's llmRequestCosts.
+    docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout)
+    ep = _named(docs, "EnvoyProxy", "envoy-proxy-config")
+    assert ep is not None
+    settings = ep["spec"]["telemetry"]["accessLog"]["settings"]
+    events = [s.get("format", {}).get("json", {}).get("event") for s in settings]
+    assert "llm_access" in events
+    route = _named(docs, "AIGatewayRoute", "aigateway-route")
+    assert route is not None and route["spec"].get("llmRequestCosts")
+
+
 def test_perimeter_mcproute_defaults_to_deny():
     docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout)
     route = _named(docs, "MCPRoute", "-mcp")

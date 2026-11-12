@@ -74,6 +74,18 @@ def _route_matches(docs: list[dict]) -> list[str]:
     return values
 
 
+def test_llm_request_costs_on_v1_routes():
+    # CE-15a-3: every /v1 AIGatewayRoute reports token costs into gateway dynamic metadata
+    # (io.envoy.ai_gateway:llm_*_token), read by the EnvoyProxy llm_access log.
+    for route in _gateway_routes(_docs(_helm("--set", "workspace.models.providers.openai.apiKey=sk-test"))):
+        by_key = {c["metadataKey"]: c["type"] for c in route["spec"]["llmRequestCosts"]}
+        assert by_key == {
+            "llm_input_token": "InputToken",
+            "llm_output_token": "OutputToken",
+            "llm_total_token": "TotalToken",
+        }
+
+
 def test_empty_providers_omit_new_backends():
     docs = _docs(_helm())
     names = {d["metadata"]["name"] for d in docs if "metadata" in d}

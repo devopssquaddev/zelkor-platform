@@ -132,11 +132,15 @@ The installer skips the datastore, Langfuse, agent, and demo phases and does not
 
 If an agent is not wrapped by `zelkor deploy` — for example a black-box workload, or an agent in another cluster — the gateway becomes an **opt-in proxy**: it enforces key injection, rate limits, tool-deny, and audit on traffic sent to it, but nothing compels that agent to use it. To make egress mandatory for such workloads, apply a default-deny-egress NetworkPolicy to their namespace (allow egress only to the gateway Service and DNS), or use a cluster egress firewall. See [Network Isolation](architecture-network.md).
 
+## Observability
+
+The database is off, so there is no Langfuse trace UI — but the gateway still reports **per-request token usage** to stdout as structured JSON. Every `/v1` call emits an `llm_access` log line with the tenant, model, input / output / total token counts, response code, and timing — never prompt or completion bodies. Scrape it from pod logs or your existing log pipeline to track usage and cost without a datastore.
+
 ## What it does not include
 
 Because the perimeter is zero-database, these are off by design:
 
-- **No run traces.** Langfuse is off, so there is no trace UI or waterfall. The boundary still emits structured audit metadata to stdout.
+- **No trace UI.** Langfuse is off, so there is no waterfall view. The gateway still emits the `llm_access` token log and MCP audit metadata to stdout (see [Observability](#observability)).
 - **No in-cluster agent host and no persistence.** The stateless sidecar armors egress but does not persist threads or runs. For durable run history and the trace UI, use the full profile.
 - **No code sandbox and no guardrails.** gVisor and NeMo are off to hold the memory budget.
 

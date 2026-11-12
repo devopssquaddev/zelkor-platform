@@ -85,6 +85,21 @@ flipped workspace.* / workload.* / platform.* enables propagate to the flat tree
 {{- end -}}
 {{- end }}
 
+{{/*
+CE-15a-3: token-cost metadata for the /v1 AIGatewayRoute(s). The gateway writes each
+cost into dynamic metadata io.envoy.ai_gateway:<metadataKey>, which the EnvoyProxy
+llm_access log reads. Always on (no bodies) so perimeter (Langfuse off) still has
+per-/v1 token visibility.
+*/}}
+{{- define "zelkor-platform.llmRequestCosts" -}}
+- metadataKey: llm_input_token
+  type: InputToken
+- metadataKey: llm_output_token
+  type: OutputToken
+- metadataKey: llm_total_token
+  type: TotalToken
+{{- end }}
+
 {{- define "zelkor-platform.compile.telemetry" -}}
 {{- $p := .Values.platform | default dict -}}
 {{- $tel := $p.telemetry | default dict -}}

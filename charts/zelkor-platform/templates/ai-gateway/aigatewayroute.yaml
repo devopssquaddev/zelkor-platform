@@ -20,6 +20,8 @@ spec:
     {{- range $hostnames }}
     - {{ . | quote }}
     {{- end }}
+  llmRequestCosts:
+    {{- include "zelkor-platform.llmRequestCosts" . | nindent 4 }}
   rules:
     {{- $exact := include "zelkor-platform.aiGatewayExactModelMatches" . | fromJsonArray -}}
     {{- if $intercept }}
@@ -90,6 +92,8 @@ spec:
     {{- range $nemoHosts }}
     - {{ . | quote }}
     {{- end }}
+  llmRequestCosts:
+    {{- include "zelkor-platform.llmRequestCosts" . | nindent 4 }}
   rules:
     {{- /* NeMo upstream: bypass + model regex (two headers). The unknown-model HTTPRoute matches bypass alone so it stays less specific. Never add x-ai-eg-model ".+" on that route or here: equal header counts tie, and the older route wins across upgrades. */}}
     {{- range $matches }}

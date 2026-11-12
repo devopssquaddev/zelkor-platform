@@ -16,19 +16,45 @@ spec:
   logging:
     level:
       default: {{ include "zelkor-platform.vendorLogLevel" (dict "root" . "component" .Values.gateway "vendor" "envoy") }}
-  {{- if (.Values.mcp).enabled }}
-  {{- /* CE-9c: /mcp access log carries MCP metadata only (method, backend, tool, tenant,
-       status, timing, sizes) so Envoy-side denies and extras are audited. Never bodies,
-       params or Authorization (P11). Every other path keeps the EG default JSON log. */}}
+  {{- $mcpOn := (.Values.mcp).enabled -}}
+  {{- $v1On := .Values.aiGateway.enabled -}}
+  {{- if or $mcpOn $v1On }}
+  {{- /* CE-9c /mcp (mcp_access) and CE-15a-3 /v1 (llm_access) structured logs carry
+       metadata only — method/backend/tool/tenant (mcp) and model/token-counts/tenant (llm),
+       plus status and timing. Never bodies, params or Authorization (P11). Every other
+       path keeps the EG default JSON log. */}}
   telemetry:
     accessLog:
       settings:
         - matches:
-            - "!request.path.startsWith('/mcp')"
+            - "!request.path.startsWith('/mcp') && !request.path.startsWith('/v1')"
           sinks:
             - type: File
               file:
                 path: /dev/stdout
+        {{- if $v1On }}
+        - matches:
+            - "request.path.startsWith('/v1')"
+          format:
+            type: JSON
+            json:
+              event: llm_access
+              start_time: "%START_TIME%"
+              tenant_id: "%REQ(X-TENANT-ID)%"
+              gen_ai.request.model: "%REQ(X-AI-EG-MODEL)%"
+              llm_input_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_input_token)%"
+              llm_output_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_output_token)%"
+              llm_total_token: "%DYNAMIC_METADATA(io.envoy.ai_gateway:llm_total_token)%"
+              response_code: "%RESPONSE_CODE%"
+              response_code_details: "%RESPONSE_CODE_DETAILS%"
+              duration_ms: "%DURATION%"
+              x_request_id: "%REQ(X-REQUEST-ID)%"
+          sinks:
+            - type: File
+              file:
+                path: /dev/stdout
+        {{- end }}
+        {{- if $mcpOn }}
         - matches:
             - "request.path.startsWith('/mcp')"
           format:
@@ -51,6 +77,7 @@ spec:
             - type: File
               file:
                 path: /dev/stdout
+        {{- end }}
   {{- end }}
   provider:
     type: Kubernetes
