@@ -18,6 +18,8 @@ gateway:
   envoyProxy:
     enabled: true
     hostNetwork: true
+    nodeSelector:
+      ingress-ready: 'true'
   hosts:
     agents: agents.localhost
     aiGateway: ai-gateway.localhost

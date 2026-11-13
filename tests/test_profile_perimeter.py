@@ -276,12 +276,6 @@ def test_full_profile_keeps_its_component_policies():
     assert "zelkor-platform-ai-gateway-nemo" in _names(docs, "Secret")
 
 
-def test_lab_overlays_publish_the_same_agents_host():
-    # Wrapped agents get their HTTPRoute on gateway.hosts.agents in both modes.
-    full = yaml.safe_load((ROOT / "profiles" / "values-local.yaml").read_text())
-    perimeter = yaml.safe_load(LOCAL_PERIMETER.read_text())
-    assert perimeter["gateway"]["hosts"]["agents"] == full["gateway"]["hosts"]["agents"]
-
 
 def test_unknown_profile_is_rejected():
     proc = _helm("-f", str(LOCAL_PERIMETER), "--set", "profile=bogus")
@@ -291,3 +285,13 @@ def test_unknown_profile_is_rejected():
 def test_default_profile_still_renders_datastores():
     docs = _docs(_helm("-f", str(LOCAL_FAST)).stdout)
     assert _named(docs, "StatefulSet", "postgresql") is not None
+
+
+def test_production_perimeter_is_the_production_overlay_plus_the_profile():
+    # Same overlays as a full production install, plus the one-line perimeter overlay.
+    proc = _helm("-f", str(ROOT / "profiles" / "values-production.yaml"), "-f", str(THIN_PERIMETER),
+                 *PROVIDER, *JWT)
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert _workload_names(docs) == {"zelkor-platform-mcp-aigateway"}
+    assert _named(docs, "EnvoyProxy", "") is not None

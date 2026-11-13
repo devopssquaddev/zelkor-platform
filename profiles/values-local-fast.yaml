@@ -30,6 +30,8 @@ gateway:
   envoyProxy:
     enabled: true
     hostNetwork: true
+    nodeSelector:
+      ingress-ready: 'true'
   hosts:
     langfuse: langfuse.localhost
     aiGateway: ai-gateway.localhost
