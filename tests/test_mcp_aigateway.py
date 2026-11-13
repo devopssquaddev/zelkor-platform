@@ -125,3 +125,14 @@ def test_mcp_aigateway_chat_via_ai_gateway():
             pytest.skip(str(exc))
         raise
     assert result.get("choices") or result.get("id")
+
+
+def test_call_schema_spells_out_chat_messages_and_operations():
+    """Models fill tool arguments from the schema; an untyped `messages` invited malformed calls."""
+    (tool,) = AIGatewayMCPServer(allowed_models=["m"]).list_tools()
+    props = tool["inputSchema"]["properties"]
+    assert props["operation"]["enum"] == ["chat.completions", "embeddings"]
+    item = props["messages"]["items"]
+    assert item["required"] == ["role", "content"]
+    assert "chat.completions" in props["messages"]["description"]
+    assert "embeddings" in props["input"]["description"]

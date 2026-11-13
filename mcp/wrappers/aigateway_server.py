@@ -98,10 +98,25 @@ class AIGatewayMCPServer(MCPToolHandler):
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "model": {"type": "string"},
-                        "operation": {"type": "string"},
-                        "messages": {"type": "array"},
-                        "input": {},
+                        "model": {"type": "string", "description": "Model id served by the gateway."},
+                        "operation": {
+                            "type": "string",
+                            "enum": ["chat.completions", "embeddings"],
+                            "description": "Default chat.completions.",
+                        },
+                        "messages": {
+                            "type": "array",
+                            "description": "Required for chat.completions: OpenAI chat messages.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+                                    "content": {"type": "string"},
+                                },
+                                "required": ["role", "content"],
+                            },
+                        },
+                        "input": {"description": "Required for embeddings only: text or list of texts."},
                     },
                     "required": ["model"],
                     "additionalProperties": False,
