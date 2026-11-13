@@ -40,7 +40,7 @@ PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
 PERIMETER = "perimeter"  # platform profile with no Aegra / datastores: agents run behind a stateless sidecar
 PERIMETER_NO_AEGRA = (
-    "This platform runs profile=perimeter: it has no agent host (Aegra) and no database, so the "
+    "This platform runs profile=perimeter: it has no Aegra agent runtime and no database, so the "
     "agent runs behind the stateless sidecar. That needs a deploy-first project (agent.json + "
     "AGENTS.md) or your own Dockerfile serving A2A. LangGraph projects need profile=full."
 )

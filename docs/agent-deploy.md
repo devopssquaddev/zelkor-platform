@@ -26,7 +26,7 @@ One platform install runs any mix of runtimes; each agent release picks its own 
 | `a2a` | Any agent that serves A2A (Pydantic AI, CrewAI, Google ADK, your own) | `zelkor-sidecar` fronts the runtime on `127.0.0.1:8080` |
 | `opencode` | OpenCode agents | `zelkor-sidecar` drives `opencode serve` on `127.0.0.1:8080` |
 
-With `a2a` or `opencode`, clients call the same endpoint with the same token and `X-Graph-ID`. The sidecar verifies the tenant JWT, stores threads and runs, and is the runtime's only way out: model calls go through the AI Gateway (and NeMo) and tool calls through the MCP gateway, limited to the agent's tool scope. The runtime container gets no database, Valkey, provider or consumer credentials, and runs with a read-only root filesystem. Set `sidecar.a2a.enabled: true` to also publish an A2A Agent Card and endpoint for that agent.
+With `a2a` or `opencode`, clients call the same endpoint with the same token and `X-Graph-ID`. The sidecar verifies the tenant JWT, stores threads and runs (in Postgres; in pod memory on a perimeter install), and is the runtime's only way out: model calls go through the AI Gateway (and NeMo, when guardrails are on) and tool calls through the MCP gateway, limited to the agent's tool scope. The runtime container gets no database, Valkey, provider or consumer credentials, and runs with a read-only root filesystem. Set `sidecar.a2a.enabled: true` to also publish an A2A Agent Card and endpoint for that agent.
 
 A deploy-first project (`agent.json` + `AGENTS.md`) builds on the matching runtime image:
 
@@ -37,6 +37,8 @@ zelkor deploy --runtime opencode --tools sandbox
 ```
 
 For your own A2A image, add a `Dockerfile` that serves A2A on `127.0.0.1:8080`, reads `OPENAI_BASE_URL` / `MCP_URL`, and run `zelkor deploy --runtime a2a`.
+
+**On a perimeter install** (`profile=perimeter`, no database): run the same `zelkor deploy`. It detects the platform and runs the agent behind a stateless sidecar with its egress locked to the gateway; you call it on the same agents host with the same token. Use `a2a` or `opencode` — LangGraph projects need the Aegra host of the full profile, and `zelkor deploy` says so before changing anything. See [Perimeter Profile](perimeter.md).
 
 ## Deploying via GitOps (Helm)
 

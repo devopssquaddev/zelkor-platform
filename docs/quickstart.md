@@ -54,6 +54,8 @@ Other providers use the same script — substitute the env var from the table. E
 OLLAMA_API_KEY=... ./install.sh
 ```
 
+Only need the gateway around agents you already run? `OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter` installs the zero-database [Perimeter Profile](perimeter.md) instead: the same AI and MCP gateways and the same agents host, without datastores, Langfuse traces, sandbox, or guardrails. The rest of this tutorial assumes the full install.
+
 What `./install.sh` does (you do not run these by hand):
 
 1. Checks Docker, kind, helm, and kubectl

@@ -51,12 +51,12 @@ platform:
     nemoOtel:
       enabled: true
       captureContent: false
-    # CE-15a-3: opt-in single-sink BYO OTLP export (perimeter, Langfuse off). When
-    # endpoint is set and langfuse.enabled is false, a GatewayConfig points the AI
+    # Opt-in single-sink OTLP export to your own collector (Langfuse off, e.g. perimeter).
+    # When endpoint is set and langfuse.enabled is false, a GatewayConfig points the AI
     # gateway's processor at this collector with gen_ai semconv, and an OTLP relay
     # ({release}-otlp, consumer-key auth) lets wrapped agents export through the gateway
-    # instead of reaching the collector. Dual-sink (Langfuse AND a collector) is
-    # Zelkor Pro (Pro-5) and fails validation on CE.
+    # instead of reaching the collector. Langfuse AND a collector at once is a Zelkor Pro
+    # feature and fails validation on Community Edition.
     otlp:
       enabled: false
       endpoint: ""        # e.g. http://otel-collector.monitoring.svc:4318

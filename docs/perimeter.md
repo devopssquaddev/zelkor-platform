@@ -10,7 +10,7 @@ edition: ce
 
 # Perimeter Profile
 
-*What it is: the Zelkor armor around an agent's outbound calls, with none of the persistence — no datastores, no hosted agent runtime, no trace store.*
+*What it is: the Zelkor armor around an agent's outbound calls, with none of the persistence — no datastores, no Aegra runtime, no trace store.*
 
 `profile=perimeter` installs a **zero-database egress boundary** for your agents' LLM and MCP traffic. It has two parts:
 
@@ -105,7 +105,15 @@ sequenceDiagram
 
 ## Install
 
-Install the gateway once on any cluster with the same production installer as the full profile, adding `--profile perimeter`. Supply at least one provider credential, the agents hostname, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token). It skips the datastore operators, Langfuse, and gVisor:
+Laptop `kind`:
+
+```bash
+OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter
+```
+
+On kind the installer skips the datastore, Langfuse, Aegra, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install.
+
+On any other cluster, use the same production installer as the full profile with `--profile perimeter`. Supply at least one provider credential, the agents hostname, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token). It skips the datastore operators, Langfuse, and gVisor:
 
 ```bash
 OPENAI_API_KEY=sk-... ./scripts/install-production.sh --profile perimeter \
@@ -113,7 +121,7 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh --profile perimeter \
   --jwt-issuer https://idp.example.com --jwt-audience zelkor --jwks-file ./jwks.json
 ```
 
-With Helm or GitOps directly, layer the one-line perimeter overlay on the production overlay:
+With Helm or GitOps directly, layer the one-line perimeter overlay on the production overlay. Give the JWKS either as a file (`--jwks-file` above) or as your IdP's URL (`remoteJwksUri` here, plus the CIDR of that endpoint, because egress is default-deny):
 
 ```bash
 helm upgrade --install zelkor-platform charts/zelkor-platform \
@@ -126,25 +134,17 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set "platform.tenants.jwt.jwksEgressCIDRs={<idp-cidr>}"
 ```
 
-Laptop `kind`:
-
-```bash
-OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter
-```
-
-The installer skips the datastore, Langfuse, agent-host, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install.
-
 ## Deploy and call an agent
 
-Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. Name the MCP tool prefixes it may use — your registered `workspace.tools` backends, since the built-in Postgres, Qdrant, and sandbox tools are off — or pass `--all-tools`:
+Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. A deploy-first project (`agent.json` + `AGENTS.md`) needs nothing more; your own Dockerfile serving A2A must read `OPENAI_BASE_URL` and `MCP_URL`, which `zelkor deploy` points at the sidecar. Name the MCP tool prefixes the agent may use — the extra backends you registered under `workspace.tools` ([Register extra MCP backends](mcp-extra-backends.md)), since the built-in Postgres, Qdrant, and sandbox tools are off — or pass `--all-tools`:
 
 ```bash
 zelkor deploy --tools crm
 ```
 
-The sidecar needs a deploy-first project (`agent.json` + `AGENTS.md`) or your own Dockerfile serving A2A. LangGraph projects run on the Aegra agent host, which only the full profile has; `zelkor deploy` stops with that message before changing anything.
+LangGraph projects run on the Aegra runtime, which only the full profile has; `zelkor deploy` stops with that message before changing anything.
 
-Call the agent through the agents host, the same front door as the full profile:
+Call the agent through the agents host, the same front door as the full profile (with a `zelkor env` for this cluster and a tenant token; see [CLI](cli.md)):
 
 ```bash
 zelkor run --input "Summarize tenant usage"
