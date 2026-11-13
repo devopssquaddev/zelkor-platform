@@ -37,3 +37,13 @@ def kubectl_run(
         timeout=timeout,
         check=False,
     )
+
+
+def platform_contract(namespace: str | None = None) -> dict[str, str]:
+    """The platform's discovery contract (zelkor-platform-contract), or {} when unreachable/absent."""
+    import json
+
+    res = kubectl_run(["get", "configmap", "zelkor-platform-contract", "-o", "json"], namespace=namespace)
+    if res.returncode != 0:
+        return {}
+    return (json.loads(res.stdout or "{}") or {}).get("data") or {}
