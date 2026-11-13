@@ -105,13 +105,20 @@ sequenceDiagram
 
 ## Install
 
-Install the gateway once on any cluster. Supply at least one provider credential, the hostnames, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token):
+Install the gateway once on any cluster with the same production installer as the full profile, adding `--profile perimeter`. Supply at least one provider credential, the agents hostname, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token). It skips the datastore operators, Langfuse, and gVisor:
+
+```bash
+OPENAI_API_KEY=sk-... ./scripts/install-production.sh --profile perimeter \
+  --hosts-agents agents.example.com \
+  --jwt-issuer https://idp.example.com --jwt-audience zelkor --jwks-file ./jwks.json
+```
+
+With Helm or GitOps directly, layer the one-line perimeter overlay on the production overlay:
 
 ```bash
 helm upgrade --install zelkor-platform charts/zelkor-platform \
-  --set profile=perimeter \
+  -f profiles/values-production.yaml -f profiles/values-perimeter.yaml \
   --set workspace.models.providers.openai.apiKey=sk-... \
-  --set gateway.hosts.aiGateway=ai-gateway.example.com \
   --set gateway.hosts.agents=agents.example.com \
   --set platform.tenants.jwt.issuer=https://idp.example.com \
   --set "platform.tenants.jwt.audiences={zelkor}" \

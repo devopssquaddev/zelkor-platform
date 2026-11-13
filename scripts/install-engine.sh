@@ -1146,10 +1146,24 @@ ${banner}
 
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
+EOF
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+cat <<EOF
   Langfuse Observability  zelkor-platform-langfuse    http://${lf_host}:8088
+EOF
+fi
+cat <<EOF
   Envoy AI Gateway        ai-gateway-controller       http://${aigw_host}:8088
+EOF
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+cat <<EOF
+  Agents (front door)     Host ${agents_host}         http://${agents_host}:8088  (agents you deploy)
+EOF
+else
+cat <<EOF
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
 EOF
+fi
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
   FinServe Demo (front door) ${agents_host}              http://${agents_host}:8088  X-Graph-ID: finserve-advisor|research|records|quant|coder
@@ -1157,13 +1171,22 @@ EOF
 fi
 cat <<EOF
   MCP (MCPRoute / MCP_URL)  Host ${mcp_host}              http://${mcp_host}:8088/mcp
+EOF
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+cat <<EOF
   NeMo Guardrails (CPU)   zelkor-platform-nemo        http://nemo.localhost:8088/v1/rails/configs
+EOF
+fi
+cat <<EOF
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
 
 ${banner}
 ${C_BOLD}  Local Dev Access Credentials & Tokens${C_RESET}
 ${banner}
+EOF
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+cat <<EOF
 
   [Langfuse UI & API]
     URL:              http://${lf_host}:8088
@@ -1173,6 +1196,7 @@ ${banner}
     Public API Key:   ${LF_PUBLIC_KEY:-<see langfuse init keys in profile>}
     Secret API Key:   ${LF_SECRET_KEY:-<see langfuse init keys in profile>}
 EOF
+fi
 cat <<EOF
 
   [Envoy AI Gateway]
@@ -1189,6 +1213,15 @@ cat <<EOF
     Tenant JWT:       zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns}
 EOF
 fi
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+cat <<EOF
+
+  [Agents you deploy]
+    URL:              http://${agents_host}:8088  (Host ${agents_host})
+    Tenant JWT:       zelkor token mint --release ${rel} --tenant tenant-a --namespace ${ns}
+${banner}
+EOF
+else
 cat <<EOF
 
   [Aegra Agent Runtime]
@@ -1202,6 +1235,7 @@ cat <<EOF
     Qdrant:           http://localhost:6333
 ${banner}
 EOF
+fi
 cat <<EOF
 
 ${banner}
@@ -1232,11 +1266,27 @@ cat <<EOF
        -d '{"graph_id":"finserve-advisor","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
 EOF
 fi
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+cat <<EOF
+
+  2. Deploy and call your agent (from its project directory):
+     zelkor deploy --tools <mcp-prefix>      # or --all-tools; wraps it behind the stateless sidecar
+     zelkor run --input "Hello from Zelkor!"
+
+  3. Usage and traces (no trace store in perimeter):
+     Token usage: the gateway's llm_access JSON log lines
+       kubectl --context ${KCTX} -n envoy-gateway-system logs -l gateway.envoyproxy.io/owning-gateway-name=${rel}-gateway -c envoy | grep llm_access
+     Traces: set platform.telemetry.otlp.endpoint to your OTLP collector
+EOF
+else
 cat <<EOF
 
   3. View Traces:
      Agent runs (FinServe demo): Langfuse -> project **Zelkor Platform** -> Traces (name **finserve-advisor**)
      Gateway / playground: same project
+EOF
+fi
+cat <<EOF
 
 ${banner}
 ${C_BOLD}  CLI — point at this cluster${C_RESET}
