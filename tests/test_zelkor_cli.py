@@ -441,20 +441,13 @@ def test_upgrade_text_constant():
     assert "Pro" in UPGRADE
 
 
-def _egress_only_overlay(tmp_path, monkeypatch, *, platform_extra: str = "", top_extra: str = "") -> dict:
-    """Run `deploy --egress-only` against a mocked perimeter platform; return the agent overlay."""
+def _no_aegra_runner(captured: dict, *, platform_extra: str = "", top_extra: str = ""):
+    """A platform with NO Aegra deployment (perimeter shape): the tenant-JWT contract lives only
+    in the platform's own Helm values (Finding A) — an Aegra-shaped mock would hide that."""
     import yaml as _yaml
 
-    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
-    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
-    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
-    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
-    captured: dict = {}
-
-    # A real perimeter install has NO Aegra deployment, so the tenant-JWT contract
-    # lives only in the platform's own Helm values. The sidecar must still be wired
-    # from there (Finding A) — an Aegra-shaped mock would hide that.
     def runner(argv, **_kwargs):
+        captured.setdefault("commands", []).append(list(argv))
         if "helm" in argv and "upgrade" in argv and "-f" in argv:
             captured["overlay"] = _yaml.safe_load(Path(argv[argv.index("-f") + 1]).read_text(encoding="utf-8"))
         stdout = ""
@@ -469,23 +462,131 @@ def _egress_only_overlay(tmp_path, monkeypatch, *, platform_extra: str = "", top
                 "      audiences:\n      - zelkor\n"
                 f"{platform_extra}"
             )
+        elif "get" in argv and "nodes" in argv:
+            stdout = "172.22.0.2 10.244.0.0/24\n"
         elif "get" in argv and "deploy" in argv:
             stdout = json.dumps({"items": []})  # perimeter: no Aegra
         elif "get" in argv and ("svc" in argv or "httproute" in argv):
             stdout = json.dumps({"items": []})
         return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
 
+    return runner
+
+
+def _deploy_overlay(tmp_path, monkeypatch, *, egress_only: bool,
+                    platform_extra: str = "", top_extra: str = "") -> dict:
+    """Run `zelkor deploy` on a deploy-first project against a mocked no-Aegra platform; return the overlay."""
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    captured: dict = {}
+    runner = _no_aegra_runner(captured, platform_extra=platform_extra, top_extra=top_extra)
     try:
         deploy_agent(
             root=tmp_path, env=env, push=False, skip_build=True,
             agent_chart=ROOT / "charts" / "zelkor-agent",
             platform_chart=ROOT / "charts" / "zelkor-platform",
-            runner=runner, egress_only=True, all_tools=True,
+            runner=runner, egress_only=egress_only, all_tools=True,
         )
     except RuntimeError:
         pass  # the mocked rollout never reports ready; the overlay is captured at helm upgrade
     assert "overlay" in captured, "helm upgrade was not reached"
     return captured["overlay"]
+
+
+def _egress_only_overlay(tmp_path, monkeypatch, *, platform_extra: str = "", top_extra: str = "") -> dict:
+    return _deploy_overlay(tmp_path, monkeypatch, egress_only=True,
+                           platform_extra=platform_extra, top_extra=top_extra)
+
+
+PERIMETER = "profile: perimeter\n"
+
+
+def _assert_stateless_wrap(ov: dict) -> None:
+    assert ov["runtime"] == "a2a"
+    assert ov["sidecar"]["stateless"] is True
+    assert ov["platform"]["databaseUrl"] == "" and ov["platform"]["valkeyUrl"] == ""
+    assert ov["security"]["networkPolicies"]["enabled"] is True
+
+
+def test_plain_deploy_on_perimeter_platform_wraps_statelessly(tmp_path, monkeypatch):
+    # P0: the CLI reads the platform's profile; the user does not need to know --egress-only.
+    ov = _deploy_overlay(tmp_path, monkeypatch, egress_only=False, top_extra=PERIMETER)
+    _assert_stateless_wrap(ov)
+    # perimeter forces NetworkPolicies on, so kind's hostNetwork Envoy sources are allowed in
+    assert ov["security"]["networkPolicies"]["hostNetworkGatewayCIDRs"] == ["10.244.0.1/32", "172.22.0.2/32"]
+
+
+def test_langgraph_project_on_perimeter_fails_before_any_upgrade(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "langgraph.json").write_text('{"graphs": {"desk": "./agent.py:graph"}}', encoding="utf-8")
+    (tmp_path / "agent.py").write_text("graph = None\n", encoding="utf-8")
+    captured: dict = {}
+    with pytest.raises(RuntimeError, match="profile=perimeter") as err:
+        deploy_agent(root=tmp_path, env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                     push=False, skip_build=True, agent_chart=ROOT / "charts" / "zelkor-agent",
+                     platform_chart=ROOT / "charts" / "zelkor-platform", all_tools=True,
+                     runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    assert "--runtime" not in str(err.value)  # names no flag the user never passed
+    assert not any("upgrade" in c for c in captured["commands"])
+
+
+def test_explicit_egress_only_on_langgraph_project_explains_the_wrap(tmp_path):
+    (tmp_path / "langgraph.json").write_text('{"graphs": {"desk": "./agent.py:graph"}}', encoding="utf-8")
+    (tmp_path / "agent.py").write_text("graph = None\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="--egress-only runs the agent behind the stateless sidecar"):
+        deploy_agent(root=tmp_path, env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                     push=False, skip_build=True, egress_only=True, all_tools=True, runner=_no_cluster,
+                     agent_chart=ROOT / "charts" / "zelkor-agent", platform_chart=ROOT / "charts" / "zelkor-platform")
+
+
+def _catalog_values(tmp_path, runtime: str = "") -> Path:
+    values = tmp_path / "values.yaml"
+    values.write_text("graphId: researcher\n" + (f"runtime: {runtime}\n" if runtime else "")
+                      + "image:\n  repository: ghcr.io/acme/researcher\n  tag: '1.0.0'\n", encoding="utf-8")
+    return values
+
+
+def test_deploy_f_on_perimeter_platform_wraps_statelessly(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    try:
+        deploy_from_values(values_path=_catalog_values(tmp_path, "a2a"),
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    except RuntimeError:
+        pass
+    _assert_stateless_wrap(captured["overlay"])
+
+
+def test_deploy_f_honours_egress_only_on_full(tmp_path, monkeypatch):
+    # `deploy -f --egress-only` used to drop the flag silently.
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    try:
+        deploy_from_values(values_path=_catalog_values(tmp_path, "a2a"), egress_only=True,
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured))
+    except RuntimeError:
+        pass
+    _assert_stateless_wrap(captured["overlay"])
+
+
+def test_deploy_f_aegra_catalog_entry_on_perimeter_fails_clearly(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    with pytest.raises(RuntimeError, match="profile=perimeter"):
+        deploy_from_values(values_path=_catalog_values(tmp_path),
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    assert not any("upgrade" in c for c in captured["commands"])
 
 
 OTLP_VALUES = "  telemetry:\n    otlp:\n      endpoint: http://otel-collector.monitoring.svc:4318\n      headers: x-team=abc\n"

@@ -10,14 +10,14 @@ edition: ce
 
 # Perimeter Profile
 
-*What it is: the Zelkor armor around an agent's outbound calls, with none of the runtime — no datastores, no agent host, no trace store.*
+*What it is: the Zelkor armor around an agent's outbound calls, with none of the persistence — no datastores, no hosted agent runtime, no trace store.*
 
 `profile=perimeter` installs a **zero-database egress boundary** for your agents' LLM and MCP traffic. It has two parts:
 
 1. **The gateway** — a shared Envoy AI Gateway (`/v1`) and MCP gateway (`/mcp`) that inject provider keys, rate-limit, deny mutating tools, and log audit metadata. Installs in under 90 seconds and under 500 MB of RAM.
 2. **A stateless sidecar** — the same `zelkor-sidecar` the full runtime uses, minus its database. You wrap an agent with `zelkor deploy`, and the sidecar forces that agent's LLM and MCP calls through the gateway, attaches its tenant identity and keys, and meters it — with nothing stateful behind it.
 
-Use it when your agents run on Kubernetes and you want to **armor their outbound calls** without adopting the full runtime (no Postgres, ClickHouse, Valkey, Qdrant, SeaweedFS, Langfuse, agent host, sandbox, or guardrails).
+Use it when your agents run on Kubernetes and you want to **armor their outbound calls** without adopting the full runtime (no Postgres, ClickHouse, Valkey, Qdrant, SeaweedFS, Langfuse, Aegra agent host, sandbox, or guardrails). Your wrapped agents are still published on the same agents host as in the full profile.
 
 ## Why a gateway alone is not enough
 
@@ -105,13 +105,18 @@ sequenceDiagram
 
 ## Install
 
-Install the gateway once on any cluster (supply at least one provider credential and a hostname):
+Install the gateway once on any cluster. Supply at least one provider credential, the hostnames, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token):
 
 ```bash
 helm upgrade --install zelkor-platform charts/zelkor-platform \
   --set profile=perimeter \
   --set workspace.models.providers.openai.apiKey=sk-... \
-  --set gateway.hosts.aiGateway=ai-gateway.example.com
+  --set gateway.hosts.aiGateway=ai-gateway.example.com \
+  --set gateway.hosts.agents=agents.example.com \
+  --set platform.tenants.jwt.issuer=https://idp.example.com \
+  --set "platform.tenants.jwt.audiences={zelkor}" \
+  --set platform.tenants.jwt.remoteJwksUri=https://idp.example.com/.well-known/jwks.json \
+  --set "platform.tenants.jwt.jwksEgressCIDRs={<idp-cidr>}"
 ```
 
 Laptop `kind`:
@@ -120,13 +125,25 @@ Laptop `kind`:
 OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter
 ```
 
-Then wrap an agent so its egress is forced through the gateway. `--egress-only` runs the agent behind a stateless (no-database) sidecar and locks the pod's egress to the gateway; name the MCP tools it may use (or `--all-tools`):
+The installer skips the datastore, Langfuse, agent-host, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install.
+
+## Deploy and call an agent
+
+Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. Name the MCP tool prefixes it may use — your registered `workspace.tools` backends, since the built-in Postgres, Qdrant, and sandbox tools are off — or pass `--all-tools`:
 
 ```bash
-zelkor deploy my-agent --egress-only --tools postgres,sandbox
+zelkor deploy --tools crm
 ```
 
-The installer skips the datastore, Langfuse, agent, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install.
+The sidecar needs a deploy-first project (`agent.json` + `AGENTS.md`) or your own Dockerfile serving A2A. LangGraph projects run on the Aegra agent host, which only the full profile has; `zelkor deploy` stops with that message before changing anything.
+
+Call the agent through the agents host, the same front door as the full profile:
+
+```bash
+zelkor run --input "Summarize tenant usage"
+```
+
+Run history lives in the sidecar's memory: it survives neither a pod restart nor a second replica. Keep one replica per agent.
 
 ## Agents you do not wrap
 
@@ -136,14 +153,14 @@ If an agent is not wrapped by `zelkor deploy` — for example a black-box worklo
 
 The database is off, so there is no Langfuse trace UI — but the gateway still reports **per-request token usage** to stdout as structured JSON. Every `/v1` call emits an `llm_access` log line with the tenant, model, input / output / total token counts, response code, and timing — never prompt or completion bodies. Scrape it from pod logs or your existing log pipeline to track usage and cost without a datastore.
 
-**Send traces to your own backend (optional).** Set `platform.telemetry.otlp.endpoint` to an OTLP collector and the AI gateway exports every `/v1` LLM call as a standard OpenTelemetry GenAI span — view it in Tempo, Jaeger, Datadog, Honeycomb, or Phoenix, no bundled datastore required. Agents you wrap with `zelkor deploy --egress-only` export the full **run → LLM → tool** trace to the same collector, so one waterfall spans the agent and the gateway. They send it **through the gateway**, not to the collector directly: the agent's network policy still allows only the gateway and DNS, and the collector's address and credentials never reach the agent pod. Message content is off by default (`platform.telemetry.otlp.captureContent: false`). Community Edition uses **one** trace sink at a time: bundled Langfuse (the full profile) or a single OTLP endpoint (perimeter); setting both is rejected at install.
+**Send traces to your own backend (optional).** Set `platform.telemetry.otlp.endpoint` to an OTLP collector and the AI gateway exports every `/v1` LLM call as a standard OpenTelemetry GenAI span — view it in Tempo, Jaeger, Datadog, Honeycomb, or Phoenix, no bundled datastore required. Agents you wrap with `zelkor deploy` export the full **run → LLM → tool** trace to the same collector, so one waterfall spans the agent and the gateway. They send it **through the gateway**, not to the collector directly: the agent's network policy still allows only the gateway and DNS, and the collector's address and credentials never reach the agent pod. Message content is off by default (`platform.telemetry.otlp.captureContent: false`). Community Edition uses **one** trace sink at a time: bundled Langfuse (the full profile) or a single OTLP endpoint (perimeter); setting both is rejected at install.
 
 ## What it does not include
 
 Because the perimeter is zero-database, these are off by design:
 
 - **No trace UI.** Langfuse is off, so there is no waterfall view. The gateway still emits the `llm_access` token log and MCP audit metadata to stdout (see [Observability](#observability)).
-- **No in-cluster agent host and no persistence.** The stateless sidecar armors egress but does not persist threads or runs. For durable run history and the trace UI, use the full profile.
+- **No Aegra agent host and no persistence.** Wrapped agents are published on the agents host, but the stateless sidecar keeps threads and runs in memory only, and LangGraph projects need the Aegra host. For durable run history, LangGraph agents, and the trace UI, use the full profile.
 - **No code sandbox and no guardrails.** gVisor and NeMo are off to hold the memory budget.
 
 When you need any of the above, install the full profile (the default) — it is the same gateway and sidecar with the persistence, trace, sandbox, and guardrail planes turned on. See [Helm Install](helm-install.md) and [Local Quickstart](quickstart.md).

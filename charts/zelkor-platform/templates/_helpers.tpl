@@ -82,6 +82,16 @@ flipped workspace.* / workload.* / platform.* enables propagate to the flat tree
 {{- $_ := set $tools $t $td -}}
 {{- end -}}
 {{- $_ := set $.Values.workspace "tools" $tools -}}
+{{- /* The gateway is perimeter's only plane: emit its EnvoyProxy (dataplane Service +
+     llm_access / mcp_access logs) unless the install rides an external Gateway that owns one. */ -}}
+{{- $gw := ($.Values.gateway | default dict) -}}
+{{- $external := or (($gw.parentRef | default dict).name) ((($.Values.workspace.models | default dict).inClusterService | default dict).targetHost) -}}
+{{- if not $external -}}
+{{- $ep := ($gw.envoyProxy | default dict) -}}
+{{- $_ := set $ep "enabled" true -}}
+{{- $_ := set $gw "envoyProxy" $ep -}}
+{{- $_ := set $.Values "gateway" $gw -}}
+{{- end -}}
 {{- end -}}
 {{- end }}
 

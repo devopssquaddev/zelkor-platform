@@ -38,6 +38,12 @@ from zelkor.token_cmd import cmd_token_jwks, cmd_token_mint
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
+PERIMETER = "perimeter"  # platform profile with no Aegra / datastores: agents run behind a stateless sidecar
+PERIMETER_NO_AEGRA = (
+    "This platform runs profile=perimeter: it has no agent host (Aegra) and no database, so the "
+    "agent runs behind the stateless sidecar. That needs a deploy-first project (agent.json + "
+    "AGENTS.md) or your own Dockerfile serving A2A. LangGraph projects need profile=full."
+)
 
 logger = logging.getLogger("zelkor-cli")
 
@@ -67,6 +73,7 @@ class PlatformInfo:
     agent_route_names: list[str] = field(default_factory=list)
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
     helm_values: dict[str, Any] = field(default_factory=dict)
+    profile: str = ""  # platform `profile` value: "" / "full" / "perimeter"
     network_policies_enabled: bool = False
     gateway_host_cidrs: list[str] = field(default_factory=list)
 
@@ -265,7 +272,9 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     hosts = ((values.get("gateway") or {}).get("hosts") or {})
     info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
-    info.network_policies_enabled = bool(
+    info.profile = str(values.get("profile") or "").strip().lower()
+    # Effective, not user-set: profile=perimeter forces NetworkPolicies on at render time.
+    info.network_policies_enabled = info.profile == PERIMETER or bool(
         ((values.get("security") or {}).get("networkPolicies") or {}).get("enabled")
     )
     info.gateway_namespace = env.namespace
@@ -424,6 +433,44 @@ def auth_values(info: PlatformInfo) -> dict[str, Any]:
 
 RUNTIMES = ("aegra", "a2a", "opencode")
 A2A_FRAMEWORKS = ("pydantic-ai", "crewai")
+
+
+def _sidecar_shape(runtime: str, shape: Any, root: Path, *, refusal: str = "") -> Any:
+    """A non-Aegra runtime runs behind the sidecar: deploy-first project (or own A2A Dockerfile)."""
+    byo = runtime == "a2a" and (root / "Dockerfile").is_file()
+    if shape.kind != "deploy-first" and not byo:
+        raise RuntimeError(refusal or (
+            f"--runtime {runtime} needs a deploy-first project (agent.json + AGENTS.md)"
+            + (" or your own Dockerfile serving A2A" if runtime == "a2a" else "")
+        ))
+    # The sidecar enforces the tool scope for every non-Aegra runtime.
+    return dataclasses.replace(shape, mcp_inject=True)
+
+
+def _apply_stateless_wrap(overlay: dict[str, Any], info: PlatformInfo) -> None:
+    """Stateless (no-DB) sidecar wrap with pod egress locked to the gateway.
+
+    Used on profile=perimeter (derived) and by an explicit --egress-only on a full platform.
+    """
+    if not info.jwt_issuer:
+        raise RuntimeError(
+            "the stateless sidecar needs the platform tenant-JWT contract, but none was found. "
+            "Set platform.tenants.jwt.{issuer,audiences} on the platform release "
+            "(the lab overlay profiles/values-local-perimeter.yaml already does)."
+        )
+    overlay.setdefault("sidecar", {})["stateless"] = True
+    platform = overlay.setdefault("platform", {})
+    platform["databaseUrl"] = ""
+    platform["valkeyUrl"] = ""
+    overlay.setdefault("security", {}).setdefault("networkPolicies", {})["enabled"] = True
+    # CE-15a-3: Langfuse is off in perimeter. When the platform has a BYO OTLP collector it
+    # renders an OTLP relay on the gateway (needs the AI gateway's consumer key); the sidecar
+    # exports there, so the pod's egress stays gateway + DNS and the collector stays private.
+    hv = info.helm_values
+    otlp = (((hv.get("platform") or {}).get("telemetry") or {}).get("otlp") or {})
+    ai_gateway_on = (hv.get("aiGateway") or {}).get("enabled", True) is not False
+    if str(otlp.get("endpoint") or "").strip() and ai_gateway_on:
+        platform["otlp"] = True
 
 
 def runtime_base_image(runtime: str, a2a_framework: str, tag: str) -> str:
@@ -1107,8 +1154,13 @@ def deploy_agent(
     if approval_threshold:
         raise RuntimeError(UPGRADE)
     runtime = (runtime or "aegra").strip().lower()
+    stateless_refusal = ""
     if egress_only and runtime == "aegra":
         runtime = "a2a"  # the stateless (no-DB) sidecar wrap requires a non-aegra bridge
+        stateless_refusal = (
+            "--egress-only runs the agent behind the stateless sidecar, which needs a deploy-first "
+            "project (agent.json + AGENTS.md) or your own Dockerfile serving A2A"
+        )
     if runtime not in RUNTIMES:
         raise RuntimeError(f"--runtime must be one of {', '.join(RUNTIMES)}")
     registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
@@ -1120,19 +1172,21 @@ def deploy_agent(
         registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
     if runtime != "aegra":
-        byo = runtime == "a2a" and (root / "Dockerfile").is_file()
-        if shape.kind != "deploy-first" and not byo:
-            raise RuntimeError(
-                f"--runtime {runtime} needs a deploy-first project (agent.json + AGENTS.md)"
-                + (" or your own Dockerfile serving A2A" if runtime == "a2a" else "")
-            )
-        # The sidecar enforces the tool scope for every non-Aegra runtime.
-        shape = dataclasses.replace(shape, mcp_inject=True)
+        shape = _sidecar_shape(runtime, shape, root, refusal=stateless_refusal)
     tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools,
                                 graph_may_declare=runtime == "aegra")
     release = helm_release_name(shape.graph_id)
     logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
+    if info.profile == PERIMETER and not egress_only:
+        # The platform decides, not a flag: no Aegra / DB, so wrap statelessly.
+        logger.info("platform profile=perimeter: stateless sidecar, egress locked to the gateway")
+        egress_only = True
+        if runtime == "aegra":
+            runtime = "a2a"
+            shape = _sidecar_shape(runtime, shape, root, refusal=PERIMETER_NO_AEGRA)
+            tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools,
+                                        graph_may_declare=False)
     agent_ns = (agent_namespace or "").strip() or env.namespace
     fill_langfuse_from_secret(env, info, runner=runner)
     bind_worker_to_agent_namespace(info, agent_ns, env.namespace)
@@ -1207,25 +1261,7 @@ def deploy_agent(
         "security": _np_values(info),
     }
     if egress_only:
-        if not info.jwt_issuer:
-            raise RuntimeError(
-                "egress-only wrap needs the platform tenant-JWT contract, but none was "
-                "found. A perimeter install has no Aegra to inherit it from, so set "
-                "platform.tenants.jwt.{issuer,audiences} on the platform release "
-                "(the lab overlay profiles/values-local-perimeter.yaml already does)."
-            )
-        overlay.setdefault("sidecar", {})["stateless"] = True
-        overlay["platform"]["databaseUrl"] = ""
-        overlay["platform"]["valkeyUrl"] = ""
-        overlay["security"].setdefault("networkPolicies", {})["enabled"] = True
-        # CE-15a-3: perimeter has Langfuse off. When the platform has a BYO OTLP collector it
-        # renders an OTLP relay on the gateway (needs the AI gateway's consumer key); the sidecar
-        # exports there, so the pod's egress stays gateway + DNS and the collector stays private.
-        hv = info.helm_values
-        otlp = (((hv.get("platform") or {}).get("telemetry") or {}).get("otlp") or {})
-        ai_gateway_on = (hv.get("aiGateway") or {}).get("enabled", True) is not False
-        if str(otlp.get("endpoint") or "").strip() and ai_gateway_on:
-            overlay["platform"]["otlp"] = True
+        _apply_stateless_wrap(overlay, info)
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
             "intent": {
@@ -1275,6 +1311,7 @@ def deploy_from_values(
     image_registry: str = "",
     skip_build: Optional[bool] = None,
     agent_namespace: str = "",
+    egress_only: bool = False,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
@@ -1295,6 +1332,14 @@ def deploy_from_values(
     file_values = dict(file_values)
     file_values["image"] = image
     logger.info("deploy -f %s graph_id=%s image=%s:%s", values_path, graph_id, repo, tag)
+    info = discover_platform(env, runner=runner)
+    stateless = egress_only or info.profile == PERIMETER
+    if stateless and str(file_values.get("runtime") or "aegra").strip().lower() == "aegra":
+        raise RuntimeError(
+            PERIMETER_NO_AEGRA if info.profile == PERIMETER else
+            "--egress-only runs the agent behind the stateless sidecar; set runtime: a2a or opencode "
+            "in the values file"
+        )
     dockerfile = values_path.parent / "Dockerfile"
     skip = _skip_build() if skip_build is None else skip_build
     if dockerfile.is_file() and not skip and not digest:
@@ -1319,7 +1364,6 @@ def deploy_from_values(
             file_values = dict(file_values)
             file_values["image"] = image
             logger.info("image.pullPolicy=Never after kind load")
-    info = discover_platform(env, runner=runner)
     agent_ns = (agent_namespace or "").strip() or env.namespace
     fill_langfuse_from_secret(env, info, runner=runner)
     bind_worker_to_agent_namespace(info, agent_ns, env.namespace)
@@ -1342,6 +1386,8 @@ def deploy_from_values(
     overlay = merge_catalog_values(
         file_values, discovered_worker_values(info, platform_namespace=env.namespace)
     )
+    if stateless:
+        _apply_stateless_wrap(overlay, info)
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
     release = helm_release_name(graph_id)
     _helm_upgrade_agent(
@@ -1787,7 +1833,8 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         p.add_argument(
             "--egress-only",
             action="store_true",
-            help="perimeter: wrap the agent behind a stateless (no-DB) sidecar and lock pod egress to the gateway",
+            help="wrap the agent behind a stateless (no-DB) sidecar and lock pod egress to the gateway "
+                 "(automatic on a profile=perimeter platform; opt-in on full)",
         )
         p.add_argument("directory", nargs="?", default=".")
     sub.choices["deploy"].add_argument(
@@ -1896,6 +1943,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 approval_threshold=getattr(args, "approval_threshold", "") or "",
                 image_registry=getattr(args, "registry", "") or "",
                 agent_namespace=getattr(args, "namespace", "") or "",
+                egress_only=bool(getattr(args, "egress_only", False)),
             )
         else:
             result = deploy_agent(

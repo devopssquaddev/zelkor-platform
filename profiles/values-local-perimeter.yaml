@@ -19,6 +19,7 @@ gateway:
     enabled: true
     hostNetwork: true
   hosts:
+    agents: agents.localhost
     aiGateway: ai-gateway.localhost
     mcp: mcp.localhost
 platform:

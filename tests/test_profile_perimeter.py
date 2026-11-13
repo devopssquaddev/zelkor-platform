@@ -188,6 +188,40 @@ def test_thin_overlay_only_sets_profile():
     assert data == {"profile": "perimeter"}
 
 
+# The tenant-JWT contract every install must supply (an IdP's JWKS), as on a real cluster.
+JWT = ("--set", "platform.tenants.jwt.issuer=https://idp.example",
+       "--set", "platform.tenants.jwt.audiences={zelkor}",
+       "--set", "platform.tenants.jwt.remoteJwksUri=https://idp.example/jwks",
+       "--set", "platform.tenants.jwt.jwksEgressCIDRs={203.0.113.0/24}")
+
+
+def test_thin_production_overlay_renders_with_its_access_logs():
+    # The documented production install (thin overlay, no HA) used to fail: no EnvoyProxy, so no
+    # in-cluster dataplane Service — and no llm_access / mcp_access logs, perimeter's observability.
+    proc = _helm("-f", str(THIN_PERIMETER), *PROVIDER, *JWT)
+    assert proc.returncode == 0, proc.stderr
+    ep = _named(_docs(proc.stdout), "EnvoyProxy", "")
+    assert ep is not None
+    events = {s.get("format", {}).get("json", {}).get("event")
+              for s in ep["spec"]["telemetry"]["accessLog"]["settings"]}
+    assert {"llm_access", "mcp_access"} <= events
+
+
+def test_perimeter_on_an_external_gateway_emits_no_envoyproxy():
+    # A shared/external Gateway owns its EnvoyProxy; the profile must not force a second one.
+    proc = _helm("-f", str(THIN_PERIMETER), *PROVIDER, *JWT,
+                 "--set", "workspace.models.inClusterService.targetHost=shared-dataplane.envoy-gateway-system.svc.cluster.local")
+    assert proc.returncode == 0, proc.stderr
+    assert _named(_docs(proc.stdout), "EnvoyProxy", "") is None
+
+
+def test_lab_overlays_publish_the_same_agents_host():
+    # Wrapped agents get their HTTPRoute on gateway.hosts.agents in both modes.
+    full = yaml.safe_load((ROOT / "profiles" / "values-local.yaml").read_text())
+    perimeter = yaml.safe_load(LOCAL_PERIMETER.read_text())
+    assert perimeter["gateway"]["hosts"]["agents"] == full["gateway"]["hosts"]["agents"]
+
+
 def test_unknown_profile_is_rejected():
     proc = _helm("-f", str(LOCAL_PERIMETER), "--set", "profile=bogus")
     assert proc.returncode != 0

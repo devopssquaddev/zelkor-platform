@@ -4,8 +4,6 @@ Env (all optional; tests skip without them):
   ZELKOR_RUNTIME_GRAPHS   comma list of deployed runtime graph ids (e.g. rt-pydantic,rt-crewai,rt-opencode)
   ZELKOR_TEST_TOKENS      JSON with "tenant-a" and "tenant-b" bearers (real IdP users on Path B)
   GATEWAY_BASE_URL / AEGRA_HOST_HEADER   agents front door; LANGFUSE_BASE_URL for traces
-  ZELKOR_RUNTIME_DIRECT=1               no front door (profile=perimeter): runs go to the agent
-                                        Service over `kubectl port-forward` instead
   KUBECONFIG + KUBECONTEXT              in-pod checks; never the default context
 """
 from __future__ import annotations
@@ -65,45 +63,10 @@ def tenant_id(token: str) -> str:
     return str(claims.get("tenant_id") or claims.get("org_id") or claims.get("sub") or "")
 
 
-_FORWARDS: dict[str, str] = {}
-
-
-def _direct_url(graph: str) -> str:
-    """URL of a local `kubectl port-forward` to the agent Service (one per graph per session)."""
-    if graph in _FORWARDS:
-        return _FORWARDS[graph]
-    import atexit
-    import socket
-    import subprocess
-
-    from tests.helpers.kube import kubectl_cmd
-
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    proc = subprocess.Popen(kubectl_cmd("port-forward", f"svc/{graph}-zelkor-agent", f"{port}:8000"),
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    atexit.register(proc.terminate)
-    deadline = time.monotonic() + 20
-    while True:
-        try:
-            socket.create_connection(("127.0.0.1", port), timeout=1).close()
-            break
-        except OSError:
-            if proc.poll() is not None or time.monotonic() > deadline:
-                proc.terminate()
-                pytest.fail(f"port-forward to svc/{graph}-zelkor-agent did not come up")
-            time.sleep(0.5)
-    _FORWARDS[graph] = f"http://127.0.0.1:{port}"
-    return _FORWARDS[graph]
-
-
 def client(graph: str, token: str):
     from langgraph_sdk import get_sync_client
 
     headers = {"Authorization": f"Bearer {token}", "X-Graph-ID": graph}
-    if os.environ.get("ZELKOR_RUNTIME_DIRECT") == "1":
-        return get_sync_client(url=_direct_url(graph), headers=headers, timeout=(5.0, 300.0, 300.0, 5.0))
     host = os.environ.get("AEGRA_HOST_HEADER", "").strip()
     if host and not os.environ.get("GATEWAY_BASE_URL", "").startswith("https://"):
         headers["Host"] = host
