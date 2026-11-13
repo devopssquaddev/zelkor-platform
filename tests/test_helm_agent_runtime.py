@@ -176,3 +176,17 @@ def test_kind_host_network_gateway_cidrs_add_node_ip_blocks_only():
         r = _helm_agent("--set", "security.networkPolicies.enabled=true",
                         "--set", f"security.networkPolicies.hostNetworkGatewayCIDRs[0]={bad}")
         assert r.returncode != 0 and "/32" in r.stderr, bad
+
+
+def test_stateless_sidecar_cannot_wrap_aegra():
+    # Aegra always needs a database; a "stateless" Aegra pod would crash-loop.
+    r = _helm_agent("--set", "sidecar.stateless=true", "--set", "runtime=aegra")
+    assert r.returncode != 0 and "sidecar.stateless needs a sidecar runtime" in r.stderr
+
+
+def test_stateless_sidecar_is_single_replica():
+    # Runs live in pod memory: a second replica answers 404 for the first one's threads.
+    for extra in (("--set", "replicaCount=2"), ("--set", "autoscaling.enabled=true")):
+        r = _helm_agent(*PERIMETER, *extra)
+        assert r.returncode != 0 and "one replica" in r.stderr, extra
+    assert _helm_agent(*PERIMETER, "--set", "replicaCount=1").returncode == 0

@@ -230,6 +230,24 @@ OTEL env. Explicit platform.langfuse* wins over envFrom of {release}-langfuse-ot
 {{- end -}}
 {{- end }}
 
+{{- /* Fail at render instead of a crash-looping pod: the stateless sidecar keeps runs in pod
+     memory and wraps a sidecar runtime only; a perimeter platform (contract PROFILE, read in
+     this namespace at install time — `helm template` skips it) has no database to attach. */ -}}
+{{- define "zelkor-agent.validateRuntimeShape" -}}
+{{- $stateless := ((.Values.sidecar).stateless | default false) -}}
+{{- $runtime := (.Values.runtime | default "aegra") | toString | lower -}}
+{{- if and $stateless (eq $runtime "aegra") -}}
+{{- fail "sidecar.stateless needs a sidecar runtime (runtime: a2a or opencode): Aegra always needs a database" -}}
+{{- end -}}
+{{- if and $stateless (or (gt (int (.Values.replicaCount | default 1)) 1) ((.Values.autoscaling).enabled | default false)) -}}
+{{- fail "sidecar.stateless keeps runs in pod memory: run one replica (replicaCount: 1, autoscaling off)" -}}
+{{- end -}}
+{{- $contract := lookup "v1" "ConfigMap" .Release.Namespace "zelkor-platform-contract" -}}
+{{- if and (not $stateless) (eq ((($contract).data).PROFILE | default "") "perimeter") -}}
+{{- fail "the platform runs profile=perimeter (no database): set sidecar.stateless=true with runtime a2a or opencode (zelkor deploy does this)" -}}
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-agent.tenantJwksConfigMapName" -}}
 {{- $auth := .Values.auth | default dict -}}
 {{- $explicit := ($auth.jwksConfigMap | default "") | trim -}}

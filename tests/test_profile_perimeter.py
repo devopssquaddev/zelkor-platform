@@ -251,6 +251,31 @@ def test_remote_jwks_publishes_no_jwks_configmap_in_the_contract():
     assert data["TENANT_JWT_CONFIGMAP"] == "zelkor-platform-tenant-jwt"
 
 
+def _names(docs: list[dict], kind: str) -> set[str]:
+    return {d["metadata"]["name"] for d in docs if d.get("kind") == kind}
+
+
+def test_perimeter_renders_no_policies_or_secrets_for_absent_components():
+    # A policy or Secret is rendered for a component only when that component exists.
+    docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout)
+    assert _names(docs, "NetworkPolicy") == {
+        "zelkor-platform-default-deny-ingress", "zelkor-platform-agent-egress",
+        "zelkor-platform-mcp-aigateway-egress"}
+    assert _names(docs, "Secret") == {"zelkor-platform-ai-gateway-consumer", "zelkor-platform-openai-api-key"}
+    egress = _named(docs, "NetworkPolicy", "-agent-egress")["spec"]["egress"]
+    components = {(p.get("podSelector") or {}).get("matchLabels", {}).get("app.kubernetes.io/component")
+                  for rule in egress for p in rule.get("to", [])}
+    assert not components & {"aegra", "langfuse"}
+
+
+def test_full_profile_keeps_its_component_policies():
+    docs = _docs(_helm("-f", str(ROOT / "profiles" / "values-local.yaml"), *PROVIDER).stdout)  # NPs on
+    nps = _names(docs, "NetworkPolicy")
+    for name in ("aegra-egress", "mcp-postgres-egress", "postgres-dest-deny", "valkey-dest-deny"):
+        assert f"zelkor-platform-{name}" in nps, name
+    assert "zelkor-platform-ai-gateway-nemo" in _names(docs, "Secret")
+
+
 def test_lab_overlays_publish_the_same_agents_host():
     # Wrapped agents get their HTTPRoute on gateway.hosts.agents in both modes.
     full = yaml.safe_load((ROOT / "profiles" / "values-local.yaml").read_text())

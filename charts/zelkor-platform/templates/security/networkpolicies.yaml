@@ -47,6 +47,7 @@ spec:
           port: 8080
         - protocol: TCP
           port: 10080
+    {{- if .Values.aegra.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -54,7 +55,9 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- end }}
     {{- /* No direct NeMo: models only via the AI Gateway, which requires the caller key. */}}
+    {{- if .Values.langfuse.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -62,6 +65,8 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
+{{- if .Values.aegra.enabled }}
 ---
 # Aegra runtimes (front door + workers) need Postgres + Valkey for the checkpointer.
 apiVersion: networking.k8s.io/v1
@@ -122,6 +127,7 @@ spec:
         - protocol: TCP
           port: 10080
     {{- /* No direct NeMo: models only via the AI Gateway, which requires the caller key. */}}
+    {{- if .Values.langfuse.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -129,7 +135,10 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
+{{- end }}
+{{- if .Values.mcp.postgresMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -162,6 +171,8 @@ spec:
         - protocol: TCP
           port: 5432
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
+{{- end }}
+{{- if .Values.mcp.qdrantMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -214,6 +225,7 @@ spec:
         - protocol: TCP
           port: 10080
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
+{{- end }}
 {{- if and .Values.mcp.aigatewayMCP .Values.mcp.aigatewayMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -261,6 +273,7 @@ spec:
           port: 10080
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
 {{- end }}
+{{- if .Values.mcp.sandboxMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -283,6 +296,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+{{- end }}
 {{- $surfaces := .Values.langfuse.surfaces | default dict }}
 {{- $llmConn := $surfaces.llmConnection | default dict }}
 {{- $seedTools := and $surfaces.tools $surfaces.tools.seedFromMcp }}
@@ -348,6 +362,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- if .Values.langfuse.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -355,6 +370,7 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:

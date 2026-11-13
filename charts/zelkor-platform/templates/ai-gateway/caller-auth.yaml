@@ -19,6 +19,7 @@ data:
   {{- /* Still accepted until the next rotation, so pods that have not restarted keep working. */}}
   agents-previous: {{ $keys.previous | b64enc | quote }}
   {{- end }}
+{{- if .Values.guardrails.nemo.enabled }}
 ---
 apiVersion: v1
 kind: Secret
@@ -31,6 +32,7 @@ metadata:
 type: Opaque
 data:
   nemo: {{ $keys.nemo | b64enc | quote }}
+{{- end }}
 {{- $hostnames := include "zelkor-platform.aiGatewayHostnames" . | fromJsonArray -}}
 {{- $hasProviders := eq (include "zelkor-platform.aiGatewayHasProviders" .) "true" -}}
 {{- $intercept := eq (include "zelkor-platform.nemoInterceptEnabled" .) "true" -}}

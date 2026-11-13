@@ -1,6 +1,7 @@
 {{- $graphId := include "zelkor-agent.primaryGraphId" . }}
 {{- $intent := .Values.workload.intent | default dict }}
 {{- $stateless := ((.Values.sidecar).stateless | default false) }}
+{{- include "zelkor-agent.validateRuntimeShape" . }}
 {{- if not $stateless }}
 {{- include "zelkor-agent.validateDatastoreAttach" . }}
 {{- end }}
