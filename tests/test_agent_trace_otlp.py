@@ -2,74 +2,63 @@
 
 The OTLP counterpart of the Langfuse waterfall test, for installs that export to a collector
 (profile=perimeter, or full with Langfuse off). Needs KUBECONTEXT, ZELKOR_RUNTIME_GRAPHS, a
-tenant token, a platform contract with OTLP_RELAY_SERVICE, and ZELKOR_OTLP_SINK=<namespace>/
-<deployment> naming a collector whose `debug` exporter (verbosity normal) logs the spans it
-receives. Skips otherwise.
+tenant token, a platform contract with OTLP_RELAY_SERVICE, and ZELKOR_OTLP_SINK (see
+tests/helpers/otlp_sink.py). With ZELKOR_OTLP_EXPORTER set, the collector must also have
+forwarded the spans to its backend without a send failure. Skips otherwise.
 """
 from __future__ import annotations
 
 import os
-import re
 import time
 import uuid
 
 import pytest
 
-from tests.helpers.kube import kubectl_run, platform_contract
-from tests.helpers.runtime_agents import require_kube, run, runtime_graphs, tenant_id, tenant_token
+from tests.helpers import otlp_sink
+from tests.helpers.kube import platform_contract
+from tests.helpers.runtime_agents import require_kube, run, tenant_id, tenant_token
 
-# debug exporter (normal): "<span name> <trace id> <span id> key=value ...", the first span of a
-# batch prefixed with "<timestamp>\tinfo\t".
-SPAN = re.compile(r"(?:^|\t)(?P<name>[^\t]+?) (?P<trace>[0-9a-f]{32}) (?P<span>[0-9a-f]{16})(?P<attrs>.*)$")
-
-
-def _attr(attrs: str, key: str) -> str:
-    m = re.search(rf"(?:^| ){re.escape(key)}=(\S+)", attrs)
-    return m.group(1) if m else ""
+GRAPHS = [g.strip() for g in os.environ.get("ZELKOR_RUNTIME_GRAPHS", "").split(",") if g.strip()] or [""]
 
 
-def _sink() -> tuple[str, str]:
-    sink = os.environ.get("ZELKOR_OTLP_SINK", "").strip()
-    if "/" not in sink:
-        pytest.skip("ZELKOR_OTLP_SINK=<namespace>/<deployment> not set (collector with a debug exporter)")
-    ns, deploy = sink.split("/", 1)
-    return ns, deploy
-
-
-def _spans(ns: str, deploy: str) -> list[dict]:
-    res = kubectl_run(["logs", f"deploy/{deploy}", "--since=3m"], namespace=ns, timeout=60)
-    assert res.returncode == 0, res.stderr
-    spans = []
-    for line in res.stdout.splitlines():
-        m = SPAN.search(line)
-        if m:
-            spans.append({"name": m["name"].strip(), "trace": m["trace"], "attrs": m["attrs"]})
-    return spans
-
-
-def test_wrapped_run_is_one_waterfall_in_the_collector():
+def _require_otlp() -> None:
     require_kube()
-    ns, deploy = _sink()
+    otlp_sink.sink()
     if not platform_contract(os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "zelkor")).get("OTLP_RELAY_SERVICE"):
         pytest.skip("platform exports no OTLP (contract has no OTLP_RELAY_SERVICE)")
-    graph = runtime_graphs()[0]
+
+
+@pytest.mark.parametrize("graph", GRAPHS)
+def test_wrapped_run_is_one_waterfall_in_the_collector(graph):
+    if not graph:
+        pytest.skip("ZELKOR_RUNTIME_GRAPHS not set")
+    _require_otlp()
     token = tenant_token("tenant-a")
     thread, _ = run(graph, token, f"Reply with one word: ok ({uuid.uuid4().hex[:8]})")
 
-    deadline = time.monotonic() + 60
-    trace: list[dict] = []
-    while time.monotonic() < deadline:
-        spans = _spans(ns, deploy)
-        roots = [s for s in spans if s["name"] == graph and _attr(s["attrs"], "session.id") == thread]
-        if roots:
-            trace = [s for s in spans if s["trace"] == roots[0]["trace"]]
-            if sum(_attr(s["attrs"], "gen_ai.operation.name") == "chat" for s in trace) >= 2:
-                break
-        time.sleep(3)
+    trace = otlp_sink.trace_for_session(graph, thread)
     assert trace, f"no {graph} root span with session.id={thread} reached the collector"
     (root,) = [s for s in trace if s["name"] == graph]
-    assert _attr(root["attrs"], "user.id") == tenant_id(token)
-    chats = [s for s in trace if _attr(s["attrs"], "gen_ai.operation.name") == "chat"]
+    assert otlp_sink.attr(root, "user.id") == tenant_id(token)
+    chats = [s for s in trace if otlp_sink.attr(s, "gen_ai.operation.name") == "chat"]
     # the sidecar's chat span and the gateway's chat span join the agent's trace (traceparent)
     assert len(chats) >= 2, [s["name"] for s in trace]
-    assert any(_attr(s["attrs"], "gen_ai.provider.name") for s in chats), "no gateway chat span in the trace"
+    assert any(otlp_sink.attr(s, "gen_ai.provider.name") for s in chats), "no gateway chat span in the trace"
+    print(f"{graph} trace_id={root['trace']} session.id={thread}")
+
+
+def test_collector_forwards_run_spans_to_its_backend():
+    """The debug log proves receipt; the backend exporter's counters prove delivery."""
+    if not GRAPHS[0]:
+        pytest.skip("ZELKOR_RUNTIME_GRAPHS not set")
+    _require_otlp()
+    sent0, failed0 = otlp_sink.exporter_counts()
+    thread, _ = run(GRAPHS[0], tenant_token("tenant-a"), f"Reply with one word: ok ({uuid.uuid4().hex[:8]})")
+    assert otlp_sink.trace_for_session(GRAPHS[0], thread), "run never reached the collector"
+    deadline = time.monotonic() + 60  # batch processor flushes within seconds
+    sent, failed = sent0, failed0
+    while time.monotonic() < deadline and sent <= sent0:
+        time.sleep(5)
+        sent, failed = otlp_sink.exporter_counts()
+    assert sent > sent0, "collector received the run but its backend exporter sent no spans"
+    assert failed == failed0, f"backend exporter failed {failed - failed0} spans"
