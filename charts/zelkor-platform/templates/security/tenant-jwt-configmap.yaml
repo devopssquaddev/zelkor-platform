@@ -1,6 +1,8 @@
 {{- include "zelkor-platform.compile" . -}}
 {{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
-{{- if .Values.aegra.enabled }}
+{{- /* The tenant-JWT contract for every workload that verifies tenant tokens (Aegra, sidecars),
+     in both profiles — not only when Aegra runs. */}}
+{{- if ($jwt.issuer | default "" | trim) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

@@ -215,6 +215,42 @@ def test_perimeter_on_an_external_gateway_emits_no_envoyproxy():
     assert _named(_docs(proc.stdout), "EnvoyProxy", "") is None
 
 
+def _contract(docs: list[dict]) -> dict:
+    cm = _named(docs, "ConfigMap", "zelkor-platform-contract")
+    assert cm is not None
+    return cm["data"]
+
+
+def test_perimeter_contract_publishes_mode_and_omits_absent_components():
+    # One mode-neutral contract (ADR 04 v2.1) the CLI and Operator read in both profiles.
+    data = _contract(_docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER,
+                                 "--set", f"platform.telemetry.otlp.endpoint={OTLP_ENDPOINT}").stdout))
+    assert data["CONTRACT_VERSION"] == "v2.1"
+    assert data["PROFILE"] == "perimeter"
+    assert data["RELEASE"] == "zelkor-platform"
+    assert data["AGENTS_HOST"] == "agents.localhost"
+    assert data["NETWORK_POLICIES"] == "true"  # effective: forced by the profile
+    assert data["GATEWAY_NAME"] == "zelkor-platform-gateway" and data["GATEWAY_NAMESPACE"] == "zelkor"
+    assert data["TENANT_JWT_CONFIGMAP"] == "zelkor-platform-tenant-jwt"
+    assert data["TENANT_JWKS_CONFIGMAP"] == "zelkor-platform-tenant-jwks"  # lab overlay signs locally
+    assert data["OTLP_RELAY_SERVICE"] == "zelkor-platform-otlp.zelkor.svc.cluster.local:80"
+    for absent in ("AEGRA_FRONTDOOR_SERVICE", "DATABASE_SECRET_REF", "VALKEY_SECRET_REF"):
+        assert absent not in data
+
+
+def test_perimeter_publishes_the_tenant_jwt_contract():
+    # No longer Aegra-gated: a Helm-only agent install inherits the issuer in perimeter too.
+    cm = _named(_docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout), "ConfigMap", "-tenant-jwt")
+    assert cm is not None and cm["metadata"]["name"] == "zelkor-platform-tenant-jwt"
+    assert cm["data"]["AUTH_JWT_ISSUER"] == "https://local.zelkor.invalid"
+
+
+def test_remote_jwks_publishes_no_jwks_configmap_in_the_contract():
+    data = _contract(_docs(_helm("-f", str(THIN_PERIMETER), *PROVIDER, *JWT).stdout))
+    assert "TENANT_JWKS_CONFIGMAP" not in data
+    assert data["TENANT_JWT_CONFIGMAP"] == "zelkor-platform-tenant-jwt"
+
+
 def test_lab_overlays_publish_the_same_agents_host():
     # Wrapped agents get their HTTPRoute on gateway.hosts.agents in both modes.
     full = yaml.safe_load((ROOT / "profiles" / "values-local.yaml").read_text())
