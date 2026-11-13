@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -19,6 +20,9 @@ MAX_BODY_BYTES = int(os.getenv("MCP_MAX_BODY_BYTES", "1048576"))
 MAX_CONCURRENT_REQUESTS = int(os.getenv("MCP_MAX_CONCURRENT_REQUESTS", "32"))
 TOOL_DEADLINE_S = min(float(os.getenv("MCP_TOOL_DEADLINE_SECONDS", "100")), 110.0)
 METRICS_PORT = int(os.getenv("MCP_METRICS_PORT", "9090"))
+# W3C trace context of the current tools/call (copied into the tool thread by anyio), so a
+# backend that calls another service (aigateway /v1) continues the caller's trace.
+TRACE_CONTEXT: ContextVar[Dict[str, str]] = ContextVar("zelkor_trace_context", default={})
 
 try:
     from prometheus_client import start_http_server
@@ -186,11 +190,13 @@ def build_starlette_app(
 
     @mcp_server.call_tool()
     async def _call_tool(name: str, arguments: dict | None) -> list:
+        headers = _headers()
+        TRACE_CONTEXT.set({k: v for k, v in headers.items() if k in ("traceparent", "tracestate")})
         text = await run_tool_call(
             tool_handler,
             name,
             arguments,
-            tenant_extractor(_headers()),
+            tenant_extractor(headers),
             limiter=limiter,
             policy=policy,
             rate=rate,

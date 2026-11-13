@@ -41,7 +41,9 @@ def test_mcproute_requires_gateway_or_parent_ref():
     assert "MCPRoute" in r.stderr or "gateway" in r.stderr
 
 
-def test_native_backends_forward_authorization_only():
+def test_native_backends_forward_authorization_and_trace_context_only():
+    """Authorization for the backend's own JWT check; W3C trace context so a backend's
+    downstream call (aigateway /v1) joins the agent run's trace. Nothing else."""
     r = _helm()
     assert r.returncode == 0, r.stderr
     route = _mcproute(_docs(r.stdout))
@@ -49,7 +51,7 @@ def test_native_backends_forward_authorization_only():
     assert len(natives) >= 4
     for ref in natives:
         headers = [h.get("name") if isinstance(h, dict) else h for h in ref.get("forwardHeaders") or []]
-        assert headers == ["Authorization"]
+        assert headers == ["Authorization", "traceparent", "tracestate"]
         assert ref.get("group") == "gateway.envoyproxy.io"
         assert ref.get("kind") == "Backend"
 

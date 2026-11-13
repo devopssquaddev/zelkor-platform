@@ -441,3 +441,27 @@ def test_mcp_delete_outside_a_run_is_local():
     seen = len(gw.seen)
     assert client.delete("/run/active/mcp", headers={"mcp-session-id": sid}).status_code == 204
     assert len(gw.seen) == seen and sid not in egress._sessions
+
+
+def test_mcp_requests_carry_the_run_trace_context():
+    """The MCP gateway's spans join the run's trace: tools/call is a child of the tool span,
+    other MCP methods (initialize, tools/list) of the run root. Only W3C trace context goes."""
+    tracing, exporter = _recording_tracing()
+    up = Upstream()
+    slot = RunSlot()
+    config = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                          tool_allow_all=True)
+    client = TestClient(Egress(slot, tracing, config,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(up))).app())
+    ctx = _activate(slot)
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    client.post("/run/active/mcp", json=_rpc("tools/list"))
+    client.post("/run/active/mcp", json=_rpc("tools/call", mid=2, name="postgres__query", arguments={}))
+    tracing.end_root(ctx.root_span, ctx)
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    root, tool = spans["desk"], spans["postgres__query"]
+    listed, called = up.requests[-2].headers, up.requests[-1].headers
+    assert f"{root.context.span_id:016x}" in listed["traceparent"]
+    assert f"{tool.context.span_id:016x}" in called["traceparent"]
+    assert f"{root.context.trace_id:032x}" in called["traceparent"]
+    assert not [h for h in called if h.startswith("x-zelkor-") or h == "baggage"], dict(called)

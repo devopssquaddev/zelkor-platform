@@ -166,6 +166,11 @@ class Egress:
 
     # -- MCP --------------------------------------------------------------------------
 
+    def _trace_headers(self, ctx: RunContext, span: Any = None) -> Dict[str, str]:
+        """W3C trace context only for the MCP gateway (no baggage or identity headers)."""
+        return {k: v for k, v in self.tracing.propagation_headers(ctx, span).items()
+                if k in ("traceparent", "tracestate")}
+
     async def _upstream_session(self, http, ctx: RunContext, sid: str) -> str:
         """Upstream session for this runtime session in the current run (reopened per run)."""
         entry = self._sessions.get(sid)
@@ -174,7 +179,7 @@ class Egress:
         if entry["run"] == ctx.run_id:
             return entry["upstream"]
         base = {"authorization": ctx.bearer, "content-type": "application/json",
-                "accept": "application/json, text/event-stream"}
+                "accept": "application/json, text/event-stream", **self._trace_headers(ctx)}
         init = {"jsonrpc": "2.0", "id": f"zelkor-reinit-{uuid.uuid4().hex[:8]}", "method": "initialize",
                 "params": entry["init"]}
         resp = await http.post(self.cfg.mcp_upstream, content=json.dumps(init).encode(), headers=base)
@@ -298,6 +303,8 @@ class Egress:
                                     attrs={"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": name})
             spans[mid] = (cm, cm.__enter__(), name, key)
 
+        # the gateway's MCP spans join this run (one call: under its tool span)
+        headers.update(self._trace_headers(ctx, next(iter(spans.values()))[1] if len(spans) == 1 else None))
         payload = json.dumps(body).encode("utf-8")
         send = asyncio.create_task(http.post(self.cfg.mcp_upstream, content=payload, headers=headers))
         while calls:

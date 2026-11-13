@@ -136,3 +136,38 @@ def test_call_schema_spells_out_chat_messages_and_operations():
     assert item["required"] == ["role", "content"]
     assert "chat.completions" in props["messages"]["description"]
     assert "embeddings" in props["input"]["description"]
+
+
+def test_gateway_call_continues_the_callers_trace(monkeypatch):
+    """The tool's /v1 call joins the agent run's trace instead of starting its own."""
+    from common.mcp_server import TRACE_CONTEXT
+    import wrappers.aigateway_server as srv
+
+    monkeypatch.setattr(srv, "AI_GATEWAY_URL", "http://gw/v1")
+    tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+    sent = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(req, timeout):
+        sent.update({k.lower(): v for k, v in req.header_items()})
+        return _Resp()
+
+    monkeypatch.setattr(srv.urllib.request, "urlopen", fake_urlopen)
+    token = TRACE_CONTEXT.set({"traceparent": tp})
+    try:
+        post_gateway("chat/completions", {"model": "m", "messages": []})
+    finally:
+        TRACE_CONTEXT.reset(token)
+    assert sent["traceparent"] == tp
+    sent.clear()
+    post_gateway("chat/completions", {"model": "m", "messages": []})
+    assert "traceparent" not in sent
