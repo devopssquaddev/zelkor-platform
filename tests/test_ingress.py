@@ -111,14 +111,27 @@ def test_gateway_resources_configured(kubecontext):
     if AEGRA_HOST not in all_hosts:
         pytest.skip(f"{AEGRA_HOST} not in overlay hosts {all_hosts}")
 
-def test_gateway_routing_http_endpoints():
+def _routed_hosts(kubecontext) -> set[str] | None:
+    """Hostnames served by any HTTPRoute, or None when the cluster is not reachable (tunnel-only run)."""
+    res = subprocess.run(["kubectl", "--context", kubecontext, "get", "httproute", "-A", "-o", "json"],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        return None
+    return {h for r in json.loads(res.stdout).get("items", []) for h in r.get("spec", {}).get("hostnames", [])}
+
+
+def test_gateway_routing_http_endpoints(kubecontext):
     """
     Verify platform HTTP routing through Gateway via Host headers.
     """
+    routed = _routed_hosts(kubecontext)
     endpoints = [
-        (LANGFUSE_HOST, "/api/public/health"),
-        (AEGRA_HOST, "/health"),
+        (host, path)
+        for host, path in ((LANGFUSE_HOST, "/api/public/health"), (AEGRA_HOST, "/health"))
+        if routed is None or host in routed  # profile=perimeter routes neither Langfuse nor agents
     ]
+    if not endpoints:
+        pytest.skip(f"neither {LANGFUSE_HOST} nor {AEGRA_HOST} is routed (e.g. profile=perimeter)")
 
     for host, path in endpoints:
         url = f"{GATEWAY_BASE_URL}{path}"
