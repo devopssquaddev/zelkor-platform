@@ -81,6 +81,8 @@ STRICT_ARRAY_ITEM_SCHEMAS = {
         "properties" => {
           "include" => { "type" => "array", "items" => { "type" => "string" } },
           "includeRegex" => { "type" => "array", "items" => { "type" => "string" } },
+          "exclude" => { "type" => "array", "items" => { "type" => "string" } },
+          "excludeRegex" => { "type" => "array", "items" => { "type" => "string" } },
         },
       },
       "forwardHeaders" => {
