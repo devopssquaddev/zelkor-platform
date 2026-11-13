@@ -9,8 +9,7 @@
 {{- $otlp := ((.Values.platform.telemetry).otlp | default dict) -}}
 {{- $u := urlParse ($otlp.endpoint | trim) -}}
 {{- $tls := eq $u.scheme "https" -}}
-{{- /* sprig urlParse has no port key; take it from host. */ -}}
-{{- $port := regexFind "[0-9]+$" (regexFind ":[0-9]+$" $u.host) | default (ternary 443 4318 $tls) | int -}}
+{{- $port := include "zelkor-platform.urlPort" (dict "url" ($otlp.endpoint | trim) "default" (ternary 443 4318 $tls)) | int -}}
 {{- $prefix := $u.path | default "" | trimSuffix "/" | trimSuffix "/v1/traces" -}}
 {{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
 {{- if $targetHost }}

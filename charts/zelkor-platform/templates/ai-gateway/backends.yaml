@@ -32,7 +32,7 @@ spec:
   endpoints:
     - fqdn:
         hostname: {{ $parsed.hostname | required "aiGateway.providers.ollamaLocal.host must include a hostname" }}
-        port: {{ $parsed.port | default 11434 | int }}
+        port: {{ include "zelkor-platform.urlPort" (dict "url" .Values.aiGateway.providers.ollamaLocal.host "default" 11434) | int }}
 ---
 {{- end }}
 
@@ -271,7 +271,7 @@ spec:
   endpoints:
     - fqdn:
         hostname: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).hostname | default "vllm.ai-cluster.svc" }}
-        port: {{ (urlParse .Values.aiGateway.providers.vllm.backendUrl).port | default 8000 | int }}
+        port: {{ include "zelkor-platform.urlPort" (dict "url" .Values.aiGateway.providers.vllm.backendUrl "default" 8000) | int }}
 ---
 {{- end }}
 

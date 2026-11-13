@@ -116,6 +116,12 @@ true
 {{- end -}}
 {{- end }}
 
+{{- /* Port of a URL, or .default when it has none. sprig urlParse has no port key, so read
+     it from host ("name:port"). Usage: include "zelkor-platform.urlPort" (dict "url" $u "default" 443) */}}
+{{- define "zelkor-platform.urlPort" -}}
+{{- regexFind "[0-9]+$" (regexFind ":[0-9]+$" (urlParse .url).host) | default .default -}}
+{{- end }}
+
 {{- /* OTLP relay: agents export traces through the gateway (consumer-key auth), so their egress
      stays gateway + DNS. Needs the AI gateway for the consumer key Secret. */}}
 {{- define "zelkor-platform.otlpRelayEnabled" -}}
