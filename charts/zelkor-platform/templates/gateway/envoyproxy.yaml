@@ -27,14 +27,15 @@ spec:
     accessLog:
       settings:
         - matches:
-            - "!request.path.startsWith('/mcp') && !request.path.startsWith('/v1')"
+            - "!request.path.startsWith('/mcp') && (!request.path.startsWith('/v1') || request.path == '/v1/traces')"
           sinks:
             - type: File
               file:
                 path: /dev/stdout
         {{- if $v1On }}
         - matches:
-            - "request.path.startsWith('/v1')"
+            {{- /* /v1/traces is the OTLP relay (otlp-relay.yaml), not an LLM call. */}}
+            - "request.path.startsWith('/v1') && request.path != '/v1/traces'"
           format:
             type: JSON
             json:

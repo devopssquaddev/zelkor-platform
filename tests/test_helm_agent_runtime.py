@@ -124,6 +124,51 @@ def test_egress_only_stateless_sidecar_has_no_db():
     assert _env(_c(spec, "agent"))["OPENAI_BASE_URL"] == "http://127.0.0.1:8001/run/active/v1"
 
 
+PERIMETER = ("--set", "runtime=a2a", "--set", "sidecar.stateless=true",
+             "--set", "image.repository=ghcr.io/acme/agent")
+
+
+def test_sidecar_exports_traces_through_platform_otlp_relay():
+    # CE-15a-3: the sidecar posts to the platform's {release}-otlp relay (the gateway) and
+    # authenticates with the consumer key; it never holds the collector address or headers.
+    spec = _deploy(*PERIMETER, "--set", "platform.otlp=true")
+    env = _c(spec, "sidecar")["env"]
+    names = [e["name"] for e in env]
+    s_env = _env(_c(spec, "sidecar"))
+    assert s_env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://zelkor-platform-otlp"
+    assert s_env["OTEL_EXPORTER_OTLP_HEADERS"] == "authorization=Bearer $(ZELKOR_CONSUMER_KEY)"
+    # $(VAR) expansion only sees variables defined earlier in the same container
+    assert names.index("ZELKOR_CONSUMER_KEY") < names.index("OTEL_EXPORTER_OTLP_HEADERS")
+    assert not any(n.startswith("OTEL_EXPORTER_OTLP") for n in _env(_c(spec, "agent")))
+
+
+def test_sidecar_otlp_relay_cross_namespace_uses_fqdn():
+    spec = _deploy(*PERIMETER, "--set", "platform.otlp=true", "--set", "platform.namespace=zelkor-sys")
+    assert _env(_c(spec, "sidecar"))["OTEL_EXPORTER_OTLP_ENDPOINT"] == \
+        "http://zelkor-platform-otlp.zelkor-sys.svc.cluster.local"
+
+
+def test_sidecar_without_otlp_exports_nothing():
+    assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in _env(_c(_deploy(*PERIMETER), "sidecar"))
+
+
+def test_otlp_relay_requires_platform_release():
+    r = _helm_agent(*PERIMETER, "--set", "platform.otlp=true", "--set", "platform.releaseName=",
+                    "--set", "auth.jwksUri=https://issuer.example/jwks")
+    assert r.returncode != 0 and "platform.otlp needs platform.releaseName" in r.stderr
+
+
+def test_egress_policy_has_no_collector_rule():
+    # The relay is the gateway, so no OTLP port or collector CIDR is ever opened.
+    r = _helm_agent(*PERIMETER, "--set", "platform.otlp=true", "--set", "security.networkPolicies.enabled=true")
+    assert r.returncode == 0, r.stderr
+    (np,) = [x for x in yaml.safe_load_all(r.stdout) if x and x.get("kind") == "NetworkPolicy"
+             and x["metadata"]["name"].endswith("-egress")]
+    ports = {p["port"] for rule in np["spec"]["egress"] for p in rule.get("ports", [])}
+    assert not ports & {4317, 4318}
+    assert not any("ipBlock" in t for rule in np["spec"]["egress"] for t in rule.get("to", []))
+
+
 def test_kind_host_network_gateway_cidrs_add_node_ip_blocks_only():
     src = _ingress("--set", "security.networkPolicies.hostNetworkGatewayCIDRs[0]=172.22.0.2/32")
     assert src[1] == {"ipBlock": {"cidr": "172.22.0.2/32"}}

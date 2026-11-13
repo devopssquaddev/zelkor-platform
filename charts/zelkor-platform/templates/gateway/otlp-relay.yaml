@@ -1,0 +1,136 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- /* CE-15a-3: OTLP relay. Agent sidecars POST /v1/traces to {release}-otlp (the Envoy dataplane)
+     instead of the collector, so agent egress stays gateway + DNS and agents never hold the
+     collector address or credentials. A plain HTTPRoute on its own hostnames: no AIGatewayRoute,
+     no extProc/cost filter. Callers present the agents consumer key; the gateway strips it and
+     adds the collector headers. */}}
+{{- if eq (include "zelkor-platform.otlpRelayEnabled" .) "true" }}
+{{- $fullname := include "zelkor-platform.fullname" . -}}
+{{- $otlp := ((.Values.platform.telemetry).otlp | default dict) -}}
+{{- $u := urlParse ($otlp.endpoint | trim) -}}
+{{- $tls := eq $u.scheme "https" -}}
+{{- /* sprig urlParse has no port key; take it from host. */ -}}
+{{- $port := regexFind "[0-9]+$" (regexFind ":[0-9]+$" $u.host) | default (ternary 443 4318 $tls) | int -}}
+{{- $prefix := $u.path | default "" | trimSuffix "/" | trimSuffix "/v1/traces" -}}
+{{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
+{{- if $targetHost }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-otlp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.telemetry") | nindent 4 }}
+    app.kubernetes.io/component: otlp-relay
+spec:
+  type: ExternalName
+  externalName: {{ $targetHost }}
+  ports:
+    - name: http
+      port: {{ .Values.aiGateway.inClusterService.port | default 80 }}
+      protocol: TCP
+---
+{{- end }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ $fullname }}-otlp-collector
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.telemetry") | nindent 4 }}
+    app.kubernetes.io/component: otlp-relay
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ $u.hostname | required "platform.telemetry.otlp.endpoint must be a URL with a hostname" | quote }}
+        port: {{ $port }}
+---
+{{- if $tls }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: {{ $fullname }}-otlp-collector-tls
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.telemetry") | nindent 4 }}
+    app.kubernetes.io/component: otlp-relay
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: {{ $fullname }}-otlp-collector
+  validation:
+    wellKnownCACertificates: System
+    hostname: {{ $u.hostname | quote }}
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullname }}-otlp-route
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.telemetry") | nindent 4 }}
+    app.kubernetes.io/component: otlp-relay
+spec:
+  parentRefs:
+    {{- include "zelkor-platform.gatewayParentRef" . | nindent 4 }}
+  hostnames:
+    - {{ printf "%s-otlp" $fullname | quote }}
+    - {{ printf "%s-otlp.%s.svc.cluster.local" $fullname .Release.Namespace | quote }}
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /v1/traces
+      {{- $headers := list -}}
+      {{- range (splitList "," ($otlp.headers | default "")) -}}
+      {{- $kv := regexSplit "=" (trim .) 2 -}}
+      {{- if and (eq (len $kv) 2) (trim (index $kv 0)) -}}
+      {{- $headers = append $headers (dict "name" (trim (index $kv 0)) "value" (trim (index $kv 1) | replace "%20" " ")) -}}
+      {{- end -}}
+      {{- end }}
+      {{- if or $headers $prefix }}
+      filters:
+        {{- if $headers }}
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              {{- range $headers }}
+              - name: {{ .name | quote }}
+                value: {{ .value | quote }}
+              {{- end }}
+        {{- end }}
+        {{- if $prefix }}
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: {{ printf "%s/v1/traces" $prefix | quote }}
+        {{- end }}
+      {{- end }}
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: {{ $fullname }}-otlp-collector
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $fullname }}-otlp-caller-auth
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.telemetry") | nindent 4 }}
+    app.kubernetes.io/component: otlp-relay
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $fullname }}-otlp-route
+  apiKeyAuth:
+    credentialRefs:
+      - name: {{ include "zelkor-platform.aiGatewayConsumerSecret" . }}
+    extractFrom:
+      - headers: [authorization]
+    sanitize: true
+{{- end }}

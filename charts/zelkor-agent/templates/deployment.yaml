@@ -268,13 +268,14 @@ spec:
               value: {{ include "zelkor-agent.a2aPublicUrl" . | quote }}
             {{- end }}
             {{- include "zelkor-agent.langfuseEnv" . | nindent 12 }}
-            {{- with (.Values.platform.otlpEndpoint | default "" | trim) }}
+            {{- if .Values.platform.otlp }}
+            {{- /* CE-15a-3: traces go to the platform's OTLP relay on the gateway, authenticated with
+                 the consumer key defined above ($(VAR) expands earlier env only). */}}
+            {{- $rel := include "zelkor-agent.platformReleaseName" . | required "platform.otlp needs platform.releaseName (the platform release that renders the OTLP relay)" }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with (.Values.platform.otlpHeaders | default "" | trim) }}
+              value: {{ printf "http://%s" (include "zelkor-agent.clusterHost" (dict "root" . "name" (printf "%s-otlp" $rel))) | quote }}
             - name: OTEL_EXPORTER_OTLP_HEADERS
-              value: {{ . | quote }}
+              value: "authorization=Bearer $(ZELKOR_CONSUMER_KEY)"
             {{- end }}
           volumeMounts:
             - name: sidecar-tmp

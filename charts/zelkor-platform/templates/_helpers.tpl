@@ -116,6 +116,14 @@ true
 {{- end -}}
 {{- end }}
 
+{{- /* OTLP relay: agents export traces through the gateway (consumer-key auth), so their egress
+     stays gateway + DNS. Needs the AI gateway for the consumer key Secret. */}}
+{{- define "zelkor-platform.otlpRelayEnabled" -}}
+{{- if and (eq (include "zelkor-platform.gatewayOtlpEnabled" .) "true") .Values.aiGateway.enabled -}}
+true
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-platform.compile.telemetry" -}}
 {{- $p := .Values.platform | default dict -}}
 {{- $tel := $p.telemetry | default dict -}}

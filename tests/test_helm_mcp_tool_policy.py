@@ -161,8 +161,10 @@ def test_mcp_access_log_metadata_only_and_default_log_kept():
     default = settings[0]
     mcp = _by_event(settings, "mcp_access")
     assert "format" not in default  # EG default JSON format for every other path
-    # CE-15a-3: the default matcher now excludes both /mcp and /v1 (each has its own log)
-    assert default["matches"] == ["!request.path.startsWith('/mcp') && !request.path.startsWith('/v1')"]
+    # CE-15a-3: the default matcher excludes /mcp and /v1 (each has its own log), except the
+    # OTLP relay's /v1/traces
+    assert default["matches"] == [
+        "!request.path.startsWith('/mcp') && (!request.path.startsWith('/v1') || request.path == '/v1/traces')"]
     assert mcp["matches"] == ["request.path.startsWith('/mcp')"]
     fields = mcp["format"]["json"]
     for key in ("mcp_method", "mcp_backend", "mcp_tool_name", "tenant_id", "response_code", "duration_ms"):
@@ -182,8 +184,13 @@ def test_mcp_access_log_absent_when_tools_disabled():
 
 def test_llm_access_log_metadata_only_on_v1():
     # CE-15a-3: always-on /v1 token log (no bodies) so perimeter (Langfuse off) has token visibility.
-    llm = _by_event(_settings(), "llm_access")
-    assert llm["matches"] == ["request.path.startsWith('/v1')"]
+    settings = _settings()
+    llm = _by_event(settings, "llm_access")
+    # OTLP relay posts (/v1/traces) are not LLM calls: they go to the default log, not llm_access.
+    assert llm["matches"] == ["request.path.startsWith('/v1') && request.path != '/v1/traces'"]
+    default = next(s for s in settings if "format" not in s)
+    assert default["matches"] == [
+        "!request.path.startsWith('/mcp') && (!request.path.startsWith('/v1') || request.path == '/v1/traces')"]
     fields = llm["format"]["json"]
     for key in ("tenant_id", "gen_ai.request.model", "llm_input_token", "llm_output_token",
                 "llm_total_token", "response_code", "duration_ms", "x_request_id"):

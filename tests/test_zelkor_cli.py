@@ -441,7 +441,8 @@ def test_upgrade_text_constant():
     assert "Pro" in UPGRADE
 
 
-def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
+def _egress_only_overlay(tmp_path, monkeypatch, *, platform_extra: str = "", top_extra: str = "") -> dict:
+    """Run `deploy --egress-only` against a mocked perimeter platform; return the agent overlay."""
     import yaml as _yaml
 
     monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
@@ -462,9 +463,11 @@ def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
         elif "helm" in argv and "get" in argv and "values" in argv:
             stdout = (
                 "gateway:\n  hosts:\n    agents: agents.example\n"
+                f"{top_extra}"
                 "platform:\n  tenants:\n    jwt:\n"
                 "      issuer: https://local.zelkor.invalid\n"
                 "      audiences:\n      - zelkor\n"
+                f"{platform_extra}"
             )
         elif "get" in argv and "deploy" in argv:
             stdout = json.dumps({"items": []})  # perimeter: no Aegra
@@ -482,7 +485,31 @@ def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
     except RuntimeError:
         pass  # the mocked rollout never reports ready; the overlay is captured at helm upgrade
     assert "overlay" in captured, "helm upgrade was not reached"
-    ov = captured["overlay"]
+    return captured["overlay"]
+
+
+OTLP_VALUES = "  telemetry:\n    otlp:\n      endpoint: http://otel-collector.monitoring.svc:4318\n      headers: x-team=abc\n"
+
+
+def test_deploy_agent_egress_only_routes_traces_via_platform_relay(tmp_path, monkeypatch):
+    # CE-15a-3: the sidecar exports through the platform's OTLP relay; the agent overlay never
+    # carries the collector address/headers and opens no collector egress.
+    ov = _egress_only_overlay(tmp_path, monkeypatch, platform_extra=OTLP_VALUES)
+    assert ov["platform"]["otlp"] is True
+    assert not {"otlpEndpoint", "otlpHeaders"} & set(ov["platform"])
+    assert "otlpCollectorCIDRs" not in ov["security"]["networkPolicies"]
+
+
+def test_deploy_agent_egress_only_without_relay_sets_no_otlp(tmp_path, monkeypatch):
+    assert "otlp" not in _egress_only_overlay(tmp_path, monkeypatch)["platform"]
+    # no AI gateway -> no consumer key -> the platform renders no relay
+    ov = _egress_only_overlay(tmp_path, monkeypatch, platform_extra=OTLP_VALUES,
+                              top_extra="aiGateway:\n  enabled: false\n")
+    assert "otlp" not in ov["platform"]
+
+
+def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
+    ov = _egress_only_overlay(tmp_path, monkeypatch)
     assert ov["runtime"] == "a2a"  # egress-only promotes aegra -> a2a (needs a sidecar bridge)
     assert ov["sidecar"]["stateless"] is True
     assert ov["platform"]["databaseUrl"] == ""

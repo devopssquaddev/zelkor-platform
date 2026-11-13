@@ -111,6 +111,61 @@ def test_perimeter_otlp_capture_content_is_opt_in():
     assert env["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] == "true"
 
 
+def _relay(*extra: str) -> list[dict]:
+    r = _helm("-f", str(LOCAL_PERIMETER), *PROVIDER, *extra)
+    assert r.returncode == 0, r.stderr
+    return [d for d in _docs(r.stdout)
+            if d.get("metadata", {}).get("labels", {}).get("app.kubernetes.io/component") == "otlp-relay"]
+
+
+def test_perimeter_otlp_relay_routes_agent_traces_through_gateway():
+    # Agents export to {release}-otlp (the gateway), never the collector: a plain HTTPRoute on its
+    # own hostnames (no AI-gateway host, so no extProc) to a collector Backend, consumer-key auth.
+    docs = _relay("--set", f"platform.telemetry.otlp.endpoint={OTLP_ENDPOINT}")
+    svc = _named(docs, "Service", "-otlp")
+    assert svc["spec"]["type"] == "ExternalName"
+    assert svc["metadata"]["name"] == "zelkor-platform-otlp"
+    route = _named(docs, "HTTPRoute", "-otlp-route")
+    assert route["spec"]["hostnames"] == ["zelkor-platform-otlp", "zelkor-platform-otlp.zelkor.svc.cluster.local"]
+    rule = route["spec"]["rules"][0]
+    assert rule["matches"] == [{"path": {"type": "Exact", "value": "/v1/traces"}}]
+    assert "filters" not in rule
+    assert rule["backendRefs"] == [{"group": "gateway.envoyproxy.io", "kind": "Backend",
+                                    "name": "zelkor-platform-otlp-collector"}]
+    backend = _named(docs, "Backend", "-otlp-collector")
+    assert backend["spec"]["endpoints"] == [{"fqdn": {"hostname": "otel-collector.monitoring.svc", "port": 4318}}]
+    assert _named(docs, "BackendTLSPolicy", "-otlp") is None
+    sp = _named(docs, "SecurityPolicy", "-otlp-caller-auth")
+    assert sp["spec"]["targetRefs"][0]["name"] == "zelkor-platform-otlp-route"
+    assert sp["spec"]["apiKeyAuth"]["credentialRefs"] == [{"name": "zelkor-platform-ai-gateway-consumer"}]
+    assert sp["spec"]["apiKeyAuth"]["sanitize"] is True
+
+
+def test_perimeter_otlp_relay_https_collector_with_path_and_headers():
+    docs = _relay("--set", "platform.telemetry.otlp.endpoint=https://otlp.example.com/otlp",
+                  "--set", "platform.telemetry.otlp.headers=x-team=abc\\,Authorization=Basic%20Zm9v")
+    backend = _named(docs, "Backend", "-otlp-collector")
+    assert backend["spec"]["endpoints"][0]["fqdn"] == {"hostname": "otlp.example.com", "port": 443}
+    tls = _named(docs, "BackendTLSPolicy", "-otlp-collector-tls")
+    assert tls["spec"]["validation"]["hostname"] == "otlp.example.com"
+    filters = {f["type"]: f for f in _named(docs, "HTTPRoute", "-otlp-route")["spec"]["rules"][0]["filters"]}
+    assert filters["RequestHeaderModifier"]["requestHeaderModifier"]["set"] == [
+        {"name": "x-team", "value": "abc"}, {"name": "Authorization", "value": "Basic Zm9v"}]
+    assert filters["URLRewrite"]["urlRewrite"]["path"] == {"type": "ReplaceFullPath",
+                                                          "replaceFullPath": "/otlp/v1/traces"}
+
+
+def test_perimeter_without_otlp_has_no_relay():
+    assert _relay() == []
+
+
+def test_otlp_relay_does_not_share_ai_gateway_host():
+    docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER,
+                       "--set", f"platform.telemetry.otlp.endpoint={OTLP_ENDPOINT}").stdout)
+    ai_hosts = set(_named(docs, "AIGatewayRoute", "-aigateway-route")["spec"]["hostnames"])
+    assert ai_hosts.isdisjoint(_named(docs, "HTTPRoute", "-otlp-route")["spec"]["hostnames"])
+
+
 def test_perimeter_mcproute_defaults_to_deny():
     docs = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER).stdout)
     route = _named(docs, "MCPRoute", "-mcp")
