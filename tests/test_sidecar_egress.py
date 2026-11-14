@@ -465,3 +465,86 @@ def test_mcp_requests_carry_the_run_trace_context():
     assert f"{tool.context.span_id:016x}" in called["traceparent"]
     assert f"{root.context.trace_id:032x}" in called["traceparent"]
     assert not [h for h in called if h.startswith("x-zelkor-") or h == "baggage"], dict(called)
+
+
+def _traced_egress(upstream):
+    tracing, exporter = _recording_tracing()
+    slot = RunSlot()
+    config = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                          tool_allow_all=True, nemo_tools_no_stream=True)
+    client = TestClient(Egress(slot, tracing, config,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(upstream))).app())
+    ctx = _activate(slot)
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    return client, exporter
+
+
+USAGE = {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
+
+
+def _chat_span(exporter):
+    (span,) = [s for s in exporter.get_finished_spans() if s.name.startswith("chat")]
+    return span.attributes
+
+
+def test_chat_span_carries_response_model_and_usage_json_and_rewrite():
+    def gw(request):
+        return httpx.Response(200, json={"id": "c9", "model": "m-2024", "usage": USAGE,
+                                         "choices": [{"index": 0, "finish_reason": "stop",
+                                                      "message": {"role": "assistant", "content": "ok"}}]})
+
+    for body in ({"model": "m"}, {"model": "m", "stream": True, "tools": [{"type": "function"}]}):
+        client, exporter = _traced_egress(gw)
+        client.post("/run/active/v1/chat/completions", json=body)
+        attrs = _chat_span(exporter)
+        assert attrs["gen_ai.response.model"] == "m-2024" and attrs["gen_ai.response.id"] == "c9"
+        assert attrs["gen_ai.usage.input_tokens"] == 11 and attrs["gen_ai.usage.output_tokens"] == 7
+        assert list(attrs["gen_ai.response.finish_reasons"]) == ["stop"]
+
+
+def test_stream_chat_span_ends_after_the_last_chunk_with_its_usage():
+    chunks = [{"id": "c7", "model": "m-s", "choices": [{"index": 0, "delta": {"content": "o"}, "finish_reason": None}]},
+              {"id": "c7", "model": "m-s", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+              {"id": "c7", "model": "m-s", "choices": [], "usage": USAGE}]
+    raw = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+
+    class _Split(httpx.AsyncByteStream):  # event boundaries fall inside network chunks
+        async def __aiter__(self):
+            data = raw.encode()
+            for i in range(0, len(data), 37):
+                yield data[i:i + 37]
+
+    def gw(request):
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_Split())
+
+    client, exporter = _traced_egress(gw)
+    r = client.post("/run/active/v1/chat/completions", json={"model": "m", "stream": True})
+    assert r.content == raw.encode()  # relayed byte for byte
+    attrs = _chat_span(exporter)
+    assert attrs["gen_ai.response.model"] == "m-s" and attrs["gen_ai.usage.output_tokens"] == 7
+    assert list(attrs["gen_ai.response.finish_reasons"]) == ["stop"]
+
+
+def test_failed_tool_spans_carry_error_type():
+    cases = {
+        "rate_limited": {"isError": True, "_meta": {"zelkor.error": "rate_limited"},
+                         "content": [{"type": "text", "text": "rate limit exceeded"}]},
+        "invalid_arguments": {"isError": True, "content": [{"type": "text", "text": "Input validation error: x"}]},
+        "tool_error": {"isError": True, "content": [{"type": "text", "text": "boom"}]},
+    }
+    for expected, result in cases.items():
+        def gw(request, result=result):
+            msg = json.loads(request.content)
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": msg["id"], "result": result})
+
+        client, exporter = _traced_egress(gw)
+        client.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+        (tool,) = [s for s in exporter.get_finished_spans() if s.name == "postgres__query"]
+        assert tool.attributes["error.type"] == expected
+        assert tool.status.status_code.name == "ERROR"
+
+    client, exporter = _traced_egress(lambda request: httpx.Response(403, text="access denied"))
+    client.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+    (tool,) = [s for s in exporter.get_finished_spans() if s.name == "postgres__query"]
+    assert tool.attributes["error.type"] == "permission_denied"
+    assert tool.status.status_code.name == "ERROR"

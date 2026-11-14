@@ -131,6 +131,70 @@ def parse_sse(raw: bytes) -> List[Tuple[str, str]]:
     return events
 
 
+def tool_error_type(message: Dict[str, Any]) -> str:
+    """error.type for a failed tools/call: the backend's _meta["zelkor.error"] class, else
+    SDK input validation, else a JSON-RPC error or a generic tool error."""
+    if "error" in message:
+        return "jsonrpc_error"
+    result = message.get("result") if isinstance(message.get("result"), dict) else {}
+    kind = (result.get("_meta") or {}).get("zelkor.error") if isinstance(result.get("_meta"), dict) else None
+    if kind:
+        return str(kind)
+    text = "".join(str(b.get("text", "")) for b in result.get("content") or [] if isinstance(b, dict))
+    return "invalid_arguments" if text.startswith("Input validation error") else "tool_error"
+
+
+def stamp_completion(span: Any, completion: Dict[str, Any]) -> None:
+    """GenAI response attributes from a chat.completion (or a merged stream summary)."""
+    if not isinstance(completion, dict):
+        return
+    if completion.get("model"):
+        span.set_attribute("gen_ai.response.model", str(completion["model"]))
+    if completion.get("id"):
+        span.set_attribute("gen_ai.response.id", str(completion["id"]))
+    reasons = [str(c["finish_reason"]) for c in completion.get("choices") or []
+               if isinstance(c, dict) and c.get("finish_reason")]
+    if reasons:
+        span.set_attribute("gen_ai.response.finish_reasons", reasons)
+    usage = completion.get("usage") or {}
+    if isinstance(usage, dict):
+        if isinstance(usage.get("prompt_tokens"), int):
+            span.set_attribute("gen_ai.usage.input_tokens", usage["prompt_tokens"])
+        if isinstance(usage.get("completion_tokens"), int):
+            span.set_attribute("gen_ai.usage.output_tokens", usage["completion_tokens"])
+
+
+class StreamSummary:
+    """Folds relayed chat.completion.chunk SSE bytes into one completion-shaped summary
+    (id, model, finish reasons, usage when the caller asked for it). Bytes pass unchanged."""
+
+    def __init__(self) -> None:
+        self._buf = b""
+        self.summary: Dict[str, Any] = {"choices": []}
+
+    def feed(self, chunk: bytes) -> None:
+        self._buf += chunk
+        while b"\n\n" in self._buf:
+            event, self._buf = self._buf.split(b"\n\n", 1)
+            for _name, data in parse_sse(event + b"\n\n"):
+                if data.strip() == "[DONE]":
+                    continue
+                try:
+                    obj = json.loads(data)
+                except ValueError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                for key in ("id", "model"):
+                    if obj.get(key) and not self.summary.get(key):
+                        self.summary[key] = obj[key]
+                for choice in obj.get("choices") or []:
+                    if isinstance(choice, dict) and choice.get("finish_reason"):
+                        self.summary["choices"].append({"finish_reason": choice["finish_reason"]})
+                if isinstance(obj.get("usage"), dict):
+                    self.summary["usage"] = obj["usage"]
+
+
 def render_sse(events: List[Tuple[str, str]]) -> bytes:
     return "".join(f"event: {e}\ndata: {d}\n\n" for e, d in events).encode("utf-8")
 
@@ -342,6 +406,7 @@ class Egress:
                 span.set_attribute("langfuse.observation.metadata.mcp.tool", name)
                 if is_error:
                     span.set_attribute("langfuse.observation.level", "ERROR")
+                    span.set_attribute("error.type", tool_error_type(message))
                     set_span_error(span, f"tool {name} failed")
                 cm.__exit__(None, None, None)
                 ctx.emit("custom", {"kind": "tool", "name": name, "phase": "end", "is_error": is_error},
@@ -373,9 +438,12 @@ class Egress:
             logger.warning("no MCP response for tools/call", extra={
                 "event": "tools_call", "run_id": ctx.run_id, "status": "error",
                 "deny_reason": f"http {resp.status_code} {ctype or '-'} {len(raw)}B"})
-        for mid in list(spans):  # no response for a call (transport error): close as error
+        for mid in list(spans):  # no response for a call: gateway refusal or transport error
             cm, span, name, key = spans.pop(mid)
             span.set_attribute("langfuse.observation.level", "ERROR")
+            # 403 is the MCPRoute authorization deny (workspace.tools.policy.deny)
+            span.set_attribute("error.type", "permission_denied" if resp.status_code == 403 else "transport_error")
+            set_span_error(span, f"tool {name}: http {resp.status_code}")
             cm.__exit__(None, None, None)
             ctx.emit("custom", {"kind": "tool", "name": name, "phase": "end", "is_error": True}, key + "-end")
         out_headers = {k: v for k, v in resp.headers.items()
@@ -416,8 +484,13 @@ class Egress:
         chat_attrs = {"gen_ai.operation.name": "chat"}
         if model:
             chat_attrs["gen_ai.request.model"] = model
-        with self.tracing.child(ctx, f"chat {model}".strip(), observation_type="generation",
-                                attrs=chat_attrs) as span:
+        # Entered by hand: a streamed reply is relayed after this handler returns, so the span
+        # ends in relay()'s finally (with the stream's usage), not when the response object exists.
+        cm = self.tracing.child(ctx, f"chat {model}".strip(), observation_type="generation",
+                                attrs=chat_attrs)
+        span = cm.__enter__()
+        streaming = False
+        try:
             headers = _clean_headers(dict(request.headers), ("content-type", "accept"))
             headers["authorization"] = f"Bearer {self.cfg.consumer_key}" if self.cfg.consumer_key else ""
             headers.update(self.tracing.propagation_headers(ctx, span))
@@ -428,23 +501,41 @@ class Egress:
             if rewrite and resp.status_code < 400 and "json" in ctype:
                 completion = json.loads(await resp.aread())
                 await resp.aclose()
+                stamp_completion(span, completion)
                 return Response(completion_to_sse(completion), media_type="text/event-stream")
             if "text/event-stream" in ctype:
+                summary = StreamSummary()
+                status = resp.status_code
+
                 async def relay():
                     try:
                         async for chunk in resp.aiter_raw():
+                            summary.feed(chunk)
                             yield chunk
                     finally:
                         await resp.aclose()
+                        stamp_completion(span, summary.summary)
+                        if status >= 400:
+                            set_span_error(span, f"upstream {status}")
+                        cm.__exit__(None, None, None)
 
+                streaming = True
                 return StreamingResponse(relay(), status_code=resp.status_code, media_type="text/event-stream")
             body = await resp.aread()
             await resp.aclose()
             if resp.status_code >= 400:
                 span.set_attribute("langfuse.observation.level", "ERROR")
                 set_span_error(span, f"upstream {resp.status_code}")
+            elif "json" in ctype:
+                try:
+                    stamp_completion(span, json.loads(body))
+                except ValueError:
+                    pass
             return Response(body, status_code=resp.status_code,
                             headers={"content-type": ctype or "application/json"})
+        finally:
+            if not streaming:
+                cm.__exit__(None, None, None)
 
     def app(self):
         from starlette.applications import Starlette

@@ -23,6 +23,33 @@ METRICS_PORT = int(os.getenv("MCP_METRICS_PORT", "9090"))
 # W3C trace context of the current tools/call (copied into the tool thread by anyio), so a
 # backend that calls another service (aigateway /v1) continues the caller's trace.
 TRACE_CONTEXT: ContextVar[Dict[str, str]] = ContextVar("zelkor_trace_context", default={})
+TRACE_KEYS = ("traceparent", "tracestate")
+
+
+class RateLimited(PermissionError):
+    """A tools/call refused by the per-tenant/tool rate limit."""
+
+
+def error_kind(exc: BaseException) -> str:
+    """Machine-readable failure class sent as _meta["zelkor.error"] (callers stamp error.type)."""
+    if isinstance(exc, RateLimited):
+        return "rate_limited"
+    if isinstance(exc, PermissionError):
+        return "denied"
+    if isinstance(exc, (ValueError, TypeError)):
+        return "invalid_arguments"
+    return "error"
+
+
+def trace_context(meta: Any, headers: Dict[str, str]) -> Dict[str, str]:
+    """W3C trace context of a tools/call: the gateway's own span from params._meta (Envoy AI
+    Gateway injects it there), else the caller's forwarded headers."""
+    extra = {}
+    if meta is not None:
+        extra = dict(getattr(meta, "model_extra", None) or {})
+    if extra.get("traceparent"):
+        return {k: str(extra[k]) for k in TRACE_KEYS if extra.get(k)}
+    return {k: v for k, v in headers.items() if k in TRACE_KEYS}
 
 try:
     from prometheus_client import start_http_server
@@ -104,7 +131,7 @@ async def run_tool_call(
     if not rate.allow(tenant_id, name):
         _audit(logging.WARNING, name, tenant_id, "rate_limited", started,
                request_bytes=request_bytes, deny_reason="rate_limit")
-        raise PermissionError(
+        raise RateLimited(
             f"rate limit exceeded for tool {name}: {rate.per_minute} calls per minute per tenant"
         )
     try:
@@ -189,18 +216,25 @@ def build_starlette_app(
         ]
 
     @mcp_server.call_tool()
-    async def _call_tool(name: str, arguments: dict | None) -> list:
+    async def _call_tool(name: str, arguments: dict | None):
         headers = _headers()
-        TRACE_CONTEXT.set({k: v for k, v in headers.items() if k in ("traceparent", "tracestate")})
-        text = await run_tool_call(
-            tool_handler,
-            name,
-            arguments,
-            tenant_extractor(headers),
-            limiter=limiter,
-            policy=policy,
-            rate=rate,
-        )
+        TRACE_CONTEXT.set(trace_context(mcp_server.request_context.meta, headers))
+        try:
+            text = await run_tool_call(
+                tool_handler,
+                name,
+                arguments,
+                tenant_extractor(headers),
+                limiter=limiter,
+                policy=policy,
+                rate=rate,
+            )
+        except Exception as exc:  # same text the SDK would send, plus a failure class
+            return types.CallToolResult(
+                content=[types.TextContent(type="text", text=str(exc))],
+                isError=True,
+                _meta={"zelkor.error": error_kind(exc)},
+            )
         return [types.TextContent(type="text", text=text)]
 
     # Starlette Route treats bare functions as request→response; a callable

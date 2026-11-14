@@ -10,7 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mcp"))
 
-from common.mcp_server import MCPToolHandler, run_tool_call  # noqa: E402
+from common.mcp_server import MCPToolHandler, RateLimited, error_kind, run_tool_call  # noqa: E402
 from common.tool_policy import RateLimiter, ToolPolicy  # noqa: E402
 
 CANARY = "ZELKOR-ARG-CANARY-7f3e"
@@ -197,3 +197,11 @@ def test_audit_fields_are_json_context_keys():
 
     for key in ("tool", "tenant_id", "elapsed_s", "status", "request_bytes", "response_bytes", "deny_reason"):
         assert key in _CONTEXT_KEYS
+
+
+def test_error_kinds_classify_policy_failures():
+    assert issubclass(RateLimited, PermissionError)  # existing PermissionError handling keeps working
+    assert error_kind(RateLimited("x")) == "rate_limited"
+    assert error_kind(PermissionError("x")) == "denied"
+    assert error_kind(ValueError("x")) == "invalid_arguments"
+    assert error_kind(RuntimeError("x")) == "error"
