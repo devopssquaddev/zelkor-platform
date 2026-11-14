@@ -35,6 +35,20 @@ flowchart LR
   agent --> trace
 ```
 
+## Zelkor vs a DIY agent stack
+
+The DIY baseline is a raw Deployment per agent, LiteLLM or direct provider SDKs, and hand-written NetworkPolicies.
+
+| Concern | DIY: what you build and keep working | Typical DIY failure | Zelkor CE (one Helm release) |
+| :--- | :--- | :--- | :--- |
+| Provider keys | A Secret mounted into each agent pod | A compromised agent or dependency reads the key | Key stays on the AI Gateway; the agent gets a consumer key ([Request Path](architecture-request-path.md)) |
+| Runaway cost | Per-agent retry and loop limits in code | A loop runs overnight against the provider | Gateway request cap returns 429 before the provider |
+| Generated code | `exec()` in the agent container, or a separate sandbox you wire in | Code runs on the node kernel next to the agent's credentials | Separate gVisor worker pod with no network ([Sandbox Isolation](architecture-sandbox.md)) |
+| Egress | NetworkPolicies per agent and per datastore | One missing rule lets the agent reach the internet or Postgres | Generated per agent by the chart; on in the production install ([Network Boundaries](architecture-network.md)) |
+| Tools | Credentials and tenant filters in each tool server | The model chooses the tenant or scope | One MCP gateway; scope from the signed tenant JWT ([MCP Governance](architecture-mcp.md)) |
+| Traces | OTel wiring per framework | Tool and guardrail spans missing from the run | One Langfuse trace per run ([Run Trace](architecture-trace.md)) |
+| Tenants | Tenant checks in agent code | One tenant reads another's thread or rows | Enforced at the gateways ([Tenant Isolation](architecture-tenants.md)) |
+
 ## Deep Dives
 
 Each page answers one specific architectural question about how traffic flows and where the trust boundaries lie:

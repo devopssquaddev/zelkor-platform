@@ -1,0 +1,412 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "zelkor-agent values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "imagePullPolicy": {
+          "type": "string"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        }
+      }
+    },
+    "graphId": {
+      "type": "string"
+    },
+    "graphIds": {
+      "type": "array"
+    },
+    "aegraConfig": {
+      "type": "string"
+    },
+    "sharedRoute": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "gatewayName": {
+          "type": "string"
+        },
+        "gatewayNamespace": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "asDefault": {
+          "type": "boolean"
+        }
+      }
+    },
+    "redis": {
+      "type": "object",
+      "properties": {
+        "prefix": {
+          "type": "string"
+        },
+        "channelPrefix": {
+          "type": "string"
+        },
+        "queueKey": {
+          "type": "string"
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string"
+        }
+      }
+    },
+    "runtime": {
+      "type": "string",
+      "enum": [
+        "aegra",
+        "a2a",
+        "opencode"
+      ]
+    },
+    "sidecar": {
+      "type": "object",
+      "properties": {
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string"
+            }
+          }
+        },
+        "nemoToolsNoStream": {
+          "type": "boolean"
+        },
+        "dbPoolSize": {
+          "type": "integer"
+        },
+        "a2a": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "publicUrl": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        },
+        "runtimeResources": {
+          "type": "object"
+        }
+      }
+    },
+    "replicaCount": {
+      "type": "integer"
+    },
+    "autoscaling": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minReplicas": {
+          "type": "integer"
+        },
+        "maxReplicas": {
+          "type": "integer"
+        },
+        "cpuUtilization": {
+          "type": "integer"
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "labels": {
+              "type": "object"
+            },
+            "interval": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "workerCount": {
+      "type": "integer"
+    },
+    "nJobsPerWorker": {
+      "type": "integer"
+    },
+    "workerDrainTimeout": {
+      "type": "integer"
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer"
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "networkPolicies": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "hostNetworkGatewayCIDRs": {
+              "type": "array"
+            }
+          }
+        }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "properties": {
+        "namespace": {
+          "type": "string"
+        },
+        "releaseName": {
+          "type": "string"
+        },
+        "openaiBaseUrl": {
+          "type": "string"
+        },
+        "consumerKey": {
+          "type": "string"
+        },
+        "mcpUrl": {
+          "type": "string"
+        },
+        "databaseUrl": {
+          "type": "string"
+        },
+        "valkeyUrl": {
+          "type": "string"
+        },
+        "mcpInject": {
+          "type": "boolean"
+        },
+        "mcpAuthTokenSecret": {
+          "type": "string"
+        },
+        "mcpAuthTokenSecretKey": {
+          "type": "string"
+        },
+        "mcpInjectToolPrefixes": {
+          "type": "string"
+        },
+        "mcpInjectAllowAll": {
+          "type": "boolean"
+        },
+        "defaultLlmModel": {
+          "type": "string"
+        },
+        "langfuseBaseUrl": {
+          "type": "string"
+        },
+        "langfusePublicKey": {
+          "type": "string"
+        },
+        "langfuseSecretKey": {
+          "type": "string"
+        },
+        "otelTargets": {
+          "type": "string"
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "issuer": {
+          "type": "string"
+        },
+        "audiences": {
+          "type": "array"
+        },
+        "jwksConfigMap": {
+          "type": "string"
+        },
+        "jwksUri": {
+          "type": "string"
+        },
+        "tenantClaims": {
+          "type": "array"
+        },
+        "orgMappings": {
+          "type": "object"
+        }
+      }
+    },
+    "extraEnv": {
+      "type": "array"
+    },
+    "runtimeClassName": {
+      "type": "string"
+    },
+    "resources": {
+      "type": "object"
+    },
+    "startupProbe": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "initialDelaySeconds": {
+          "type": "integer"
+        },
+        "periodSeconds": {
+          "type": "integer"
+        },
+        "timeoutSeconds": {
+          "type": "integer"
+        },
+        "failureThreshold": {
+          "type": "integer"
+        }
+      }
+    },
+    "livenessProbe": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "periodSeconds": {
+          "type": "integer"
+        },
+        "timeoutSeconds": {
+          "type": "integer"
+        },
+        "failureThreshold": {
+          "type": "integer"
+        }
+      }
+    },
+    "readinessProbe": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "httpGet": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer"
+            }
+          }
+        },
+        "periodSeconds": {
+          "type": "integer"
+        },
+        "timeoutSeconds": {
+          "type": "integer"
+        },
+        "failureThreshold": {
+          "type": "integer"
+        }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "properties": {
+        "intent": {
+          "type": "object",
+          "properties": {
+            "timeout": {
+              "type": "string"
+            },
+            "maxTokens": {
+              "type": "integer"
+            },
+            "approval": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "threshold": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

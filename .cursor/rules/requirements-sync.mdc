@@ -54,6 +54,7 @@ Update governing requirement and specification documents whenever:
 - **Component pins & compatibility matrix:** `internal/plan/component_compatibility_matrix.md`
 - **CE versioning (git tag + chart + first-party images):** `internal/plan/requirements_ce_versioning.md` (always-apply rule: `.cursor/rules/ce-versioning.mdc`)
 - **Helm values schema, extraManifests, provenance (CE-1):** `internal/plan/requirements_values_schema.md` (multi-root)
+- **Config matrix (PICT model of CE toggles):** `internal/requirements/testing/config_matrix.md` (multi-root; rule: `.cursor/rules/config-matrix.mdc`)
 - **Multi-Tier Roadmap:** `internal/plan/roadmap.md`
 - **FinServe Demo & Workload Scenarios:** `internal/requirements/demo/finserve_ai_demo.md`, `internal/requirements/dev/examples_and_demos.md`
 - **Developer & CI Gates:** `internal/requirements/dev/agent_code_review.md`, `internal/requirements/dev/agent_sdlc_and_tools.md`

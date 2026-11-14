@@ -24,6 +24,9 @@ EOF
 
 FROM python:3.14.9-slim-trixie
 COPY --from=fetch /opt/opencode /opt/opencode
+# CE-18d: the opencode-linux-* npm platform package omits the LICENSE, so vendor
+# the upstream MIT LICENSE (from the opencode-ai package) into the image.
+COPY images/runtime-opencode/LICENSE.opencode /opt/opencode/LICENSE
 COPY images/runtime-opencode/opencode.json /opt/zelkor/opencode.json
 COPY images/runtime-opencode/entrypoint.sh /opt/zelkor/entrypoint.sh
 RUN chmod 0755 /opt/zelkor/entrypoint.sh && chmod -R a+rX /opt/zelkor /opt/opencode \

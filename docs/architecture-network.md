@@ -55,3 +55,5 @@ flowchart TB
 You provide the **Agent Code**. The platform generates the **NetworkPolicies** and **Gateways**.
 
 The chart default is `security.networkPolicies.enabled: false`, so traffic is not restricted. The [production install](production.md) sets the flag to true. An agent pod then cannot open a connection to the internet, nor can it talk directly to Postgres, Valkey, or Qdrant. LLM calls go through the AI Gateway. Tool and data calls go through the MCP gateway. Observability, guardrails, and tenant checks on those paths cannot be skipped by dialing the datastore or the provider directly.
+
+The policies are built around agent and tool traffic. If you set `security.networkPolicies.enabled: true` with both `workload.agents.enabled` and `workspace.tools.enabled` off, the install fails with a message instead of applying no policies. Turn one of them on, or turn the flag off and isolate Langfuse and the datastores with your own NetworkPolicies.
