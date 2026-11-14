@@ -36,6 +36,10 @@ def test_platform_contract_configmap_present():
     ]
     assert len(cms) == 1
     data = cms[0].get("data") or {}
-    assert data.get("CONTRACT_VERSION") == "v2.0"
+    assert data.get("CONTRACT_VERSION") == "v2.1"
+    assert data.get("PROFILE") == "full"
     assert "AI_GATEWAY_SERVICE" in data
     assert "zelkor-platform-ai-gateway" in data["AI_GATEWAY_SERVICE"]
+    # full profile: the Aegra front door and datastores exist, so the contract names them
+    for key in ("AEGRA_FRONTDOOR_SERVICE", "DATABASE_SECRET_REF", "VALKEY_SECRET_REF"):
+        assert key in data, key

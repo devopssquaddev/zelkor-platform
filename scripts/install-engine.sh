@@ -75,10 +75,22 @@ case "$INSTALL_PROFILE" in
     # Upgrade-only: never create kind or run download on full (see require_full_profile_prereqs).
     PREFETCH_IMAGES="${PREFETCH_IMAGES:-false}"
     ;;
+  perimeter)
+    # CE-15a zero-DB egress boundary: gateway + MCP (CE-9) + default-deny NetworkPolicy only.
+    VALUES_FILE="${VALUES_FILE:-profiles/values-local-perimeter.yaml}"
+    KIND_CONFIG="${KIND_CONFIG:-kind-config.yaml}"
+    INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-false}"
+    # Opt-ins (install.sh --with-guardrails / --with-sandbox): NeMo, gVisor sandbox tool.
+    PERIMETER_GUARDRAILS="${PERIMETER_GUARDRAILS:-false}"
+    PERIMETER_SANDBOX="${PERIMETER_SANDBOX:-false}"
+    GVISOR_INSTALL="${GVISOR_INSTALL:-$PERIMETER_SANDBOX}"
+    RUN_DEMO_TOUR="${RUN_DEMO_TOUR:-false}"
+    PERIMETER=true
+    ;;
   *)
-    echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" >&2
+    echo "[install] ERROR: Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast, full, or perimeter)" >&2
     if declare -f ux_fail >/dev/null 2>&1; then
-      ux_fail "Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast or full)" || true
+      ux_fail "Unknown INSTALL_PROFILE=${INSTALL_PROFILE} (use fast, full, or perimeter)" || true
     fi
     exit 1
     ;;
@@ -814,6 +826,9 @@ if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
     --set "security.sandbox.createRuntimeClass=${GVISOR_CREATE_RUNTIME_CLASS:-true}"
   )
 fi
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+  HELM_EXTRA_ARGS+=(--set "perimeter.guardrails=${PERIMETER_GUARDRAILS}" --set "perimeter.sandbox=${PERIMETER_SANDBOX}")
+fi
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "workspace.models.providers.openai.apiKey=${OPENAI_API_KEY}")
 fi
@@ -935,15 +950,17 @@ fi
 step_end platform_helm
 
 log "Tracking platform rollout progress..."
-step_begin rollout_datastores
-# Langfuse consumes Postgres, ClickHouse, and S3; Valkey/Qdrant degrade without aborting.
-wait_group critical "[1/5] Databases (PostgreSQL, ClickHouse, SeaweedFS)" \
-  statefulset/zelkor-platform-postgresql \
-  statefulset/zelkor-platform-clickhouse \
-  deployment/zelkor-platform-seaweedfs
-skip_wait deployment/zelkor-platform-valkey "Langfuse wait is the real gate"
-skip_wait statefulset/zelkor-platform-qdrant "mcp-qdrant wait is the real gate"
-step_end rollout_datastores
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+  step_begin rollout_datastores
+  # Langfuse consumes Postgres, ClickHouse, and S3; Valkey/Qdrant degrade without aborting.
+  wait_group critical "[1/5] Databases (PostgreSQL, ClickHouse, SeaweedFS)" \
+    statefulset/zelkor-platform-postgresql \
+    statefulset/zelkor-platform-clickhouse \
+    deployment/zelkor-platform-seaweedfs
+  skip_wait deployment/zelkor-platform-valkey "Langfuse wait is the real gate"
+  skip_wait statefulset/zelkor-platform-qdrant "mcp-qdrant wait is the real gate"
+  step_end rollout_datastores
+fi
 
 discover_internal_gateway_url() {
   local svc=""
@@ -980,16 +997,18 @@ else
   log "WARNING: Envoy data-plane Service not found; NeMo/MCP in-cluster LLM calls may fail until workspace.models.internalUrl is set."
 fi
 
-step_begin rollout_langfuse
-wait_group critical "[3/5] Observability (Langfuse web + worker)" \
-  deployment/zelkor-platform-langfuse \
-  deployment/zelkor-platform-langfuse-worker
-step_end rollout_langfuse
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+  step_begin rollout_langfuse
+  wait_group critical "[3/5] Observability (Langfuse web + worker)" \
+    deployment/zelkor-platform-langfuse \
+    deployment/zelkor-platform-langfuse-worker
+  step_end rollout_langfuse
 
-step_begin rollout_aegra
-log "  -> [4/5] Agent Orchestrator (Aegra)..."
-wait_one critical deployment/zelkor-platform-aegra
-step_end rollout_aegra
+  step_begin rollout_aegra
+  log "  -> [4/5] Agent Orchestrator (Aegra)..."
+  wait_one critical deployment/zelkor-platform-aegra
+  step_end rollout_aegra
+fi
 
 # shellcheck source=lib/mcp-dataplane-install.sh
 source "${ZELKOR_REPO_ROOT}/scripts/lib/mcp-dataplane-install.sh"
@@ -998,7 +1017,8 @@ MCP_DP_RELEASE="$HELM_RELEASE_NAME"
 MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
 MCP_DP_KUBE_CONTEXT="$KCTX"
 step_begin rollout_mcp_nemo
-if kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
+if [[ "${PERIMETER:-false}" != "true" || "${PERIMETER_GUARDRAILS:-false}" == "true" ]] \
+  && kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
   wait_one optional deployment/zelkor-platform-nemo
 fi
 if mcp_dataplane_wait_all; then
@@ -1008,9 +1028,11 @@ else
 fi
 step_end rollout_mcp_nemo
 
-step_begin job_langfuse_bootstrap
-wait_langfuse_bootstrap_job
-step_end job_langfuse_bootstrap
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+  step_begin job_langfuse_bootstrap
+  wait_langfuse_bootstrap_job
+  step_end job_langfuse_bootstrap
+fi
 
 if [[ "$INSTALL_EXAMPLES" == "true" && -d "$FINSERVE_CHART_PATH" ]]; then
   step_begin finserve_helm
@@ -1131,10 +1153,24 @@ ${banner}
 
   Component               Service                     URL
   ----------------------  --------------------------  ---------------------------------
+EOF
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+cat <<EOF
   Langfuse Observability  zelkor-platform-langfuse    http://${lf_host}:8088
+EOF
+fi
+cat <<EOF
   Envoy AI Gateway        ai-gateway-controller       http://${aigw_host}:8088
+EOF
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+cat <<EOF
+  Agents (front door)     Host ${agents_host}         http://${agents_host}:8088  (agents you deploy)
+EOF
+else
+cat <<EOF
   Aegra Agent Runtime     zelkor-platform-aegra       http://aegra.localhost:8088/docs
 EOF
+fi
 if [[ "$INSTALL_EXAMPLES" == "true" ]]; then
 cat <<EOF
   FinServe Demo (front door) ${agents_host}              http://${agents_host}:8088  X-Graph-ID: finserve-advisor|research|records|quant|coder
@@ -1142,13 +1178,27 @@ EOF
 fi
 cat <<EOF
   MCP (MCPRoute / MCP_URL)  Host ${mcp_host}              http://${mcp_host}:8088/mcp
+EOF
+if [[ "${PERIMETER:-false}" != "true" || "${PERIMETER_GUARDRAILS:-false}" == "true" ]]; then
+cat <<EOF
   NeMo Guardrails (CPU)   zelkor-platform-nemo        http://nemo.localhost:8088/v1/rails/configs
+EOF
+fi
+if [[ "${PERIMETER:-false}" == "true" && "${PERIMETER_SANDBOX:-false}" == "true" ]]; then
+cat <<EOF
+  Code sandbox (gVisor)   zelkor-platform-mcp-sandbox MCP tool sandbox__execute_python
+EOF
+fi
+cat <<EOF
 
   (Kubernetes Gateway API / Envoy Gateway routed on host port 8088)
 
 ${banner}
 ${C_BOLD}  Local Dev Access Credentials & Tokens${C_RESET}
 ${banner}
+EOF
+if [[ "${PERIMETER:-false}" != "true" ]]; then
+cat <<EOF
 
   [Langfuse UI & API]
     URL:              http://${lf_host}:8088
@@ -1158,6 +1208,7 @@ ${banner}
     Public API Key:   ${LF_PUBLIC_KEY:-<see langfuse init keys in profile>}
     Secret API Key:   ${LF_SECRET_KEY:-<see langfuse init keys in profile>}
 EOF
+fi
 cat <<EOF
 
   [Envoy AI Gateway]
@@ -1174,6 +1225,15 @@ cat <<EOF
     Tenant JWT:       zelkor token mint --release ${rel} --tenant Bank_Alpha --namespace ${ns}
 EOF
 fi
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+cat <<EOF
+
+  [Agents you deploy]
+    URL:              http://${agents_host}:8088  (Host ${agents_host})
+    Tenant JWT:       zelkor token mint --release ${rel} --tenant tenant-a --namespace ${ns}
+${banner}
+EOF
+else
 cat <<EOF
 
   [Aegra Agent Runtime]
@@ -1187,6 +1247,7 @@ cat <<EOF
     Qdrant:           http://localhost:6333
 ${banner}
 EOF
+fi
 cat <<EOF
 
 ${banner}
@@ -1217,11 +1278,27 @@ cat <<EOF
        -d '{"graph_id":"finserve-advisor","input":{"messages":[{"role":"human","content":"What is my portfolio valuation?"}]}}'
 EOF
 fi
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+cat <<EOF
+
+  2. Deploy and call your agent (from its project directory):
+     zelkor deploy --tools <mcp-prefix>      # or --all-tools; wraps it behind the stateless sidecar
+     zelkor run --input "Hello from Zelkor!"
+
+  3. Usage and traces (no trace store in perimeter):
+     Token usage: the gateway's llm_access JSON log lines
+       kubectl --context ${KCTX} -n envoy-gateway-system logs -l gateway.envoyproxy.io/owning-gateway-name=${rel}-gateway -c envoy | grep llm_access
+     Traces: set platform.telemetry.otlp.endpoint to your OTLP collector
+EOF
+else
 cat <<EOF
 
   3. View Traces:
      Agent runs (FinServe demo): Langfuse -> project **Zelkor Platform** -> Traces (name **finserve-advisor**)
      Gateway / playground: same project
+EOF
+fi
+cat <<EOF
 
 ${banner}
 ${C_BOLD}  CLI — point at this cluster${C_RESET}

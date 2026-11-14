@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from common.mcp_server import MCPToolHandler, run_mcp_server
+from common.mcp_server import TRACE_CONTEXT, MCPToolHandler, run_mcp_server
 from common.tenant import extract_tenant
 
 logger = logging.getLogger("zelkor-aigateway-mcp")
@@ -65,7 +65,7 @@ def post_gateway(path: str, body: dict) -> dict:
     if not AI_GATEWAY_URL:
         raise RuntimeError("AI_GATEWAY_URL is not set")
     url = f"{AI_GATEWAY_URL.rstrip('/')}/{path.lstrip('/')}"
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", **TRACE_CONTEXT.get()}
     if AI_GATEWAY_API_KEY:
         headers["Authorization"] = f"Bearer {AI_GATEWAY_API_KEY}"
     req = urllib.request.Request(
@@ -98,10 +98,25 @@ class AIGatewayMCPServer(MCPToolHandler):
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "model": {"type": "string"},
-                        "operation": {"type": "string"},
-                        "messages": {"type": "array"},
-                        "input": {},
+                        "model": {"type": "string", "description": "Model id served by the gateway."},
+                        "operation": {
+                            "type": "string",
+                            "enum": ["chat.completions", "embeddings"],
+                            "description": "Default chat.completions.",
+                        },
+                        "messages": {
+                            "type": "array",
+                            "description": "Required for chat.completions: OpenAI chat messages.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+                                    "content": {"type": "string"},
+                                },
+                                "required": ["role", "content"],
+                            },
+                        },
+                        "input": {"description": "Required for embeddings only: text or list of texts."},
                     },
                     "required": ["model"],
                     "additionalProperties": False,

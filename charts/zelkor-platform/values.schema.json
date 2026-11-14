@@ -13,6 +13,45 @@
         "description": "Raw Kubernetes object (map) or templated YAML string."
       }
     },
+    "profile": {
+      "type": "string",
+      "enum": [
+        "",
+        "full",
+        "perimeter"
+      ],
+      "description": "Allowed values for profile."
+    },
+    "perimeter": {
+      "type": "object",
+      "description": "Values under perimeter.",
+      "properties": {
+        "guardrails": {
+          "type": "boolean",
+          "description": "Value for perimeter.guardrails."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "Value for perimeter.sandbox."
+        },
+        "dataTools": {
+          "type": "object",
+          "description": "Values under perimeter.dataTools.",
+          "properties": {
+            "postgres": {
+              "type": "boolean",
+              "description": "Value for perimeter.dataTools.postgres."
+            },
+            "qdrant": {
+              "type": "boolean",
+              "description": "Value for perimeter.dataTools.qdrant."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
     "global": {
       "type": "object",
       "description": "Values under global.",
@@ -234,6 +273,29 @@
                 "captureContent": {
                   "type": "boolean",
                   "description": "Value for platform.telemetry.nemoOtel.captureContent."
+                }
+              },
+              "additionalProperties": false
+            },
+            "otlp": {
+              "type": "object",
+              "description": "Values under platform.telemetry.otlp.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Value for platform.telemetry.otlp.enabled."
+                },
+                "endpoint": {
+                  "type": "string",
+                  "description": "Value for platform.telemetry.otlp.endpoint."
+                },
+                "headers": {
+                  "type": "string",
+                  "description": "Value for platform.telemetry.otlp.headers."
+                },
+                "captureContent": {
+                  "type": "boolean",
+                  "description": "Value for platform.telemetry.otlp.captureContent."
                 }
               },
               "additionalProperties": false
@@ -1607,33 +1669,39 @@
             "policy": {
               "type": "object",
               "description": "CE-9 MCP tool policy for every backend on the gateway.",
-              "additionalProperties": false,
               "properties": {
                 "deny": {
                   "type": "array",
                   "description": "Agent-visible tool names to deny at the gateway and native backends: \"<backend>__<tool>\", \"<backend>__<prefix>*\" or \"<backend>__*\". MCP readOnlyHint/destructiveHint are ignored.",
                   "items": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?__([A-Za-z0-9_.-]+\\*?|\\*)$"
-                  },
-                  "maxItems": 64
+                    "type": [
+                      "string",
+                      "object",
+                      "number",
+                      "boolean"
+                    ]
+                  }
                 },
                 "rateLimit": {
                   "type": "object",
                   "description": "Per-tenant, per-tool tools/call limit on each native MCP pod (in memory).",
-                  "additionalProperties": false,
                   "properties": {
                     "enabled": {
                       "type": "boolean",
                       "description": "Enable the native tools/call rate limit."
                     },
                     "callsPerMinute": {
-                      "type": "integer",
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
                       "description": "Calls per minute per tenant per tool, per native MCP pod."
                     }
-                  }
+                  },
+                  "additionalProperties": false
                 }
-              }
+              },
+              "additionalProperties": false
             },
             "image": {
               "type": "object",
@@ -1672,6 +1740,50 @@
                 "databaseUrl": {
                   "type": "string",
                   "description": "Value for workspace.tools.postgresMCP.databaseUrl."
+                },
+                "databaseUrlSecretRef": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.postgresMCP.databaseUrlSecretRef.",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.postgresMCP.databaseUrlSecretRef.name."
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.postgresMCP.databaseUrlSecretRef.key."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "egressTo": {
+                  "type": "array",
+                  "description": "List at workspace.tools.postgresMCP.egressTo.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "One allowed destination: namespace and/or podSelector (in-cluster) or cidr, plus port.",
+                    "properties": {
+                      "namespace": {
+                        "type": "string"
+                      },
+                      "podSelector": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "cidr": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "port"
+                    ]
+                  }
                 },
                 "resources": {
                   "type": "object",
@@ -1872,6 +1984,35 @@
                 "url": {
                   "type": "string",
                   "description": "Value for workspace.tools.qdrantMCP.url."
+                },
+                "egressTo": {
+                  "type": "array",
+                  "description": "List at workspace.tools.qdrantMCP.egressTo.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "One allowed destination: namespace and/or podSelector (in-cluster) or cidr, plus port.",
+                    "properties": {
+                      "namespace": {
+                        "type": "string"
+                      },
+                      "podSelector": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "cidr": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "port"
+                    ]
+                  }
                 },
                 "collection": {
                   "type": "string",
@@ -3474,19 +3615,18 @@
           "type": "object",
           "description": "Values under databases.postgresql.",
           "properties": {
-            "parameters": {
-              "type": "object",
-              "description": "CNPG postgresql.parameters. Values are strings.",
-              "additionalProperties": {
-                "type": "string"
-              }
-            },
             "instances": {
               "type": [
                 "integer",
                 "string"
               ],
               "description": "Value for databases.postgresql.instances."
+            },
+            "parameters": {
+              "type": "object",
+              "description": "CNPG postgresql.parameters. Values are strings.",
+              "properties": {
+              }
             },
             "storage": {
               "type": "object",

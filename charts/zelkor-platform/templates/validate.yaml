@@ -1,5 +1,9 @@
 {{- include "zelkor-platform.compile" . -}}
 {{- $root := . -}}
+{{- $profile := (.Values.profile | default "") | toString | trim -}}
+{{- if and (ne $profile "") (ne $profile "full") (ne $profile "perimeter") -}}
+{{- fail (printf "profile=%q is not valid. Use \"perimeter\" for the zero-DB egress boundary, or omit for the full platform. See docs/perimeter.md." $profile) -}}
+{{- end -}}
 {{- if (.Values.aegra.enabled | default false) -}}
 {{- include "zelkor-platform.tenantJwtValidate" . -}}
 {{- end -}}
@@ -19,6 +23,9 @@
 {{- fail "workspace.policies.presidio requires Zelkor Enterprise. On CE use workspace.policies.nemo. See docs/helm-install.md." -}}
 {{- end -}}
 {{- $tel := (.Values.platform.telemetry | default dict) -}}
+{{- if and (.Values.langfuse).enabled (($tel.otlp | default dict).endpoint | default "" | trim) -}}
+{{- fail "platform.telemetry.langfuse and platform.telemetry.otlp.endpoint are both set. Community Edition allows one trace sink: bundled Langfuse (the default / profile=full) OR a single BYO OTLP endpoint (set langfuse.enabled=false, e.g. profile=perimeter). Dual-sink fan-out to Langfuse and a customer collector is Zelkor Pro (Pro-5). See docs/perimeter.md." -}}
+{{- end -}}
 {{- $audit := ($tel.audit | default dict) -}}
 {{- if and $audit.worm (ne (include "zelkor-platform.hasEntitlement" (dict "Values" .Values "name" "wormAudit")) "true") -}}
 {{- fail "platform.telemetry.audit.worm requires Zelkor Enterprise. On CE use platform.telemetry.langfuse for operational traces. See docs/helm-install.md." -}}

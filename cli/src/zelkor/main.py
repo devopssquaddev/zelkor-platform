@@ -38,6 +38,12 @@ from zelkor.token_cmd import cmd_token_jwks, cmd_token_mint
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
+PERIMETER = "perimeter"  # platform profile with no Aegra / datastores: agents run behind a stateless sidecar
+PERIMETER_NO_AEGRA = (
+    "This platform runs profile=perimeter: it has no Aegra agent runtime and no database, so the "
+    "agent runs behind the stateless sidecar. That needs a deploy-first project (agent.json + "
+    "AGENTS.md) or your own Dockerfile serving A2A. LangGraph projects need profile=full."
+)
 
 logger = logging.getLogger("zelkor-cli")
 
@@ -58,6 +64,8 @@ class PlatformInfo:
     jwt_issuer: str = ""
     jwt_audiences: list[str] = field(default_factory=list)
     jwt_jwks_configmap: str = ""
+    jwt_jwks_uri: str = ""
+    jwt_org_mappings: dict[str, Any] = field(default_factory=dict)
     jwt_tenant_claims: list[str] = field(default_factory=lambda: ["tenant_id", "org_id", "sub"])
     default_llm_model: str = ""
     langfuse_base_url: str = ""
@@ -67,6 +75,9 @@ class PlatformInfo:
     agent_route_names: list[str] = field(default_factory=list)
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
     helm_values: dict[str, Any] = field(default_factory=dict)
+    profile: str = ""  # platform `profile` value: "" / "full" / "perimeter"
+    aegra_present: bool = False  # Aegra host (and its catch-all agents route) exists
+    mcp_service: str = ""  # contract MCP_SERVICE (host:port of the MCP gateway)
     network_policies_enabled: bool = False
     gateway_host_cidrs: list[str] = field(default_factory=list)
 
@@ -262,13 +273,32 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     values = yaml.safe_load(values_raw.stdout or "") or {}
     if isinstance(values, dict):
         info.helm_values = values
-    hosts = ((values.get("gateway") or {}).get("hosts") or {})
-    info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
     info.image_pull_secrets = list((values.get("global") or {}).get("imagePullSecrets") or [])
-    info.network_policies_enabled = bool(
-        ((values.get("security") or {}).get("networkPolicies") or {}).get("enabled")
-    )
     info.gateway_namespace = env.namespace
+    # The platform's discovery contract (ADR 04 v2.1) is the source for both profiles: effective
+    # values, and a key only when its component exists. Helm user values / Aegra env below are
+    # fallbacks for platforms older than 2.5, which publish no such keys.
+    contract = _configmap_data(env, CONTRACT_CONFIGMAP, runner=runner)
+    if contract.get("PROFILE"):
+        info.profile = contract["PROFILE"].strip().lower()
+        info.aegra_present = bool(contract.get("AEGRA_FRONTDOOR_SERVICE"))
+        info.mcp_service = contract.get("MCP_SERVICE", "")
+        info.agents_host = contract.get("AGENTS_HOST", "")
+        info.network_policies_enabled = contract.get("NETWORK_POLICIES") == "true"
+        info.gateway_name = contract.get("GATEWAY_NAME", "")
+        info.gateway_namespace = contract.get("GATEWAY_NAMESPACE") or env.namespace
+        jwt_cm = contract.get("TENANT_JWT_CONFIGMAP", "")
+        if jwt_cm:
+            _jwt_from_env_map(info, _configmap_data(env, jwt_cm, runner=runner))
+            info.jwt_jwks_configmap = contract.get("TENANT_JWKS_CONFIGMAP", "")
+    else:
+        hosts = ((values.get("gateway") or {}).get("hosts") or {})
+        info.agents_host = str(hosts.get("agents") or hosts.get("aegra") or "")
+        info.profile = str(values.get("profile") or "").strip().lower()
+        # Effective, not user-set: profile=perimeter forces NetworkPolicies on at render time.
+        info.network_policies_enabled = info.profile == PERIMETER or bool(
+            ((values.get("security") or {}).get("networkPolicies") or {}).get("enabled")
+        )
     if info.network_policies_enabled and _is_kind(env):
         info.gateway_host_cidrs = kind_node_cidrs(env, runner=runner)
     logger.info("agents host=%s", info.agents_host or "(empty)")
@@ -283,37 +313,21 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         labels = (dep.get("metadata") or {}).get("labels") or {}
         if labels.get("zelkor.io/workload-type") == "agent":
             continue
+        info.aegra_present = True
         env_map = _container_env(dep)
         info.database_url = env_map.get("DATABASE_URL", "")
         info.openai_base_url = env_map.get("OPENAI_BASE_URL", "")
         info.mcp_url = env_map.get("MCP_URL", "")
         info.redis_url = env_map.get("REDIS_URL", "")
-        info.jwt_issuer = env_map.get("AUTH_JWT_ISSUER", "")
-        aud_raw = env_map.get("AUTH_JWT_AUDIENCES", "")
-        if aud_raw.startswith("["):
-            try:
-                info.jwt_audiences = list(json.loads(aud_raw))
-            except json.JSONDecodeError:
-                info.jwt_audiences = []
-        elif aud_raw:
-            info.jwt_audiences = [a.strip() for a in aud_raw.split(",") if a.strip()]
-        claims_raw = env_map.get("AUTH_TENANT_CLAIMS", "tenant_id,org_id,sub")
-        if claims_raw.startswith("["):
-            try:
-                parsed = json.loads(claims_raw)
-                info.jwt_tenant_claims = [str(c) for c in parsed] if isinstance(parsed, list) else []
-            except json.JSONDecodeError:
-                info.jwt_tenant_claims = []
-        elif claims_raw:
-            info.jwt_tenant_claims = [c.strip() for c in claims_raw.split(",") if c.strip()]
-        info.jwt_jwks_configmap = f"{info.release}-tenant-jwks"
+        if not info.jwt_issuer:  # pre-2.5 platform: no contract JWT keys
+            _jwt_from_env_map(info, env_map)
         info.default_llm_model = default_llm_model_from(env_map, values)
         info.langfuse_base_url = env_map.get("LANGFUSE_BASE_URL", "")
         info.langfuse_public_key = env_map.get("LANGFUSE_PUBLIC_KEY", "")
         info.langfuse_secret_key = env_map.get("LANGFUSE_SECRET_KEY", "")
         info.otel_targets = env_map.get("OTEL_TARGETS", "")
         name = (dep.get("metadata") or {}).get("name") or ""
-        if name:
+        if name and not info.gateway_name:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
         break
     logger.info("get httproutes")
@@ -334,6 +348,22 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
                 if refs:
                     info.gateway_name = str(refs[0].get("name") or "")
                     info.gateway_namespace = str(refs[0].get("namespace") or env.namespace)
+    # Pre-2.5 perimeter platform: no contract and no Aegra, so the tenant-JWT contract
+    # only exists in the platform's Helm values (Finding A).
+    if not info.jwt_issuer:
+        jwt = (((values.get("platform") or {}).get("tenants") or {}).get("jwt") or {})
+        info.jwt_issuer = str(jwt.get("issuer") or "")
+        auds = jwt.get("audiences") or []
+        info.jwt_audiences = [str(a) for a in auds] if isinstance(auds, list) else []
+        claims = jwt.get("tenantClaims") or []
+        if isinstance(claims, list) and claims:
+            info.jwt_tenant_claims = [str(c) for c in claims]
+        info.jwt_jwks_uri = str(jwt.get("remoteJwksUri") or "").strip()
+        info.jwt_jwks_configmap = str(jwt.get("jwksConfigMap") or "").strip()
+    if not info.jwt_jwks_uri and not info.jwt_jwks_configmap:
+        info.jwt_jwks_configmap = f"{info.release}-tenant-jwks"
+    if not info.gateway_name:
+        info.gateway_name = f"{info.release}-gateway"
     cluster_gw = in_cluster_openai_base_url(env, runner=runner)
     if cluster_gw:
         info.openai_base_url = cluster_gw
@@ -395,16 +425,102 @@ def _truthy(val: str) -> bool:
 
 def auth_values(info: PlatformInfo) -> dict[str, Any]:
     """Copy live platform JWT contract onto the worker. Do not invent secrets."""
-    return {
+    out: dict[str, Any] = {
         "issuer": info.jwt_issuer,
         "audiences": info.jwt_audiences,
-        "jwksConfigMap": info.jwt_jwks_configmap,
         "tenantClaims": info.jwt_tenant_claims,
     }
+    if info.jwt_jwks_uri:
+        out["jwksUri"] = info.jwt_jwks_uri  # remote JWKS: there is no JWKS ConfigMap to mount
+    else:
+        out["jwksConfigMap"] = info.jwt_jwks_configmap
+    if info.jwt_org_mappings:
+        out["orgMappings"] = info.jwt_org_mappings
+    return out
+
+
+CONTRACT_CONFIGMAP = "zelkor-platform-contract"
+
+
+def _configmap_data(env: Env, name: str, *, runner: Optional[RunFn] = None) -> dict[str, str]:
+    """A ConfigMap's data in the platform namespace, or {} when it is absent."""
+    res = _run(kube_argv(env, "get", "configmap", name, "-o", "json"),
+               runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    if res.returncode != 0:
+        return {}
+    try:
+        data = (json.loads(res.stdout or "{}") or {}).get("data") or {}
+    except json.JSONDecodeError:
+        return {}
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def _json_or_csv(raw: str) -> list[str]:
+    raw = (raw or "").strip()
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        return [str(x) for x in parsed] if isinstance(parsed, list) else []
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def _jwt_from_env_map(info: PlatformInfo, env_map: dict[str, str]) -> None:
+    """The AUTH_* tenant-JWT keys, as published in {release}-tenant-jwt and on Aegra's env."""
+    info.jwt_issuer = env_map.get("AUTH_JWT_ISSUER", "")
+    info.jwt_audiences = _json_or_csv(env_map.get("AUTH_JWT_AUDIENCES", ""))
+    claims = _json_or_csv(env_map.get("AUTH_TENANT_CLAIMS", ""))
+    if claims:
+        info.jwt_tenant_claims = claims
+    info.jwt_jwks_uri = env_map.get("AUTH_JWKS_URI", "").strip()
+    try:
+        mappings = json.loads(env_map.get("TENANT_ORG_MAPPINGS") or "{}")
+    except json.JSONDecodeError:
+        mappings = {}
+    info.jwt_org_mappings = mappings if isinstance(mappings, dict) else {}
 
 
 RUNTIMES = ("aegra", "a2a", "opencode")
 A2A_FRAMEWORKS = ("pydantic-ai", "crewai")
+
+
+def _sidecar_shape(runtime: str, shape: Any, root: Path, *, refusal: str = "") -> Any:
+    """A non-Aegra runtime runs behind the sidecar: deploy-first project (or own A2A Dockerfile)."""
+    byo = runtime == "a2a" and (root / "Dockerfile").is_file()
+    if shape.kind != "deploy-first" and not byo:
+        raise RuntimeError(refusal or (
+            f"--runtime {runtime} needs a deploy-first project (agent.json + AGENTS.md)"
+            + (" or your own Dockerfile serving A2A" if runtime == "a2a" else "")
+        ))
+    # The sidecar enforces the tool scope for every non-Aegra runtime.
+    return dataclasses.replace(shape, mcp_inject=True)
+
+
+def _apply_stateless_wrap(overlay: dict[str, Any], info: PlatformInfo) -> None:
+    """Stateless (no-DB) sidecar wrap with pod egress locked to the gateway.
+
+    Used on profile=perimeter (derived) and by an explicit --egress-only on a full platform.
+    """
+    if not info.jwt_issuer:
+        raise RuntimeError(
+            "the stateless sidecar needs the platform tenant-JWT contract, but none was found. "
+            "Set platform.tenants.jwt.{issuer,audiences} on the platform release "
+            "(the lab overlay profiles/values-local-perimeter.yaml already does)."
+        )
+    overlay.setdefault("sidecar", {})["stateless"] = True
+    platform = overlay.setdefault("platform", {})
+    platform["databaseUrl"] = ""
+    platform["valkeyUrl"] = ""
+    overlay.setdefault("security", {}).setdefault("networkPolicies", {})["enabled"] = True
+    # CE-15a-3: Langfuse is off in perimeter. When the platform has a BYO OTLP collector it
+    # renders an OTLP relay on the gateway (needs the AI gateway's consumer key); the sidecar
+    # exports there, so the pod's egress stays gateway + DNS and the collector stays private.
+    hv = info.helm_values
+    otlp = (((hv.get("platform") or {}).get("telemetry") or {}).get("otlp") or {})
+    ai_gateway_on = (hv.get("aiGateway") or {}).get("enabled", True) is not False
+    if str(otlp.get("endpoint") or "").strip() and ai_gateway_on:
+        platform["otlp"] = True
 
 
 def runtime_base_image(runtime: str, a2a_framework: str, tag: str) -> str:
@@ -1083,10 +1199,18 @@ def deploy_agent(
     all_tools: bool = False,
     runtime: str = "aegra",
     a2a_framework: str = "pydantic-ai",
+    egress_only: bool = False,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
     runtime = (runtime or "aegra").strip().lower()
+    stateless_refusal = ""
+    if egress_only and runtime == "aegra":
+        runtime = "a2a"  # the stateless (no-DB) sidecar wrap requires a non-aegra bridge
+        stateless_refusal = (
+            "--egress-only runs the agent behind the stateless sidecar, which needs a deploy-first "
+            "project (agent.json + AGENTS.md) or your own Dockerfile serving A2A"
+        )
     if runtime not in RUNTIMES:
         raise RuntimeError(f"--runtime must be one of {', '.join(RUNTIMES)}")
     registry = (image_registry or os.getenv("ZELKOR_IMAGE_REGISTRY", "")).strip().rstrip("/")
@@ -1098,19 +1222,21 @@ def deploy_agent(
         registry = "ghcr.io/devopssquaddev"
     shape = detect(root, graph_id_flag)
     if runtime != "aegra":
-        byo = runtime == "a2a" and (root / "Dockerfile").is_file()
-        if shape.kind != "deploy-first" and not byo:
-            raise RuntimeError(
-                f"--runtime {runtime} needs a deploy-first project (agent.json + AGENTS.md)"
-                + (" or your own Dockerfile serving A2A" if runtime == "a2a" else "")
-            )
-        # The sidecar enforces the tool scope for every non-Aegra runtime.
-        shape = dataclasses.replace(shape, mcp_inject=True)
+        shape = _sidecar_shape(runtime, shape, root, refusal=stateless_refusal)
     tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools,
                                 graph_may_declare=runtime == "aegra")
     release = helm_release_name(shape.graph_id)
     logger.info("detect kind=%s graph_id=%s skip_build=%s", shape.kind, shape.graph_id, skip_build)
     info = discover_platform(env, runner=runner)
+    if info.profile == PERIMETER and not egress_only:
+        # The platform decides, not a flag: no Aegra / DB, so wrap statelessly.
+        logger.info("platform profile=perimeter: stateless sidecar, egress locked to the gateway")
+        egress_only = True
+        if runtime == "aegra":
+            runtime = "a2a"
+            shape = _sidecar_shape(runtime, shape, root, refusal=PERIMETER_NO_AEGRA)
+            tool_scope = mcp_tool_scope(shape, tools=tool_prefixes, all_tools=all_tools,
+                                        graph_may_declare=False)
     agent_ns = (agent_namespace or "").strip() or env.namespace
     fill_langfuse_from_secret(env, info, runner=runner)
     bind_worker_to_agent_namespace(info, agent_ns, env.namespace)
@@ -1184,6 +1310,8 @@ def deploy_agent(
         "auth": auth_values(info),
         "security": _np_values(info),
     }
+    if egress_only:
+        _apply_stateless_wrap(overlay, info)
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
             "intent": {
@@ -1204,7 +1332,7 @@ def deploy_agent(
         agent_chart=agent_chart,
         platform_chart=platform_chart,
         platform_release=info.release,
-        as_default=as_default,
+        as_default=as_default and info.aegra_present,
         runner=runner,
         agent_namespace=agent_ns,
     )
@@ -1233,6 +1361,7 @@ def deploy_from_values(
     image_registry: str = "",
     skip_build: Optional[bool] = None,
     agent_namespace: str = "",
+    egress_only: bool = False,
 ) -> dict[str, Any]:
     if approval_threshold:
         raise RuntimeError(UPGRADE)
@@ -1253,6 +1382,14 @@ def deploy_from_values(
     file_values = dict(file_values)
     file_values["image"] = image
     logger.info("deploy -f %s graph_id=%s image=%s:%s", values_path, graph_id, repo, tag)
+    info = discover_platform(env, runner=runner)
+    stateless = egress_only or info.profile == PERIMETER
+    if stateless and str(file_values.get("runtime") or "aegra").strip().lower() == "aegra":
+        raise RuntimeError(
+            PERIMETER_NO_AEGRA if info.profile == PERIMETER else
+            "--egress-only runs the agent behind the stateless sidecar; set runtime: a2a or opencode "
+            "in the values file"
+        )
     dockerfile = values_path.parent / "Dockerfile"
     skip = _skip_build() if skip_build is None else skip_build
     if dockerfile.is_file() and not skip and not digest:
@@ -1277,7 +1414,6 @@ def deploy_from_values(
             file_values = dict(file_values)
             file_values["image"] = image
             logger.info("image.pullPolicy=Never after kind load")
-    info = discover_platform(env, runner=runner)
     agent_ns = (agent_namespace or "").strip() or env.namespace
     fill_langfuse_from_secret(env, info, runner=runner)
     bind_worker_to_agent_namespace(info, agent_ns, env.namespace)
@@ -1300,6 +1436,8 @@ def deploy_from_values(
     overlay = merge_catalog_values(
         file_values, discovered_worker_values(info, platform_namespace=env.namespace)
     )
+    if stateless:
+        _apply_stateless_wrap(overlay, info)
     as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
     release = helm_release_name(graph_id)
     _helm_upgrade_agent(
@@ -1309,7 +1447,7 @@ def deploy_from_values(
         agent_chart=agent_chart,
         platform_chart=platform_chart,
         platform_release=info.release,
-        as_default=as_default,
+        as_default=as_default and info.aegra_present,
         runner=runner,
         agent_namespace=agent_ns,
     )
@@ -1348,7 +1486,8 @@ def cmd_undeploy(
     as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
     logger.info("helm uninstall %s", release)
     _run(helm_argv(agent_env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
-    if as_default:
+    restored = as_default and info.aegra_present
+    if restored:
         _run(
             helm_argv(
                 env,
@@ -1357,13 +1496,13 @@ def cmd_undeploy(
                 str(platform_chart),
                 "--reuse-values",
                 "--set",
-                "aegra.attachDefaultRoute=true",
+                "workload.agents.attachDefaultRoute=true",
             ),
             runner=runner,
             capture=False,
             timeout=HELM_UPGRADE_TIMEOUT_SEC,
         )
-    print(json.dumps({"release": release, "uninstalled": True, "restored_default": as_default}))
+    print(json.dumps({"release": release, "uninstalled": True, "restored_default": restored}))
     return 0
 
 
@@ -1382,7 +1521,8 @@ def cmd_logs(
     agent_ns = (agent_namespace or "").strip() or find_agent_release_namespace(env, release, runner=runner)
     agent_env = env_for_namespace(env, agent_ns)
     deploy = f"deployment/{agent_deployment_name(release)}"
-    argv = kube_argv(agent_env, "logs", deploy)
+    # Every container, prefixed: sidecar runtimes (all perimeter agents) run sidecar + agent.
+    argv = kube_argv(agent_env, "logs", deploy, "--all-containers=true", "--prefix=true")
     if follow:
         argv.append("-f")
     if tail:
@@ -1475,10 +1615,12 @@ def cmd_status(env: Env, runner: Optional[RunFn] = None, agent_namespace: str = 
 def cmd_doctor(env: Env, runner: Optional[RunFn] = None) -> int:
     logger.info("doctor env=%s namespace=%s", env.name, env.namespace)
     info = discover_platform(env, runner=runner)
+    perimeter = info.profile == PERIMETER
     checks = [
-        ("DATABASE_URL", bool(info.database_url)),
+        # perimeter has no database by design: nothing to check, nothing missing
+        ("DATABASE_URL", perimeter or bool(info.database_url)),
         ("OPENAI_BASE_URL", bool(info.openai_base_url)),
-        ("MCP_URL", bool(info.mcp_url)),
+        ("MCP_URL", bool(info.mcp_url or info.mcp_service)),
         ("Agents host", bool(info.agents_host)),
         ("CE license", True),
     ]
@@ -1487,6 +1629,8 @@ def cmd_doctor(env: Env, runner: Optional[RunFn] = None) -> int:
         status = "ok" if ok else "missing"
         if label == "CE license":
             status = "n/a"
+        elif label == "DATABASE_URL" and perimeter:
+            status = "n/a (perimeter)"
         print(f"{label}: {status}")
         if not ok:
             failed += 1
@@ -1742,6 +1886,12 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
             action="store_true",
             help="bind every tool the MCP gateway lists for the tenant (natives and extras)",
         )
+        p.add_argument(
+            "--egress-only",
+            action="store_true",
+            help="wrap the agent behind a stateless (no-DB) sidecar and lock pod egress to the gateway "
+                 "(automatic on a profile=perimeter platform; opt-in on full)",
+        )
         p.add_argument("directory", nargs="?", default=".")
     sub.choices["deploy"].add_argument(
         "-f",
@@ -1758,6 +1908,16 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         print(UPGRADE, file=sys.stderr)
         return 2
     if args.cmd == "token":
+        try:  # same target as every other verb unless the flags say otherwise
+            env = _env_from_args(args)
+            if hasattr(args, "namespace") and not args.namespace:
+                args.namespace = env.namespace
+            if hasattr(args, "context") and not args.context:
+                args.context = env.kube_context
+            if hasattr(args, "kubeconfig") and not args.kubeconfig:
+                args.kubeconfig = env.kubeconfig
+        except KeyError:
+            pass
         if args.token_cmd == "mint":
             return cmd_token_mint(args)
         if args.token_cmd == "jwks":
@@ -1849,6 +2009,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 approval_threshold=getattr(args, "approval_threshold", "") or "",
                 image_registry=getattr(args, "registry", "") or "",
                 agent_namespace=getattr(args, "namespace", "") or "",
+                egress_only=bool(getattr(args, "egress_only", False)),
             )
         else:
             result = deploy_agent(
@@ -1869,6 +2030,7 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
                 all_tools=bool(getattr(args, "all_tools", False)),
                 runtime=getattr(args, "runtime", "aegra") or "aegra",
                 a2a_framework=getattr(args, "a2a_framework", "pydantic-ai") or "pydantic-ai",
+                egress_only=bool(getattr(args, "egress_only", False)),
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

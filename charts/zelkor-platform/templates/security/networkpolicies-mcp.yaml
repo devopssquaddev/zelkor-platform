@@ -46,6 +46,40 @@ spec:
 {{- end }}
 {{- end }}
 ---
+{{- $extraPorts := list -}}
+{{- range (.Values.mcp.extraBackends | default list) }}
+{{- if (.service | default dict).name }}{{- $extraPorts = append $extraPorts (int .service.port) -}}{{- end }}
+{{- end }}
+{{- if $extraPorts }}
+{{- /* Customer MCP servers registered as Service extras: only the gateway dataplane may call
+     them. The customer labels their server pods zelkor.io/mcp-extra: "true". */}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fn }}-mcp-extra-ingress
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.mcp") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      zelkor.io/mcp-extra: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $dpNs | quote }}
+          podSelector:
+            matchLabels:
+              gateway.envoyproxy.io/owning-gateway-name: {{ $gwName | quote }}
+              gateway.envoyproxy.io/owning-gateway-namespace: {{ $gwNs | quote }}
+      ports:
+        {{- range ($extraPorts | uniq) }}
+        - port: {{ . }}
+        {{- end }}
+---
+{{- end }}
 {{- end }}
 {{- if (.Values.mcp.sandboxMCP).enabled }}
 apiVersion: networking.k8s.io/v1

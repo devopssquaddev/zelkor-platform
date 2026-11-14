@@ -1,0 +1,62 @@
+# Local kind overlay — perimeter profile (INSTALL_PROFILE=perimeter).
+# Zero-DB egress boundary: Envoy AI Gateway + MCP gateway + default-deny NetworkPolicy.
+# `profile: perimeter` disables all datastores, Langfuse, Aegra and the data-plane MCP backends;
+# NeMo and the sandbox stay off unless perimeter.guardrails / perimeter.sandbox (install.sh
+# --with-guardrails / --with-sandbox). This overlay only adds kind-local hosts and dev signing.
+# Envoy hostNetwork:true maps kind extraPortMappings 8088; see docs/quickstart.md.
+---
+profile: perimeter
+global:
+  tier: oss
+  imagePullPolicy: IfNotPresent
+security:
+  mcp:
+    # kindnet: cross-namespace ingress NP blocks Envoy→native MCP; see values-local.yaml.
+    acceptUnprotectedBackends: true
+gateway:
+  enabled: true
+  gatewayClassName: eg
+  envoyProxy:
+    enabled: true
+    hostNetwork: true
+    nodeSelector:
+      ingress-ready: 'true'
+  hosts:
+    agents: agents.localhost
+    aiGateway: ai-gateway.localhost
+    mcp: mcp.localhost
+platform:
+  tenants:
+    sso:
+      enabled: false
+    jwt:
+      issuer: https://local.zelkor.invalid
+      audiences:
+      - zelkor
+      jwks: '{"keys":[{"kty":"RSA","kid":"kind-lab","use":"sig","alg":"RS256","n":"AQAB","e":"AQAB"}]}'
+      localSigning:
+        enabled: true
+        seedTenant: seed
+        tokenTTL: 24h
+        seedTokenTTL: 24h
+  telemetry:
+    level: INFO
+    format: json
+workspace:
+  models:
+    enabled: true
+    consumerKey: dev-key
+    rateLimit:
+      enabled: true
+      requestsPerMinute: 600
+    providers:
+      ollamaLocal:
+        host: ''
+      ollamaCloud:
+        apiKey: ''
+  tools:
+    enabled: true
+    policy:
+      rateLimit:
+        enabled: true
+        callsPerMinute: 600

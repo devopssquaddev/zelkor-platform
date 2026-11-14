@@ -16,6 +16,7 @@ OPEN_MAP_KEYS = %w[
 ].freeze
 
 ENUMS = {
+  "profile" => ["", "full", "perimeter"],
   "platform.telemetry.level" => %w[DEBUG INFO WARNING ERROR CRITICAL],
   "platform.telemetry.format" => %w[json text],
   "databases.mode" => %w[in-cluster-basic operator-cr external],
@@ -26,7 +27,22 @@ STRING_OR_OBJECT_PATHS = %w[
   workspace.models.providers.vertex.credentialsJson
 ].freeze
 
+EGRESS_TO_ITEM = {
+  "type" => "object",
+  "additionalProperties" => false,
+  "description" => "One allowed destination: namespace and/or podSelector (in-cluster) or cidr, plus port.",
+  "properties" => {
+    "namespace" => { "type" => "string" },
+    "podSelector" => { "type" => "object", "additionalProperties" => { "type" => "string" } },
+    "cidr" => { "type" => "string" },
+    "port" => { "type" => "integer" },
+  },
+  "required" => %w[port],
+}.freeze
+
 STRICT_ARRAY_ITEM_SCHEMAS = {
+  "workspace.tools.postgresMCP.egressTo" => EGRESS_TO_ITEM,
+  "workspace.tools.qdrantMCP.egressTo" => EGRESS_TO_ITEM,
   "workspace.tools.extraBackends" => {
     "type" => "object",
     "additionalProperties" => false,
@@ -80,6 +96,8 @@ STRICT_ARRAY_ITEM_SCHEMAS = {
         "properties" => {
           "include" => { "type" => "array", "items" => { "type" => "string" } },
           "includeRegex" => { "type" => "array", "items" => { "type" => "string" } },
+          "exclude" => { "type" => "array", "items" => { "type" => "string" } },
+          "excludeRegex" => { "type" => "array", "items" => { "type" => "string" } },
         },
       },
       "forwardHeaders" => {

@@ -10,7 +10,7 @@ NATIVE_DEPLOYMENTS = {
 TENANT_ALLOW_PREFIX = "has(request.auth.jwt.claims."
 ACME = (
     "--set", "workspace.tools.extraBackends[0].name=acme",
-    "--set", "workspace.tools.extraBackends[0].service.name=acme-mcp",
+    "--set", "workspace.tools.extraBackends[0].service.name=acme",
     "--set", "workspace.tools.extraBackends[0].service.port=8080",
 )
 
@@ -146,13 +146,25 @@ def _envoyproxy(*extra: str) -> dict | None:
     return eps[0] if eps else None
 
 
-def test_mcp_access_log_metadata_only_and_default_log_kept():
-    ep = _envoyproxy()
+def _settings(*extra: str) -> list[dict]:
+    ep = _envoyproxy(*extra)
     assert ep is not None
-    settings = ep["spec"]["telemetry"]["accessLog"]["settings"]
-    default, mcp = settings
+    return ep["spec"]["telemetry"]["accessLog"]["settings"]
+
+
+def _by_event(settings: list[dict], event: str) -> dict:
+    return next(s for s in settings if s.get("format", {}).get("json", {}).get("event") == event)
+
+
+def test_mcp_access_log_metadata_only_and_default_log_kept():
+    settings = _settings()
+    default = settings[0]
+    mcp = _by_event(settings, "mcp_access")
     assert "format" not in default  # EG default JSON format for every other path
-    assert default["matches"] == ["!request.path.startsWith('/mcp')"]
+    # CE-15a-3: the default matcher excludes /mcp and /v1 (each has its own log), except the
+    # OTLP relay's /v1/traces
+    assert default["matches"] == [
+        "!request.path.startsWith('/mcp') && (!request.path.startsWith('/v1') || request.path == '/v1/traces')"]
     assert mcp["matches"] == ["request.path.startsWith('/mcp')"]
     fields = mcp["format"]["json"]
     for key in ("mcp_method", "mcp_backend", "mcp_tool_name", "tenant_id", "response_code", "duration_ms"):
@@ -164,5 +176,33 @@ def test_mcp_access_log_metadata_only_and_default_log_kept():
 
 
 def test_mcp_access_log_absent_when_tools_disabled():
-    ep = _envoyproxy("--set", "workspace.tools.enabled=false")
-    assert ep is None or "telemetry" not in ep["spec"]
+    # The /mcp log drops with the MCP gateway; the /v1 llm_access log stays (CE-15a-3).
+    settings = _settings("--set", "workspace.tools.enabled=false")
+    events = [s.get("format", {}).get("json", {}).get("event") for s in settings]
+    assert "mcp_access" not in events
+
+
+def test_llm_access_log_metadata_only_on_v1():
+    # CE-15a-3: always-on /v1 token log (no bodies) so perimeter (Langfuse off) has token visibility.
+    settings = _settings()
+    llm = _by_event(settings, "llm_access")
+    # OTLP relay posts (/v1/traces) are not LLM calls: they go to the default log, not llm_access.
+    assert llm["matches"] == ["request.path.startsWith('/v1') && request.path != '/v1/traces'"]
+    default = next(s for s in settings if "format" not in s)
+    assert default["matches"] == [
+        "!request.path.startsWith('/mcp') && (!request.path.startsWith('/v1') || request.path == '/v1/traces')"]
+    fields = llm["format"]["json"]
+    for key in ("tenant_id", "gen_ai.request.model", "llm_input_token", "llm_output_token",
+                "llm_total_token", "response_code", "duration_ms", "x_request_id"):
+        assert key in fields
+    assert "io.envoy.ai_gateway:llm_total_token" in fields["llm_total_token"]
+    joined = " ".join(fields.values()).upper()
+    for forbidden in ("BODY", "AUTHORIZATION", "PARAMS"):  # P11: metadata only
+        assert forbidden not in joined
+
+
+def test_llm_access_log_present_without_mcp():
+    # The /v1 token log does not depend on the MCP gateway being enabled.
+    settings = _settings("--set", "workspace.tools.enabled=false")
+    events = [s.get("format", {}).get("json", {}).get("event") for s in settings]
+    assert "llm_access" in events

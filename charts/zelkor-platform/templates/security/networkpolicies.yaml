@@ -47,6 +47,7 @@ spec:
           port: 8080
         - protocol: TCP
           port: 10080
+    {{- if .Values.aegra.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -54,7 +55,9 @@ spec:
       ports:
         - protocol: TCP
           port: 8000
+    {{- end }}
     {{- /* No direct NeMo: models only via the AI Gateway, which requires the caller key. */}}
+    {{- if .Values.langfuse.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -62,6 +65,8 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
+{{- if .Values.aegra.enabled }}
 ---
 # Aegra runtimes (front door + workers) need Postgres + Valkey for the checkpointer.
 apiVersion: networking.k8s.io/v1
@@ -122,6 +127,7 @@ spec:
         - protocol: TCP
           port: 10080
     {{- /* No direct NeMo: models only via the AI Gateway, which requires the caller key. */}}
+    {{- if .Values.langfuse.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -129,7 +135,10 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
+{{- end }}
+{{- if .Values.mcp.postgresMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -154,14 +163,10 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: postgresql
-      ports:
-        - protocol: TCP
-          port: 5432
+    {{- include "zelkor-platform.dataToolEgress" (dict "egressTo" (.Values.mcp.postgresMCP.egressTo | default list) "component" "postgresql" "port" 5432) | nindent 4 }}
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
+{{- end }}
+{{- if .Values.mcp.qdrantMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -186,13 +191,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: qdrant
-      ports:
-        - protocol: TCP
-          port: 6333
+    {{- include "zelkor-platform.dataToolEgress" (dict "egressTo" (.Values.mcp.qdrantMCP.egressTo | default list) "component" "qdrant" "port" 6333) | nindent 4 }}
     - to:
         - podSelector:
             matchLabels:
@@ -214,6 +213,7 @@ spec:
         - protocol: TCP
           port: 10080
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
+{{- end }}
 {{- if and .Values.mcp.aigatewayMCP .Values.mcp.aigatewayMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -261,6 +261,7 @@ spec:
           port: 10080
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
 {{- end }}
+{{- if .Values.mcp.sandboxMCP.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -283,6 +284,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+{{- end }}
 {{- $surfaces := .Values.langfuse.surfaces | default dict }}
 {{- $llmConn := $surfaces.llmConnection | default dict }}
 {{- $seedTools := and $surfaces.tools $surfaces.tools.seedFromMcp }}
@@ -348,6 +350,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- if .Values.langfuse.enabled }}
     - to:
         - podSelector:
             matchLabels:
@@ -355,6 +358,7 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:
@@ -445,6 +449,8 @@ spec:
     {{- end }}
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
 {{- end }}
-{{- else if .Values.security.networkPolicies.enabled }}
+{{- else if and .Values.security.networkPolicies.enabled (ne (.Values.profile | default "" | toString | trim) "perimeter") }}
+{{- /* profile=perimeter turns NetworkPolicies on itself; with tools off it is an LLM-only
+     boundary whose wrapped agents carry their own policies (zelkor-agent chart). */}}
 {{- fail "security.networkPolicies.enabled requires workload.agents.enabled or workspace.tools.enabled. Zelkor NetworkPolicies isolate agent and tool traffic; with both off nothing would be enforced. Enable one, or set security.networkPolicies.enabled=false and isolate Langfuse and the datastores with your own policies. See docs/architecture-network.md." }}
 {{- end }}

@@ -1166,3 +1166,36 @@ printf 'sets=%s\\n' "${CLUSTER_INSTALL_HELM_SETS[*]}"
     )
     assert proc.returncode == 0, proc.stderr
     assert "gateway.createGatewayClass=false" in proc.stdout
+
+
+def test_production_dry_run_perimeter():
+    # Same installer and production overlay, plus the one-line perimeter profile: no Langfuse host,
+    # no datastore operators, no gVisor, no datastore secrets printed.
+    proc = _run(PROD, "--profile", "perimeter", "--dry-run", "--hosts-agents", "agents.example.com",
+                "--generate-passwords", *PROD_JWT_ARGS)
+    assert proc.returncode == 0, proc.stderr
+    out = proc.stdout
+    assert "values-production.yaml" in out and "values-perimeter.yaml" in out
+    assert out.index("values-production.yaml") < out.index("values-perimeter.yaml")
+    assert "gateway.hosts.agents=agents.example.com" in out
+    assert "platform.tenants.jwt.issuer=https://customer.example" in out
+    for absent in ("bootstrap-operators.sh", "gateway.hosts.langfuse", "nextauthUrl", "POSTGRES_PASSWORD="):
+        assert absent not in out, absent
+
+
+def test_production_perimeter_opt_ins():
+    proc = _run(PROD, "--profile", "perimeter", "--dry-run", "--hosts-agents", "agents.example.com",
+                "--with-guardrails", "--with-sandbox", "--skip-gvisor", *PROD_JWT_ARGS)
+    assert proc.returncode == 0, proc.stderr
+    assert "perimeter.guardrails=true" in proc.stdout and "perimeter.sandbox=true" in proc.stdout
+    plain = _run(PROD, "--profile", "perimeter", "--dry-run", "--hosts-agents", "agents.example.com",
+                 *PROD_JWT_ARGS)
+    assert "perimeter.guardrails=false" in plain.stdout and "perimeter.sandbox=false" in plain.stdout
+    full = _run(PROD, "--dry-run", "--hosts-agents", "a.example.com", "--hosts-langfuse", "l.example.com",
+                "--with-sandbox", *PROD_JWT_ARGS)
+    assert full.returncode != 0 and "apply to --profile perimeter" in (full.stderr + full.stdout)
+
+
+def test_production_profile_must_be_known():
+    proc = _run(PROD, "--profile", "bogus", "--dry-run", "--hosts-agents", "agents.example.com", *PROD_JWT_ARGS)
+    assert proc.returncode != 0 and "--profile" in (proc.stderr + proc.stdout)

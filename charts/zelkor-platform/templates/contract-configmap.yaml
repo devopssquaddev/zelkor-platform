@@ -1,15 +1,58 @@
 {{- include "zelkor-platform.compile" . -}}
+{{- /* Discovery contract (ADR 04, v2.1): one mode-neutral source for the Operator and the zelkor
+     CLI. Rendered from effective (compiled) values; a reference is present only when its
+     component exists, so a missing key means "absent", never an error. */ -}}
+{{- $full := include "zelkor-platform.fullname" . -}}
+{{- $ns := .Release.Namespace -}}
+{{- $jwt := ((.Values.platform.tenants).jwt | default dict) -}}
+{{- $pr := .Values.gateway.parentRef | default dict -}}
+{{- $agentsHost := include "zelkor-platform.agentsHost" . | trim -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: zelkor-platform-contract
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $ns }}
   labels:
     {{- include "zelkor-platform.labels" (dict "root" . "intent" "platform.contract") | nindent 4 }}
 data:
-  CONTRACT_VERSION: "v2.0"
-  AI_GATEWAY_SERVICE: {{ printf "%s-ai-gateway.%s.svc.cluster.local:%v" (include "zelkor-platform.fullname" .) .Release.Namespace (.Values.aiGateway.inClusterService.port | default 80) | quote }}
-  MCP_SERVICE: {{ printf "%s-mcp.%s.svc.cluster.local:80" (include "zelkor-platform.fullname" .) .Release.Namespace | quote }}
-  AEGRA_FRONTDOOR_SERVICE: {{ printf "%s-aegra.%s.svc.cluster.local:8000" (include "zelkor-platform.fullname" .) .Release.Namespace | quote }}
-  DATABASE_SECRET_REF: {{ printf "%s-postgresql" (include "zelkor-platform.fullname" .) | quote }}
-  VALKEY_SECRET_REF: {{ printf "%s-valkey" (include "zelkor-platform.fullname" .) | quote }}
+  CONTRACT_VERSION: "v2.1"
+  PROFILE: {{ (.Values.profile | default "full" | toString | trim) | default "full" | quote }}
+  RELEASE: {{ $full | quote }}
+  AI_GATEWAY_SERVICE: {{ printf "%s-ai-gateway.%s.svc.cluster.local:%v" $full $ns (.Values.aiGateway.inClusterService.port | default 80) | quote }}
+  MCP_SERVICE: {{ printf "%s-mcp.%s.svc.cluster.local:80" $full $ns | quote }}
+  NETWORK_POLICIES: {{ ternary "true" "false" (((.Values.security).networkPolicies).enabled | default false) | quote }}
+  {{- /* Optional planes (on in full; perimeter opt-ins perimeter.guardrails / perimeter.sandbox). */}}
+  GUARDRAILS_ENABLED: {{ ternary "true" "false" (.Values.guardrails.nemo.enabled | default false) | quote }}
+  SANDBOX_ENABLED: {{ ternary "true" "false" (and .Values.mcp.enabled .Values.mcp.sandboxMCP.enabled | default false) | quote }}
+  {{- if .Values.mcp.enabled }}
+  {{- $backends := list -}}
+  {{- range (include "zelkor-platform.mcpNativeBackends" . | fromJsonArray) }}{{- $backends = append $backends .name -}}{{- end -}}
+  {{- range (.Values.mcp.extraBackends | default list) }}{{- $backends = append $backends .name -}}{{- end }}
+  {{- /* MCP tool prefixes this install routes (natives + registered extras). */}}
+  MCP_BACKENDS: {{ join "," $backends | quote }}
+  {{- end }}
+  {{- if .Values.gateway.enabled }}
+  GATEWAY_NAME: {{ $pr.name | default (printf "%s-gateway" $full) | quote }}
+  GATEWAY_NAMESPACE: {{ $pr.namespace | default $ns | quote }}
+  {{- end }}
+  {{- if $agentsHost }}
+  AGENTS_HOST: {{ $agentsHost | quote }}
+  {{- end }}
+  {{- if ($jwt.issuer | default "" | trim) }}
+  TENANT_JWT_CONFIGMAP: {{ printf "%s-tenant-jwt" $full | quote }}
+  {{- if or ($jwt.jwksConfigMap | default "" | trim) $jwt.jwks (($jwt.localSigning | default dict).enabled) }}
+  TENANT_JWKS_CONFIGMAP: {{ include "zelkor-platform.tenantJwksConfigMapName" . | quote }}
+  {{- end }}
+  {{- end }}
+  {{- if eq (include "zelkor-platform.otlpRelayEnabled" .) "true" }}
+  OTLP_RELAY_SERVICE: {{ printf "%s-otlp.%s.svc.cluster.local:%v" $full $ns (.Values.aiGateway.inClusterService.port | default 80) | quote }}
+  {{- end }}
+  {{- if .Values.aegra.enabled }}
+  AEGRA_FRONTDOOR_SERVICE: {{ printf "%s-aegra.%s.svc.cluster.local:8000" $full $ns | quote }}
+  {{- end }}
+  {{- if .Values.postgresql.enabled }}
+  DATABASE_SECRET_REF: {{ printf "%s-postgresql" $full | quote }}
+  {{- end }}
+  {{- if .Values.valkey.enabled }}
+  VALKEY_SECRET_REF: {{ printf "%s-valkey" $full | quote }}
+  {{- end }}

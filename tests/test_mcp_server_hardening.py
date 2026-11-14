@@ -100,3 +100,50 @@ def test_sandbox_timeout_clamped(monkeypatch):
         "tenant-a",
     )
     assert captured["timeout"] == 90
+
+
+class _KindHandler(MCPToolHandler):
+    seen_trace: dict = {}
+
+    def list_tools(self):
+        return [{"name": n, "inputSchema": {"type": "object"}} for n in ("bad_args", "boom", "trace")]
+
+    def call_tool(self, name, arguments, tenant_id, limiter=None):
+        from common.mcp_server import TRACE_CONTEXT
+
+        if name == "bad_args":
+            raise ValueError("messages is required")
+        if name == "boom":
+            raise RuntimeError("backend exploded")
+        _KindHandler.seen_trace = dict(TRACE_CONTEXT.get())
+        return {"ok": True}
+
+
+def _rpc_call(client, name, *, meta=None, headers=None):
+    params = {"name": name, "arguments": {}}
+    if meta:
+        params["_meta"] = meta
+    resp = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params},
+                       headers={"accept": "application/json, text/event-stream", **(headers or {})})
+    assert resp.status_code == 200, resp.text
+    return resp.json()["result"]
+
+
+def test_failed_tool_calls_carry_a_failure_class():
+    """Callers stamp error.type from _meta["zelkor.error"]; the text stays the exception message."""
+    with TestClient(build_starlette_app(_KindHandler(), lambda _h: "tenant-a")) as client:
+        bad = _rpc_call(client, "bad_args")
+        boom = _rpc_call(client, "boom")
+    assert bad["isError"] and bad["_meta"]["zelkor.error"] == "invalid_arguments"
+    assert "messages is required" in bad["content"][0]["text"]
+    assert boom["isError"] and boom["_meta"]["zelkor.error"] == "error"
+
+
+def test_tool_sees_the_gateway_span_from_meta_before_forwarded_headers():
+    gw = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+    caller = "00-0af7651916cd43dd8448eb211c80319c-00f067aa0ba902b7-01"
+    with TestClient(build_starlette_app(_KindHandler(), lambda _h: "tenant-a")) as client:
+        _rpc_call(client, "trace", meta={"traceparent": gw}, headers={"traceparent": caller})
+        assert _KindHandler.seen_trace == {"traceparent": gw}
+        _rpc_call(client, "trace", headers={"traceparent": caller})
+        assert _KindHandler.seen_trace == {"traceparent": caller}

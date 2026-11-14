@@ -12,13 +12,17 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "zelkor-platform.labels" (dict "root" . "intent" "gateway") | nindent 4 }}
-  {{- if or .Values.gateway.annotations (and $tlsOn $issuer (not $preCerts)) }}
+  {{- $otlpOn := eq (include "zelkor-platform.gatewayOtlpEnabled" .) "true" }}
+  {{- if or .Values.gateway.annotations (and $tlsOn $issuer (not $preCerts)) $otlpOn }}
   annotations:
     {{- with .Values.gateway.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
     {{- if and $tlsOn $issuer (not $preCerts) }}
     cert-manager.io/cluster-issuer: {{ $issuer | quote }}
+    {{- end }}
+    {{- if $otlpOn }}
+    aigateway.envoyproxy.io/gateway-config: {{ include "zelkor-platform.gatewayOtlpConfigName" . | quote }}
     {{- end }}
   {{- end }}
 spec:

@@ -127,8 +127,9 @@ def test_missing_extra_registrations_detects_unregistered_tools():
     assert len(missing) == 1
     assert missing[0]["name"] == "two"
     snippet = extra_backend_overlay_snippet("acme", "http://acme-mcp:8080")
-    assert "name: acme" in snippet
-    assert "name: acme-mcp" in snippet
+    assert "        service:\n" in snippet and "          name: acme\n" in snippet
+    assert "          name: acme-mcp\n" not in snippet
+    assert "expose acme-mcp as a Service named 'acme'" in snippet
     tavily = extra_backend_overlay_snippet("tavily", "https://mcp.tavily.com/mcp")
     assert "fqdn:" in tavily
     assert "hostname: mcp.tavily.com" in tavily
@@ -267,7 +268,8 @@ def test_undeploy_logs_helm_and_kubectl(tmp_path, capsys):
     )
     joined = [" ".join(a) for a in seen]
     assert any("uninstall" in j and " agent " in f" {j} " for j in joined)
-    assert any("attachDefaultRoute=true" in j for j in joined)
+    # the schema-valid V2 key (aegra.* is a V1 key the chart rejects), same as deploy flips
+    assert any("workload.agents.attachDefaultRoute=true" in j for j in joined)
     out = capsys.readouterr().out
     assert json.loads(out.strip().splitlines()[-1])["restored_default"] is True
 
@@ -439,6 +441,214 @@ def test_auth_values_copy_platform_jwt_contract():
 
 def test_upgrade_text_constant():
     assert "Pro" in UPGRADE
+
+
+def _no_aegra_runner(captured: dict, *, platform_extra: str = "", top_extra: str = ""):
+    """A platform with NO Aegra deployment (perimeter shape): the tenant-JWT contract lives only
+    in the platform's own Helm values (Finding A) — an Aegra-shaped mock would hide that."""
+    import yaml as _yaml
+
+    def runner(argv, **_kwargs):
+        captured.setdefault("commands", []).append(list(argv))
+        if "helm" in argv and "upgrade" in argv and "-f" in argv:
+            captured["overlay"] = _yaml.safe_load(Path(argv[argv.index("-f") + 1]).read_text(encoding="utf-8"))
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.5.0", "status": "deployed"}])
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = (
+                "gateway:\n  hosts:\n    agents: agents.example\n"
+                f"{top_extra}"
+                "platform:\n  tenants:\n    jwt:\n"
+                "      issuer: https://local.zelkor.invalid\n"
+                "      audiences:\n      - zelkor\n"
+                f"{platform_extra}"
+            )
+        elif "get" in argv and "nodes" in argv:
+            stdout = "172.22.0.2 10.244.0.0/24\n"
+        elif "get" in argv and "deploy" in argv:
+            stdout = json.dumps({"items": []})  # perimeter: no Aegra
+        elif "get" in argv and ("svc" in argv or "httproute" in argv):
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    return runner
+
+
+def _deploy_overlay(tmp_path, monkeypatch, *, egress_only: bool,
+                    platform_extra: str = "", top_extra: str = "") -> dict:
+    """Run `zelkor deploy` on a deploy-first project against a mocked no-Aegra platform; return the overlay."""
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+    captured: dict = {}
+    runner = _no_aegra_runner(captured, platform_extra=platform_extra, top_extra=top_extra)
+    try:
+        deploy_agent(
+            root=tmp_path, env=env, push=False, skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=runner, egress_only=egress_only, all_tools=True,
+        )
+    except RuntimeError:
+        pass  # the mocked rollout never reports ready; the overlay is captured at helm upgrade
+    assert "overlay" in captured, "helm upgrade was not reached"
+    return captured["overlay"]
+
+
+def _egress_only_overlay(tmp_path, monkeypatch, *, platform_extra: str = "", top_extra: str = "") -> dict:
+    return _deploy_overlay(tmp_path, monkeypatch, egress_only=True,
+                           platform_extra=platform_extra, top_extra=top_extra)
+
+
+PERIMETER = "profile: perimeter\n"
+
+
+def _assert_stateless_wrap(ov: dict) -> None:
+    assert ov["runtime"] == "a2a"
+    assert ov["sidecar"]["stateless"] is True
+    assert ov["platform"]["databaseUrl"] == "" and ov["platform"]["valkeyUrl"] == ""
+    assert ov["security"]["networkPolicies"]["enabled"] is True
+
+
+def test_plain_deploy_on_perimeter_platform_wraps_statelessly(tmp_path, monkeypatch):
+    # P0: the CLI reads the platform's profile; the user does not need to know --egress-only.
+    ov = _deploy_overlay(tmp_path, monkeypatch, egress_only=False, top_extra=PERIMETER)
+    _assert_stateless_wrap(ov)
+    # perimeter forces NetworkPolicies on, so kind's hostNetwork Envoy sources are allowed in
+    assert ov["security"]["networkPolicies"]["hostNetworkGatewayCIDRs"] == ["10.244.0.1/32", "172.22.0.2/32"]
+
+
+def test_langgraph_project_on_perimeter_fails_before_any_upgrade(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "langgraph.json").write_text('{"graphs": {"desk": "./agent.py:graph"}}', encoding="utf-8")
+    (tmp_path / "agent.py").write_text("graph = None\n", encoding="utf-8")
+    captured: dict = {}
+    with pytest.raises(RuntimeError, match="profile=perimeter") as err:
+        deploy_agent(root=tmp_path, env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                     push=False, skip_build=True, agent_chart=ROOT / "charts" / "zelkor-agent",
+                     platform_chart=ROOT / "charts" / "zelkor-platform", all_tools=True,
+                     runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    assert "--runtime" not in str(err.value)  # names no flag the user never passed
+    assert not any("upgrade" in c for c in captured["commands"])
+
+
+def test_explicit_egress_only_on_langgraph_project_explains_the_wrap(tmp_path):
+    (tmp_path / "langgraph.json").write_text('{"graphs": {"desk": "./agent.py:graph"}}', encoding="utf-8")
+    (tmp_path / "agent.py").write_text("graph = None\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="--egress-only runs the agent behind the stateless sidecar"):
+        deploy_agent(root=tmp_path, env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                     push=False, skip_build=True, egress_only=True, all_tools=True, runner=_no_cluster,
+                     agent_chart=ROOT / "charts" / "zelkor-agent", platform_chart=ROOT / "charts" / "zelkor-platform")
+
+
+def _catalog_values(tmp_path, runtime: str = "") -> Path:
+    values = tmp_path / "values.yaml"
+    values.write_text("graphId: researcher\n" + (f"runtime: {runtime}\n" if runtime else "")
+                      + "image:\n  repository: ghcr.io/acme/researcher\n  tag: '1.0.0'\n", encoding="utf-8")
+    return values
+
+
+def test_deploy_f_on_perimeter_platform_wraps_statelessly(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    try:
+        deploy_from_values(values_path=_catalog_values(tmp_path, "a2a"),
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    except RuntimeError:
+        pass
+    _assert_stateless_wrap(captured["overlay"])
+
+
+def test_deploy_f_honours_egress_only_on_full(tmp_path, monkeypatch):
+    # `deploy -f --egress-only` used to drop the flag silently.
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    try:
+        deploy_from_values(values_path=_catalog_values(tmp_path, "a2a"), egress_only=True,
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured))
+    except RuntimeError:
+        pass
+    _assert_stateless_wrap(captured["overlay"])
+
+
+def test_deploy_f_aegra_catalog_entry_on_perimeter_fails_clearly(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    with pytest.raises(RuntimeError, match="profile=perimeter"):
+        deploy_from_values(values_path=_catalog_values(tmp_path),
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    assert not any("upgrade" in c for c in captured["commands"])
+
+
+OTLP_VALUES = "  telemetry:\n    otlp:\n      endpoint: http://otel-collector.monitoring.svc:4318\n      headers: x-team=abc\n"
+
+
+def test_deploy_agent_egress_only_routes_traces_via_platform_relay(tmp_path, monkeypatch):
+    # CE-15a-3: the sidecar exports through the platform's OTLP relay; the agent overlay never
+    # carries the collector address/headers and opens no collector egress.
+    ov = _egress_only_overlay(tmp_path, monkeypatch, platform_extra=OTLP_VALUES)
+    assert ov["platform"]["otlp"] is True
+    assert not {"otlpEndpoint", "otlpHeaders"} & set(ov["platform"])
+    assert "otlpCollectorCIDRs" not in ov["security"]["networkPolicies"]
+
+
+def test_deploy_agent_egress_only_without_relay_sets_no_otlp(tmp_path, monkeypatch):
+    assert "otlp" not in _egress_only_overlay(tmp_path, monkeypatch)["platform"]
+    # no AI gateway -> no consumer key -> the platform renders no relay
+    ov = _egress_only_overlay(tmp_path, monkeypatch, platform_extra=OTLP_VALUES,
+                              top_extra="aiGateway:\n  enabled: false\n")
+    assert "otlp" not in ov["platform"]
+
+
+def test_deploy_agent_egress_only_overlay(tmp_path, monkeypatch):
+    ov = _egress_only_overlay(tmp_path, monkeypatch)
+    assert ov["runtime"] == "a2a"  # egress-only promotes aegra -> a2a (needs a sidecar bridge)
+    assert ov["sidecar"]["stateless"] is True
+    assert ov["platform"]["databaseUrl"] == ""
+    assert ov["platform"]["valkeyUrl"] == ""
+    assert ov["security"]["networkPolicies"]["enabled"] is True
+    # Finding A: the sidecar's tenant-JWT contract is wired from platform values,
+    # not from a (non-existent in perimeter) Aegra deployment.
+    assert ov["auth"]["issuer"] == "https://local.zelkor.invalid"
+    assert ov["auth"]["audiences"] == ["zelkor"]
+    assert ov["auth"]["jwksConfigMap"] == "zelkor-platform-tenant-jwks"
+
+
+def test_deploy_agent_egress_only_without_jwt_contract_fails_clearly(tmp_path):
+    # Perimeter with no Aegra AND no tenant-JWT in platform values: the egress-only
+    # wrap must stop with guidance, not let the sidecar fail-close at startup (Finding A).
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    env = Env(name="local", kube_context="kind-zelkor", namespace="default")
+
+    def runner(argv, **_kwargs):
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.5.0", "status": "deployed"}])
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = "gateway:\n  hosts:\n    agents: agents.example\n"  # no platform.tenants.jwt
+        elif "get" in argv and ("deploy" in argv or "svc" in argv or "httproute" in argv):
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    with pytest.raises(RuntimeError, match="tenant-JWT contract"):
+        deploy_agent(
+            root=tmp_path, env=env, push=False, skip_build=True,
+            agent_chart=ROOT / "charts" / "zelkor-agent",
+            platform_chart=ROOT / "charts" / "zelkor-platform",
+            runner=runner, egress_only=True, all_tools=True,
+        )
 
 
 def test_deploy_agent_rejects_approval_threshold_on_ce(tmp_path):
@@ -1184,6 +1394,39 @@ def test_token_mint_reads_issuer_audiences_and_ttl_from_cluster(monkeypatch, cap
     assert claims["tenant_id"] == "Bank_Alpha"
 
 
+def test_token_mint_works_in_perimeter_without_tenant_jwt_configmap(monkeypatch, capsys):
+    # Perimeter runs no Aegra, so {release}-tenant-jwt ConfigMap is absent. Minting must still
+    # succeed when --issuer/--audience are supplied, not hard-fail on the missing CM (Finding C).
+    import base64
+
+    from tests.helpers.jwt_keys import generate_rsa_keypair
+
+    kp = generate_rsa_keypair("1")
+
+    def fake_run(cmd, **_kwargs):
+        target = " ".join(cmd)
+        if " secret " in f" {target} " and "tenant-jwt-signing" in target:
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                {"data": {"privateKey": base64.b64encode(kp.private_pem).decode(),
+                          "kid": base64.b64encode(b"1").decode()}}))
+        if " configmap " in f" {target} " and "tenant-jwks" in target:
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(
+                {"metadata": {"annotations": {}}, "data": {"jwks": json.dumps(kp.jwks)}}))
+        if " configmap " in f" {target} " and "tenant-jwt" in target and "tenant-jwks" not in target:
+            return SimpleNamespace(returncode=1, stdout="",
+                                   stderr='configmaps "zelkor-platform-tenant-jwt" not found')
+        return SimpleNamespace(returncode=1, stdout="", stderr=f"unexpected kubectl: {target}")
+
+    monkeypatch.setattr(token_cmd.subprocess, "run", fake_run)
+    args = SimpleNamespace(release="zelkor-platform", namespace="default", kubeconfig="", context="",
+                           tenant="tenant-a", issuer="https://local.zelkor.invalid", audience="zelkor",
+                           ttl="", out="")
+    monkeypatch.setenv("KUBECONTEXT", "kind-zelkor")
+    monkeypatch.delenv("KUBE_CONTEXT", raising=False)
+    assert token_cmd.cmd_token_mint(args) == 0
+    assert capsys.readouterr().out.strip().startswith("eyJ")  # a JWT was printed
+
+
 def test_token_mint_uses_default_namespace_when_unset(monkeypatch):
     seen_ns: list[str] = []
 
@@ -1457,3 +1700,182 @@ def test_discovered_worker_values_reference_the_consumer_key():
     platform = discovered_worker_values(PlatformInfo(release="zelkor-platform"))["platform"]
     assert platform["releaseName"] == "zelkor-platform"
     assert "consumerKey" not in platform
+
+
+def _contract_runner(configmaps: dict[str, dict], values: str = "", aegra_env: list | None = None):
+    """Platform discovery mock: helm values, named ConfigMaps (contract, tenant-jwt), optional Aegra."""
+
+    def runner(argv, **_kwargs):
+        stdout, rc = "", 0
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps([{"name": "zelkor-platform", "chart": "zelkor-platform-2.5.0", "status": "deployed"}])
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = values
+        elif "get" in argv and "configmap" in argv:
+            name = argv[argv.index("configmap") + 1]
+            if name in configmaps:
+                stdout = json.dumps({"data": configmaps[name]})
+            else:
+                rc = 1
+        elif "get" in argv and "deploy" in argv:
+            items = []
+            if aegra_env is not None:
+                items = [{"metadata": {"name": "zelkor-platform-aegra"},
+                          "spec": {"template": {"spec": {"containers": [{"env": aegra_env}]}}}}]
+            stdout = json.dumps({"items": items})
+        elif "get" in argv and ("svc" in argv or "httproute" in argv):
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=rc, stdout=stdout, stderr="")
+
+    return runner
+
+
+JWT_CM = {"AUTH_JWT_ISSUER": "https://idp.example", "AUTH_JWT_AUDIENCES": '["zelkor","api"]',
+          "AUTH_TENANT_CLAIMS": '["org_id"]', "AUTH_JWKS_PATH": "/etc/zelkor/tenant-jwks",
+          "TENANT_ORG_MAPPINGS": '{"acme": "tenant-a"}'}
+
+
+def test_discover_reads_the_platform_contract_not_aegra_or_user_values():
+    # P1: one mode-neutral source. Helm user values are empty here; nothing may come from them.
+    from zelkor.main import discover_platform
+
+    contract = {"CONTRACT_VERSION": "v2.1", "PROFILE": "perimeter", "RELEASE": "zelkor-platform",
+                "AGENTS_HOST": "agents.example", "NETWORK_POLICIES": "true",
+                "GATEWAY_NAME": "shared-gw", "GATEWAY_NAMESPACE": "edge",
+                "TENANT_JWT_CONFIGMAP": "zelkor-platform-tenant-jwt",
+                "TENANT_JWKS_CONFIGMAP": "corp-jwks"}
+    info = discover_platform(Env(name="prod", kube_context="k3s", namespace="zelkor"),
+                             runner=_contract_runner({"zelkor-platform-contract": contract,
+                                                      "zelkor-platform-tenant-jwt": JWT_CM}))
+    assert info.profile == "perimeter"
+    assert info.agents_host == "agents.example"
+    assert info.network_policies_enabled is True
+    assert (info.gateway_name, info.gateway_namespace) == ("shared-gw", "edge")
+    assert info.jwt_issuer == "https://idp.example"
+    assert info.jwt_audiences == ["zelkor", "api"]
+    assert info.jwt_tenant_claims == ["org_id"]
+    assert auth_values(info)["jwksConfigMap"] == "corp-jwks"
+    assert auth_values(info)["orgMappings"] == {"acme": "tenant-a"}
+
+
+def test_discover_remote_jwks_hands_the_agent_the_uri_not_a_missing_configmap():
+    from zelkor.main import discover_platform
+
+    contract = {"CONTRACT_VERSION": "v2.1", "PROFILE": "full", "TENANT_JWT_CONFIGMAP": "zelkor-platform-tenant-jwt"}
+    jwt = {**JWT_CM, "AUTH_JWKS_URI": "https://idp.example/jwks"}
+    jwt.pop("AUTH_JWKS_PATH")
+    info = discover_platform(Env(name="prod", kube_context="k3s", namespace="zelkor"),
+                             runner=_contract_runner({"zelkor-platform-contract": contract,
+                                                      "zelkor-platform-tenant-jwt": jwt}))
+    auth = auth_values(info)
+    assert auth["jwksUri"] == "https://idp.example/jwks"
+    assert not auth.get("jwksConfigMap")
+
+
+def test_discover_contract_wins_over_aegra_env_for_the_jwks_configmap():
+    # Aegra's env has no JWKS ConfigMap name; the old path hard-coded {release}-tenant-jwks.
+    from zelkor.main import discover_platform
+
+    contract = {"CONTRACT_VERSION": "v2.1", "PROFILE": "full", "TENANT_JWT_CONFIGMAP": "zelkor-platform-tenant-jwt",
+                "TENANT_JWKS_CONFIGMAP": "corp-jwks"}
+    aegra = [{"name": "AUTH_JWT_ISSUER", "value": "https://idp.example"},
+             {"name": "AUTH_JWT_AUDIENCES", "value": '["zelkor"]'},
+             {"name": "DATABASE_URL", "value": "postgresql://x"}]
+    info = discover_platform(Env(name="prod", kube_context="k3s", namespace="zelkor"),
+                             runner=_contract_runner({"zelkor-platform-contract": contract,
+                                                      "zelkor-platform-tenant-jwt": JWT_CM}, aegra_env=aegra))
+    assert info.profile == "full"
+    assert info.database_url == "postgresql://x"  # Aegra still supplies worker datastore wiring
+    assert auth_values(info)["jwksConfigMap"] == "corp-jwks"
+
+
+def test_default_agent_on_a_platform_without_aegra_never_upgrades_the_platform(tmp_path, monkeypatch):
+    # attachDefaultRoute only moves Aegra's catch-all route; with no Aegra there is nothing to move.
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    captured: dict = {}
+    try:
+        deploy_agent(root=tmp_path, env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                     push=False, skip_build=True, all_tools=True, agent_chart=ROOT / "charts" / "zelkor-agent",
+                     platform_chart=ROOT / "charts" / "zelkor-platform",
+                     runner=_no_aegra_runner(captured, top_extra=PERIMETER))
+    except RuntimeError:
+        pass
+    assert captured["overlay"]["sharedRoute"]["asDefault"] is True
+    upgrades = [c for c in captured["commands"] if "upgrade" in c]
+    assert upgrades and all("zelkor-platform" not in c[c.index("upgrade") + 1] for c in upgrades), upgrades
+
+
+def test_undeploy_default_agent_without_aegra_restores_nothing(tmp_path, capsys):
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="local", kube_context="kind-zelkor", namespace="default"), store_path=store)
+    (tmp_path / "agent.json").write_text('{"name": "agent"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    captured: dict = {}
+    base = _no_aegra_runner(captured, top_extra=PERIMETER)
+
+    def runner(argv, **kwargs):
+        if "helm" in argv and "get" in argv and "values" in argv and "zelkor-platform" not in argv:
+            captured.setdefault("commands", []).append(list(argv))
+            return SimpleNamespace(returncode=0, stdout="sharedRoute:\n  asDefault: true\n", stderr="")
+        return base(argv, **kwargs)
+
+    assert main(["--store", str(store), "--env", "local", "--platform-chart",
+                 str(ROOT / "charts" / "zelkor-platform"), "undeploy", str(tmp_path)], runner=runner) == 0
+    assert not any("upgrade" in c for c in captured["commands"])
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["restored_default"] is False
+
+
+def test_doctor_passes_on_a_perimeter_platform(tmp_path, capsys):
+    # No database and no Aegra env is the perimeter's normal state, not a failure.
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="local", kube_context="kind-zelkor", namespace="default"), store_path=store)
+    contract = {"CONTRACT_VERSION": "v2.1", "PROFILE": "perimeter", "AGENTS_HOST": "agents.example",
+                "MCP_SERVICE": "zelkor-platform-mcp.default.svc.cluster.local:80",
+                "TENANT_JWT_CONFIGMAP": "zelkor-platform-tenant-jwt"}
+    base = _contract_runner({"zelkor-platform-contract": contract, "zelkor-platform-tenant-jwt": JWT_CM})
+
+    def runner(argv, **kwargs):
+        if "get" in argv and "svc" in argv:
+            return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps({"items": [
+                {"metadata": {"name": "zelkor-platform-ai-gateway"}, "spec": {"ports": [{"port": 80}]}}]}))
+        return base(argv, **kwargs)
+
+    assert main(["--store", str(store), "--env", "local", "doctor"], runner=runner) == 0
+    out = capsys.readouterr().out
+    assert "DATABASE_URL: n/a (perimeter)" in out
+    assert "MCP_URL: ok" in out
+
+
+def test_logs_show_every_container_of_the_agent_pod(tmp_path):
+    # Sidecar runtimes (every perimeter agent) run sidecar + agent; the first container alone
+    # hides the agent's own logs.
+    from zelkor.main import cmd_logs
+
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def runner(argv, **_kwargs):
+        seen.append(list(argv))
+        return SimpleNamespace(returncode=0, stdout="[]" if "list" in argv else "line\n", stderr="")
+
+    assert cmd_logs(tmp_path, Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                    follow=False, runner=runner, agent_namespace="default") == 0
+    (logs,) = [a for a in seen if "logs" in a]
+    assert "--all-containers=true" in logs and "--prefix=true" in logs
+
+
+def test_token_mint_targets_the_selected_env(tmp_path, monkeypatch):
+    # Like every other verb: namespace/context come from --env, not a hard-coded "default".
+    store = tmp_path / "envs.yaml"
+    add_env(Env(name="prod", kube_context="k3s", namespace="zelkor"), store_path=store)
+    seen = {}
+    monkeypatch.setattr("zelkor.main.cmd_token_mint", lambda a: seen.update(ns=a.namespace, ctx=a.context) or 0)
+    assert main(["--store", str(store), "--env", "prod", "token", "mint",
+                 "--release", "zelkor-platform", "--tenant", "tenant-a"]) == 0
+    assert seen == {"ns": "zelkor", "ctx": "k3s"}
+    assert main(["--store", str(store), "--env", "prod", "token", "mint", "--release", "zelkor-platform",
+                 "--tenant", "tenant-a", "--namespace", "other", "--context", "kind-x"]) == 0
+    assert seen == {"ns": "other", "ctx": "kind-x"}  # explicit flags still win

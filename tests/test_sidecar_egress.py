@@ -285,8 +285,7 @@ def test_tool_messages_lose_non_standard_name_field():
     assert sent[0]["name"] == "alice"  # only tool messages are rewritten
 
 
-def test_child_spans_carry_trace_identity():
-    """Langfuse v4 events mode groups by per-span identity; children must carry it too."""
+def _recording_tracing():
     pytest.importorskip("opentelemetry.sdk")
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -295,7 +294,12 @@ def test_child_spans_carry_trace_identity():
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    tracing = Tracing(tracer=provider.get_tracer("t"))
+    return Tracing(tracer=provider.get_tracer("t")), exporter
+
+
+def test_child_spans_carry_trace_identity():
+    """Langfuse v4 events mode groups by per-span identity; children must carry it too."""
+    tracing, exporter = _recording_tracing()
     ctx = RunContext(tenant_id="tenant-a", bearer=JWT, graph_id="desk", thread_id="t1", run_id="r1")
     ctx.root_span = tracing.start_root(ctx, input_text="hi")
     with tracing.child(ctx, "sandbox__execute_python", observation_type="tool"):
@@ -303,10 +307,39 @@ def test_child_spans_carry_trace_identity():
     tracing.end_root(ctx.root_span, ctx)
     spans = {s.name: s for s in exporter.get_finished_spans()}
     child = spans["sandbox__execute_python"]
-    assert child.attributes["langfuse.trace.name"] == "desk"
-    assert child.attributes["langfuse.session.id"] == "t1"
-    assert child.attributes["langfuse.user.id"] == "tenant-a"
+    # CE-15a-3: standard OTel/Langfuse-v4 identity on every span (root name is the trace name).
+    assert child.attributes["user.id"] == "tenant-a"
+    assert child.attributes["session.id"] == "t1"
+    assert spans["desk"].attributes["user.id"] == "tenant-a"
+    assert spans["desk"].attributes["session.id"] == "t1"
+    # Uniform contract: no Langfuse identity attributes (Langfuse reads user.id / session.id).
+    for span in (child, spans["desk"]):
+        for key in ("langfuse.trace.name", "langfuse.session.id", "langfuse.user.id", "zelkor.langfuse.pk"):
+            assert key not in span.attributes, key
     assert child.parent.span_id == spans["desk"].context.span_id
+
+
+def test_from_env_selects_otlp_exporter_without_langfuse(monkeypatch):
+    # CE-15a-3: with no LANGFUSE_* but an OTLP endpoint, tracing is enabled (perimeter path).
+    pytest.importorskip("opentelemetry.sdk")
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4318")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-scope-orgid=acme")
+    assert Tracing.from_env().enabled is True
+
+
+def test_from_env_disabled_without_any_target(monkeypatch):
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL",
+                "OTEL_TARGETS", "OTEL_EXPORTER_OTLP_ENDPOINT"):
+        monkeypatch.delenv(var, raising=False)
+    assert Tracing.from_env().enabled is False
+
+
+def test_parse_otlp_headers():
+    from zelkor_sidecar.tracing import _parse_otlp_headers
+    assert _parse_otlp_headers("a=1, b=2") == {"a": "1", "b": "2"}
+    assert _parse_otlp_headers("") == {}
 
 
 class _BrokenStream(httpx.AsyncByteStream):
@@ -408,3 +441,162 @@ def test_mcp_delete_outside_a_run_is_local():
     seen = len(gw.seen)
     assert client.delete("/run/active/mcp", headers={"mcp-session-id": sid}).status_code == 204
     assert len(gw.seen) == seen and sid not in egress._sessions
+
+
+def test_mcp_requests_carry_the_run_trace_context():
+    """The MCP gateway's spans join the run's trace: tools/call is a child of the tool span,
+    other MCP methods (initialize, tools/list) of the run root. Only W3C trace context goes."""
+    tracing, exporter = _recording_tracing()
+    up = Upstream()
+    slot = RunSlot()
+    config = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                          tool_allow_all=True)
+    client = TestClient(Egress(slot, tracing, config,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(up))).app())
+    ctx = _activate(slot)
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    client.post("/run/active/mcp", json=_rpc("tools/list"))
+    client.post("/run/active/mcp", json=_rpc("tools/call", mid=2, name="postgres__query", arguments={}))
+    tracing.end_root(ctx.root_span, ctx)
+    spans = {s.name: s for s in exporter.get_finished_spans()}
+    root, tool = spans["desk"], spans["postgres__query"]
+    listed, called = up.requests[-2].headers, up.requests[-1].headers
+    assert f"{root.context.span_id:016x}" in listed["traceparent"]
+    assert f"{tool.context.span_id:016x}" in called["traceparent"]
+    assert f"{root.context.trace_id:032x}" in called["traceparent"]
+    assert not [h for h in called if h.startswith("x-zelkor-") or h == "baggage"], dict(called)
+
+
+def _traced_egress(upstream):
+    tracing, exporter = _recording_tracing()
+    slot = RunSlot()
+    config = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                          tool_allow_all=True, nemo_tools_no_stream=True)
+    client = TestClient(Egress(slot, tracing, config,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(upstream))).app())
+    ctx = _activate(slot)
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    return client, exporter
+
+
+USAGE = {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
+
+
+def _chat_span(exporter):
+    (span,) = [s for s in exporter.get_finished_spans() if s.name.startswith("chat")]
+    return span.attributes
+
+
+def test_chat_span_carries_response_model_and_usage_json_and_rewrite():
+    def gw(request):
+        return httpx.Response(200, json={"id": "c9", "model": "m-2024", "usage": USAGE,
+                                         "choices": [{"index": 0, "finish_reason": "stop",
+                                                      "message": {"role": "assistant", "content": "ok"}}]})
+
+    for body in ({"model": "m"}, {"model": "m", "stream": True, "tools": [{"type": "function"}]}):
+        client, exporter = _traced_egress(gw)
+        client.post("/run/active/v1/chat/completions", json=body)
+        attrs = _chat_span(exporter)
+        assert attrs["gen_ai.response.model"] == "m-2024" and attrs["gen_ai.response.id"] == "c9"
+        assert attrs["gen_ai.usage.input_tokens"] == 11 and attrs["gen_ai.usage.output_tokens"] == 7
+        assert list(attrs["gen_ai.response.finish_reasons"]) == ["stop"]
+
+
+def test_stream_chat_span_ends_after_the_last_chunk_with_its_usage():
+    chunks = [{"id": "c7", "model": "m-s", "choices": [{"index": 0, "delta": {"content": "o"}, "finish_reason": None}]},
+              {"id": "c7", "model": "m-s", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+              {"id": "c7", "model": "m-s", "choices": [], "usage": USAGE}]
+    raw = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+
+    class _Split(httpx.AsyncByteStream):  # event boundaries fall inside network chunks
+        async def __aiter__(self):
+            data = raw.encode()
+            for i in range(0, len(data), 37):
+                yield data[i:i + 37]
+
+    def gw(request):
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_Split())
+
+    client, exporter = _traced_egress(gw)
+    r = client.post("/run/active/v1/chat/completions", json={"model": "m", "stream": True})
+    assert r.content == raw.encode()  # relayed byte for byte
+    attrs = _chat_span(exporter)
+    assert attrs["gen_ai.response.model"] == "m-s" and attrs["gen_ai.usage.output_tokens"] == 7
+    assert list(attrs["gen_ai.response.finish_reasons"]) == ["stop"]
+
+
+def test_failed_tool_spans_carry_error_type():
+    cases = {
+        "rate_limited": {"isError": True, "_meta": {"zelkor.error": "rate_limited"},
+                         "content": [{"type": "text", "text": "rate limit exceeded"}]},
+        "invalid_arguments": {"isError": True, "content": [{"type": "text", "text": "Input validation error: x"}]},
+        "tool_error": {"isError": True, "content": [{"type": "text", "text": "boom"}]},
+    }
+    for expected, result in cases.items():
+        def gw(request, result=result):
+            msg = json.loads(request.content)
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": msg["id"], "result": result})
+
+        client, exporter = _traced_egress(gw)
+        client.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+        (tool,) = [s for s in exporter.get_finished_spans() if s.name == "postgres__query"]
+        assert tool.attributes["error.type"] == expected
+        assert tool.status.status_code.name == "ERROR"
+
+    client, exporter = _traced_egress(lambda request: httpx.Response(403, text="access denied"))
+    client.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+    (tool,) = [s for s in exporter.get_finished_spans() if s.name == "postgres__query"]
+    assert tool.attributes["error.type"] == "permission_denied"
+    assert tool.status.status_code.name == "ERROR"
+
+
+# Langfuse keys the sidecar may still write: the observation type (no standard TOOL /
+# GENERATION source) and evaluator-filterable metadata.
+ALLOWED_LANGFUSE = ("langfuse.observation.type", "langfuse.observation.metadata.")
+
+
+def test_sidecar_spans_use_the_standard_attribute_set():
+    def gw(request):
+        if request.url.path.endswith("/mcp"):
+            msg = json.loads(request.content)
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": msg["id"],
+                                             "result": {"isError": True, "content": [{"type": "text", "text": "x"}]}})
+        return httpx.Response(200, json={"id": "c1", "model": "m", "usage": USAGE,
+                                         "choices": [{"index": 0, "finish_reason": "stop",
+                                                      "message": {"role": "assistant", "content": "ok"}}]})
+
+    tracing, exporter = _recording_tracing()
+    tracing.public_key = "pk-lf"  # Langfuse export: still no Langfuse identity on spans
+    slot = RunSlot()
+    config = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                          tool_allow_all=True)
+    client = TestClient(Egress(slot, tracing, config,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(gw))).app())
+    ctx = _activate(slot)
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    client.post("/run/active/v1/chat/completions", json={"model": "m"})
+    client.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+    tracing.end_root(ctx.root_span, ctx, output_text="done")
+    spans = exporter.get_finished_spans()
+    assert {s.name for s in spans} == {"desk", "chat m", "postgres__query"}
+    for span in spans:
+        stray = [k for k in span.attributes if k.startswith(("langfuse.", "zelkor.langfuse"))
+                 and not k.startswith(ALLOWED_LANGFUSE)]
+        assert not stray, (span.name, stray)
+        assert span.attributes["user.id"] == "tenant-a" and span.attributes["session.id"] == "t1"
+    root = next(s for s in spans if s.name == "desk")
+    assert json.loads(root.attributes["gen_ai.prompt"]) == "hi"
+    assert json.loads(root.attributes["gen_ai.completion"]) == "done"
+    assert json.loads(root.attributes["langfuse.observation.metadata.tool_names"]) == ["postgres__query"]
+
+
+def test_propagation_carries_identity_as_baggage_not_langfuse_headers():
+    tracing, _exporter = _recording_tracing()
+    tracing.public_key = "pk-lf"
+    ctx = RunContext(tenant_id="tenant-a", bearer=JWT, graph_id="desk", thread_id="t1", run_id="r1")
+    ctx.root_span = tracing.start_root(ctx)
+    headers = tracing.propagation_headers(ctx)
+    assert "traceparent" in headers and headers["x-zelkor-langfuse-pk"] == "pk-lf"
+    assert not [h for h in headers if h.startswith("x-zelkor-langfuse-") and h != "x-zelkor-langfuse-pk"]
+    for item in ("user.id=tenant-a", "session.id=t1", "langfuse.trace.name=desk"):
+        assert item in headers["baggage"], headers["baggage"]

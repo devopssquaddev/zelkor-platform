@@ -4,6 +4,11 @@
 # Rows render in tests/test_helm_config_matrix.py. Toggles left out are listed there with a reason.
 
 @gateway:                                        greenfield, layered, shared
+profile:                                         full, perimeter
+perimeter.guardrails:                            false, true
+perimeter.sandbox:                               false, true
+perimeter.dataTools.postgres:                    false, true
+perimeter.dataTools.qdrant:                      false, true
 databases.mode:                                  in-cluster-basic, operator-cr, external
 postgresql.enabled:                              true, false
 valkey.enabled:                                  true, false
@@ -42,5 +47,9 @@ workload.agents.mcpInject.enabled:               false, true
 # Isolation promises interact: cover every 3-way combination of these.
 { @gateway, security.networkPolicies.enabled, security.sandbox.enabled, workspace.tools.enabled, workload.agents.enabled } @ 3
 
-# templates/security/networkpolicies.yaml fails: NetworkPolicies need agents or tools to enforce anything.
-IF [security.networkPolicies.enabled] = "true" THEN [workload.agents.enabled] = "true" OR [workspace.tools.enabled] = "true";
+# templates/security/networkpolicies.yaml fails: NetworkPolicies need agents or tools to enforce anything
+# (full profile; perimeter turns them on itself and wrapped agents bring their own).
+IF [profile] = "full" AND [security.networkPolicies.enabled] = "true" THEN [workload.agents.enabled] = "true" OR [workspace.tools.enabled] = "true";
+
+# perimeter.* opt-ins only exist under profile=perimeter (the full profile ignores them).
+IF [profile] = "full" THEN [perimeter.guardrails] = "false" AND [perimeter.sandbox] = "false" AND [perimeter.dataTools.postgres] = "false" AND [perimeter.dataTools.qdrant] = "false";

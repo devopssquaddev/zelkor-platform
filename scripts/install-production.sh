@@ -23,18 +23,26 @@ SERVICE_MONITOR=0
 usage() {
   cat <<'EOF'
 Usage: ./scripts/install-production.sh --hosts-agents HOST --hosts-langfuse HOST [OPTIONS]
+       ./scripts/install-production.sh --profile perimeter --hosts-agents HOST [OPTIONS]
 
 Deploy Zelkor Community Edition (production) onto an existing cluster.
 Uses profiles/values-production.yaml (operator-cr, HA, NetworkPolicies).
 
 Required:
   --hosts-agents HOST
-  --hosts-langfuse HOST
+  --hosts-langfuse HOST        (not with --profile perimeter)
   --jwt-issuer URL             Customer IdP issuer (platform.tenants.jwt.issuer)
   --jwks-file PATH             JWKS JSON file (platform.tenants.jwt.jwks)
   --jwt-audience AUD           Expected JWT audience (platform.tenants.jwt.audiences[0])
 
 Options:
+  --profile full|perimeter     Product mode (default full). perimeter layers
+                               profiles/values-perimeter.yaml: gateway + MCP
+                               only, no datastores, operators or Langfuse
+  --with-guardrails            Perimeter opt-in: NeMo guardrails on /v1
+  --with-sandbox               Perimeter opt-in: gVisor code sandbox tool
+                               (uses the --install-gvisor / --skip-gvisor
+                               choice like the full profile)
   --namespace NAME             Release namespace (default: zelkor)
   --release NAME               Helm release name (default: zelkor-platform)
   --topology greenfield|layered|shared
@@ -97,6 +105,16 @@ while [[ $# -gt 0 ]]; do
   fi
   case "$1" in
     --skip-operators) SKIP_OPERATORS=1; shift ;;
+    --profile)
+      [[ $# -ge 2 ]] || cluster_install_die "missing value for --profile"
+      case "$2" in
+        full|perimeter) CLUSTER_INSTALL_PROFILE="$2" ;;
+        *) cluster_install_die "--profile must be full or perimeter (got $2)" ;;
+      esac
+      shift 2
+      ;;
+    --with-guardrails) CLUSTER_INSTALL_PERIMETER_GUARDRAILS=1; shift ;;
+    --with-sandbox) CLUSTER_INSTALL_PERIMETER_SANDBOX=1; shift ;;
     --generate-passwords) GENERATE_PASSWORDS=1; shift ;;
     --tls) TLS_ENABLED=1; shift ;;
     --cluster-issuer)
@@ -129,7 +147,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$HOSTS_AGENTS" || -z "$HOSTS_LANGFUSE" ]]; then
+PERIMETER=0
+if [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" ]]; then
+  PERIMETER=1
+  SKIP_OPERATORS=1  # no datastores: no CNPG / ClickHouse operators
+  CLUSTER_INSTALL_ENFORCE_STORAGE=0
+  CLUSTER_INSTALL_EXTRA_VALUES+=("${ZELKOR_REPO_ROOT}/profiles/values-perimeter.yaml")
+  CLUSTER_INSTALL_HELM_SETS+=(
+    --set "perimeter.guardrails=$([[ "$CLUSTER_INSTALL_PERIMETER_GUARDRAILS" -eq 1 ]] && echo true || echo false)"
+    --set "perimeter.sandbox=$([[ "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -eq 1 ]] && echo true || echo false)"
+  )
+  [[ -n "$HOSTS_AGENTS" ]] || cluster_install_die "--hosts-agents is required (no .localhost defaults)"
+elif [[ "$CLUSTER_INSTALL_PERIMETER_GUARDRAILS" -eq 1 || "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -eq 1 ]]; then
+  cluster_install_die "--with-guardrails / --with-sandbox apply to --profile perimeter (the full profile ships both)"
+elif [[ -z "$HOSTS_AGENTS" || -z "$HOSTS_LANGFUSE" ]]; then
   cluster_install_die "--hosts-agents and --hosts-langfuse are required (no .localhost defaults)"
 fi
 if [[ "$HOSTS_AGENTS" == *.localhost || "$HOSTS_LANGFUSE" == *.localhost ]]; then
@@ -157,7 +188,9 @@ if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 ]]; then
   export GVISOR_INSTALL_OPT_IN=true
 fi
 cluster_install_prepare
-cluster_install_gvisor_choose
+if [[ "$PERIMETER" -eq 0 || "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -eq 1 ]]; then
+  cluster_install_gvisor_choose  # perimeter: only with --with-sandbox
+fi
 
 if [[ "$TLS_ENABLED" -eq 1 ]]; then
   CLUSTER_INSTALL_HELM_SETS+=(
@@ -171,7 +204,7 @@ fi
 
 echo "install-production: topology=${CLUSTER_INSTALL_TOPOLOGY} namespace=${CLUSTER_INSTALL_NAMESPACE} release=${CLUSTER_INSTALL_RELEASE}"
 echo "install-production: LLM providers: ${LLM_PROVIDER_SUMMARY} (DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL})"
-echo "install-production: hosts agents=${HOSTS_AGENTS} langfuse=${HOSTS_LANGFUSE}"
+echo "install-production: profile=${CLUSTER_INSTALL_PROFILE} hosts agents=${HOSTS_AGENTS}${HOSTS_LANGFUSE:+ langfuse=${HOSTS_LANGFUSE}}"
 
 if [[ "$SKIP_OPERATORS" -eq 0 ]]; then
   ops=("${ZELKOR_REPO_ROOT}/scripts/bootstrap-operators.sh")
@@ -189,7 +222,7 @@ fi
 cluster_install_run_bootstrap_gateway
 cluster_install_run_helm "$PRODUCTION_VALUES"
 
-if [[ "$GENERATE_PASSWORDS" -eq 1 ]]; then
+if [[ "$GENERATE_PASSWORDS" -eq 1 && "$PERIMETER" -eq 0 ]]; then
   echo
   echo "Generated install secrets (store these; they are not shown again):"
   echo "  POSTGRES_PASSWORD=${POSTGRES_PASSWORD}"
@@ -213,12 +246,17 @@ cluster_install_enable_langfuse_public_route "$PRODUCTION_VALUES"
 cluster_install_print_secret_howto
 
 echo
-echo "Zelkor production release is applied."
-echo "  kubectl get cluster,clickhouseinstallation -n ${CLUSTER_INSTALL_NAMESPACE}"
-echo
-echo "Langfuse admin:"
-echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${CLUSTER_INSTALL_NAMESPACE} get secret ${CLUSTER_INSTALL_RELEASE}-langfuse-admin -o jsonpath='{.data.email}' | base64 -d; echo"
-echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${CLUSTER_INSTALL_NAMESPACE} get secret ${CLUSTER_INSTALL_RELEASE}-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo"
+echo "Zelkor production release is applied (profile=${CLUSTER_INSTALL_PROFILE})."
+if [[ "$PERIMETER" -eq 1 ]]; then
+  echo "  Deploy an agent from its project directory: zelkor deploy --tools <mcp-prefix>"
+  echo "  Call it through https://${HOSTS_AGENTS} (zelkor run --input \"...\")"
+else
+  echo "  kubectl get cluster,clickhouseinstallation -n ${CLUSTER_INSTALL_NAMESPACE}"
+  echo
+  echo "Langfuse admin:"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${CLUSTER_INSTALL_NAMESPACE} get secret ${CLUSTER_INSTALL_RELEASE}-langfuse-admin -o jsonpath='{.data.email}' | base64 -d; echo"
+  echo "  kubectl ${KUBECTL_ARGS[*]:-} -n ${CLUSTER_INSTALL_NAMESPACE} get secret ${CLUSTER_INSTALL_RELEASE}-langfuse-admin -o jsonpath='{.data.password}' | base64 -d; echo"
+fi
 echo
 ctx_flag=""
 if [[ -n "$KUBE_CONTEXT" ]]; then

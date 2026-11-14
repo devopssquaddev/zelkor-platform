@@ -65,10 +65,11 @@ zelkor deploy --env staging --registry ghcr.io/myorg --tools postgres,sandbox
 
 - **Runtime:** `--runtime aegra|a2a|opencode` (default `aegra`). `a2a` builds a deploy-first project on `zelkor-runtime-pydantic-ai` or, with `--a2a-framework crewai`, `zelkor-runtime-crewai`; a project with its own `Dockerfile` is built as-is. `opencode` builds on `zelkor-runtime-opencode`. See [Choose a runtime](agent-deploy.md#choose-a-runtime).
 - **MCP tool scope:** a graph that relies on Mode B inject must say which tools it binds: `--tools <prefix,...>` (MCP backend prefixes such as `postgres`, `sandbox`, `acme`) or `--all-tools` (every native and registered extra tool). A graph module that sets `MCP_INJECT_TOOLS` or `MCP_INJECT_PREFIXES` needs neither. Without a scope, deploy exits before building. Deep Agents projects whose `tools.json` lists the MCP server are not affected. To block a tool for every agent, use `workspace.tools.policy.deny` on the platform ([Tool policy](reference/mcp-tools.md#tool-policy)).
+- **Perimeter platforms:** on a `profile=perimeter` platform, `deploy` and `deploy -f` run the agent behind the stateless (no-database) sidecar and lock its egress to the gateway — no flag needed. A LangGraph project stops with a message before any change (it needs the full profile). `--egress-only` asks for the same wrap on a full platform. See [Perimeter Profile](perimeter.md).
 - **Non-kind clusters:** `--registry` or `ZELKOR_IMAGE_REGISTRY` is required.
 - **Kind:** registry defaults to `ghcr.io/devopssquaddev`; image loads with `kind load` when not pushing.
 - **Skip local build:** `ZELKOR_SKIP_BUILD=1 zelkor deploy` when the image is already in the registry.
-- **Prepared values overlay:** `zelkor deploy -f path/to/values.yaml` builds a sibling `Dockerfile` (context: repo root), then Helm-installs. Kind load on kind; `--registry` / `ZELKOR_IMAGE_REGISTRY` required off kind. `ZELKOR_SKIP_BUILD=1` skips docker. Docker/kind output streams to stderr. After Helm, wait prints replica status and a tail of current-hash pod logs every ~10s. Empty `platform.*` and `sharedRoute.host` are filled from the live cluster. Repeat `-f` (Helm-style). `image.tag` stays the values file (lab `ZELKOR_IMAGE_TAG` does not override). Catalog overlays: `examples/armored-agents/`.
+- **Prepared values overlay:** `zelkor deploy -f path/to/values.yaml` builds a sibling `Dockerfile` (context: repo root), then Helm-installs. Kind load on kind; `--registry` / `ZELKOR_IMAGE_REGISTRY` required off kind. `ZELKOR_SKIP_BUILD=1` skips docker. Docker/kind output streams to stderr. After Helm, wait prints replica status and a tail of current-hash pod logs every ~10s. Empty `platform.*` and `sharedRoute.host` are filled from the live cluster. Repeat `-f` (Helm-style). `image.tag` stays the values file (a `ZELKOR_IMAGE_TAG` env var does not override it). Catalog overlays: `examples/armored-agents/`.
 - **Platform MCP extras:** if `tools.json` names servers not registered in `workspace.tools.extraBackends`, deploy fails with a GitOps snippet — fix the platform overlay first ([Register extra MCP backends](mcp-extra-backends.md)).
 
 Optional workload intent (compiled to Helm values):
@@ -97,7 +98,7 @@ zelkor logs --tail 100 --no-follow
 zelkor undeploy
 ```
 
-`doctor` checks discovered `DATABASE_URL`, `OPENAI_BASE_URL`, `MCP_URL`, and agents Host on the platform Aegra Deployment.
+`doctor` checks the discovered `DATABASE_URL`, `OPENAI_BASE_URL`, `MCP_URL`, and agents host. On a perimeter platform `DATABASE_URL` reports `n/a (perimeter)`. `logs` shows every container of the agent pod, prefixed by container name.
 
 ## Global flags
 
@@ -121,7 +122,7 @@ Commands registered by the `zelkor` binary:
 | `deploy -f FILE` | ● | Build sibling Dockerfile unless `ZELKOR_SKIP_BUILD=1`; Helm-install overlay |
 | `undeploy [dir]` | ● | `helm uninstall` agent; restore platform default route if needed |
 | `run [dir]` | ● | Create thread + stream run (`langgraph-sdk`) |
-| `logs [dir]` | ● | `kubectl logs` on agent Deployment (`-f` default) |
+| `logs [dir]` | ● | `kubectl logs` on every container of the agent Deployment (`-f` default) |
 | `status` | ● | List platform and agent Helm releases and HTTPRoutes |
 | `doctor` | ● | Probe discovered platform endpoints |
 | `version` | ● | CLI version; platform chart when env resolves |
@@ -139,7 +140,7 @@ Paid commands print: `This command requires Zelkor Pro or Enterprise. Community 
 
 ### `token mint` flags
 
-`--release`, `--tenant` (required), `--namespace`, `--kubeconfig`, `--context`, `--issuer`, `--audience`, `--ttl`, `--out`.
+`--release`, `--tenant` (required), `--namespace`, `--kubeconfig`, `--context`, `--issuer`, `--audience`, `--ttl`, `--out`. Namespace, context, and kubeconfig default to the selected `--env`; issuer and audience default to the platform's tenant-JWT contract.
 
 ### `token jwks` flags
 

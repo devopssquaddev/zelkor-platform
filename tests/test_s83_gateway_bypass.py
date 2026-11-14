@@ -8,6 +8,7 @@ and fed to the probe on stdin. Needs KUBECONTEXT and ZELKOR_RUNTIME_GRAPHS.
 from __future__ import annotations
 
 import base64
+import functools
 import json
 import os
 
@@ -55,13 +56,30 @@ def _consumer_key() -> str:
     return base64.b64decode(proc.stdout.strip()).decode()
 
 
-def test_s83_no_key_no_bypass_and_nemo_host_needs_nemo_key():
+@functools.lru_cache(maxsize=1)
+def _probe() -> dict:
     require_kube()
     graph = runtime_graphs()[0]
-    out = json.loads(exec_python(graph, "agent", PROBE % (REL, MODEL, _consumer_key(), HARMFUL),
-                                 timeout=300).strip().splitlines()[-1])
+    return json.loads(exec_python(graph, "agent", PROBE % (REL, MODEL, _consumer_key(), HARMFUL),
+                                  timeout=300).strip().splitlines()[-1])
+
+
+def _nemo_deployed() -> bool:
+    # The NeMo host Service exists only with NeMo intercept (off in a default perimeter).
+    return kubectl_run(["get", "svc", f"{REL}-ai-gateway-nemo", "-o", "name"]).returncode == 0
+
+
+def test_s83_no_key_is_refused_even_with_bypass_headers():
+    out = _probe()
     assert out["no_key"] == 401, out
     assert out["bypass_no_key"] == 401, out
+
+
+def test_s83_bypass_headers_cannot_skip_nemo():
+    require_kube()
+    if not _nemo_deployed():
+        pytest.skip(f"no {REL}-ai-gateway-nemo Service: NeMo is not deployed (e.g. a perimeter without perimeter.guardrails)")
+    out = _probe()
     assert out["consumer_key_on_nemo_host"] == 401, out
     status, text = out["bypass_with_key_harmful"]
     assert status == 200 and looks_like_refusal(text), f"bypass headers skipped NeMo: {status} {text[:120]}"

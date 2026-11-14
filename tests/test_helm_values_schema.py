@@ -64,6 +64,7 @@ def _helm(*extra: str, values_files: list[Path] | None = None) -> subprocess.Com
     lab_profiles = (
         "values-local.yaml",
         "values-local-fast.yaml",
+        "values-local-perimeter.yaml",
         "values-quickstart.yaml",
     )
     skip_jwt_sets = bool(
@@ -130,6 +131,13 @@ def test_tier_gate_auth_sso():
     r = _helm("--set", "platform.tenants.sso.enabled=true")
     assert r.returncode != 0
     assert "Pro" in r.stderr
+
+
+def test_dual_trace_sink_fails_validate():
+    # CE-15a-3b: bundled Langfuse (default) + a BYO OTLP endpoint is dual-sink fan-out (Pro-5).
+    r = _helm("--set", "platform.telemetry.otlp.endpoint=http://otel-collector.monitoring.svc:4318")
+    assert r.returncode != 0
+    assert "otlp" in r.stderr and "one trace sink" in r.stderr
 
 
 def test_schema_rejects_platform_tenants_trust_tenant_header():

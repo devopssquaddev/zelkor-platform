@@ -39,6 +39,13 @@ cluster_install_init() {
   CLUSTER_INSTALL_PG_INSTANCES="${CLUSTER_INSTALL_PG_INSTANCES:-1}"
   CLUSTER_INSTALL_EXPECT_HA="${CLUSTER_INSTALL_EXPECT_HA:-0}"
   CLUSTER_INSTALL_ENFORCE_STORAGE="${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}"
+  # Product mode (Helm `profile`): full, or perimeter (gateway + MCP, no datastores/Langfuse).
+  CLUSTER_INSTALL_PROFILE="${CLUSTER_INSTALL_PROFILE:-full}"
+  # Perimeter opt-ins (--with-guardrails / --with-sandbox); the full profile ships both.
+  CLUSTER_INSTALL_PERIMETER_GUARDRAILS="${CLUSTER_INSTALL_PERIMETER_GUARDRAILS:-0}"
+  CLUSTER_INSTALL_PERIMETER_SANDBOX="${CLUSTER_INSTALL_PERIMETER_SANDBOX:-0}"
+  # Extra -f files layered after the main values file (e.g. profiles/values-perimeter.yaml).
+  CLUSTER_INSTALL_EXTRA_VALUES=()
   CLUSTER_INSTALL_GVISOR_INSTALL="${CLUSTER_INSTALL_GVISOR_INSTALL:-0}"
   CLUSTER_INSTALL_GVISOR_SKIP="${CLUSTER_INSTALL_GVISOR_SKIP:-0}"
   CLUSTER_INSTALL_HELM_LAST_ERR=""
@@ -611,12 +618,14 @@ cluster_install_print_secret_howto() {
 
 cluster_install_append_host_helm_sets() {
   [[ -n "$HOSTS_AGENTS" ]] || cluster_install_die "gateway.hosts.agents is required"
-  [[ -n "$HOSTS_LANGFUSE" ]] || cluster_install_die "gateway.hosts.langfuse is required"
-  CLUSTER_INSTALL_HELM_SETS+=(
-    --set "gateway.hosts.agents=${HOSTS_AGENTS}"
-    --set "gateway.hosts.langfuse=${HOSTS_LANGFUSE}"
-    --set "platform.telemetry.langfuse.nextauthUrl=${CLUSTER_INSTALL_NEXTAUTH_SCHEME}://${HOSTS_LANGFUSE}"
-  )
+  CLUSTER_INSTALL_HELM_SETS+=(--set "gateway.hosts.agents=${HOSTS_AGENTS}")
+  if [[ "$CLUSTER_INSTALL_PROFILE" != "perimeter" ]]; then  # perimeter has no Langfuse
+    [[ -n "$HOSTS_LANGFUSE" ]] || cluster_install_die "gateway.hosts.langfuse is required"
+    CLUSTER_INSTALL_HELM_SETS+=(
+      --set "gateway.hosts.langfuse=${HOSTS_LANGFUSE}"
+      --set "platform.telemetry.langfuse.nextauthUrl=${CLUSTER_INSTALL_NEXTAUTH_SCHEME}://${HOSTS_LANGFUSE}"
+    )
+  fi
   if [[ "$CLUSTER_INSTALL_TOPOLOGY" == "shared" ]]; then
     CLUSTER_INSTALL_HELM_SETS+=(
       --set "gateway.gatewayClassName=${GATEWAY_CLASS}"
@@ -636,8 +645,12 @@ cluster_install_helm_cmd() {
     --namespace "$CLUSTER_INSTALL_NAMESPACE"
     --create-namespace
     -f "$values_file"
-    -f "$overlay"
   )
+  local extra_values
+  for extra_values in "${CLUSTER_INSTALL_EXTRA_VALUES[@]+"${CLUSTER_INSTALL_EXTRA_VALUES[@]}"}"; do
+    cmd+=(-f "$extra_values")
+  done
+  cmd+=(-f "$overlay")
   if [[ ${#HELM_KUBE_ARGS[@]} -gt 0 ]]; then
     cmd+=("${HELM_KUBE_ARGS[@]}")
   fi
@@ -829,10 +842,12 @@ cluster_install_helm_template_extra_args() {
   local values_file="$1"
   local overlay
   overlay="$(cluster_install_gateway_overlay)"
-  local args=(
-    -f "$values_file"
-    -f "$overlay"
-  )
+  local args=(-f "$values_file")
+  local extra_values
+  for extra_values in "${CLUSTER_INSTALL_EXTRA_VALUES[@]+"${CLUSTER_INSTALL_EXTRA_VALUES[@]}"}"; do
+    args+=(-f "$extra_values")
+  done
+  args+=(-f "$overlay")
   if [[ ${#CLUSTER_INSTALL_HELM_SETS[@]} -gt 0 ]]; then
     args+=("${CLUSTER_INSTALL_HELM_SETS[@]}")
   fi
@@ -1273,7 +1288,9 @@ cluster_install_apply_helm_argv() {
 cluster_install_preflight() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
   local sc_default ready_nodes instances metrics
-  if [[ "${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}" -eq 1 ]]; then
+  if [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" ]]; then
+    :  # no datastores: nothing to provision, no Postgres instances to place
+  elif [[ "${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}" -eq 1 ]]; then
     cluster_install_storage_preflight
   else
     sc_default=$(kubectl "${KUBECTL_ARGS[@]}" get storageclass \
@@ -1329,6 +1346,8 @@ cluster_install_adopt_gatewayclass() {
 
 cluster_install_gvisor_preflight() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
+  # perimeter has no sandbox unless --with-sandbox
+  [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" && "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -ne 1 ]] && return 0
   export GVISOR_HELM_RELEASE="$CLUSTER_INSTALL_RELEASE"
   export GVISOR_HELM_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
   local args=()
@@ -1559,6 +1578,9 @@ spec:
             name: ${name}
             port:
               number: 80
+EOF
+    if [[ "$CLUSTER_INSTALL_PROFILE" != "perimeter" ]]; then
+      cat <<EOF
   - host: ${HOSTS_LANGFUSE}
     http:
       paths:
@@ -1570,9 +1592,10 @@ spec:
             port:
               number: 80
 EOF
+    fi
     echo "Health:"
     echo "  ${scheme}://${HOSTS_AGENTS}/health"
-    echo "  ${scheme}://${HOSTS_LANGFUSE}/api/public/health"
+    [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" ]] || echo "  ${scheme}://${HOSTS_LANGFUSE}/api/public/health"
   fi
 }
 

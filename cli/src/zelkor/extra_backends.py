@@ -51,7 +51,10 @@ def extra_backend_overlay_snippet(name: str, url: str) -> str:
     elif host:
         svc = host.split(".")[0]
         lines.append("        service:")
-        lines.append(f"          name: {svc}")
+        if svc != name:
+            # the gateway routes to the Service named after the backend, in the platform namespace
+            lines.append(f"          # expose {host} as a Service named {name!r} in the platform namespace")
+        lines.append(f"          name: {name}")
         lines.append(f"          port: {port}")
         if path and path != "/":
             lines.append(f"        path: {path}")

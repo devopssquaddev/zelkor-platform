@@ -47,8 +47,9 @@ def _kube_get_configmap(
     context: str,
     namespace: str,
     name: str,
+    optional: bool = False,
 ) -> dict[str, str]:
-    obj = _kube_get_configmap_object(kubeconfig, context, namespace, name)
+    obj = _kube_get_configmap_object(kubeconfig, context, namespace, name, optional=optional)
     return obj.get("data") or {}
 
 
@@ -57,11 +58,16 @@ def _kube_get_configmap_object(
     context: str,
     namespace: str,
     name: str,
+    optional: bool = False,
 ) -> dict[str, Any]:
     cmd = _kubectl_cmd(kubeconfig, context)
     cmd.extend(["-n", namespace, "get", "configmap", name, "-o", "json"])
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if res.returncode != 0:
+        # Perimeter has no Aegra, so the tenant-jwt ConfigMap is absent; issuer/audiences
+        # then come from --issuer/--audience (or env). Only hard-fail required reads.
+        if optional:
+            return {}
         raise RuntimeError(f"cannot read configmap {name}: {res.stderr or res.stdout}")
     return json.loads(res.stdout)
 
@@ -100,7 +106,7 @@ def cmd_token_mint(args: Any) -> int:
     priv_pem = sec.get("privateKey", "").encode()
     kid = sec.get("kid", "1")
     jwks_obj = _kube_get_configmap_object(kubeconfig, context, namespace, jwks_cm)
-    jwt_data = _kube_get_configmap(kubeconfig, context, namespace, jwt_cm)
+    jwt_data = _kube_get_configmap(kubeconfig, context, namespace, jwt_cm, optional=True)
     annotations = (jwks_obj.get("metadata") or {}).get("annotations") or {}
     if args.ttl:
         ttl = _parse_ttl(args.ttl)

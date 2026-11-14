@@ -1,6 +1,10 @@
 {{- $graphId := include "zelkor-agent.primaryGraphId" . }}
 {{- $intent := .Values.workload.intent | default dict }}
+{{- $stateless := ((.Values.sidecar).stateless | default false) }}
+{{- include "zelkor-agent.validateRuntimeShape" . }}
+{{- if not $stateless }}
 {{- include "zelkor-agent.validateDatastoreAttach" . }}
+{{- end }}
 {{- $dbUrl := ((.Values.platform).databaseUrl | default "") | toString | trim }}
 {{- $valkeyUrl := ((.Values.platform).valkeyUrl | default "") | toString | trim }}
 {{- $auth := .Values.auth | default dict }}
@@ -72,7 +76,7 @@ spec:
                 name: {{ $otelSecret | quote }}
                 optional: true
             {{- end }}
-            {{- if and $dsSecret (not $dbUrl) }}
+            {{- if and $dsSecret (not $dbUrl) (not $stateless) }}
             - secretRef:
                 name: {{ $dsSecret | quote }}
                 optional: true
@@ -182,6 +186,7 @@ spec:
       {{- else }}
       {{- $sc := .Values.sidecar | default dict }}
       {{- $authVolMount := include "zelkor-agent.tenantAuthVolumeMount" . | trim }}
+      {{- if not $stateless }}
       initContainers:
         - name: migrate
           image: {{ include "zelkor-agent.image" $sc.image | quote }}
@@ -199,6 +204,7 @@ spec:
               value: {{ $dbUrl | quote }}
             {{- end }}
           {{- include "zelkor-agent.restrictedSecurityContext" . | nindent 10 }}
+      {{- end }}
       containers:
         - name: sidecar
           image: {{ include "zelkor-agent.image" $sc.image | quote }}
@@ -213,7 +219,7 @@ spec:
                 name: {{ $otelSecret | quote }}
                 optional: true
             {{- end }}
-            {{- if and $dsSecret (not $dbUrl) }}
+            {{- if and $dsSecret (not $dbUrl) (not $stateless) }}
             - secretRef:
                 name: {{ $dsSecret | quote }}
                 optional: true
@@ -227,12 +233,16 @@ spec:
           env:
             {{- include "zelkor-agent.logEnv" . | nindent 12 }}
             {{- include "zelkor-agent.tenantAuthEnv" . | nindent 12 }}
-            {{- if $dbUrl }}
+            {{- if and $dbUrl (not $stateless) }}
             - name: DATABASE_URL
               value: {{ $dbUrl | quote }}
             {{- end }}
             - name: ZELKOR_RUNTIME
               value: {{ $runtime | quote }}
+            {{- if $stateless }}
+            - name: ZELKOR_SIDECAR_STORE
+              value: "memory"
+            {{- end }}
             - name: ZELKOR_GRAPH_ID
               value: {{ $graphId | quote }}
             - name: ZELKOR_LLM_UPSTREAM
@@ -259,6 +269,15 @@ spec:
               value: {{ include "zelkor-agent.a2aPublicUrl" . | quote }}
             {{- end }}
             {{- include "zelkor-agent.langfuseEnv" . | nindent 12 }}
+            {{- if .Values.platform.otlp }}
+            {{- /* CE-15a-3: traces go to the platform's OTLP relay on the gateway, authenticated with
+                 the consumer key defined above ($(VAR) expands earlier env only). */}}
+            {{- $rel := include "zelkor-agent.platformReleaseName" . | required "platform.otlp needs platform.releaseName (the platform release that renders the OTLP relay)" }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ printf "http://%s" (include "zelkor-agent.clusterHost" (dict "root" . "name" (printf "%s-otlp" $rel))) | quote }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              value: "authorization=Bearer $(ZELKOR_CONSUMER_KEY)"
+            {{- end }}
           volumeMounts:
             - name: sidecar-tmp
               mountPath: /tmp

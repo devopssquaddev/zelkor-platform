@@ -113,6 +113,9 @@ spec:
       path: /mcp
       forwardHeaders:
         - name: Authorization
+        # W3C trace context: a backend's own downstream call (aigateway /v1) joins the run's trace
+        - name: traceparent
+        - name: tracestate
 {{- end }}
 {{- range $idx, $item := (.Values.mcp.extraBackends | default list) }}
     - name: {{ $item.name }}

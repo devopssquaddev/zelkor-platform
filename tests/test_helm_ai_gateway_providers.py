@@ -5,6 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +73,18 @@ def _route_matches(docs: list[dict]) -> list[str]:
                 if header.get("name") == "x-ai-eg-model":
                     values.append(header.get("value") or "")
     return values
+
+
+def test_llm_request_costs_on_v1_routes():
+    # CE-15a-3: every /v1 AIGatewayRoute reports token costs into gateway dynamic metadata
+    # (io.envoy.ai_gateway:llm_*_token), read by the EnvoyProxy llm_access log.
+    for route in _gateway_routes(_docs(_helm("--set", "workspace.models.providers.openai.apiKey=sk-test"))):
+        by_key = {c["metadataKey"]: c["type"] for c in route["spec"]["llmRequestCosts"]}
+        assert by_key == {
+            "llm_input_token": "InputToken",
+            "llm_output_token": "OutputToken",
+            "llm_total_token": "TotalToken",
+        }
 
 
 def test_empty_providers_omit_new_backends():
@@ -544,3 +557,19 @@ def test_default_model_with_ollama_cloud_renders_route():
     ]
     assert ("gpt-oss:20b", "zelkor-platform-backend-nemo") in exact
     assert ("gpt-oss:20b", "zelkor-platform-backend-ollama-cloud") not in exact
+
+
+@pytest.mark.parametrize(
+    "setting, backend, expected",
+    [
+        ("workspace.models.providers.vllm.backendUrl=http://vllm.ai.svc:8001", "vllm", ("vllm.ai.svc", 8001)),
+        ("workspace.models.providers.vllm.backendUrl=http://vllm.ai.svc", "vllm", ("vllm.ai.svc", 8000)),
+        ("workspace.models.providers.ollamaLocal.host=http://ollama.lab:11500", "ollama-local", ("ollama.lab", 11500)),
+        ("workspace.models.providers.ollamaLocal.host=http://ollama.lab", "ollama-local", ("ollama.lab", 11434)),
+    ],
+)
+def test_backend_port_comes_from_the_url(setting, backend, expected):
+    # sprig urlParse has no port key; the port in the configured URL must reach the Backend.
+    docs = _docs(_helm("--set", setting))
+    fqdn = _named(docs, "Backend", f"zelkor-platform-backend-{backend}")["spec"]["endpoints"][0]["fqdn"]
+    assert (fqdn["hostname"], fqdn["port"]) == expected

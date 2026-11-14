@@ -34,6 +34,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | Page | Job |
 | :--- | :--- |
 | [Install on an Existing Cluster](helm-install.md) | Evaluate CE via Helm on a shared cluster |
+| [Perimeter Profile](perimeter.md) | Install the zero-DB AI and MCP egress boundary |
 | [Production Install](production.md) | Deploy the highly available shape of CE with HA operators |
 | [Uninstall](uninstall.md) | Remove the platform from your cluster |
 | [Upgrade](upgrade.md) | Upgrade the platform chart safely |

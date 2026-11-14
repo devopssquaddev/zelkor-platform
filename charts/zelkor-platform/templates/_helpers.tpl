@@ -26,6 +26,7 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- fail "logging.* was removed in V2. Declare telemetry under platform.telemetry (level/format). See docs/helm-install.md." -}}
 {{- end -}}
 {{- $_ := set .Values "__compiled" true -}}
+{{- include "zelkor-platform.compile.profile" . -}}
 {{- include "zelkor-platform.compile.telemetry" . -}}
 {{- include "zelkor-platform.compile.tenants" . -}}
 {{- include "zelkor-platform.compile.models" . -}}
@@ -33,6 +34,130 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{- include "zelkor-platform.compile.tools" . -}}
 {{- include "zelkor-platform.compile.workload" . -}}
 {{- include "zelkor-platform.compile.intent" . -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+CE-15a perimeter profile. profile=perimeter compiles a zero-DB Envoy AI & MCP egress boundary:
+keep the gateway, Envoy AI Gateway, MCP gateway (CE-9 deny/RPM/audit), aigateway MCP, and the
+default-deny NetworkPolicy; disable every stateful plane. NeMo (perimeter.guardrails), the gVisor
+sandbox (perimeter.sandbox) and the Postgres / Qdrant data tools on the customer's own databases
+(perimeter.dataTools.*) stay off unless opted in; none needs a platform datastore. Runs before the V2 downcast so the
+flipped workspace.* / workload.* / platform.* enables propagate to the flat tree.
+*/}}
+{{- define "zelkor-platform.compile.profile" -}}
+{{- $profile := ($.Values.profile | default "") | toString | trim -}}
+{{- if eq $profile "perimeter" -}}
+{{- range $k := (list "postgresql" "clickhouse" "valkey" "qdrant" "seaweedfs") -}}
+{{- $d := (index $.Values $k) | default dict -}}
+{{- $_ := set $d "enabled" false -}}
+{{- $_ := set $.Values $k $d -}}
+{{- end -}}
+{{- $tel := ($.Values.platform.telemetry | default dict) -}}
+{{- $lf := ($tel.langfuse | default dict) -}}
+{{- $_ := set $lf "enabled" false -}}
+{{- $lfw := ($lf.worker | default dict) -}}
+{{- $_ := set $lfw "enabled" false -}}
+{{- $_ := set $lf "worker" $lfw -}}
+{{- $_ := set $tel "langfuse" $lf -}}
+{{- $_ := set $.Values.platform "telemetry" $tel -}}
+{{- $agents := ($.Values.workload.agents | default dict) -}}
+{{- $_ := set $agents "enabled" false -}}
+{{- $_ := set $.Values.workload "agents" $agents -}}
+{{- $optIn := ($.Values.perimeter | default dict) -}}
+{{- $sec := ($.Values.security | default dict) -}}
+{{- if not $optIn.sandbox -}}
+{{- $sb := ($sec.sandbox | default dict) -}}
+{{- $_ := set $sb "enabled" false -}}
+{{- $_ := set $sec "sandbox" $sb -}}
+{{- end -}}
+{{- $np := ($sec.networkPolicies | default dict) -}}
+{{- $_ := set $np "enabled" true -}}
+{{- $_ := set $sec "networkPolicies" $np -}}
+{{- $_ := set $.Values "security" $sec -}}
+{{- if not $optIn.guardrails -}}
+{{- $pol := ($.Values.workspace.policies | default dict) -}}
+{{- $nemo := ($pol.nemo | default dict) -}}
+{{- $_ := set $nemo "enabled" false -}}
+{{- $_ := set $pol "nemo" $nemo -}}
+{{- $_ := set $.Values.workspace "policies" $pol -}}
+{{- end -}}
+{{- $tools := ($.Values.workspace.tools | default dict) -}}
+{{- $data := ($optIn.dataTools | default dict) -}}
+{{- $offTools := list "objectMCP" -}}
+{{- if not $optIn.sandbox -}}{{- $offTools = append $offTools "sandboxMCP" -}}{{- end -}}
+{{- if not $data.postgres -}}{{- $offTools = append $offTools "postgresMCP" -}}{{- else -}}
+{{- $pg := (index $tools "postgresMCP") | default dict -}}
+{{- if not (or ($pg.databaseUrl | default "" | trim) ((($pg.databaseUrlSecretRef | default dict).name) | default "" | trim)) -}}
+{{- fail "perimeter.dataTools.postgres needs workspace.tools.postgresMCP.databaseUrlSecretRef (or databaseUrl): the perimeter installs no database, point it at yours" -}}
+{{- end -}}
+{{- end -}}
+{{- if not $data.qdrant -}}{{- $offTools = append $offTools "qdrantMCP" -}}{{- else -}}
+{{- if not (((index $tools "qdrantMCP") | default dict).url | default "" | trim) -}}
+{{- fail "perimeter.dataTools.qdrant needs workspace.tools.qdrantMCP.url: the perimeter installs no Qdrant, point it at yours" -}}
+{{- end -}}
+{{- end -}}
+{{- range $t := $offTools -}}
+{{- $td := (index $tools $t) | default dict -}}
+{{- $_ := set $td "enabled" false -}}
+{{- $_ := set $tools $t $td -}}
+{{- end -}}
+{{- $_ := set $.Values.workspace "tools" $tools -}}
+{{- /* The gateway is perimeter's only plane: emit its EnvoyProxy (dataplane Service +
+     llm_access / mcp_access logs) unless the install rides an external Gateway that owns one. */ -}}
+{{- $gw := ($.Values.gateway | default dict) -}}
+{{- $external := or (($gw.parentRef | default dict).name) ((($.Values.workspace.models | default dict).inClusterService | default dict).targetHost) -}}
+{{- if not $external -}}
+{{- $ep := ($gw.envoyProxy | default dict) -}}
+{{- $_ := set $ep "enabled" true -}}
+{{- $_ := set $gw "envoyProxy" $ep -}}
+{{- $_ := set $.Values "gateway" $gw -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+CE-15a-3: token-cost metadata for the /v1 AIGatewayRoute(s). The gateway writes each
+cost into dynamic metadata io.envoy.ai_gateway:<metadataKey>, which the EnvoyProxy
+llm_access log reads. Always on (no bodies) so perimeter (Langfuse off) still has
+per-/v1 token visibility.
+*/}}
+{{- define "zelkor-platform.llmRequestCosts" -}}
+- metadataKey: llm_input_token
+  type: InputToken
+- metadataKey: llm_output_token
+  type: OutputToken
+- metadataKey: llm_total_token
+  type: TotalToken
+{{- end }}
+
+{{/*
+CE-15a-3b: opt-in BYO OTLP export via a GatewayConfig. Active only when a collector
+endpoint is set AND bundled Langfuse is off (single-sink CE gate). Requires compile to
+have run so .Values.langfuse reflects the telemetry downcast.
+*/}}
+{{- define "zelkor-platform.gatewayOtlpConfigName" -}}
+{{- printf "%s-gateway-config" (include "zelkor-platform.fullname" .) -}}
+{{- end }}
+
+{{- define "zelkor-platform.gatewayOtlpEnabled" -}}
+{{- $otlp := ((.Values.platform.telemetry).otlp | default dict) -}}
+{{- if and .Values.gateway.enabled ($otlp.endpoint | default "" | trim) (not (.Values.langfuse).enabled) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{- /* Port of a URL, or .default when it has none. sprig urlParse has no port key, so read
+     it from host ("name:port"). Usage: include "zelkor-platform.urlPort" (dict "url" $u "default" 443) */}}
+{{- define "zelkor-platform.urlPort" -}}
+{{- regexFind "[0-9]+$" (regexFind ":[0-9]+$" (urlParse .url).host) | default .default -}}
+{{- end }}
+
+{{- /* OTLP relay: agents export traces through the gateway (consumer-key auth), so their egress
+     stays gateway + DNS. Needs the AI gateway for the consumer key Secret. */}}
+{{- define "zelkor-platform.otlpRelayEnabled" -}}
+{{- if and (eq (include "zelkor-platform.gatewayOtlpEnabled" .) "true") .Values.aiGateway.enabled -}}
+true
 {{- end -}}
 {{- end }}
 
@@ -904,12 +1029,32 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- end -}}
 {{- end }}
 
-{{- define "zelkor-platform.nemoOtelEnabled" -}}
+{{- /* NeMo trace sink: "langfuse" (bundled Langfuse init project) or "otlp" (the platform's
+     single-sink OTLP relay, e.g. profile=perimeter with perimeter.guardrails); "" = off. */}}
+{{- define "zelkor-platform.nemoOtelMode" -}}
 {{- $init := .Values.langfuse.init | default dict -}}
-{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled $init.enabled -}}
+{{- if .Values.guardrails.nemo.observability.otel.enabled -}}
+{{- if and .Values.langfuse.enabled $init.enabled -}}
+langfuse
+{{- else if eq (include "zelkor-platform.otlpRelayEnabled" .) "true" -}}
+otlp
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.nemoOtelEnabled" -}}
+{{- if include "zelkor-platform.nemoOtelMode" . -}}
 true
 {{- else -}}
 false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.nemoOtelCaptureContent" -}}
+{{- if eq (include "zelkor-platform.nemoOtelMode" .) "otlp" -}}
+{{- ((.Values.platform.telemetry).otlp).captureContent | default false -}}
+{{- else -}}
+{{- .Values.guardrails.nemo.observability.otel.captureContent | default false -}}
 {{- end -}}
 {{- end }}
 
@@ -951,6 +1096,14 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
   value: none
 - name: OTEL_EXPORTER_OTLP_PROTOCOL
   value: http/protobuf
+{{- if eq (include "zelkor-platform.nemoOtelMode" .) "otlp" }}
+{{- /* Same path as wrapped agents: the gateway's OTLP relay, authenticated with the consumer key. */}}
+{{- include "zelkor-platform.aiGatewayKeyEnv" (dict "root" . "name" "ZELKOR_CONSUMER_KEY" "secret" (include "zelkor-platform.aiGatewayConsumerSecret" .) "key" "agents") | nindent 0 }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ printf "http://%s-otlp.%s.svc.cluster.local:%v" (include "zelkor-platform.fullname" .) .Release.Namespace (.Values.aiGateway.inClusterService.port | default 80) | quote }}
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: "authorization=Bearer%20$(ZELKOR_CONSUMER_KEY)"
+{{- else }}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
 {{- if and $creds.publicKey $creds.secretKey }}
@@ -961,9 +1114,10 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
 {{- end }}
+{{- end }}
 
 {{- define "zelkor-platform.nemoLangfuseOtelEnvFrom" -}}
-{{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+{{- if eq (include "zelkor-platform.nemoOtelMode" .) "langfuse" }}
 - secretRef:
     name: {{ include "zelkor-platform.langfuseOtelSecretName" . }}
 {{- end }}
@@ -1579,4 +1733,28 @@ Only NeMo's own key opens the provider route on its separate hostname, so the by
 {{- /* dict root key: restarts the pods that read this key when it rotates. */ -}}
 {{- $keys := include "zelkor-platform.aiGatewayKeys" .root | fromJson -}}
 {{- index $keys .key | sha256sum | trunc 16 -}}
+{{- end }}
+
+
+{{/*
+Egress rules for a data tool: the listed destinations (egressTo), else the release's own datastore.
+Usage: include "zelkor-platform.dataToolEgress" (dict "egressTo" list "component" "postgresql" "port" 5432)
+*/}}
+{{- define "zelkor-platform.dataToolEgress" -}}
+{{- $rules := list -}}
+{{- range (.egressTo | default list) -}}
+{{- $peer := dict -}}
+{{- if .cidr -}}
+{{- $_ := set $peer "ipBlock" (dict "cidr" .cidr) -}}
+{{- else -}}
+{{- if .namespace -}}{{- $_ := set $peer "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" .namespace)) -}}{{- end -}}
+{{- if .podSelector -}}{{- $_ := set $peer "podSelector" (dict "matchLabels" .podSelector) -}}{{- end -}}
+{{- if not (or .namespace .podSelector) -}}{{- $_ := set $peer "podSelector" (dict) -}}{{- end -}}
+{{- end -}}
+{{- $rules = append $rules (dict "to" (list $peer) "ports" (list (dict "protocol" "TCP" "port" (int .port)))) -}}
+{{- end -}}
+{{- if not $rules -}}
+{{- $rules = list (dict "to" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/component" .component)))) "ports" (list (dict "protocol" "TCP" "port" (int .port)))) -}}
+{{- end -}}
+{{- toYaml $rules -}}
 {{- end }}

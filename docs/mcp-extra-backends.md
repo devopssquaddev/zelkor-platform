@@ -50,7 +50,7 @@ workspace:
     extraBackends:
       - name: acme
         service:
-          name: acme-itsm-mcp
+          name: acme
           port: 8080
         path: /mcp
         apiKey:
@@ -69,6 +69,10 @@ helm upgrade zelkor-platform charts/zelkor-platform \
   -f my-platform-overlay.yaml
 ```
 
+The gateway calls the Service named after `name` (`acme` above) in the platform's namespace, so `service.name` must equal `name`; a different name fails at install. Label your server's pods `zelkor.io/mcp-extra: "true"`: with NetworkPolicies on, the platform then lets only the gateway call them, and the namespace's default-deny blocks everyone else.
+
+**What your server receives.** The gateway verifies the caller's Zelkor JWT and never forwards it. Your server gets the key from `apiKey` (as `Authorization: Bearer …`, or the header you name) and the identity headers you list in `forwardHeaders`, such as `X-Tenant-ID`, which the gateway sets from the verified token. Accept calls only with that key, and scope data by `X-Tenant-ID` yourself: the platform guarantees the header, not what your server does with it.
+
 **External hostname** (no wrapper Deployment; Envoy dials this FQDN). Public HTTPS uses the cluster’s system CAs unless you set `tls.caSecretRef`.
 
 ```yaml
@@ -82,14 +86,15 @@ helm upgrade zelkor-platform charts/zelkor-platform \
             name: tavily-mcp-key
 ```
 
-`tools/list` then includes `tavily__tavily_search` (and the vendor’s other tools) next to `postgres__query`. The worker calls `MCP_URL` with a Zelkor JWT; Envoy adds `Authorization: Bearer` from `tavily-mcp-key`.
+`tools/list` then includes `tavily__tavily_search` (and the vendor’s other tools) next to the platform's own tools. The worker calls `MCP_URL` with a Zelkor JWT; Envoy adds `Authorization: Bearer` from `tavily-mcp-key`.
 
 ### Naming rules
 
 | Rule | Detail |
 | :--- | :--- |
 | `name` | DNS-label safe; used as the tool prefix |
-| Reserved | Do not use `postgres`, `qdrant`, `sandbox`, `egress`, `nemo`, `aegra`, or `langfuse` |
+| Reserved | Do not use `postgres`, `qdrant`, `sandbox`, `aigateway`, `object`, `egress`, `nemo`, `aegra`, or `langfuse` |
+| Service | `service.name` equals `name`; the Service lives in the platform's namespace |
 | `__` | Must not appear in `name` |
 | Target | Set exactly one of `service` or `fqdn` |
 

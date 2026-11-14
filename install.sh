@@ -37,6 +37,10 @@ ux_resolve_install_flags() {
       : "${INSTALL_EXAMPLES:=true}"
       : "${RUN_DEMO_TOUR:=false}"
       ;;
+    perimeter)
+      : "${INSTALL_EXAMPLES:=false}"
+      : "${RUN_DEMO_TOUR:=false}"
+      ;;
   esac
   export INSTALL_EXAMPLES RUN_DEMO_TOUR
 }
@@ -71,7 +75,7 @@ ux_phase_label() {
   case "$1" in
     1) echo "Download components" ;;
     2) echo "Cluster bootstrap" ;;
-    3) echo "Datastores" ;;
+    3) if [[ "${INSTALL_PROFILE:-fast}" == "perimeter" ]]; then echo "Platform chart"; else echo "Datastores"; fi ;;
     4) echo "Langfuse" ;;
     5) echo "Agents & MCP" ;;
     6) echo "FinServe demo" ;;
@@ -361,18 +365,32 @@ ux_status_line() {
   printf '  %s  %-18s %s' "${C_CYAN}${UX_MARK_RUN}${C_RESET}" "$step" "$msg"
 }
 
+# Panel header for the selected mode/stage: line 1 = mode and cluster, line 2 = a note.
+ux_panel_mode_lines() {
+  local cluster="$1"
+  case "${INSTALL_PROFILE:-fast}" in
+    full)
+      echo "full upgrade ${UX_SEP:-|} cluster ${cluster}"
+      echo "Needs a completed fast install. Skips download." ;;
+    perimeter)
+      local extras=""
+      [[ "${PERIMETER_GUARDRAILS:-false}" == "true" ]] && extras+=" + NeMo"
+      [[ "${PERIMETER_SANDBOX:-false}" == "true" ]] && extras+=" + sandbox"
+      echo "perimeter${extras} ${UX_SEP:-|} cluster ${cluster}"
+      echo "Gateway + MCP${extras}: no datastores, Langfuse or Aegra." ;;
+    *)
+      echo "fast ${UX_SEP:-|} cluster ${cluster}"
+      echo "Re-runs on an existing cluster are faster." ;;
+  esac
+}
+
 ux_render_panel() {
   local profile cluster log_disp note row1 row2 rows=() p
   profile="${INSTALL_PROFILE:-fast}"
   cluster="${CLUSTER_NAME:-zelkor}"
   log_disp="$(ux_clip "${INSTALL_LOG_FILE:-/tmp/zelkor-install.log}" 48)"
-  if [[ "$profile" == "full" ]]; then
-    row1="full upgrade ${UX_SEP} cluster ${cluster}"
-    note="Needs a completed fast install. Skips download."
-  else
-    row1="fast ${UX_SEP} cluster ${cluster}"
-    note="Re-runs on an existing cluster are faster."
-  fi
+  row1="$(ux_panel_mode_lines "$cluster" | sed -n 1p)"
+  note="$(ux_panel_mode_lines "$cluster" | sed -n 2p)"
   row2="log ${log_disp}"
   rows+=("$(ux_box_top "Zelkor local install")")
   rows+=("$(ux_box_row "$row1")")
@@ -652,8 +670,50 @@ install_rich() {
   ux_open_footer || true
 }
 
+# --profile=<full|perimeter> is the product mode (the Helm `profile`); --stage=<fast|full> is the
+# kind install stage (fast cold start, full = upgrade a fast install). Both map to INSTALL_PROFILE,
+# the engine's switch. Everything else lands in INSTALL_PASSTHRU for the engine, unchanged.
+install_parse_flags() {
+  INSTALL_PASSTHRU=()
+  local value
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --profile=*|--profile)
+        if [[ "$1" == --profile ]]; then value="${2:?--profile requires a value (full|perimeter)}"; shift 2
+        else value="${1#*=}"; shift; fi
+        case "$value" in
+          perimeter) INSTALL_PROFILE=perimeter ;;
+          full) ;;  # the full product is the default; the stage stays as selected
+          fast)
+            echo "[install] --profile=fast is the install stage: use --stage=fast (--profile selects full|perimeter)" >&2
+            INSTALL_PROFILE=fast ;;
+          *) echo "[install] ERROR: --profile must be full or perimeter (got ${value})" >&2; return 1 ;;
+        esac ;;
+      --stage=*|--stage)
+        if [[ "$1" == --stage ]]; then value="${2:?--stage requires a value (fast|full)}"; shift 2
+        else value="${1#*=}"; shift; fi
+        case "$value" in
+          fast|full) INSTALL_PROFILE="$value" ;;
+          *) echo "[install] ERROR: --stage must be fast or full (got ${value})" >&2; return 1 ;;
+        esac ;;
+      --with-guardrails) PERIMETER_GUARDRAILS=true; export PERIMETER_GUARDRAILS; shift ;;
+      --with-sandbox) PERIMETER_SANDBOX=true; export PERIMETER_SANDBOX; shift ;;
+      *)
+        INSTALL_PASSTHRU+=("$1"); shift ;;
+    esac
+  done
+  if [[ "${PERIMETER_GUARDRAILS:-}${PERIMETER_SANDBOX:-}" == *true* && "${INSTALL_PROFILE:-}" != perimeter ]]; then
+    echo "[install] --with-guardrails / --with-sandbox apply to --profile=perimeter (the full profile ships both)" >&2
+  fi
+  [[ -n "${INSTALL_PROFILE:-}" ]] && export INSTALL_PROFILE
+  return 0
+}
+
 install_main() {
   install_log_note_tty
+
+  install_parse_flags "$@" || exit 1
+  set -- ${INSTALL_PASSTHRU[@]+"${INSTALL_PASSTHRU[@]}"}
 
   if [[ -z "${INSTALL_UX:-}" ]]; then
     if [[ "${INSTALL_STDOUT_IS_TTY}" == "1" && -z "${NO_COLOR:-}" ]]; then
