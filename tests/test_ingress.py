@@ -158,7 +158,7 @@ def test_gateway_multi_provider_routing_via_gateway():
     model = llm_model_or_skip()
     url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
     headers = {
-        "Host": "ai-gateway.localhost",
+        "Host": AI_GATEWAY_HOST,
         "Content-Type": "application/json",
         "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
         "X-Tenant-ID": "Squad_Alpha"

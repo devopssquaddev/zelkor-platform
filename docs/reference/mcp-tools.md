@@ -81,7 +81,7 @@ workspace:
 | Control | Enforced by | Behavior |
 | :--- | :--- | :--- |
 | `deny` | MCP gateway (Envoy), then the native backend | Denied tools are absent from `tools/list`; `tools/call` returns an error and never reaches the server. MCP `readOnlyHint` / `destructiveHint` are ignored. Covers natives and extras. |
-| `rateLimit` | Native MCP backends | Over `callsPerMinute` for one tenant and one tool, the call returns `rate limit exceeded` and is not run. Counted in memory on each pod; extras are not limited. |
+| `rateLimit` | Native MCP backends | Over `callsPerMinute` for one tenant and one tool, the call returns `rate limit exceeded` and is not run. Counted in memory on each pod, so with N replicas a tenant can make up to N × `callsPerMinute` calls of one tool per minute; extras are not limited. |
 | Audit | Native backends and the gateway | Each native `tools/call` logs one JSON record (`event: tools_call`) with `tool`, `tenant_id`, `status` (`ok`, `denied`, `rate_limited`, `error`), `deny_reason`, `elapsed_s`, `request_bytes`, `response_bytes`. When the chart owns the gateway, the Envoy log adds `event: mcp_access` lines with `mcp_tool_name`, `mcp_backend`, `tenant_id`, `response_code`. Neither logs arguments or results. |
 
 Agents with Mode B inject bind only the tools their graph names (`MCP_INJECT_TOOLS`) or prefixes (`MCP_INJECT_PREFIXES`, `platform.mcpInjectToolPrefixes`). With neither set, the agent binds no tools unless the agent release sets `platform.mcpInjectAllowAll: true`.

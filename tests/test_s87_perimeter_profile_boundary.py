@@ -64,12 +64,15 @@ def test_perimeter_fits_the_memory_budget():
     ns, contract = _contract()
     if _opted_in(contract):
         pytest.skip("the memory budget is for the default perimeter (a plane is opted in)")
-    res = kubectl_run(["top", "pods", "--no-headers"], namespace=ns)
+    res = kubectl_run(["top", "pods", "--containers", "--no-headers"], namespace=ns)
     if res.returncode != 0:
         pytest.skip(f"kubectl top unavailable (metrics-server?): {res.stderr.strip()[:200]}")
+    # Zelkor's footprint: platform pods plus the sidecar wrapped around each agent. The customer's
+    # own `agent` container is their code, not the perimeter's budget.
     total_mi = 0
     for line in res.stdout.splitlines():
+        cols = line.split()
         m = re.search(r"(\d+)Mi\b", line)
-        if m:
+        if m and len(cols) >= 2 and cols[1] != "agent":
             total_mi += int(m.group(1))
     assert 0 < total_mi < RSS_BUDGET_MI, f"perimeter RSS {total_mi}Mi exceeds {RSS_BUDGET_MI}Mi budget"

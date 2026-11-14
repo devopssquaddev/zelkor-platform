@@ -57,6 +57,14 @@ def test_s71_denied_tool_hidden_and_rejected_at_gateway():
         client.call_tool(denied, {})
 
 
+def _backend_replicas(tool: str) -> int:
+    release = os.environ.get("ZELKOR_RELEASE", "zelkor-platform")
+    backend = tool.split("__", 1)[0]
+    proc = subprocess.run(kubectl_cmd("get", "deploy", f"{release}-mcp-{backend}", "-o", "jsonpath={.spec.replicas}"),
+                          capture_output=True, text=True, timeout=30, check=False)
+    return int(proc.stdout.strip()) if proc.returncode == 0 and proc.stdout.strip().isdigit() else 1
+
+
 def test_s72_rate_limit_per_tenant_and_tool():
     raw = os.environ.get("ZELKOR_MCP_RATE_LIMIT_PER_MINUTE", "").strip()
     if not raw:
@@ -67,8 +75,10 @@ def test_s72_rate_limit_per_tenant_and_tool():
     a = _client("tenant_a")
     if RATE_TOOL not in _names(a):
         pytest.skip(f"{RATE_TOOL} not on this gateway")
+    # The bucket is per pod: with N replicas behind the gateway, N*limit + 1 calls put limit + 1
+    # on at least one pod whatever the load balancing.
     errors: list[str] = []
-    for _ in range(limit + 1):
+    for _ in range(limit * _backend_replicas(RATE_TOOL) + 1):
         try:
             a.call_tool(RATE_TOOL, _args({}))
         except Exception as exc:  # noqa: BLE001 — collect the tool error text

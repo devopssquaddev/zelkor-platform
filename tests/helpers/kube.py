@@ -40,10 +40,18 @@ def kubectl_run(
 
 
 def platform_contract(namespace: str | None = None) -> dict[str, str]:
-    """The platform's discovery contract (zelkor-platform-contract), or {} when unreachable/absent."""
+    """The platform's discovery contract (zelkor-platform-contract), or {} when unreachable/absent.
+
+    Without KUBECONTEXT this never asks kubectl: the machine's default context is not a target.
+    """
     import json
 
-    res = kubectl_run(["get", "configmap", "zelkor-platform-contract", "-o", "json"], namespace=namespace)
+    if not (os.environ.get("KUBECONTEXT", "").strip() or os.environ.get("KUBE_CONTEXT", "").strip()):
+        return {}
+    try:
+        res = kubectl_run(["get", "configmap", "zelkor-platform-contract", "-o", "json"], namespace=namespace)
+    except subprocess.TimeoutExpired:
+        return {}
     if res.returncode != 0:
         return {}
     return (json.loads(res.stdout or "{}") or {}).get("data") or {}
