@@ -17,8 +17,8 @@ Zelkor isolates these tenants across the platform. One verified identity scopes 
 The core advantage: **the self-hosted agent runtime** — bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.
-* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
+* **Pro** adds team budgets and tool approvals, persistent sandboxes, SSO, and team GitOps.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, DLP, retained audit, HIPAA-ready safeguards).
 
 *How a tenant identity scopes a run. The agent code never supplies the `tenant_id` to the tools; it is enforced by the platform.*
 ```mermaid

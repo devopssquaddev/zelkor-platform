@@ -17,8 +17,8 @@ Zelkor is **the self-hosted agent runtime**. You set a **model**, a **tool**, an
 | Edition | What you get |
 | :--- | :--- |
 | **Community Edition** | Self-hosted runtime in this repository (gateway, tools, sandbox, traces), including the highly available production install |
-| **Pro** | SSO, team controls (budgets and approvals), team GitOps |
-| **Enterprise** | Isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA) |
+| **Pro** | Team budgets and tool approvals, persistent sandboxes, SSO, team GitOps |
+| **Enterprise** | Isolation and compliance on Pro (hardware sandbox, mTLS, DLP, retained audit, HIPAA-ready safeguards) |
 
 Start with Community Edition. Pro and Enterprise layers sit on the same platform shape.
 
