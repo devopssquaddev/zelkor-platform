@@ -61,7 +61,8 @@ spec:
       ports:
         - protocol: TCP
           port: 3000
-    {{- if $cross }}
+    {{- $ds := include "zelkor-agent.datastores" . }}
+    {{- if ne $ds "none" }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -83,6 +84,8 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+    {{- end }}
+    {{- if eq $ds "postgres-valkey" }}
     - to:
         - namespaceSelector:
             matchLabels:

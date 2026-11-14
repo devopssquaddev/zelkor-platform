@@ -69,6 +69,8 @@ spec:
 {{- if .Values.aegra.enabled }}
 ---
 # Aegra runtimes (front door + workers) need Postgres + Valkey for the checkpointer.
+# Agent pods that state a narrower need (zelkor.io/datastores: none | postgres; sidecar runtimes)
+# carry the same component label but get their datastore egress from their own chart.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -80,6 +82,10 @@ spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/component: aegra
+    matchExpressions:
+      - key: zelkor.io/datastores
+        operator: NotIn
+        values: [none, postgres]
   policyTypes:
     - Egress
   egress:

@@ -100,6 +100,19 @@ app.kubernetes.io/component: aegra
 {{- end -}}
 {{- end }}
 
+{{/*
+Datastores this pod talks to: none (stateless sidecar), postgres (stateful sidecar store),
+postgres-valkey (Aegra runtime: checkpointer + broker). Pod label zelkor.io/datastores; the
+agent's egress policy opens exactly these, and the platform's Aegra egress skips such pods.
+*/}}
+{{- define "zelkor-agent.datastores" -}}
+{{- $rt := (.Values.runtime | default "aegra") | toString | trim | lower -}}
+{{- if ((.Values.sidecar).stateless | default false) -}}none
+{{- else if eq $rt "aegra" -}}postgres-valkey
+{{- else -}}postgres
+{{- end -}}
+{{- end }}
+
 {{- define "zelkor-agent.crossNamespace" -}}
 {{- if ne (include "zelkor-agent.platformNamespace" .) .Release.Namespace -}}true{{- else -}}false{{- end -}}
 {{- end }}

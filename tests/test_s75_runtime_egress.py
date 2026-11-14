@@ -1,7 +1,9 @@
 """S-75: what a runtime container can reach on its own (live; needs KUBECONTEXT, NetworkPolicies on).
 
-NetworkPolicy is per pod and the sidecar in the same pod needs Postgres, Valkey and the AI
-Gateway, so the runtime is held by credentials, not by the network, for those. Since 2.4.1 the
+NetworkPolicy is per pod and a stateful sidecar in the same pod needs Postgres and the AI
+Gateway, so the runtime is held by credentials, not by the network, for those. A stateless
+(egress-only) pod reaches no datastore, and no sidecar runtime reaches Valkey (only the Aegra
+runtime uses its broker); the pod label zelkor.io/datastores says which applies. Since 2.4.1 the
 AI Gateway refuses callers without the consumer key (which only the sidecar holds) and NeMo is
 reachable from Envoy only.
 """
@@ -12,6 +14,7 @@ import os
 
 import pytest
 
+from tests.helpers.kube import kubectl_run
 from tests.helpers.runtime_agents import exec_python, require_kube, runtime_graphs
 
 REL = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
@@ -41,6 +44,8 @@ print(json.dumps({
   "qdrant": tcp(REL + "-qdrant", 6333),
   "worker": tcp(REL + "-mcp-sandbox-worker-0", 8081),
   "public": tcp("1.1.1.1", 443),
+  "postgres": tcp(REL + "-postgresql", 5432),
+  "valkey": tcp(REL + "-valkey", 6379),
   "mcp_no_jwt": post("http://" + REL + "-mcp/mcp", init),
   "ai_gateway_no_key": post("http://" + REL + "-ai-gateway/v1/chat/completions", chat),
   "nemo_direct": post("http://" + REL + "-nemo:8000/v1/chat/completions", chat),
@@ -65,6 +70,19 @@ def test_s75_runtime_holds_no_credentials_and_no_open_egress(probes):
         for target in ("qdrant", "worker", "public"):
             assert p[target] != "open", (graph, target, p[target])
         assert p["mcp_no_jwt"] == 401, (graph, p["mcp_no_jwt"])
+
+
+def _datastores(graph: str) -> str:
+    res = kubectl_run(["get", "pods", "-l", f"app.kubernetes.io/instance={graph}",
+                       "-o", "jsonpath={.items[0].metadata.labels.zelkor\\.io/datastores}"])
+    return res.stdout.strip() if res.returncode == 0 else ""
+
+
+def test_s75_runtime_reaches_only_the_datastores_its_pod_needs(probes):
+    for graph, p in probes.items():
+        assert p["valkey"] != "open", (graph, "only the Aegra runtime uses Valkey")
+        if _datastores(graph) == "none":
+            assert p["postgres"] != "open", (graph, "egress-only pod reached Postgres")
 
 
 def test_s75_runtime_cannot_call_models_without_the_sidecar(probes):
