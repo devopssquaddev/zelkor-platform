@@ -354,3 +354,50 @@ def test_contract_publishes_the_optional_planes():
     assert both["GUARDRAILS_ENABLED"] == "true" and both["SANDBOX_ENABLED"] == "true"
     full = _contract(_docs(_helm("-f", str(ROOT / "profiles" / "values-local.yaml"), *PROVIDER).stdout))
     assert full["GUARDRAILS_ENABLED"] == "true" and full["SANDBOX_ENABLED"] == "true"
+
+
+DATA = ("--set", "perimeter.dataTools.postgres=true", "--set", "perimeter.dataTools.qdrant=true",
+        "--set", "workspace.tools.postgresMCP.databaseUrlSecretRef.name=crm-db",
+        "--set", "workspace.tools.qdrantMCP.url=http://qdrant.customer-data.svc:6333",
+        "--set", "workspace.tools.postgresMCP.egressTo[0].namespace=customer-data",
+        "--set", "workspace.tools.postgresMCP.egressTo[0].port=5432",
+        "--set", "workspace.tools.qdrantMCP.egressTo[0].namespace=customer-data",
+        "--set", "workspace.tools.qdrantMCP.egressTo[0].port=6333")
+
+
+def _egress_peers(docs: list[dict], name: str) -> list:
+    np = _named(docs, "NetworkPolicy", name)
+    return [rule for rule in np["spec"]["egress"] if rule.get("ports", [{}])[0].get("port") != 53]
+
+
+def test_data_tools_opt_in_uses_the_customers_databases():
+    base, docs = _optin(), _optin(*DATA)
+    added = _workload_names(docs) - _workload_names(base)
+    assert added == {"zelkor-platform-mcp-postgres", "zelkor-platform-mcp-qdrant"}, added
+    assert not [d for d in docs if d.get("kind") == "StatefulSet"], "the perimeter installs no database"
+    (c,) = _named(docs, "Deployment", "-mcp-postgres")["spec"]["template"]["spec"]["containers"]
+    url = next(e for e in c["env"] if e["name"] == "POSTGRES_MCP_URL")
+    assert url["valueFrom"]["secretKeyRef"] == {"name": "crm-db", "key": "url"} and "value" not in url
+    for name, port in (("-mcp-postgres-egress", 5432), ("-mcp-qdrant-egress", 6333)):
+        peers = _egress_peers(docs, name)
+        assert {"to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "customer-data"}}}],
+                "ports": [{"port": port, "protocol": "TCP"}]} in peers, (name, peers)
+        local = [r for r in peers if (r["to"][0].get("podSelector") or {}).get("matchLabels", {})
+                 .get("app.kubernetes.io/component") in ("postgresql", "qdrant")]
+        assert not local, (name, local)  # no release-local datastore peer in a perimeter
+    assert _contract(docs)["MCP_BACKENDS"] == "postgres,qdrant,aigateway"
+
+
+def test_data_tools_opt_in_needs_an_external_target():
+    proc = _helm("-f", str(LOCAL_PERIMETER), *PROVIDER, "--set", "perimeter.dataTools.postgres=true")
+    assert proc.returncode != 0 and "databaseUrlSecretRef" in proc.stderr
+    proc = _helm("-f", str(LOCAL_PERIMETER), *PROVIDER, "--set", "perimeter.dataTools.qdrant=true")
+    assert proc.returncode != 0 and "qdrantMCP.url" in proc.stderr
+
+
+def test_full_profile_data_tools_keep_the_release_datastores():
+    docs = _docs(_helm("-f", str(ROOT / "profiles" / "values-local.yaml"), *PROVIDER).stdout)
+    peers = _egress_peers(docs, "-mcp-postgres-egress")
+    assert {"to": [{"podSelector": {"matchLabels": {"app.kubernetes.io/component": "postgresql"}}}],
+            "ports": [{"port": 5432, "protocol": "TCP"}]} in peers, peers
+    assert "postgres" in _contract(docs)["MCP_BACKENDS"].split(",")

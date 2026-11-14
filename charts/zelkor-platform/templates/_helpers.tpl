@@ -40,8 +40,9 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{/*
 CE-15a perimeter profile. profile=perimeter compiles a zero-DB Envoy AI & MCP egress boundary:
 keep the gateway, Envoy AI Gateway, MCP gateway (CE-9 deny/RPM/audit), aigateway MCP, and the
-default-deny NetworkPolicy; disable every stateful plane. NeMo (perimeter.guardrails) and the
-gVisor sandbox (perimeter.sandbox) stay off unless opted in; neither needs a datastore. Runs before the V2 downcast so the
+default-deny NetworkPolicy; disable every stateful plane. NeMo (perimeter.guardrails), the gVisor
+sandbox (perimeter.sandbox) and the Postgres / Qdrant data tools on the customer's own databases
+(perimeter.dataTools.*) stay off unless opted in; none needs a platform datastore. Runs before the V2 downcast so the
 flipped workspace.* / workload.* / platform.* enables propagate to the flat tree.
 */}}
 {{- define "zelkor-platform.compile.profile" -}}
@@ -82,8 +83,20 @@ flipped workspace.* / workload.* / platform.* enables propagate to the flat tree
 {{- $_ := set $.Values.workspace "policies" $pol -}}
 {{- end -}}
 {{- $tools := ($.Values.workspace.tools | default dict) -}}
-{{- $offTools := list "postgresMCP" "qdrantMCP" "objectMCP" -}}
+{{- $data := ($optIn.dataTools | default dict) -}}
+{{- $offTools := list "objectMCP" -}}
 {{- if not $optIn.sandbox -}}{{- $offTools = append $offTools "sandboxMCP" -}}{{- end -}}
+{{- if not $data.postgres -}}{{- $offTools = append $offTools "postgresMCP" -}}{{- else -}}
+{{- $pg := (index $tools "postgresMCP") | default dict -}}
+{{- if not (or ($pg.databaseUrl | default "" | trim) ((($pg.databaseUrlSecretRef | default dict).name) | default "" | trim)) -}}
+{{- fail "perimeter.dataTools.postgres needs workspace.tools.postgresMCP.databaseUrlSecretRef (or databaseUrl): the perimeter installs no database, point it at yours" -}}
+{{- end -}}
+{{- end -}}
+{{- if not $data.qdrant -}}{{- $offTools = append $offTools "qdrantMCP" -}}{{- else -}}
+{{- if not (((index $tools "qdrantMCP") | default dict).url | default "" | trim) -}}
+{{- fail "perimeter.dataTools.qdrant needs workspace.tools.qdrantMCP.url: the perimeter installs no Qdrant, point it at yours" -}}
+{{- end -}}
+{{- end -}}
 {{- range $t := $offTools -}}
 {{- $td := (index $tools $t) | default dict -}}
 {{- $_ := set $td "enabled" false -}}
@@ -1720,4 +1733,28 @@ Only NeMo's own key opens the provider route on its separate hostname, so the by
 {{- /* dict root key: restarts the pods that read this key when it rotates. */ -}}
 {{- $keys := include "zelkor-platform.aiGatewayKeys" .root | fromJson -}}
 {{- index $keys .key | sha256sum | trunc 16 -}}
+{{- end }}
+
+
+{{/*
+Egress rules for a data tool: the listed destinations (egressTo), else the release's own datastore.
+Usage: include "zelkor-platform.dataToolEgress" (dict "egressTo" list "component" "postgresql" "port" 5432)
+*/}}
+{{- define "zelkor-platform.dataToolEgress" -}}
+{{- $rules := list -}}
+{{- range (.egressTo | default list) -}}
+{{- $peer := dict -}}
+{{- if .cidr -}}
+{{- $_ := set $peer "ipBlock" (dict "cidr" .cidr) -}}
+{{- else -}}
+{{- if .namespace -}}{{- $_ := set $peer "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" .namespace)) -}}{{- end -}}
+{{- if .podSelector -}}{{- $_ := set $peer "podSelector" (dict "matchLabels" .podSelector) -}}{{- end -}}
+{{- if not (or .namespace .podSelector) -}}{{- $_ := set $peer "podSelector" (dict) -}}{{- end -}}
+{{- end -}}
+{{- $rules = append $rules (dict "to" (list $peer) "ports" (list (dict "protocol" "TCP" "port" (int .port)))) -}}
+{{- end -}}
+{{- if not $rules -}}
+{{- $rules = list (dict "to" (list (dict "podSelector" (dict "matchLabels" (dict "app.kubernetes.io/component" .component)))) "ports" (list (dict "protocol" "TCP" "port" (int .port)))) -}}
+{{- end -}}
+{{- toYaml $rules -}}
 {{- end }}

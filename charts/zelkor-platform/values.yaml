@@ -13,6 +13,11 @@ perimeter:
   guardrails: false
   # gVisor code sandbox tool (sandbox MCP + warm workers; nodes need a gVisor RuntimeClass).
   sandbox: false
+  # Zelkor's Postgres / Qdrant data tools on databases you already run (the perimeter installs
+  # none): set workspace.tools.postgresMCP.databaseUrlSecretRef / qdrantMCP.url and egressTo.
+  dataTools:
+    postgres: false
+    qdrant: false
 
 # V2 intent API: platform.*, workspace.*, workload.* (compiled to internal templates at render).
 # Substrate keys (postgresql, gateway, databases, security.sandbox, …) stay at the root.
@@ -301,6 +306,13 @@ workspace:
       enabled: true
       replicaCount: 1
       databaseUrl: ''
+      # Secret holding the connection URL (wins over databaseUrl; keeps the password out of values).
+      databaseUrlSecretRef:
+        name: ''
+        key: url
+      # Allowed destinations when the database is not this release's own (e.g. an existing one in
+      # another namespace): [{namespace, podSelector, cidr, port}]. Empty = the release's postgresql.
+      egressTo: []
       resources:
         requests:
           cpu: 50m
@@ -334,6 +346,9 @@ workspace:
       enabled: true
       replicaCount: 1
       url: ''
+      # Allowed destinations when Qdrant is not this release's own: [{namespace, podSelector, cidr,
+      # port}]. Empty = the release's qdrant.
+      egressTo: []
       collection: documents
       aiGatewayUrl: ''
       resources:

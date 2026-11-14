@@ -33,6 +33,21 @@
         "sandbox": {
           "type": "boolean",
           "description": "Value for perimeter.sandbox."
+        },
+        "dataTools": {
+          "type": "object",
+          "description": "Values under perimeter.dataTools.",
+          "properties": {
+            "postgres": {
+              "type": "boolean",
+              "description": "Value for perimeter.dataTools.postgres."
+            },
+            "qdrant": {
+              "type": "boolean",
+              "description": "Value for perimeter.dataTools.qdrant."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -1726,6 +1741,50 @@
                   "type": "string",
                   "description": "Value for workspace.tools.postgresMCP.databaseUrl."
                 },
+                "databaseUrlSecretRef": {
+                  "type": "object",
+                  "description": "Values under workspace.tools.postgresMCP.databaseUrlSecretRef.",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.postgresMCP.databaseUrlSecretRef.name."
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Value for workspace.tools.postgresMCP.databaseUrlSecretRef.key."
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "egressTo": {
+                  "type": "array",
+                  "description": "List at workspace.tools.postgresMCP.egressTo.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "One allowed destination: namespace and/or podSelector (in-cluster) or cidr, plus port.",
+                    "properties": {
+                      "namespace": {
+                        "type": "string"
+                      },
+                      "podSelector": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "cidr": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "port"
+                    ]
+                  }
+                },
                 "resources": {
                   "type": "object",
                   "description": "Values under workspace.tools.postgresMCP.resources.",
@@ -1925,6 +1984,35 @@
                 "url": {
                   "type": "string",
                   "description": "Value for workspace.tools.qdrantMCP.url."
+                },
+                "egressTo": {
+                  "type": "array",
+                  "description": "List at workspace.tools.qdrantMCP.egressTo.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "description": "One allowed destination: namespace and/or podSelector (in-cluster) or cidr, plus port.",
+                    "properties": {
+                      "namespace": {
+                        "type": "string"
+                      },
+                      "podSelector": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "cidr": {
+                        "type": "string"
+                      },
+                      "port": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "port"
+                    ]
+                  }
                 },
                 "collection": {
                   "type": "string",

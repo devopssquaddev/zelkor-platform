@@ -24,6 +24,13 @@ data:
   {{- /* Optional planes (on in full; perimeter opt-ins perimeter.guardrails / perimeter.sandbox). */}}
   GUARDRAILS_ENABLED: {{ ternary "true" "false" (.Values.guardrails.nemo.enabled | default false) | quote }}
   SANDBOX_ENABLED: {{ ternary "true" "false" (and .Values.mcp.enabled .Values.mcp.sandboxMCP.enabled | default false) | quote }}
+  {{- if .Values.mcp.enabled }}
+  {{- $backends := list -}}
+  {{- range (include "zelkor-platform.mcpNativeBackends" . | fromJsonArray) }}{{- $backends = append $backends .name -}}{{- end -}}
+  {{- range (.Values.mcp.extraBackends | default list) }}{{- $backends = append $backends .name -}}{{- end }}
+  {{- /* MCP tool prefixes this install routes (natives + registered extras). */}}
+  MCP_BACKENDS: {{ join "," $backends | quote }}
+  {{- end }}
   {{- if .Values.gateway.enabled }}
   GATEWAY_NAME: {{ $pr.name | default (printf "%s-gateway" $full) | quote }}
   GATEWAY_NAMESPACE: {{ $pr.namespace | default $ns | quote }}

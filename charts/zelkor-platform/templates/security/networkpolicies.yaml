@@ -163,13 +163,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: postgresql
-      ports:
-        - protocol: TCP
-          port: 5432
+    {{- include "zelkor-platform.dataToolEgress" (dict "egressTo" (.Values.mcp.postgresMCP.egressTo | default list) "component" "postgresql" "port" 5432) | nindent 4 }}
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
 {{- end }}
 {{- if .Values.mcp.qdrantMCP.enabled }}
@@ -197,13 +191,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/component: qdrant
-      ports:
-        - protocol: TCP
-          port: 6333
+    {{- include "zelkor-platform.dataToolEgress" (dict "egressTo" (.Values.mcp.qdrantMCP.egressTo | default list) "component" "qdrant" "port" 6333) | nindent 4 }}
     - to:
         - podSelector:
             matchLabels:
