@@ -40,6 +40,7 @@ EXCLUDED = {
     "security.sandbox.provisioning.verify.enabled": "Job-only sub-switch of provisioning.mode",
     "databases.postgresql.barman.enabled": "needs object-store credentials; test_helm_ce4_production.py",
     "seaweedfs.persistence.enabled": "storage sizing, not a feature",
+    "platform.telemetry.otlp.enabled": "no-op switch: otlp.endpoint decides (single-sink gate); test_profile_perimeter.py",
 }
 
 # Values a toggle needs to be valid at all (what a customer must also set), not test fixtures.
@@ -58,6 +59,16 @@ COMPANIONS = {
         "databases.clickhouse.external.username=zelkor",
         "databases.clickhouse.external.password=test-ch",
         "databases.valkey.external.host=valkey.example.internal",
+    ],
+    ("perimeter.dataTools.postgres", "true"): [
+        "workspace.tools.postgresMCP.databaseUrlSecretRef.name=customer-db",
+        "workspace.tools.postgresMCP.egressTo[0].namespace=customer-data",
+        "workspace.tools.postgresMCP.egressTo[0].port=5432",
+    ],
+    ("perimeter.dataTools.qdrant", "true"): [
+        "workspace.tools.qdrantMCP.url=http://qdrant.customer-data.svc:6333",
+        "workspace.tools.qdrantMCP.egressTo[0].namespace=customer-data",
+        "workspace.tools.qdrantMCP.egressTo[0].port=6333",
     ],
     ("workspace.tools.objectMCP.enabled", "true"): [
         "workspace.tools.objectMCP.s3.endpoint=https://s3.example.com",
@@ -127,7 +138,12 @@ def test_matrix_row_renders_and_holds_invariants(row):
 
     # security.mcp floor policies render regardless of the opt-in; everything else follows it.
     opt_in = {d["metadata"]["name"] for d in docs if d.get("kind") == "NetworkPolicy" and _intent(d) != "security.mcp"}
-    expected = row["security.networkPolicies.enabled"] == "true"
+    if row.get("profile") == "perimeter":
+        # perimeter forces NetworkPolicies on; they render whenever the platform runs tool servers
+        # (an LLM-only perimeter has none: wrapped agents bring their own policies)
+        expected = row["workspace.tools.enabled"] == "true"
+    else:
+        expected = row["security.networkPolicies.enabled"] == "true"
     assert ("zelkor-platform-default-deny-ingress" in opt_in) == expected, sorted(opt_in)
     if not expected:
         assert not opt_in, sorted(opt_in)
@@ -177,6 +193,9 @@ def test_matrix_is_current_with_model():
 def test_network_policies_without_agents_or_tools_fails_with_message():
     row = dict(_rows()[0])
     row.update({
+        "profile": "full",
+        "perimeter.guardrails": "false", "perimeter.sandbox": "false",
+        "perimeter.dataTools.postgres": "false", "perimeter.dataTools.qdrant": "false",
         "security.networkPolicies.enabled": "true",
         "workload.agents.enabled": "false",
         "workspace.tools.enabled": "false",

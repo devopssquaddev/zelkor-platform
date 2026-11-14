@@ -401,3 +401,14 @@ def test_full_profile_data_tools_keep_the_release_datastores():
     assert {"to": [{"podSelector": {"matchLabels": {"app.kubernetes.io/component": "postgresql"}}}],
             "ports": [{"port": 5432, "protocol": "TCP"}]} in peers, peers
     assert "postgres" in _contract(docs)["MCP_BACKENDS"].split(",")
+
+
+def test_llm_only_perimeter_installs_without_tools():
+    """A perimeter with tools off (LLM boundary only) renders: the profile turns NetworkPolicies on
+    itself, wrapped agents bring their own policies, so the full-profile 'NPs need agents or tools'
+    guard does not apply."""
+    proc = _helm("-f", str(THIN_PERIMETER), *PROVIDER, *JWT, "--set", "workspace.tools.enabled=false")
+    assert proc.returncode == 0, proc.stderr
+    docs = _docs(proc.stdout)
+    assert not [d for d in docs if d.get("kind") == "MCPRoute"]
+    assert _named(docs, "EnvoyProxy", "") is not None
