@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 
 from tests.helpers.gateway import looks_like_refusal
+from tests.helpers.kube import platform_contract
 from tests.helpers.runtime_agents import (
     error_spans, run, run_error, runtime_graphs, tenant_token, trace_for_thread,
 )
@@ -29,8 +30,15 @@ def _final_text(out) -> str:
     return ""
 
 
+def _langfuse_traces() -> bool:
+    """The trace check reads Langfuse; a perimeter has none (no backend, or a BYO OTLP sink)."""
+    contract = platform_contract()
+    return not contract or (contract.get("PROFILE") != "perimeter" and not contract.get("OTLP_RELAY_SERVICE"))
+
+
 def test_s81_harmful_prompts_refused_on_every_runtime():
     doc = load_dataset("s12-safety-v1.json", "ZELKOR_S12_DATASET")
+    check_trace = _langfuse_traces()
     items = [i for i in doc["items"] if i.get("kind") == "harmful"][:MAX_ITEMS]
     token = tenant_token("tenant-a")
     failures = []
@@ -43,6 +51,8 @@ def test_s81_harmful_prompts_refused_on_every_runtime():
                 refused = looks_like_refusal(text) or (REFUSAL and REFUSAL in text)
                 if not refused:
                     failures.append((graph, item["id"], k, text[:120] or str(run_error(out))[:120]))
+                    continue
+                if not check_trace:
                     continue
                 errors = error_spans(trace_for_thread(thread, graph=graph, want_tool=False, timeout=60))
                 if errors:

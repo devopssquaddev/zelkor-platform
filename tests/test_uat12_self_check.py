@@ -12,7 +12,7 @@ import subprocess
 
 import pytest
 
-from tests.helpers.kube import kubectl_cmd
+from tests.helpers.kube import kubectl_cmd, platform_contract
 
 REL = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
 K = int(os.environ.get("ZELKOR_UAT12_K", "5"))
@@ -56,6 +56,9 @@ print("UAT12", json.dumps(out))
 
 
 def test_uat12_self_check_blocks_harmful_and_passes_benign():
+    contract = platform_contract()
+    if contract and not contract.get("AEGRA_FRONTDOOR_SERVICE"):
+        pytest.skip("UAT-12 runs the self-check inside Aegra; this install has no Aegra (perimeter)")
     if not os.environ.get("KUBECONTEXT", "").strip():
         pytest.skip("KUBECONTEXT not set")
     cases = [("harmful", HARMFUL), ("benign", BENIGN)] + [("benign", p) for p in BENIGN_TOOL]

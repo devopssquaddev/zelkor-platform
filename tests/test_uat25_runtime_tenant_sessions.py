@@ -6,7 +6,8 @@ with B's bearer (that returned 401 on every tools/call).
 
 The trace backend follows the platform: Langfuse (sandbox tool, full profile) or, when the
 platform contract has OTLP_RELAY_SERVICE, the OTLP collector sink with any gateway tool
-(ZELKOR_SESSION_TOOL, default MCP_AUDIT_TOOL; arguments from MCP_POLICY_TOOL_ARGS).
+(ZELKOR_SESSION_TOOL, default MCP_AUDIT_TOOL; arguments from MCP_POLICY_TOOL_ARGS). A perimeter
+without an OTLP endpoint has no trace backend: the backend's tools_call audit is the evidence.
 """
 from __future__ import annotations
 
@@ -35,8 +36,8 @@ def _session_graph() -> str:
     return next((g for g in graphs if "opencode" in g), graphs[0])
 
 
-def _otlp_platform() -> bool:
-    return bool(platform_contract(os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "zelkor")).get("OTLP_RELAY_SERVICE"))
+def _contract() -> dict[str, str]:
+    return platform_contract(os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "zelkor"))
 
 
 def _tool_audit(tool: str, tenant: str, since: str = "3m") -> list[dict]:
@@ -57,7 +58,8 @@ def _tool_audit(tool: str, tenant: str, since: str = "3m") -> list[dict]:
     return records
 
 
-def _otlp_tool_run(graph: str, token: str, tool: str, attempts: int = 3) -> tuple[list[dict], list[dict]]:
+def _otlp_tool_run(graph: str, token: str, tool: str, attempts: int = 3,
+                   traced: bool = True) -> tuple[list[dict], list[dict]]:
     """One run whose `tool` call succeeds at the backend. Retry when the model skips the tool or
     only sends malformed arguments (gpt-oss sometimes stringifies `messages`): model behavior."""
     raw = os.environ.get("MCP_POLICY_TOOL_ARGS", "").strip()
@@ -70,8 +72,8 @@ def _otlp_tool_run(graph: str, token: str, tool: str, attempts: int = 3) -> tupl
         thread, out = run(graph, token, f"Call the {tool} tool exactly once with these arguments, "
                                         f"then report what it returned:\n{args}")
         assert run_error(out) is None, run_error(out)
-        trace = otlp_sink.trace_for_session(graph, thread, want=1, want_tool=tool)
-        if any(otlp_sink.attr(s, "gen_ai.tool.name") == tool for s in trace):
+        trace = otlp_sink.trace_for_session(graph, thread, want=1, want_tool=tool) if traced else []
+        if not traced or any(otlp_sink.attr(s, "gen_ai.tool.name") == tool for s in trace):
             time.sleep(2)
             # ISO timestamps compare as strings; the log window slides, so filter by time, not count
             audit = [r for r in _tool_audit(tool, tenant_id(token)) if str(r.get("timestamp", "")) >= started]
@@ -89,12 +91,27 @@ def _langfuse_case(graph: str, tokens: list[str]) -> None:
         assert sandbox and sandbox.get("outcome") == "denied", sandbox
 
 
-def _otlp_case(graph: str, tokens: list[str]) -> None:
-    require_kube()
-    otlp_sink.sink()
+def _session_tool() -> str:
     tool = (os.environ.get("ZELKOR_SESSION_TOOL") or os.environ.get("MCP_AUDIT_TOOL") or "").strip()
     if "__" not in tool:
         pytest.skip("ZELKOR_SESSION_TOOL / MCP_AUDIT_TOOL (<backend>__<tool>) not set")
+    return tool
+
+
+def _audit_case(graph: str, tokens: list[str]) -> None:
+    """No trace backend (perimeter without OTLP): each tenant's call reaches the backend as itself."""
+    require_kube()
+    tool = _session_tool()
+    for token in tokens:
+        _, audit = _otlp_tool_run(graph, token, tool, traced=False)
+        # a reused foreign session never reaches the backend (401 at the gateway)
+        assert "ok" in {r.get("status") for r in audit}, f"{tenant_id(token)}: no ok tools_call: {audit}"
+
+
+def _otlp_case(graph: str, tokens: list[str]) -> None:
+    require_kube()
+    otlp_sink.sink()
+    tool = _session_tool()
     for token in tokens:
         tenant = tenant_id(token)
         trace, audit = _otlp_tool_run(graph, token, tool)
@@ -112,4 +129,11 @@ def test_uat25_alternating_tenants_each_get_working_tool_calls():
     graph = _session_graph()
     a, b = tenant_token("tenant-a"), tenant_token("tenant-b")
     assert tenant_id(a) != tenant_id(b), "tenant-a and tenant-b tokens carry the same tenant"
-    (_otlp_case if _otlp_platform() else _langfuse_case)(graph, [a, b, a])
+    contract = _contract()
+    if contract.get("OTLP_RELAY_SERVICE"):
+        case = _otlp_case
+    elif contract.get("PROFILE") == "perimeter":
+        case = _audit_case
+    else:
+        case = _langfuse_case
+    case(graph, [a, b, a])

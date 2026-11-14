@@ -51,19 +51,15 @@ gateway_policies_platform_listener_ports() {
   local release="$3"
   shift 3
   local rendered
-  rendered=$(helm template "$release" "$chart" --namespace "$namespace" "$@" 2>/dev/null) || return 1
-  printf '%s' "$rendered" | python3 -c 'import sys, yaml
-ports=set()
-for doc in yaml.safe_load_all(sys.stdin.read()):
-    if not doc or doc.get("kind") != "Gateway":
-        continue
-    for lis in (doc.get("spec") or {}).get("listeners") or []:
-        p = lis.get("port")
-        if p is not None:
-            ports.add(int(p))
+  # Only the Gateway template, read with the standard library: the preflight must not depend on
+  # PyYAML (a missing module used to turn this check into a silent pass).
+  rendered=$(helm template "$release" "$chart" --namespace "$namespace" "$@" \
+    --show-only templates/gateway/gateway.yaml 2>/dev/null) || return 1
+  printf '%s' "$rendered" | python3 -c 'import re, sys
+ports = sorted({int(p) for p in re.findall(r"^\s+port:\s*(\d+)\s*$", sys.stdin.read(), re.M)})
 if not ports:
     raise SystemExit(1)
-print(" ".join(str(p) for p in sorted(ports)))'
+print(" ".join(str(p) for p in ports))'
 }
 
 gateway_policies_release_listener_ports() {
