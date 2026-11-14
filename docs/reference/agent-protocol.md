@@ -1,5 +1,5 @@
 ---
-title: Agent Protocol
+title: Agent Protocol Reference
 description: Front-door paths, graph ID matching, and fallbacks.
 type: reference
 sidebar_group: Reference

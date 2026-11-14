@@ -1,5 +1,5 @@
 ---
-title: Hosts and Routing
+title: Hosts and Routing Reference
 description: Reference for gateway.hosts.* and internal ClusterIP service names.
 type: reference
 sidebar_group: Reference
