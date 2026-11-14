@@ -47,7 +47,7 @@ def test_unknown_profile_is_rejected_and_other_flags_pass_through():
     assert "REST=--skip-operators" in proc.stdout
 
 
-def _footer(perimeter: bool, tmp_path: Path) -> str:
+def _footer(perimeter: bool, tmp_path: Path, extra: str = "") -> str:
     stub = tmp_path / "bin"
     stub.mkdir()
     (stub / "kubectl").write_text("#!/bin/sh\nexit 1\n")
@@ -58,7 +58,7 @@ mcp_dataplane_print_token_banner() {{ :; }}
 KCTX=kind-zelkor HELM_RELEASE_NAME=zelkor-platform INSTALL_EXAMPLES=false
 LLM_PROVIDER_SUMMARY=openai DEFAULT_LLM_MODEL=gpt-x DOWNLOAD_DURATION=0
 INSTALL_MINUTES=1 INSTALL_SECONDS=2 INSTALL_DURATION=62 DEGRADED_COMPONENTS=() NOT_VERIFIED=()
-PERIMETER={"true" if perimeter else "false"}
+PERIMETER={"true" if perimeter else "false"} {extra}
 install_print_access_footer
 """
     proc = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False,
@@ -96,3 +96,30 @@ def test_progress_panel_names_the_perimeter_mode():
     assert "fast" in _ux("ux_panel_mode_lines zelkor", "fast")
     assert _ux("ux_phase_label 3", "perimeter").strip() == "Platform chart"
     assert _ux("ux_phase_label 3", "fast").strip() == "Datastores"
+
+
+def test_opt_in_flags_export_the_perimeter_opt_ins():
+    script = (f'source "{ROOT}/install.sh"; install_parse_flags "$@"; '
+              'echo "G=${PERIMETER_GUARDRAILS:-} S=${PERIMETER_SANDBOX:-} REST=${INSTALL_PASSTHRU[*]:-}"')
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(("PERIMETER_", "INSTALL_PROFILE"))}
+    proc = subprocess.run(["bash", "-c", script, "_", "--profile=perimeter", "--with-guardrails", "--with-sandbox"],
+                          capture_output=True, text=True, env=clean, check=False)
+    assert proc.returncode == 0, proc.stderr
+    assert "G=true S=true REST=" in proc.stdout
+    warn = subprocess.run(["bash", "-c", script, "_", "--with-sandbox"], capture_output=True, text=True,
+                          env=clean, check=False)
+    assert "apply to --profile=perimeter" in warn.stderr
+
+
+def test_perimeter_summary_names_the_opt_ins(tmp_path):
+    out = _footer(True, tmp_path, "PERIMETER_GUARDRAILS=true PERIMETER_SANDBOX=true")
+    assert "NeMo Guardrails" in out and "sandbox__execute_python" in out
+    assert "Langfuse" not in out and "Aegra" not in out
+
+
+def test_progress_panel_names_the_perimeter_opt_ins():
+    script = (f'source "{ROOT}/install.sh"; ux_init_colors; ux_init_glyphs; INSTALL_PROFILE=perimeter; '
+              'PERIMETER_GUARDRAILS=true PERIMETER_SANDBOX=true; ux_panel_mode_lines zelkor')
+    out = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False,
+                         env={**os.environ, "NO_COLOR": "1"}).stdout
+    assert "perimeter + NeMo + sandbox" in out

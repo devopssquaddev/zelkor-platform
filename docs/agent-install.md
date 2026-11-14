@@ -50,7 +50,7 @@ OPENAI_API_KEY=sk-... ./scripts/install-production.sh \
 
 If you need to skip operator installation (operators already present on the cluster), pass `--skip-operators`.
 
-For the zero-database [Perimeter Profile](perimeter.md), add `--profile perimeter` and drop `--hosts-langfuse`. The installer then skips the datastore operators, storage checks, Langfuse, and gVisor; the storage and sandbox notes below do not apply.
+For the zero-database [Perimeter Profile](perimeter.md), add `--profile perimeter` and drop `--hosts-langfuse`. The installer then skips the datastore operators, storage checks, Langfuse, and gVisor; the storage notes below do not apply, and the sandbox notes apply only with `--with-sandbox` (guardrails: `--with-guardrails`).
 
 Set storage and sandbox to the cluster you have. Leave `databases.postgresql.storage.storageClass`, `databases.clickhouse.storage.storageClass`, and `seaweedfs.persistence.storageClass` empty only when the default StorageClass can provision a volume. If you set one, set all three. Postgres stays at 3 instances unless the installer tells you to pass `--set databases.postgresql.instances=N`. 
 

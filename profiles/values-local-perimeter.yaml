@@ -1,7 +1,8 @@
 # Local kind overlay — perimeter profile (INSTALL_PROFILE=perimeter).
 # Zero-DB egress boundary: Envoy AI Gateway + MCP gateway + default-deny NetworkPolicy.
-# `profile: perimeter` disables all datastores, Langfuse, Aegra, sandbox, NeMo and the
-# data-plane MCP backends; this overlay only adds kind-local hosts and dev signing.
+# `profile: perimeter` disables all datastores, Langfuse, Aegra and the data-plane MCP backends;
+# NeMo and the sandbox stay off unless perimeter.guardrails / perimeter.sandbox (install.sh
+# --with-guardrails / --with-sandbox). This overlay only adds kind-local hosts and dev signing.
 # Envoy hostNetwork:true maps kind extraPortMappings 8088; see docs/quickstart.md.
 ---
 profile: perimeter

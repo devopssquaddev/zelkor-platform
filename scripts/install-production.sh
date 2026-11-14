@@ -38,7 +38,11 @@ Required:
 Options:
   --profile full|perimeter     Product mode (default full). perimeter layers
                                profiles/values-perimeter.yaml: gateway + MCP
-                               only, no datastores, operators, Langfuse or gVisor
+                               only, no datastores, operators or Langfuse
+  --with-guardrails            Perimeter opt-in: NeMo guardrails on /v1
+  --with-sandbox               Perimeter opt-in: gVisor code sandbox tool
+                               (uses the --install-gvisor / --skip-gvisor
+                               choice like the full profile)
   --namespace NAME             Release namespace (default: zelkor)
   --release NAME               Helm release name (default: zelkor-platform)
   --topology greenfield|layered|shared
@@ -109,6 +113,8 @@ while [[ $# -gt 0 ]]; do
       esac
       shift 2
       ;;
+    --with-guardrails) CLUSTER_INSTALL_PERIMETER_GUARDRAILS=1; shift ;;
+    --with-sandbox) CLUSTER_INSTALL_PERIMETER_SANDBOX=1; shift ;;
     --generate-passwords) GENERATE_PASSWORDS=1; shift ;;
     --tls) TLS_ENABLED=1; shift ;;
     --cluster-issuer)
@@ -147,7 +153,13 @@ if [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" ]]; then
   SKIP_OPERATORS=1  # no datastores: no CNPG / ClickHouse operators
   CLUSTER_INSTALL_ENFORCE_STORAGE=0
   CLUSTER_INSTALL_EXTRA_VALUES+=("${ZELKOR_REPO_ROOT}/profiles/values-perimeter.yaml")
+  CLUSTER_INSTALL_HELM_SETS+=(
+    --set "perimeter.guardrails=$([[ "$CLUSTER_INSTALL_PERIMETER_GUARDRAILS" -eq 1 ]] && echo true || echo false)"
+    --set "perimeter.sandbox=$([[ "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -eq 1 ]] && echo true || echo false)"
+  )
   [[ -n "$HOSTS_AGENTS" ]] || cluster_install_die "--hosts-agents is required (no .localhost defaults)"
+elif [[ "$CLUSTER_INSTALL_PERIMETER_GUARDRAILS" -eq 1 || "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -eq 1 ]]; then
+  cluster_install_die "--with-guardrails / --with-sandbox apply to --profile perimeter (the full profile ships both)"
 elif [[ -z "$HOSTS_AGENTS" || -z "$HOSTS_LANGFUSE" ]]; then
   cluster_install_die "--hosts-agents and --hosts-langfuse are required (no .localhost defaults)"
 fi
@@ -176,7 +188,9 @@ if [[ "$CLUSTER_INSTALL_GVISOR_INSTALL" -eq 1 ]]; then
   export GVISOR_INSTALL_OPT_IN=true
 fi
 cluster_install_prepare
-[[ "$PERIMETER" -eq 1 ]] || cluster_install_gvisor_choose
+if [[ "$PERIMETER" -eq 0 || "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -eq 1 ]]; then
+  cluster_install_gvisor_choose  # perimeter: only with --with-sandbox
+fi
 
 if [[ "$TLS_ENABLED" -eq 1 ]]; then
   CLUSTER_INSTALL_HELM_SETS+=(

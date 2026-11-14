@@ -3,9 +3,16 @@ extraManifests: []
 
 # Deployment profile. "" / "full" = the complete platform (default). "perimeter" compiles a
 # zero-DB Envoy AI & MCP egress boundary: keeps the gateway, MCP gateway (CE-9) and default-deny
-# NetworkPolicy; disables datastores, Langfuse, the agent runtime, sandbox, NeMo and data-plane MCP.
-# See docs/perimeter.md.
+# NetworkPolicy; disables datastores, Langfuse, the agent runtime and data-plane MCP. NeMo and the
+# gVisor sandbox are off in perimeter unless opted in below. See docs/perimeter.md.
 profile: ""
+
+# Opt-ins for profile=perimeter (ignored by the full profile, which ships both).
+perimeter:
+  # NeMo guardrails on every /v1 call (adds the NeMo pod; above the default perimeter memory budget).
+  guardrails: false
+  # gVisor code sandbox tool (sandbox MCP + warm workers; nodes need a gVisor RuntimeClass).
+  sandbox: false
 
 # V2 intent API: platform.*, workspace.*, workload.* (compiled to internal templates at render).
 # Substrate keys (postgresql, gateway, databases, security.sandbox, …) stay at the root.

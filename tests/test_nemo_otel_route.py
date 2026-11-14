@@ -303,3 +303,37 @@ def test_export_routes_default_pk_when_extra_has_other_projects(monkeypatch):
     assert basic_auth_header("pk-default", "sk-default") in {
         h.get("Authorization") for h in created
     }
+
+
+class _AttrSpan:
+    def __init__(self) -> None:
+        self.attrs: dict = {}
+
+    def set_attribute(self, key, value) -> None:
+        self.attrs[key] = value
+
+
+def test_standard_baggage_identity_in_both_modes():
+    """The sidecar sends user.id/session.id baggage; NeMo stamps it in Langfuse and OTLP mode."""
+    values = {"user.id": "tenant-a", "session.id": "th-9"}
+    lf = _AttrSpan()
+    stamp_identity(lf, values)
+    assert lf.attrs["user.id"] == "tenant-a" and lf.attrs["langfuse.user.id"] == "tenant-a"
+    assert lf.attrs["langfuse.session.id"] == "th-9"
+    otlp = _AttrSpan()
+    stamp_identity(otlp, {**values, "zelkor.langfuse.pk": "pk-x", "langfuse.trace.name": "g"}, langfuse=False)
+    assert otlp.attrs == {"user.id": "tenant-a", "session.id": "th-9"}
+
+
+def test_export_without_langfuse_keys_is_plain_otlp_without_warning(monkeypatch, caplog):
+    created, root_exports, leaf_exports = _install_with_export_stub(
+        monkeypatch, extra_otlp="[]", default_pk="", default_sk="",
+    )
+    root = OTLPSpanExporter(endpoint="http://ignored")
+    span = type("_Span", (), {"name": "guardrails.request", "attributes": {"session.id": "th-1"},
+                              "kind": None, "parent": None})()
+    with caplog.at_level("WARNING", logger="zelkor-nemo-otel"):
+        OTLPSpanExporter.export(root, [span])
+    assert root_exports == [1] and leaf_exports == []
+    assert not [c for c in created if "Authorization" in c]
+    assert not [r for r in caplog.records if "export" in r.getMessage().lower()]

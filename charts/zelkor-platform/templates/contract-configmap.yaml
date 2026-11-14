@@ -21,6 +21,9 @@ data:
   AI_GATEWAY_SERVICE: {{ printf "%s-ai-gateway.%s.svc.cluster.local:%v" $full $ns (.Values.aiGateway.inClusterService.port | default 80) | quote }}
   MCP_SERVICE: {{ printf "%s-mcp.%s.svc.cluster.local:80" $full $ns | quote }}
   NETWORK_POLICIES: {{ ternary "true" "false" (((.Values.security).networkPolicies).enabled | default false) | quote }}
+  {{- /* Optional planes (on in full; perimeter opt-ins perimeter.guardrails / perimeter.sandbox). */}}
+  GUARDRAILS_ENABLED: {{ ternary "true" "false" (.Values.guardrails.nemo.enabled | default false) | quote }}
+  SANDBOX_ENABLED: {{ ternary "true" "false" (and .Values.mcp.enabled .Values.mcp.sandboxMCP.enabled | default false) | quote }}
   {{- if .Values.gateway.enabled }}
   GATEWAY_NAME: {{ $pr.name | default (printf "%s-gateway" $full) | quote }}
   GATEWAY_NAMESPACE: {{ $pr.namespace | default $ns | quote }}

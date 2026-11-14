@@ -39,8 +39,11 @@ cluster_install_init() {
   CLUSTER_INSTALL_PG_INSTANCES="${CLUSTER_INSTALL_PG_INSTANCES:-1}"
   CLUSTER_INSTALL_EXPECT_HA="${CLUSTER_INSTALL_EXPECT_HA:-0}"
   CLUSTER_INSTALL_ENFORCE_STORAGE="${CLUSTER_INSTALL_ENFORCE_STORAGE:-0}"
-  # Product mode (Helm `profile`): full, or perimeter (gateway + MCP, no datastores/Langfuse/sandbox).
+  # Product mode (Helm `profile`): full, or perimeter (gateway + MCP, no datastores/Langfuse).
   CLUSTER_INSTALL_PROFILE="${CLUSTER_INSTALL_PROFILE:-full}"
+  # Perimeter opt-ins (--with-guardrails / --with-sandbox); the full profile ships both.
+  CLUSTER_INSTALL_PERIMETER_GUARDRAILS="${CLUSTER_INSTALL_PERIMETER_GUARDRAILS:-0}"
+  CLUSTER_INSTALL_PERIMETER_SANDBOX="${CLUSTER_INSTALL_PERIMETER_SANDBOX:-0}"
   # Extra -f files layered after the main values file (e.g. profiles/values-perimeter.yaml).
   CLUSTER_INSTALL_EXTRA_VALUES=()
   CLUSTER_INSTALL_GVISOR_INSTALL="${CLUSTER_INSTALL_GVISOR_INSTALL:-0}"
@@ -1343,7 +1346,8 @@ cluster_install_adopt_gatewayclass() {
 
 cluster_install_gvisor_preflight() {
   [[ "$CLUSTER_INSTALL_DRY_RUN" -eq 1 ]] && return 0
-  [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" ]] && return 0  # no sandbox in perimeter
+  # perimeter has no sandbox unless --with-sandbox
+  [[ "$CLUSTER_INSTALL_PROFILE" == "perimeter" && "$CLUSTER_INSTALL_PERIMETER_SANDBOX" -ne 1 ]] && return 0
   export GVISOR_HELM_RELEASE="$CLUSTER_INSTALL_RELEASE"
   export GVISOR_HELM_NAMESPACE="$CLUSTER_INSTALL_NAMESPACE"
   local args=()

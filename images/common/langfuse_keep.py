@@ -14,7 +14,8 @@ from urllib.parse import urlparse
 
 _DEFAULT_PROBE_PATHS = ("/health", "/live", "/ready", "/v1/health")
 _PATH_ATTR_KEYS = ("http.route", "http.target", "url.path", "http.path", "http.url")
-_IDENTITY_ATTRS = ("langfuse.trace.name", "langfuse.session.id", "run_id")
+# Standard session.id identifies a run as well (OTLP sinks, sidecar spans without langfuse.* keys).
+_IDENTITY_ATTRS = ("langfuse.trace.name", "langfuse.session.id", "session.id", "run_id")
 _HTTP_METHODS = frozenset(
     {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 )

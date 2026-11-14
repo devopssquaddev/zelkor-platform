@@ -295,3 +295,62 @@ def test_production_perimeter_is_the_production_overlay_plus_the_profile():
     docs = _docs(proc.stdout)
     assert _workload_names(docs) == {"zelkor-platform-mcp-aigateway"}
     assert _named(docs, "EnvoyProxy", "") is not None
+
+
+OTLP = ("--set", "platform.telemetry.otlp.endpoint=http://otel-collector.monitoring.svc:4318")
+
+
+def _optin(*flags: str) -> list[dict]:
+    proc = _helm("-f", str(LOCAL_PERIMETER), *PROVIDER, *OTLP, *flags)
+    assert proc.returncode == 0, proc.stderr
+    return _docs(proc.stdout)
+
+
+def test_opt_ins_add_only_their_own_components():
+    base = _optin()
+    guard = _optin("--set", "perimeter.guardrails=true")
+    sandbox = _optin("--set", "perimeter.sandbox=true")
+    assert _workload_names(guard) - _workload_names(base) == {"zelkor-platform-nemo"}
+    added = _workload_names(sandbox) - _workload_names(base)
+    assert "zelkor-platform-mcp-sandbox" in added and all("mcp-sandbox" in n for n in added)
+    # datastores, Langfuse, Aegra and the data-plane MCP stay off with both opt-ins
+    both = _workload_names(_optin("--set", "perimeter.guardrails=true", "--set", "perimeter.sandbox=true"))
+    for token in ("postgresql", "clickhouse", "valkey", "qdrant", "seaweedfs", "langfuse", "aegra",
+                  "mcp-postgres", "mcp-qdrant", "mcp-object"):
+        assert not any(token in n for n in both), (token, both)
+    assert "zelkor-platform-ai-gateway-nemo" in _names(guard, "Secret") - _names(base, "Secret")
+    assert {"zelkor-platform-sandbox-worker-ingress", "zelkor-platform-sandbox-worker-egress"} <= \
+        _names(sandbox, "NetworkPolicy") - _names(base, "NetworkPolicy")
+
+
+def test_opt_ins_are_ignored_by_the_full_profile_defaults():
+    # the full profile ships NeMo and the sandbox regardless of perimeter.*
+    names = _workload_names(_docs(_helm("-f", str(ROOT / "profiles" / "values-local.yaml"), *PROVIDER,
+                                        "--set", "perimeter.guardrails=false").stdout))
+    assert any("nemo" in n for n in names) and any("mcp-sandbox" in n for n in names)
+
+
+def test_perimeter_nemo_exports_through_the_otlp_relay():
+    nemo = _named(_optin("--set", "perimeter.guardrails=true"), "Deployment", "-nemo")
+    (c,) = [c for c in nemo["spec"]["template"]["spec"]["containers"] if c["name"] == "nemo-guardrails"]
+    env = {e["name"]: e.get("value", e.get("valueFrom")) for e in c["env"]}
+    assert c["command"] == ["opentelemetry-instrument"]
+    assert env["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://zelkor-platform-otlp.zelkor.svc.cluster.local:80"
+    assert env["OTEL_EXPORTER_OTLP_HEADERS"] == "authorization=Bearer%20$(ZELKOR_CONSUMER_KEY)"
+    assert env["ZELKOR_CONSUMER_KEY"]["secretKeyRef"] == {"name": "zelkor-platform-ai-gateway-consumer",
+                                                           "key": "agents"}
+    assert "LANGFUSE_EXTRA_OTLP" not in env and not c.get("envFrom")
+    # no OTLP endpoint: NeMo runs without tracing
+    plain = _docs(_helm("-f", str(LOCAL_PERIMETER), *PROVIDER, "--set", "perimeter.guardrails=true").stdout)
+    (c2,) = [c for c in _named(plain, "Deployment", "-nemo")["spec"]["template"]["spec"]["containers"]
+             if c["name"] == "nemo-guardrails"]
+    assert c2["command"] == ["python", "/app/boot.py"]
+
+
+def test_contract_publishes_the_optional_planes():
+    assert {k: _contract(_optin()).get(k) for k in ("GUARDRAILS_ENABLED", "SANDBOX_ENABLED")} == \
+        {"GUARDRAILS_ENABLED": "false", "SANDBOX_ENABLED": "false"}
+    both = _contract(_optin("--set", "perimeter.guardrails=true", "--set", "perimeter.sandbox=true"))
+    assert both["GUARDRAILS_ENABLED"] == "true" and both["SANDBOX_ENABLED"] == "true"
+    full = _contract(_docs(_helm("-f", str(ROOT / "profiles" / "values-local.yaml"), *PROVIDER).stdout))
+    assert full["GUARDRAILS_ENABLED"] == "true" and full["SANDBOX_ENABLED"] == "true"

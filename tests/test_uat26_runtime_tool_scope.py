@@ -31,7 +31,7 @@ except urllib.error.HTTPError as e:
 """
 
 # A run that stays active while the probe fires; it must use a tool the agent has
-# (perimeter has no sandbox: e.g. a long aigateway__call), so installs override it.
+# (a perimeter without perimeter.sandbox: e.g. a long aigateway__call), so installs override it.
 LONG_RUN = os.environ.get("ZELKOR_LONG_RUN_PROMPT", "").strip() or (
     "Call sandbox__execute_python once with timeout 60 and code: import time; time.sleep(25); print(1)")
 

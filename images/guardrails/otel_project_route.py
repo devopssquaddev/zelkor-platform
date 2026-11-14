@@ -1,7 +1,9 @@
-"""Route NeMo OTLP export by agent Langfuse public key (baggage / header).
+"""Route NeMo OTLP export by agent Langfuse public key (baggage / header), or plain OTLP.
 
-Keeps graph+NeMo in one project when agents use extraProjects keys.
-Stamps langfuse.trace.name / session / user on every NeMo span.
+Langfuse mode (ingest keys set): keeps graph+NeMo in one project when agents use extraProjects
+keys and stamps langfuse.trace.name / session / user on every NeMo span. OTLP mode (no Langfuse
+keys, e.g. profile=perimeter): exports kept spans to OTEL_EXPORTER_OTLP_ENDPOINT and stamps only
+the standard user.id / session.id.
 Drops untitled CLIENT ``POST`` / ``http send`` roots (empty Langfuse rows).
 Nested hops under FastAPI ``POST /v1/chat/completions`` stay.
 """
@@ -33,6 +35,8 @@ IDENTITY_ATTRS: Sequence[tuple[str, str]] = (
     ("langfuse.session.id", "langfuse.session.id"),
     ("langfuse.user.id", "langfuse.user.id"),
 )
+# Standard identity baggage (the sidecar and Aegra send it with W3C trace context).
+STANDARD_BAGGAGE: Sequence[str] = ("user.id", "session.id")
 
 
 def parse_extra_otlp(raw: str) -> Dict[str, str]:
@@ -122,16 +126,31 @@ def identity_from_headers(headers: Any) -> Dict[str, str]:
     return out
 
 
-def stamp_identity(span: Any, values: Dict[str, str]) -> None:
+def stamp_identity(span: Any, values: Dict[str, str], *, langfuse: bool = True) -> None:
+    """Standard user.id / session.id always (from standard baggage, else the Langfuse keys);
+    the langfuse.* identity and project pk only in Langfuse mode."""
+    user = values.get("user.id") or values.get("langfuse.user.id")
+    session = values.get("session.id") or values.get("langfuse.session.id")
+    if user:
+        span.set_attribute("user.id", user)
+    if session:
+        span.set_attribute("session.id", session)
+    if not langfuse:
+        return
     for key, attr in IDENTITY_ATTRS:
         value = values.get(key)
-        if not value:
-            continue
-        span.set_attribute(attr, value)
-        if attr == "langfuse.user.id":
-            span.set_attribute("user.id", value)
-        if attr == "langfuse.session.id":
-            span.set_attribute("session.id", value)
+        if value:
+            span.set_attribute(attr, value)
+    if user and not values.get("langfuse.user.id"):
+        span.set_attribute("langfuse.user.id", user)
+    if session and not values.get("langfuse.session.id"):
+        span.set_attribute("langfuse.session.id", session)
+
+
+def langfuse_mode() -> bool:
+    """True when any Langfuse ingest key is configured (else plain OTLP export)."""
+    extra, pk, sk = _ingest_credentials()
+    return bool(extra) or bool(pk and sk)
 
 
 def _ingest_credentials() -> tuple[Dict[str, str], str, str]:
@@ -198,7 +217,9 @@ def install() -> None:
             return SpanExportResult.SUCCESS
         if getattr(self, "_zelkor_route_leaf", False):
             return orig_export(self, spans)
-        _, default_pk_live, default_sk_live = _ingest_credentials()
+        extra_live, default_pk_live, default_sk_live = _ingest_credentials()
+        if not extra_live and not (default_pk_live and default_sk_live):
+            return orig_export(self, spans)  # OTLP mode: one sink, no per-project routing
         buckets: Dict[str, List] = defaultdict(list)
         for span in spans:
             buckets[pk_from_span(span, default_pk_live)].append(span)
@@ -222,13 +243,13 @@ def install() -> None:
     class _IdentityProcessor(SpanProcessor):
         def on_start(self, span, parent_context=None):  # type: ignore[no-untyped-def]
             values: Dict[str, str] = {}
-            for key, _attr in IDENTITY_ATTRS:
+            for key in [k for k, _attr in IDENTITY_ATTRS] + list(STANDARD_BAGGAGE):
                 value = baggage.get_baggage(key, parent_context) if parent_context else None
                 if not value:
                     value = baggage.get_baggage(key)
                 if value:
                     values[key] = str(value)
-            stamp_identity(span, values)
+            stamp_identity(span, values, langfuse=langfuse_mode())
 
         def on_end(self, span):  # type: ignore[no-untyped-def]
             return
@@ -303,6 +324,7 @@ def install() -> None:
         _log.exception("NeMo Langfuse identity middleware failed")
 
     _log.info(
-        "NeMo OTEL identity + orphan CLIENT drop enabled (extra keys=%s)",
+        "NeMo OTEL identity + orphan CLIENT drop enabled (sink=%s, extra keys=%s)",
+        "langfuse" if langfuse_mode() else "otlp",
         len(extra),
     )

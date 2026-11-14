@@ -80,7 +80,10 @@ case "$INSTALL_PROFILE" in
     VALUES_FILE="${VALUES_FILE:-profiles/values-local-perimeter.yaml}"
     KIND_CONFIG="${KIND_CONFIG:-kind-config.yaml}"
     INSTALL_EXAMPLES="${INSTALL_EXAMPLES:-false}"
-    GVISOR_INSTALL="${GVISOR_INSTALL:-false}"
+    # Opt-ins (install.sh --with-guardrails / --with-sandbox): NeMo, gVisor sandbox tool.
+    PERIMETER_GUARDRAILS="${PERIMETER_GUARDRAILS:-false}"
+    PERIMETER_SANDBOX="${PERIMETER_SANDBOX:-false}"
+    GVISOR_INSTALL="${GVISOR_INSTALL:-$PERIMETER_SANDBOX}"
     RUN_DEMO_TOUR="${RUN_DEMO_TOUR:-false}"
     PERIMETER=true
     ;;
@@ -823,6 +826,9 @@ if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
     --set "security.sandbox.createRuntimeClass=${GVISOR_CREATE_RUNTIME_CLASS:-true}"
   )
 fi
+if [[ "${PERIMETER:-false}" == "true" ]]; then
+  HELM_EXTRA_ARGS+=(--set "perimeter.guardrails=${PERIMETER_GUARDRAILS}" --set "perimeter.sandbox=${PERIMETER_SANDBOX}")
+fi
 if [[ -n "${OPENAI_API_KEY:-}" ]]; then
   HELM_EXTRA_ARGS+=(--set "workspace.models.providers.openai.apiKey=${OPENAI_API_KEY}")
 fi
@@ -1011,7 +1017,8 @@ MCP_DP_RELEASE="$HELM_RELEASE_NAME"
 MCP_DP_NAMESPACE="${ZELKOR_NAMESPACE:-default}"
 MCP_DP_KUBE_CONTEXT="$KCTX"
 step_begin rollout_mcp_nemo
-if [[ "${PERIMETER:-false}" != "true" ]] && kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
+if [[ "${PERIMETER:-false}" != "true" || "${PERIMETER_GUARDRAILS:-false}" == "true" ]] \
+  && kubectl --context "$KCTX" get deployment/zelkor-platform-nemo >/dev/null 2>&1; then
   wait_one optional deployment/zelkor-platform-nemo
 fi
 if mcp_dataplane_wait_all; then
@@ -1172,9 +1179,14 @@ fi
 cat <<EOF
   MCP (MCPRoute / MCP_URL)  Host ${mcp_host}              http://${mcp_host}:8088/mcp
 EOF
-if [[ "${PERIMETER:-false}" != "true" ]]; then
+if [[ "${PERIMETER:-false}" != "true" || "${PERIMETER_GUARDRAILS:-false}" == "true" ]]; then
 cat <<EOF
   NeMo Guardrails (CPU)   zelkor-platform-nemo        http://nemo.localhost:8088/v1/rails/configs
+EOF
+fi
+if [[ "${PERIMETER:-false}" == "true" && "${PERIMETER_SANDBOX:-false}" == "true" ]]; then
+cat <<EOF
+  Code sandbox (gVisor)   zelkor-platform-mcp-sandbox MCP tool sandbox__execute_python
 EOF
 fi
 cat <<EOF

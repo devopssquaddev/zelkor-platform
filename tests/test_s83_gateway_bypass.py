@@ -65,7 +65,7 @@ def _probe() -> dict:
 
 
 def _nemo_deployed() -> bool:
-    # The NeMo host Service exists only with NeMo intercept (profile=perimeter ships no NeMo).
+    # The NeMo host Service exists only with NeMo intercept (off in a default perimeter).
     return kubectl_run(["get", "svc", f"{REL}-ai-gateway-nemo", "-o", "name"]).returncode == 0
 
 
@@ -78,7 +78,7 @@ def test_s83_no_key_is_refused_even_with_bypass_headers():
 def test_s83_bypass_headers_cannot_skip_nemo():
     require_kube()
     if not _nemo_deployed():
-        pytest.skip(f"no {REL}-ai-gateway-nemo Service: NeMo is not deployed (e.g. profile=perimeter)")
+        pytest.skip(f"no {REL}-ai-gateway-nemo Service: NeMo is not deployed (e.g. a perimeter without perimeter.guardrails)")
     out = _probe()
     assert out["consumer_key_on_nemo_host"] == 401, out
     status, text = out["bypass_with_key_harmful"]

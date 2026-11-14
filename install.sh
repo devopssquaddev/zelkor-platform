@@ -373,8 +373,11 @@ ux_panel_mode_lines() {
       echo "full upgrade ${UX_SEP:-|} cluster ${cluster}"
       echo "Needs a completed fast install. Skips download." ;;
     perimeter)
-      echo "perimeter ${UX_SEP:-|} cluster ${cluster}"
-      echo "Gateway + MCP only: no datastores, Langfuse or Aegra." ;;
+      local extras=""
+      [[ "${PERIMETER_GUARDRAILS:-false}" == "true" ]] && extras+=" + NeMo"
+      [[ "${PERIMETER_SANDBOX:-false}" == "true" ]] && extras+=" + sandbox"
+      echo "perimeter${extras} ${UX_SEP:-|} cluster ${cluster}"
+      echo "Gateway + MCP${extras}: no datastores, Langfuse or Aegra." ;;
     *)
       echo "fast ${UX_SEP:-|} cluster ${cluster}"
       echo "Re-runs on an existing cluster are faster." ;;
@@ -693,10 +696,15 @@ install_parse_flags() {
           fast|full) INSTALL_PROFILE="$value" ;;
           *) echo "[install] ERROR: --stage must be fast or full (got ${value})" >&2; return 1 ;;
         esac ;;
+      --with-guardrails) PERIMETER_GUARDRAILS=true; export PERIMETER_GUARDRAILS; shift ;;
+      --with-sandbox) PERIMETER_SANDBOX=true; export PERIMETER_SANDBOX; shift ;;
       *)
         INSTALL_PASSTHRU+=("$1"); shift ;;
     esac
   done
+  if [[ "${PERIMETER_GUARDRAILS:-}${PERIMETER_SANDBOX:-}" == *true* && "${INSTALL_PROFILE:-}" != perimeter ]]; then
+    echo "[install] --with-guardrails / --with-sandbox apply to --profile=perimeter (the full profile ships both)" >&2
+  fi
   [[ -n "${INSTALL_PROFILE:-}" ]] && export INSTALL_PROFILE
   return 0
 }

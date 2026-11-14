@@ -14,10 +14,10 @@ edition: ce
 
 `profile=perimeter` installs a **zero-database egress boundary** for your agents' LLM and MCP traffic. It has two parts:
 
-1. **The gateway** — a shared Envoy AI Gateway (`/v1`) and MCP gateway (`/mcp`) that inject provider keys, rate-limit, deny mutating tools, and log audit metadata. Installs in under 90 seconds and under 500 MB of RAM.
+1. **The gateway** — a shared Envoy AI Gateway (`/v1`) and MCP gateway (`/mcp`) that inject provider keys, rate-limit, deny mutating tools, and log audit metadata. Installs in under 90 seconds and under 500 MB of RAM (without the optional guardrails and code sandbox).
 2. **A stateless sidecar** — the same `zelkor-sidecar` the full runtime uses, minus its database. You wrap an agent with `zelkor deploy`, and the sidecar forces that agent's LLM and MCP calls through the gateway, attaches its tenant identity and keys, and meters it — with nothing stateful behind it.
 
-Use it when your agents run on Kubernetes and you want to **armor their outbound calls** without adopting the full runtime (no Postgres, ClickHouse, Valkey, Qdrant, SeaweedFS, Langfuse, Aegra agent host, sandbox, or guardrails). Your wrapped agents are still published on the same agents host as in the full profile.
+Use it when your agents run on Kubernetes and you want to **armor their outbound calls** without adopting the full runtime (no Postgres, ClickHouse, Valkey, Qdrant, SeaweedFS, Langfuse, or Aegra agent host). Your wrapped agents are still published on the same agents host as in the full profile. NeMo guardrails and the gVisor code sandbox are off by default; add either one when you need it ([Optional guardrails and code sandbox](#optional-guardrails-and-code-sandbox)).
 
 ## Why a gateway alone is not enough
 
@@ -64,16 +64,19 @@ flowchart TB
     k5["stateless sidecar (per wrapped agent, no DB)"]
     k6["per-pod egress NetworkPolicy"]
   end
+  subgraph opt["Off by default, opt-in (no datastore needed)"]
+    o1["NeMo guardrails"]
+    o2["gVisor sandbox MCP + workers"]
+  end
   subgraph drop["Disabled in perimeter (the runtime)"]
     d1["Aegra agent host + thread/run persistence"]
     d2["Postgres, ClickHouse, Valkey, Qdrant, SeaweedFS"]
     d3["Langfuse web + worker"]
-    d4["gVisor sandbox + workers"]
-    d5["NeMo guardrails"]
-    d6["postgres / qdrant / sandbox / object MCP"]
+    d6["postgres / qdrant / object MCP"]
   end
-  note["Result: under 90s install, under 500 MB RAM, no datastores"]
+  note["Default result: under 90s install, under 500 MB RAM, no datastores"]
   keep --- note
+  opt --- note
   drop --- note
 ```
 
@@ -111,9 +114,9 @@ Laptop `kind`:
 OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter
 ```
 
-On kind the installer skips the datastore, Langfuse, Aegra, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install.
+On kind the installer skips the datastore, Langfuse, Aegra, and demo phases and does not install gVisor, so a perimeter install is a fraction of a full install. Add `--with-guardrails` or `--with-sandbox` for the optional planes ([below](#optional-guardrails-and-code-sandbox)).
 
-On any other cluster, use the same production installer as the full profile with `--profile perimeter`. Supply at least one provider credential, the agents hostname, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token). It skips the datastore operators, Langfuse, and gVisor:
+On any other cluster, use the same production installer as the full profile with `--profile perimeter`. Supply at least one provider credential, the agents hostname, and your identity provider's tenant-JWT contract (the gateway and the sidecar verify every caller's token). It skips the datastore operators, Langfuse, and gVisor (unless you add `--with-sandbox`):
 
 ```bash
 OPENAI_API_KEY=sk-... ./scripts/install-production.sh --profile perimeter \
@@ -136,7 +139,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 ## Deploy and call an agent
 
-Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. A deploy-first project (`agent.json` + `AGENTS.md`) needs nothing more; your own Dockerfile serving A2A must read `OPENAI_BASE_URL` and `MCP_URL`, which `zelkor deploy` points at the sidecar. Name the MCP tool prefixes the agent may use — the extra backends you registered under `workspace.tools` ([Register extra MCP backends](mcp-extra-backends.md)), since the built-in Postgres, Qdrant, and sandbox tools are off — or pass `--all-tools`:
+Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. A deploy-first project (`agent.json` + `AGENTS.md`) needs nothing more; your own Dockerfile serving A2A must read `OPENAI_BASE_URL` and `MCP_URL`, which `zelkor deploy` points at the sidecar. Name the MCP tool prefixes the agent may use — the extra backends you registered under `workspace.tools` ([Register extra MCP backends](mcp-extra-backends.md)), since the built-in Postgres and Qdrant tools are off (the `sandbox` tool exists with the sandbox opt-in) — or pass `--all-tools`:
 
 ```bash
 zelkor deploy --tools crm
@@ -168,6 +171,26 @@ Because the perimeter is zero-database, these are off by design:
 
 - **No trace UI.** Langfuse is off, so there is no waterfall view. The gateway still emits the `llm_access` token log and MCP audit metadata to stdout (see [Observability](#observability)).
 - **No Aegra agent host and no persistence.** Wrapped agents are published on the agents host, but the stateless sidecar keeps threads and runs in memory only, and LangGraph projects need the Aegra host. For durable run history, LangGraph agents, and the trace UI, use the full profile.
-- **No code sandbox and no guardrails.** gVisor and NeMo are off to hold the memory budget.
+- **No code sandbox and no guardrails by default.** gVisor and NeMo are off to hold the memory budget; both are opt-ins ([next section](#optional-guardrails-and-code-sandbox)).
 
-When you need any of the above, install the full profile (the default) — it is the same gateway and sidecar with the persistence, trace, sandbox, and guardrail planes turned on. See [Helm Install](helm-install.md) and [Local Quickstart](quickstart.md).
+When you need durable runs, LangGraph agents, or the trace UI, install the full profile (the default) — it is the same gateway and sidecar with the persistence and trace planes turned on, and guardrails and the sandbox on by default. See [Helm Install](helm-install.md) and [Local Quickstart](quickstart.md).
+
+## Optional guardrails and code sandbox
+
+Neither plane needs a datastore, so a perimeter can add them and stay zero-database:
+
+| Opt-in | What you get | Kind | Production | Helm |
+| :--- | :--- | :--- | :--- | :--- |
+| Guardrails | [NeMo guardrails](nemo-guardrails.md) check every `/v1` prompt and reply against a safety policy and block unsafe ones | `--with-guardrails` | `--with-guardrails` | `perimeter.guardrails=true` |
+| Code sandbox | the `sandbox` MCP tool, which runs generated code in a [gVisor sandbox](architecture-sandbox.md) | `--with-sandbox` (installs gVisor on the kind node) | `--with-sandbox`; the installer uses gVisor already on your nodes, or installs it with `--install-gvisor`, and otherwise stops before changing anything | `perimeter.sandbox=true` (nodes need the gVisor RuntimeClass) |
+
+```bash
+OPENAI_API_KEY=sk-... ./install.sh --profile=perimeter --with-guardrails --with-sandbox
+```
+
+What each opt-in costs:
+
+- **Memory.** The under-500 MB figure is for the default perimeter. NeMo requests about 256 MB, and the sandbox adds an orchestrator plus three warm workers of about 128 MB each.
+- **Model calls.** Guardrails judge each request and reply with your default model, so every agent call costs extra model calls.
+
+Deploy an agent that may run code with `zelkor deploy --tools sandbox` (add your other prefixes, for example `--tools sandbox,crm`). With an OTLP endpoint set, NeMo's rail spans join the agent's trace in your collector, sent through the gateway like the agents' spans.

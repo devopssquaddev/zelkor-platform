@@ -22,6 +22,21 @@
       ],
       "description": "Allowed values for profile."
     },
+    "perimeter": {
+      "type": "object",
+      "description": "Values under perimeter.",
+      "properties": {
+        "guardrails": {
+          "type": "boolean",
+          "description": "Value for perimeter.guardrails."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "Value for perimeter.sandbox."
+        }
+      },
+      "additionalProperties": false
+    },
     "global": {
       "type": "object",
       "description": "Values under global.",

@@ -12,8 +12,9 @@
 #     --set "platform.tenants.jwt.jwksEgressCIDRs={<idp-cidr>}"
 #
 # Or: ./scripts/install-production.sh --profile perimeter (see docs/perimeter.md).
-# The profile disables all datastores, Langfuse, the Aegra runtime, sandbox, NeMo and the
-# data-plane MCP backends; it keeps the gateway, the gateway MCP backend, the agents front door
-# and the default-deny NetworkPolicy.
+# The profile disables all datastores, Langfuse, the Aegra runtime and the data-plane MCP
+# backends; it keeps the gateway, the gateway MCP backend, the agents front door and the
+# default-deny NetworkPolicy. NeMo and the gVisor sandbox are opt-ins: perimeter.guardrails /
+# perimeter.sandbox (installers: --with-guardrails / --with-sandbox).
 ---
 profile: perimeter

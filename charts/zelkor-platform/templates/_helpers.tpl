@@ -40,7 +40,8 @@ Idempotent; call via include "zelkor-platform.compile" . at the top of each temp
 {{/*
 CE-15a perimeter profile. profile=perimeter compiles a zero-DB Envoy AI & MCP egress boundary:
 keep the gateway, Envoy AI Gateway, MCP gateway (CE-9 deny/RPM/audit), aigateway MCP, and the
-default-deny NetworkPolicy; disable every stateful plane. Runs before the V2 downcast so the
+default-deny NetworkPolicy; disable every stateful plane. NeMo (perimeter.guardrails) and the
+gVisor sandbox (perimeter.sandbox) stay off unless opted in; neither needs a datastore. Runs before the V2 downcast so the
 flipped workspace.* / workload.* / platform.* enables propagate to the flat tree.
 */}}
 {{- define "zelkor-platform.compile.profile" -}}
@@ -62,21 +63,28 @@ flipped workspace.* / workload.* / platform.* enables propagate to the flat tree
 {{- $agents := ($.Values.workload.agents | default dict) -}}
 {{- $_ := set $agents "enabled" false -}}
 {{- $_ := set $.Values.workload "agents" $agents -}}
+{{- $optIn := ($.Values.perimeter | default dict) -}}
 {{- $sec := ($.Values.security | default dict) -}}
+{{- if not $optIn.sandbox -}}
 {{- $sb := ($sec.sandbox | default dict) -}}
 {{- $_ := set $sb "enabled" false -}}
 {{- $_ := set $sec "sandbox" $sb -}}
+{{- end -}}
 {{- $np := ($sec.networkPolicies | default dict) -}}
 {{- $_ := set $np "enabled" true -}}
 {{- $_ := set $sec "networkPolicies" $np -}}
 {{- $_ := set $.Values "security" $sec -}}
+{{- if not $optIn.guardrails -}}
 {{- $pol := ($.Values.workspace.policies | default dict) -}}
 {{- $nemo := ($pol.nemo | default dict) -}}
 {{- $_ := set $nemo "enabled" false -}}
 {{- $_ := set $pol "nemo" $nemo -}}
 {{- $_ := set $.Values.workspace "policies" $pol -}}
+{{- end -}}
 {{- $tools := ($.Values.workspace.tools | default dict) -}}
-{{- range $t := (list "postgresMCP" "qdrantMCP" "sandboxMCP" "objectMCP") -}}
+{{- $offTools := list "postgresMCP" "qdrantMCP" "objectMCP" -}}
+{{- if not $optIn.sandbox -}}{{- $offTools = append $offTools "sandboxMCP" -}}{{- end -}}
+{{- range $t := $offTools -}}
 {{- $td := (index $tools $t) | default dict -}}
 {{- $_ := set $td "enabled" false -}}
 {{- $_ := set $tools $t $td -}}
@@ -1008,12 +1016,32 @@ OpenAI-compatible base URL for in-cluster agent runtimes (Aegra, MCP).
 {{- end -}}
 {{- end }}
 
-{{- define "zelkor-platform.nemoOtelEnabled" -}}
+{{- /* NeMo trace sink: "langfuse" (bundled Langfuse init project) or "otlp" (the platform's
+     single-sink OTLP relay, e.g. profile=perimeter with perimeter.guardrails); "" = off. */}}
+{{- define "zelkor-platform.nemoOtelMode" -}}
 {{- $init := .Values.langfuse.init | default dict -}}
-{{- if and .Values.guardrails.nemo.observability.otel.enabled .Values.langfuse.enabled $init.enabled -}}
+{{- if .Values.guardrails.nemo.observability.otel.enabled -}}
+{{- if and .Values.langfuse.enabled $init.enabled -}}
+langfuse
+{{- else if eq (include "zelkor-platform.otlpRelayEnabled" .) "true" -}}
+otlp
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.nemoOtelEnabled" -}}
+{{- if include "zelkor-platform.nemoOtelMode" . -}}
 true
 {{- else -}}
 false
+{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.nemoOtelCaptureContent" -}}
+{{- if eq (include "zelkor-platform.nemoOtelMode" .) "otlp" -}}
+{{- ((.Values.platform.telemetry).otlp).captureContent | default false -}}
+{{- else -}}
+{{- .Values.guardrails.nemo.observability.otel.captureContent | default false -}}
 {{- end -}}
 {{- end }}
 
@@ -1055,6 +1083,14 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
   value: none
 - name: OTEL_EXPORTER_OTLP_PROTOCOL
   value: http/protobuf
+{{- if eq (include "zelkor-platform.nemoOtelMode" .) "otlp" }}
+{{- /* Same path as wrapped agents: the gateway's OTLP relay, authenticated with the consumer key. */}}
+{{- include "zelkor-platform.aiGatewayKeyEnv" (dict "root" . "name" "ZELKOR_CONSUMER_KEY" "secret" (include "zelkor-platform.aiGatewayConsumerSecret" .) "key" "agents") | nindent 0 }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ printf "http://%s-otlp.%s.svc.cluster.local:%v" (include "zelkor-platform.fullname" .) .Release.Namespace (.Values.aiGateway.inClusterService.port | default 80) | quote }}
+- name: OTEL_EXPORTER_OTLP_HEADERS
+  value: "authorization=Bearer%20$(ZELKOR_CONSUMER_KEY)"
+{{- else }}
 - name: OTEL_EXPORTER_OTLP_ENDPOINT
   value: {{ printf "http://%s-langfuse:3000/api/public/otel" (include "zelkor-platform.fullname" .) | quote }}
 {{- if and $creds.publicKey $creds.secretKey }}
@@ -1065,9 +1101,10 @@ Resolved Langfuse ingest keys for init project (values, BYO secret, or cluster i
   value: {{ (.Values.langfuse.extraProjects | default list) | toJson | quote }}
 {{- end }}
 {{- end }}
+{{- end }}
 
 {{- define "zelkor-platform.nemoLangfuseOtelEnvFrom" -}}
-{{- if eq (include "zelkor-platform.nemoOtelEnabled" .) "true" }}
+{{- if eq (include "zelkor-platform.nemoOtelMode" .) "langfuse" }}
 - secretRef:
     name: {{ include "zelkor-platform.langfuseOtelSecretName" . }}
 {{- end }}
