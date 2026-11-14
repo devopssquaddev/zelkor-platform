@@ -139,7 +139,7 @@ helm upgrade --install zelkor-platform charts/zelkor-platform \
 
 ## Deploy and call an agent
 
-Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. A deploy-first project (`agent.json` + `AGENTS.md`) needs nothing more; your own Dockerfile serving A2A must read `OPENAI_BASE_URL` and `MCP_URL`, which `zelkor deploy` points at the sidecar. Name the MCP tool prefixes the agent may use — the extra backends you registered under `workspace.tools` ([Register extra MCP backends](mcp-extra-backends.md)), since the built-in Postgres and Qdrant tools are off (the `sandbox` tool exists with the sandbox opt-in) — or pass `--all-tools`:
+Deploy from your agent's project directory exactly as in the full profile. `zelkor deploy` reads the platform's profile and, on a perimeter, runs the agent behind the stateless (no-database) sidecar and locks the pod's egress to the gateway. A deploy-first project (`agent.json` + `AGENTS.md`) needs nothing more; your own Dockerfile serving A2A must read `OPENAI_BASE_URL` and `MCP_URL`, which `zelkor deploy` points at the sidecar. Name the MCP tool prefixes the agent may use — the extra backends you registered under `workspace.tools` ([Register extra MCP backends](mcp-extra-backends.md)), since the built-in Postgres and Qdrant tools are off unless you point them at your own databases ([below](#use-your-existing-databases)), and the `sandbox` tool exists only with the sandbox opt-in — or pass `--all-tools`:
 
 ```bash
 zelkor deploy --tools crm
@@ -194,3 +194,42 @@ What each opt-in costs:
 - **Model calls.** Guardrails judge each request and reply with your default model, so every agent call costs extra model calls.
 
 Deploy an agent that may run code with `zelkor deploy --tools sandbox` (add your other prefixes, for example `--tools sandbox,crm`). With an OTLP endpoint set, NeMo's rail spans join the agent's trace in your collector, sent through the gateway like the agents' spans.
+
+## Use your existing databases
+
+Zelkor's Postgres and Qdrant tools can work on databases you already run, so tenants stay isolated over your data while the perimeter still installs no database. The tools receive each caller's verified token and scope every call to that tenant: Postgres queries run read-only with the tenant set for row-level security, and Qdrant searches only return documents whose `tenant_id` matches.
+
+```yaml
+perimeter:
+  dataTools:
+    postgres: true
+    qdrant: true
+workspace:
+  tools:
+    postgresMCP:
+      databaseUrlSecretRef: {name: crm-db, key: url}   # Secret with postgresql://user:pass@host:5432/db
+      egressTo: [{namespace: crm-data, port: 5432}]   # where the tool may connect
+    qdrantMCP:
+      url: http://qdrant.crm-data.svc.cluster.local:6333
+      collection: policies                             # your collection (default: documents)
+      egressTo: [{namespace: crm-data, port: 6333}]
+```
+
+Create the Secret in the platform's namespace first, then add the values to your platform overlay (`-f` with `install-production.sh` or `helm upgrade`):
+
+```bash
+kubectl -n zelkor create secret generic crm-db \
+  --from-literal=url='postgresql://crm_mcp:<password>@postgres.crm-data.svc.cluster.local:5432/crm'
+```
+
+Give an agent the tools with `zelkor deploy --tools postgres,qdrant` (plus your other prefixes).
+
+Your database has to do its part. Postgres isolation holds only if:
+
+- each table the agent may read has a row-level security policy on the session tenant, for example `USING (tenant_id = current_setting('app.current_tenant', true))`, with `FORCE ROW LEVEL SECURITY`;
+- the login in the Secret is a plain role: not a superuser, not `BYPASSRLS`, and granted only `SELECT` on those tables.
+
+A role that bypasses row-level security returns every tenant's rows. Qdrant documents need a `tenant_id` payload field.
+
+Without the opt-in, or for any other tool, register your own MCP server instead ([Register extra MCP backends](mcp-extra-backends.md)). The gateway then sends it the caller's tenant as a header it sets itself, never the token, and isolation inside that server is the server's job.
+
