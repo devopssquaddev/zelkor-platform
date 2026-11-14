@@ -133,6 +133,8 @@ def test_uat24_benign_code_runs_in_sandbox_otlp(graph):
             break
     spans = [s for s in trace if otlp_sink.attr(s, "gen_ai.tool.name") == tool]
     assert spans, f"{graph}: model never called {tool}"
-    assert otlp_sink.attr(spans[-1], "sandbox.outcome") == "allowed", spans[-1]["attrs"][:300]
+    # the sidecar's tool span carries the sandbox result; the gateway's tools/call span does not
+    outcomes = [otlp_sink.attr(s, "sandbox.outcome") for s in spans if otlp_sink.attr(s, "sandbox.outcome")]
+    assert outcomes and outcomes[-1] == "allowed", [s["attrs"][:200] for s in spans]
     assert "45" in text, text[:300]
     assert not [s["name"] for s in trace if otlp_sink.attr(s, "error.type")], "failed span in the run"

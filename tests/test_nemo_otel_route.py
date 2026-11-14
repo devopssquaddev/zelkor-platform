@@ -337,3 +337,40 @@ def test_export_without_langfuse_keys_is_plain_otlp_without_warning(monkeypatch,
     assert root_exports == [1] and leaf_exports == []
     assert not [c for c in created if "Authorization" in c]
     assert not [r for r in caplog.records if "export" in r.getMessage().lower()]
+
+
+class _ParentCtx:
+    is_valid = True
+
+
+def _child_hop(name: str, tid: int, kind: str = "CLIENT"):
+    span = _HopSpan(name, tid, kind=kind)
+    span.parent = _ParentCtx()
+    return span
+
+
+
+
+def test_otlp_mode_keeps_client_hops_of_a_kept_trace(monkeypatch):
+    """In OTLP mode the gateway's span for NeMo's model call is a child of NeMo's httpx CLIENT
+    hop, so the hop must export; Langfuse mode keeps dropping it (empty rows, no gateway spans)."""
+    from otel_project_route import kept_spans
+
+    kept_root = _HopSpan("guardrails.request", 41, attributes={"session.id": "th-1"}, kind="INTERNAL")
+    hop = _child_hop("POST", 41)
+    stray = _child_hop("POST", 99)  # a hop in a trace nobody kept
+    inbound = _HopSpan("POST", 41, kind="SERVER")
+    otlp = kept_spans([kept_root, hop, stray, inbound], langfuse=False)
+    assert hop in otlp and stray not in otlp and inbound not in otlp
+    lf = kept_spans([kept_root, _child_hop("POST", 42), _HopSpan("x", 42, attributes={"session.id": "a"})],
+                    langfuse=True)
+    assert not [s for s in lf if s.name == "POST"]
+
+
+def test_otlp_mode_keeps_a_run_hop_that_ends_before_its_kept_spans():
+    from otel_project_route import kept_spans
+
+    hop = _child_hop("POST", 77)
+    hop.attributes = {"session.id": "th-7"}  # the run's identity, stamped at span start
+    assert kept_spans([hop], langfuse=False) == [hop]
+    assert kept_spans([_child_hop("POST", 78)], langfuse=False) == []

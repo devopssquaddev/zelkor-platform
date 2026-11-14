@@ -16,7 +16,7 @@ from base64 import b64encode
 from collections import defaultdict
 from typing import Any, Dict, List, Sequence
 
-from langfuse_keep import LangfuseKeep
+from langfuse_keep import LangfuseKeep, has_agent_identity, is_http_client_hop, span_trace_id
 
 _log = logging.getLogger("zelkor-nemo-otel")
 ATTR = "zelkor.langfuse.pk"
@@ -147,6 +147,30 @@ def stamp_identity(span: Any, values: Dict[str, str], *, langfuse: bool = True) 
         span.set_attribute("langfuse.session.id", session)
 
 
+def _client_hop_of_kept_trace(span: Any) -> bool:
+    if "SERVER" in str(getattr(getattr(span, "kind", None), "name", "") or ""):
+        return False
+    if not is_http_client_hop(span) or is_orphan_http_client(span):
+        return False
+    tid = span_trace_id(span)
+    if not tid:
+        return False
+    if has_agent_identity(span):  # stamped by _IdentityProcessor; may end before any kept span
+        _langfuse_keep._kept.add(tid)
+        return True
+    return tid in _langfuse_keep._kept
+
+
+def kept_spans(spans: Sequence[Any], *, langfuse: bool) -> List[Any]:
+    """Spans to export. Langfuse mode drops untitled HTTP hops (empty rows). OTLP mode keeps the
+    CLIENT hops of a kept trace: the gateway's span for NeMo's own model call is their child."""
+    batch = list(spans)
+    kept = {id(s) for s in _langfuse_keep.filter_batch(batch) if not is_orphan_http_client(s)}
+    if not langfuse:
+        kept |= {id(s) for s in batch if id(s) not in kept and _client_hop_of_kept_trace(s)}
+    return [s for s in batch if id(s) in kept]
+
+
 def langfuse_mode() -> bool:
     """True when any Langfuse ingest key is configured (else plain OTLP export)."""
     extra, pk, sk = _ingest_credentials()
@@ -208,8 +232,7 @@ def install() -> None:
         return "", ""
 
     def _kept(spans):  # type: ignore[no-untyped-def]
-        kept = _langfuse_keep.filter_batch(spans)
-        return [span for span in kept if not is_orphan_http_client(span)]
+        return kept_spans(spans, langfuse=langfuse_mode())
 
     def _export(self, spans):  # type: ignore[no-untyped-def]
         spans = _kept(spans)
