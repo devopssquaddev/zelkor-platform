@@ -71,7 +71,7 @@ def test_extra_backend_ref_has_no_authorization_forward():
         "--set",
         "workspace.tools.extraBackends[0].name=acme",
         "--set",
-        "workspace.tools.extraBackends[0].service.name=acme-mcp",
+        "workspace.tools.extraBackends[0].service.name=acme",
         "--set",
         "workspace.tools.extraBackends[0].service.port=8080",
     )
@@ -305,3 +305,30 @@ def test_seaweedfs_empty_dir_when_persistence_disabled():
     data = next(v for v in deploy["spec"]["template"]["spec"]["volumes"] if v["name"] == "data")
     assert "emptyDir" in data
 
+
+
+
+def test_extra_service_name_must_equal_backend_name():
+    r = _helm("--set", "workspace.tools.extraBackends[0].name=acme",
+              "--set", "workspace.tools.extraBackends[0].service.name=acme-mcp",
+              "--set", "workspace.tools.extraBackends[0].service.port=8080")
+    assert r.returncode != 0 and "must equal name" in r.stderr
+
+
+def test_extra_backends_get_a_gateway_only_ingress_policy():
+    r = _helm("--set", "workspace.tools.extraBackends[0].name=acme",
+              "--set", "workspace.tools.extraBackends[0].service.name=acme",
+              "--set", "workspace.tools.extraBackends[0].service.port=8080",
+              "--set", "workspace.tools.extraBackends[1].name=crm",
+              "--set", "workspace.tools.extraBackends[1].service.name=crm",
+              "--set", "workspace.tools.extraBackends[1].service.port=9000")
+    assert r.returncode == 0, r.stderr
+    docs = _docs(r.stdout)
+    (np,) = [d for d in docs if d.get("kind") == "NetworkPolicy" and d["metadata"]["name"].endswith("-mcp-extra-ingress")]
+    assert np["spec"]["podSelector"] == {"matchLabels": {"zelkor.io/mcp-extra": "true"}}
+    (rule,) = np["spec"]["ingress"]
+    assert sorted(p["port"] for p in rule["ports"]) == [8080, 9000]
+    peer = rule["from"][0]
+    assert "owning-gateway-name" in str(peer["podSelector"]) and "namespaceSelector" in peer
+    plain = _docs(_helm().stdout)
+    assert not [d for d in plain if d.get("kind") == "NetworkPolicy" and d["metadata"]["name"].endswith("-mcp-extra-ingress")]

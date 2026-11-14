@@ -29,6 +29,9 @@ spec:
           - aegra
           - langfuse
           - guardrails
+      # customer MCP servers registered as extras (labeled by the customer, like the natives)
+      - key: zelkor.io/mcp-extra
+        operator: DoesNotExist
 {{- else }}
   podSelector: {}
 {{- end }}

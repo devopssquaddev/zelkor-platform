@@ -127,8 +127,9 @@ def test_missing_extra_registrations_detects_unregistered_tools():
     assert len(missing) == 1
     assert missing[0]["name"] == "two"
     snippet = extra_backend_overlay_snippet("acme", "http://acme-mcp:8080")
-    assert "name: acme" in snippet
-    assert "name: acme-mcp" in snippet
+    assert "        service:\n" in snippet and "          name: acme\n" in snippet
+    assert "          name: acme-mcp\n" not in snippet
+    assert "expose acme-mcp as a Service named 'acme'" in snippet
     tavily = extra_backend_overlay_snippet("tavily", "https://mcp.tavily.com/mcp")
     assert "fqdn:" in tavily
     assert "hostname: mcp.tavily.com" in tavily

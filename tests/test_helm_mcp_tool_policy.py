@@ -10,7 +10,7 @@ NATIVE_DEPLOYMENTS = {
 TENANT_ALLOW_PREFIX = "has(request.auth.jwt.claims."
 ACME = (
     "--set", "workspace.tools.extraBackends[0].name=acme",
-    "--set", "workspace.tools.extraBackends[0].service.name=acme-mcp",
+    "--set", "workspace.tools.extraBackends[0].service.name=acme",
     "--set", "workspace.tools.extraBackends[0].service.port=8080",
 )
 

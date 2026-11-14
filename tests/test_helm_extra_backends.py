@@ -23,7 +23,7 @@ def test_extra_backend_appears_on_mcproute():
         "--set",
         "workspace.tools.extraBackends[0].name=acme",
         "--set",
-        "workspace.tools.extraBackends[0].service.name=acme-mcp",
+        "workspace.tools.extraBackends[0].service.name=acme",
         "--set",
         "workspace.tools.extraBackends[0].service.port=8080",
     )
@@ -44,7 +44,7 @@ def test_extra_backend_string_port_compiles():
         "--set",
         "workspace.tools.extraBackends[0].name=acme",
         "--set",
-        "workspace.tools.extraBackends[0].service.name=acme-mcp",
+        "workspace.tools.extraBackends[0].service.name=acme",
         "--set-string",
         "workspace.tools.extraBackends[0].service.port=8080",
     )

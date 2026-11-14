@@ -62,6 +62,9 @@ false
 {{- $hasFqdn := and ($fqdn.hostname | default "") (ne $fqdnPort 0) -}}
 {{- if and $hasSvc $hasFqdn -}}{{- fail (printf "workspace.tools.extraBackends[%d]: set exactly one of service or fqdn" $idx) -}}{{- end -}}
 {{- if not (or $hasSvc $hasFqdn) -}}{{- fail (printf "workspace.tools.extraBackends[%d]: service or fqdn is required" $idx) -}}{{- end -}}
+{{- if and $hasSvc (ne (toString $svc.name) $name) -}}
+{{- fail (printf "workspace.tools.extraBackends[%d]: service.name %q must equal name %q (the gateway routes to the Service named after the backend, in the release namespace)" $idx (toString $svc.name) $name) -}}
+{{- end -}}
 {{- range $fh := $item.forwardHeaders | default list -}}
 {{- $hn := $fh -}}
 {{- if kindIs "map" $fh -}}{{- $hn = $fh.name | default "" -}}{{- end -}}
