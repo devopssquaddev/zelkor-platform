@@ -60,17 +60,23 @@ class MCPGatewayClient:
         *,
         base_url: str = GATEWAY_BASE_URL,
         host_header: str = MCP_HOST_HEADER,
+        bearer: str | None = None,
+        extra_headers: Optional[Dict[str, str]] = None,
     ) -> None:
+        """`bearer` replaces the tenant's minted token (e.g. a claimless JWT); `extra_headers`
+        are sent as-is (e.g. a forged X-Tenant-ID) to probe what the gateway lets through."""
         self.tenant_id = tenant_id
         self.mcp_url = f"{base_url.rstrip('/')}/mcp"
         self._host_header = host_header
-        self._auth = _authorization_for(tenant_id)
+        self._auth = f"Bearer {bearer}" if bearer else _authorization_for(tenant_id)
+        self._extra = dict(extra_headers or {})
 
     def _http_headers(self) -> dict[str, str]:
         return {
             "Host": self._host_header,
             "Authorization": self._auth,
             "Accept": "application/json, text/event-stream",
+            **self._extra,
         }
 
     @asynccontextmanager
@@ -117,7 +123,10 @@ class MCPGatewayClient:
                     raise RuntimeError(text or "tool call failed")
                 content = result.content or []
                 if content and getattr(content[0], "text", None):
-                    return json.loads(content[0].text)
+                    try:
+                        return json.loads(content[0].text)
+                    except ValueError:  # third-party servers may answer plain text
+                        return content[0].text
                 return result
 
         try:
