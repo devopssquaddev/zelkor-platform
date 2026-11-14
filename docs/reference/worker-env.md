@@ -1,5 +1,5 @@
 ---
-title: Worker Environment
+title: Worker Environment Reference
 description: Environment variables injected into agent workers by the platform.
 type: reference
 sidebar_group: Reference

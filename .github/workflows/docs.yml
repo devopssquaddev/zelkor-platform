@@ -1,0 +1,52 @@
+# Docs contract: frontmatter, llms.txt, Helm values schemas, and a full site build.
+# Offline only: no cluster, no secrets.
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "website/**"
+      - "charts/*/values.yaml"
+      - "charts/*/values.schema.json"
+      - "tests/test_docs_frontmatter.py"
+      - "tests/test_llms_txt.py"
+      - "tests/test_helm_values_schema.py"
+      - ".github/workflows/docs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "website/**"
+      - "charts/*/values.yaml"
+      - "charts/*/values.schema.json"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Install website dependencies
+        run: npm ci
+        working-directory: website
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Docs, llms.txt and schema tests
+        run: pytest tests/test_docs_frontmatter.py tests/test_llms_txt.py tests/test_helm_values_schema.py
+      - name: Build site (fails if llms.txt exceeds 2,000 tokens)
+        run: npm run docs:build
+        working-directory: website

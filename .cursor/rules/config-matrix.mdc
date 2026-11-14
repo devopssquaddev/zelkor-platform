@@ -1,0 +1,25 @@
+---
+description: New or changed Helm toggles go into the PICT config model; every matrix row must render
+alwaysApply: false
+globs: ["charts/zelkor-platform/values.yaml", "charts/zelkor-platform/templates/**", "tests/config_matrix/**", "tests/test_helm_config_matrix.py"]
+---
+
+# Config matrix
+
+Customer opt-in/opt-out combinations are covered by a PICT model, not by hand-picked configs.
+
+## When you touch `charts/zelkor-platform/values.yaml` or `templates/`
+
+1. A new or renamed `*.enabled` / `*.mode` goes into `tests/config_matrix/model.pict`, or into `EXCLUDED` in `tests/test_helm_config_matrix.py` with a one-line reason (tier gate, installer-managed, set by profile).
+2. A combination the chart rejects on purpose (`fail`) is a PICT `IF … THEN` constraint. Never skip or delete a matrix row.
+3. Values a toggle needs to be valid go in `COMPANIONS`, written as a customer would set them. They never become chart defaults.
+4. Regenerate the matrix, then run it:
+
+```bash
+pict tests/config_matrix/model.pict > tests/config_matrix/matrix.tsv
+pytest tests/test_helm_config_matrix.py
+```
+
+Never edit `matrix.tsv` by hand. If a defect needed 3 interacting toggles to show, add them to the 3-way sub-model in the fix PR.
+
+Prefer a profile over a new toggle. Every toggle is a dimension every later change must survive.

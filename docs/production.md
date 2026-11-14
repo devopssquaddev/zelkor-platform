@@ -15,8 +15,8 @@ Deploy the production shape of Zelkor Community Edition. This runs databases via
 **Zelkor is the self-hosted agent runtime.** Bring the agent you already wrote — it can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation; tenants stay isolated.
 
 * **Community Edition** is the self-hosted runtime. It can run this highly available operator shape out of the box.
-* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps on top of this shape.
-* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
+* **Pro** adds team budgets and tool approvals, persistent sandboxes, SSO, and team GitOps on top of this shape.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, DLP, retained audit, HIPAA-ready safeguards).
 
 ## Prerequisites
 

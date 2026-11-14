@@ -45,7 +45,36 @@ Instead of running arbitrary `exec()` calls in-memory, the agent uses the platfo
 
 In **Community Edition**, these workers use gVisor to intercept syscalls and isolate the kernel. In **Enterprise**, they use Kata Containers for hardware-level virtual machine isolation. Generated code cannot break out of that pod onto the node.
 
+| Hop | From → to | What holds the boundary |
+| :--- | :--- | :--- |
+| 1 | Agent → MCP gateway (`MCP_URL`) | Tenant JWT; the agent sees only the tools its scope allows |
+| 2 | MCP gateway → Sandbox MCP | The agent pod has no sandbox worker address and cannot skip this hop |
+| 3 | Sandbox MCP → sandbox worker pod | Worker runs on RuntimeClass `gvisor` (`runsc`): a user-space kernel, not the node's kernel |
+| 4 | Sandbox worker → anywhere | No outbound network; no host mounts or container runtime socket |
+
 The stock worker image includes pandas and numpy. It has no outbound network, so packages are installed in the image, not by the code that runs. Extra libraries are an image built `FROM` that worker. The warm pool runs that one image. Steps: [Add Python libraries to the sandbox](sandbox-python-libraries.md).
+
+[//]: # (zelkor-proof shell-moved begin)
+### Proof: Generated code runs off the host kernel
+
+**Problem.** If an agent is compromised, the code it generates runs wherever `exec()` runs. In most stacks that is the agent pod, on the node's kernel, next to the agent's credentials.
+
+**Where it holds.** Agent → MCP gateway → Sandbox MCP → sandbox worker pod on RuntimeClass `gvisor`. The agent pod has no worker address.
+
+```bash
+$ kubectl get runtimeclass gvisor
+$ kubectl -n zelkor get pods -l app.kubernetes.io/component=mcp-sandbox-worker -o jsonpath='{range .items[*]}{.spec.runtimeClassName}{"\n"}{end}'
+$ kubectl -n zelkor get pod <agent-pod> -o jsonpath='rc=[{.spec.runtimeClassName}]'
+$ kubectl -n zelkor exec <agent-pod> -- cat /proc/version
+$ kubectl -n zelkor exec <sandbox-worker> -- cat /proc/version
+$ kubectl -n zelkor exec <sandbox-worker> -- sh -c 'ls -d /host; ls -l /var/run/docker.sock'
+```
+
+**Result.** Every sandbox worker reports `gvisor`; the agent pod reports no RuntimeClass. The agent pod sees the host kernel (`6.1.0`); the worker sees `4.19.0-gvisor`. The worker has no `/host` mount and no container runtime socket, and creating a block device fails with `PermissionError`.
+
+Every command exited 0 on a lab cluster running chart `2.4.3` on 2026-11-07. Security promises: Code Execution, Network Isolation ([threat model](threat-model.md#_3-security-promises-ce)).
+
+[//]: # (zelkor-proof shell-moved end)
 
 ## Which nodes run the sandbox
 

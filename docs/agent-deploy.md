@@ -16,6 +16,22 @@ Zelkor — **the self-hosted agent runtime**: **bring the agent you already wrot
 
 Zelkor uses a **ClusterIP** worker pattern. Each independently released agent is its own Kubernetes Deployment, built from a Zelkor runtime image (Aegra by default; see [Choose a runtime](#choose-a-runtime)). The platform's Envoy Gateway routes incoming Agent Protocol calls to the correct worker based on the `X-Graph-ID` header.
 
+## What stays in your image and what Zelkor injects
+
+Do not add provider keys, gateway URLs, or tracing config to the image. The `zelkor-agent` chart sets them on the pod.
+
+| Concern | In your image | Set by Zelkor on the agent pod |
+| :--- | :--- | :--- |
+| Agent logic | Graph, prompts, Python or TS dependencies | Nothing |
+| Model calls | An OpenAI-compatible client that reads `OPENAI_BASE_URL` and `OPENAI_API_KEY` | `OPENAI_BASE_URL` = in-cluster AI Gateway (`127.0.0.1:8001` sidecar for `a2a` / `opencode`). `OPENAI_API_KEY` = gateway consumer key or `via-sidecar`, never a provider key |
+| Tool calls | An MCP client that reads `MCP_URL` | `MCP_URL` = platform MCP gateway. Tools bound only from `platform.mcpInjectToolPrefixes` (or `--tools`) |
+| Generated code | Calls the `sandbox` MCP tool | Code runs in a separate sandbox worker pod on RuntimeClass `gvisor`, not in the agent pod |
+| Traces | Nothing | Langfuse OTel env from the `{release}-langfuse-otel` Secret |
+| Threads and runs | Nothing | `DATABASE_URL`, `REDIS_URL`, `REDIS_CHANNEL_PREFIX` (Aegra). The `a2a` / `opencode` runtime container gets none of these |
+| Network | Nothing | NetworkPolicies when `security.networkPolicies.enabled` (on in the production install) |
+
+Full variable list: [Worker Environment](reference/worker-env.md).
+
 ## Choose a runtime
 
 One platform install runs any mix of runtimes; each agent release picks its own with `runtime:` (or `zelkor deploy --runtime`).

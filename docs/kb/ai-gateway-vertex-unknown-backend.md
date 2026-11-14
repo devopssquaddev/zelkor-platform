@@ -1,5 +1,5 @@
 ---
-title: Vertex gemini unknown backend
+title: "AI Gateway: Vertex gemini-* returns 500 unknown backend"
 description: AI Gateway returns 500 unknown backend for Vertex gemini-* models.
 type: kb
 sidebar_group: KB

@@ -6,6 +6,7 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -255,3 +256,53 @@ def test_template_values_paths_have_schema_properties():
     }
     stray = sorted(paths - allowed)
     assert not stray, f"template references without schema property: {stray}"
+
+
+AGENT_CHART = ROOT / "charts" / "zelkor-agent"
+
+
+def _resolve(schema: dict, node: dict) -> dict:
+    while isinstance(node, dict) and "$ref" in node:
+        ref = node["$ref"]
+        assert ref.startswith("#/"), ref
+        node = schema
+        for part in ref[2:].split("/"):
+            node = node[part]
+    return node
+
+
+def _missing_schema_paths(schema: dict, values: object, node: dict, path: str) -> list[str]:
+    """values.yaml key paths that the schema neither declares nor leaves open."""
+    node = _resolve(schema, node)
+    if not isinstance(values, dict) or not isinstance(node, dict):
+        return []
+    props = node.get("properties", {})
+    out: list[str] = []
+    for key, val in values.items():
+        child = f"{path}.{key}" if path else key
+        if key in props:
+            out += _missing_schema_paths(schema, val, props[key], child)
+        elif any(re.search(p, key) for p in node.get("patternProperties", {})):
+            continue
+        elif node.get("additionalProperties", True) is False:
+            out.append(child)
+    return out
+
+
+@pytest.mark.parametrize("chart", [CHART, AGENT_CHART], ids=lambda c: c.name)
+def test_every_values_key_path_is_in_schema(chart: Path):
+    """Loop 1 (GEO): coding agents autocomplete from the schema, so it must cover values.yaml."""
+    schema = json.loads((chart / "values.schema.json").read_text())
+    values = yaml.safe_load((chart / "values.yaml").read_text())
+    missing = _missing_schema_paths(schema, values, schema, "")
+    assert not missing, f"{chart.name}: values.yaml keys missing from schema: {missing}"
+
+
+def test_agent_chart_unknown_top_level_key_fails_schema():
+    r = subprocess.run(
+        ["helm", "template", "a", str(AGENT_CHART), "--set", "graphId=x",
+         "--set", "platform.releaseName=p", "--set", "grpahId=x"],
+        check=False, capture_output=True, text=True,
+    )
+    assert r.returncode != 0
+    assert "grpahId" in r.stderr

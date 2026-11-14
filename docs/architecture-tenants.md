@@ -17,8 +17,8 @@ Zelkor isolates these tenants across the platform. One verified identity scopes 
 The core advantage: **the self-hosted agent runtime** — bring the agent you already wrote; it can't break out, reach unauthorized data or networks, its prompts are verified, budget controlled, and it is under observation.
 
 * **Community Edition** is the self-hosted runtime.
-* **Pro** adds SSO, team controls (budgets and approvals), and team GitOps.
-* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
+* **Pro** adds team budgets and tool approvals, persistent sandboxes, SSO, and team GitOps.
+* **Enterprise** adds isolation and compliance on Pro (hardware sandbox, mTLS, DLP, retained audit, HIPAA-ready safeguards).
 
 *How a tenant identity scopes a run. The agent code never supplies the `tenant_id` to the tools; it is enforced by the platform.*
 ```mermaid
@@ -64,6 +64,27 @@ Native MCP servers (like Postgres and Qdrant) apply this tenant identity directl
 - In **Qdrant**, search and scroll filter on payload `tenant_id`. Upsert stamps that field from the verified tenant.
 
 Extra MCP backends (Bring Your Own) receive the tenant identity in headers but are responsible for applying their own filters (see [Extra Backends](mcp-extra-backends.md)).
+
+[//]: # (zelkor-proof two-desks begin)
+### Proof: One Postgres MCP, rows scoped by the caller's identity
+
+**Problem.** A shared data tool that takes the tenant or the scope from the request lets one tenant read another's rows.
+
+**Where it holds.** Agent → MCP gateway → Postgres MCP. The tenant comes from the signed tenant JWT and is set as `app.current_tenant` for the query; the caller cannot pass it.
+
+```text
+tools/call postgres__query {"sql": "SELECT account_number FROM portfolios ORDER BY account_number"}   # tenant A token
+tools/call postgres__query {"sql": "SELECT account_number FROM portfolios ORDER BY account_number"}   # tenant B token
+tools/call postgres__query {"sql": "SELECT account_number FROM portfolios", "tenant_id": "<tenant B>"}   # tenant A token
+tools/call postgres__query {"sql": "DELETE FROM portfolios"}   # tenant A token
+tools/call postgres__get_schema {"name": "pg_catalog.pg_shadow"}   # tenant A token
+```
+
+**Result.** Same tool, same table: each tenant sees only its own rows. A caller-supplied `tenant_id` is rejected by the tool schema, writes are rejected (`Only SELECT queries are permitted`), and system catalogs are not visible. The rejection cases are also covered by `tests/test_mcp_postgres.py`.
+
+Every command exited 0 on a lab cluster running chart `2.4.3` on 2026-11-11. Security promises: Database MCP, Tool Identity, Tenant Isolation ([threat model](threat-model.md#_3-security-promises-ce)).
+
+[//]: # (zelkor-proof two-desks end)
 
 ## Langfuse Tracing
 
@@ -140,4 +161,3 @@ When the second database is not PostgreSQL, register a thin MCP server for it un
 
 - **Engines with session-level RLS (SQL Server, Oracle):** Set the session context from `X-Tenant-ID` before running `SELECT` (`EXEC sp_set_session_context @key=N'tenant_id', @value=..., @read_only=1` on SQL Server; `DBMS_SESSION.SET_IDENTIFIER(...)` with a VPD policy on Oracle, cleared when the connection returns to the pool).
 - **Document and key-value stores without engine RLS (MongoDB, Qdrant, S3):** Never expose raw query evaluation (`$where`, `$function`, unrestricted `runCommand`). The MCP wrapper parses `X-Tenant-ID` and wraps the caller's filter in `{"$and": [agent_filter, enforced_tenant_filter]}` in code, matching how native `zelkor-qdrant-mcp` stamps `payload.tenant_id`.
-

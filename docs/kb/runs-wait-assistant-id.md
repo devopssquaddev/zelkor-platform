@@ -1,5 +1,5 @@
 ---
-title: runs/wait requires assistant_id
+title: POST /runs/wait returns 422 assistant_id
 description: POST /runs/wait returns 422 assistant_id Field required.
 type: kb
 sidebar_group: KB

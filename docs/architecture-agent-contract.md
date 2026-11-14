@@ -71,5 +71,5 @@ The Model Context Protocol (MCP) plane governs how the agent executes infrastruc
 These planes form the base runtime. Zelkor editions build upon this foundation:
 
 - **Community Edition:** The self-hosted agent runtime (intercept, wrap, MCP).
-- **Pro:** Adds SSO, team controls (budgets and approvals), and team GitOps.
-- **Enterprise:** Adds strict isolation and compliance on Pro (hardware sandbox, mTLS, retained audit, BAA).
+- **Pro:** Adds team budgets and tool approvals, persistent sandboxes, SSO, and team GitOps.
+- **Enterprise:** Adds strict isolation and compliance on Pro (hardware sandbox, mTLS, DLP, retained audit, HIPAA-ready safeguards).
