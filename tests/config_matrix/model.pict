@@ -1,0 +1,43 @@
+# Zelkor CE chart configuration model (PICT).
+# Each parameter is a Helm values path; "@gateway" selects profiles/values-gateway-<v>.yaml.
+# Regenerate after editing:  pict tests/config_matrix/model.pict > tests/config_matrix/matrix.tsv
+# Rows render in tests/test_helm_config_matrix.py. Toggles left out are listed there with a reason.
+
+@gateway:                                        greenfield, layered, shared
+databases.mode:                                  in-cluster-basic, operator-cr, external
+postgresql.enabled:                              true, false
+valkey.enabled:                                  true, false
+clickhouse.enabled:                              true, false
+qdrant.enabled:                                  true, false
+seaweedfs.enabled:                               true, false
+highAvailability.enabled:                        false, true
+gateway.tls.enabled:                             false, true
+security.networkPolicies.enabled:                false, true
+security.sandbox.enabled:                        true, false
+security.sandbox.provisioning.mode:              auto, daemonset
+security.sandbox.executionLog.enabled:           true, false
+platform.telemetry.format:                       json, text
+platform.telemetry.nemoOtel.enabled:             true, false
+platform.telemetry.langfuse.enabled:             true, false
+platform.telemetry.langfuse.worker.enabled:      true, false
+platform.telemetry.langfuse.publicHttpRoute.enabled: false, true
+observability.serviceMonitor.enabled:            false, true
+workspace.models.enabled:                        true, false
+workspace.models.rateLimit.enabled:              true, false
+workspace.policies.nemo.enabled:                 true, false
+workspace.policies.nemo.intercept.enabled:       true, false
+workspace.policies.nemo.selfCheck.enabled:       true, false
+workspace.tools.enabled:                         true, false
+workspace.tools.postgresMCP.enabled:             true, false
+workspace.tools.qdrantMCP.enabled:               true, false
+workspace.tools.aigatewayMCP.enabled:            true, false
+workspace.tools.sandboxMCP.enabled:              true, false
+workspace.tools.objectMCP.enabled:               false, true
+workspace.tools.policy.rateLimit.enabled:        true, false
+workload.agents.enabled:                         true, false
+workload.agents.redisBroker.enabled:             false, true
+workload.agents.graphModules.enabled:            false, true
+workload.agents.mcpInject.enabled:               false, true
+
+# Isolation promises interact: cover every 3-way combination of these.
+{ @gateway, security.networkPolicies.enabled, security.sandbox.enabled, workspace.tools.enabled, workload.agents.enabled } @ 3
