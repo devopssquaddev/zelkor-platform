@@ -144,7 +144,11 @@ def agent_http_route_name(release: str) -> str:
     return f"{agent_deployment_name(release)}-route"
 
 
-def should_attach_as_default(existing_route_names: list[str], this_release: str) -> bool:
+def should_attach_as_default(existing_route_names: list[str], this_release: str,
+                             defaults: list[str] | tuple[str, ...] = ()) -> bool:
+    """The first agent takes the catch-all route; a release that already holds it keeps it."""
     ours = agent_http_route_name(this_release)
+    if ours in defaults:
+        return True
     others = [n for n in existing_route_names if n != ours]
     return not others

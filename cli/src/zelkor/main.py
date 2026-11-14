@@ -73,6 +73,7 @@ class PlatformInfo:
     langfuse_secret_key: str = ""
     otel_targets: str = ""
     agent_route_names: list[str] = field(default_factory=list)
+    default_route_names: list[str] = field(default_factory=list)  # agent routes holding the catch-all
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
     helm_values: dict[str, Any] = field(default_factory=dict)
     profile: str = ""  # platform `profile` value: "" / "full" / "perimeter"
@@ -343,6 +344,10 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
             rname = str((route.get("metadata") or {}).get("name") or "")
             if labels.get("zelkor.io/workload-type") == "agent" or rname.endswith("-zelkor-agent-route"):
                 info.agent_route_names.append(rname)
+                matches = [m for rule in ((route.get("spec") or {}).get("rules") or [])
+                           for m in (rule.get("matches") or [])]
+                if any(not m.get("headers") and not m.get("queryParams") for m in matches):
+                    info.default_route_names.append(rname)
             if not info.gateway_name:
                 refs = (route.get("spec") or {}).get("parentRefs") or []
                 if refs:
@@ -1256,7 +1261,7 @@ def deploy_agent(
             runner=runner,
         )
     _require_registered_extras(info, shape.mcp_servers)
-    as_default = should_attach_as_default(info.agent_route_names, release)
+    as_default = should_attach_as_default(info.agent_route_names, release, info.default_route_names)
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
     image_ref = f"{image_repo}:{tag}"

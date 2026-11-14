@@ -114,6 +114,14 @@ def test_should_attach_as_default_skips_existing_workers():
     assert should_attach_as_default(["finserve-desk-zelkor-agent-route"], "agent") is False
 
 
+def test_redeploying_the_default_agent_keeps_the_default():
+    routes = ["rt-pydantic-zelkor-agent-route", "rt-crewai-zelkor-agent-route"]
+    # rt-pydantic holds the catch-all; redeploying it must not drop the default (404 on "/")
+    assert should_attach_as_default(routes, "rt-pydantic", defaults=["rt-pydantic-zelkor-agent-route"]) is True
+    assert should_attach_as_default(routes, "rt-crewai", defaults=["rt-pydantic-zelkor-agent-route"]) is False
+    assert should_attach_as_default(routes, "rt-crewai") is False
+
+
 def test_agent_deployment_name_matches_helm_fullname():
     assert agent_deployment_name("agent") == "agent-zelkor-agent"
     assert agent_deployment_name("desk") == "desk-zelkor-agent"
