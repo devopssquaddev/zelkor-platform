@@ -405,7 +405,6 @@ class Egress:
                 self._stamp(span, result)
                 span.set_attribute("langfuse.observation.metadata.mcp.tool", name)
                 if is_error:
-                    span.set_attribute("langfuse.observation.level", "ERROR")
                     span.set_attribute("error.type", tool_error_type(message))
                     set_span_error(span, f"tool {name} failed")
                 cm.__exit__(None, None, None)
@@ -440,7 +439,6 @@ class Egress:
                 "deny_reason": f"http {resp.status_code} {ctype or '-'} {len(raw)}B"})
         for mid in list(spans):  # no response for a call: gateway refusal or transport error
             cm, span, name, key = spans.pop(mid)
-            span.set_attribute("langfuse.observation.level", "ERROR")
             # 403 is the MCPRoute authorization deny (workspace.tools.policy.deny)
             span.set_attribute("error.type", "permission_denied" if resp.status_code == 403 else "transport_error")
             set_span_error(span, f"tool {name}: http {resp.status_code}")
@@ -524,8 +522,7 @@ class Egress:
             body = await resp.aread()
             await resp.aclose()
             if resp.status_code >= 400:
-                span.set_attribute("langfuse.observation.level", "ERROR")
-                set_span_error(span, f"upstream {resp.status_code}")
+                    set_span_error(span, f"upstream {resp.status_code}")
             elif "json" in ctype:
                 try:
                     stamp_completion(span, json.loads(body))

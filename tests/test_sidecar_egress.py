@@ -312,10 +312,10 @@ def test_child_spans_carry_trace_identity():
     assert child.attributes["session.id"] == "t1"
     assert spans["desk"].attributes["user.id"] == "tenant-a"
     assert spans["desk"].attributes["session.id"] == "t1"
-    # Langfuse-specific identity is still emitted (dropped only in the deferred full-profile slice).
-    assert child.attributes["langfuse.trace.name"] == "desk"
-    assert child.attributes["langfuse.session.id"] == "t1"
-    assert child.attributes["langfuse.user.id"] == "tenant-a"
+    # Uniform contract: no Langfuse identity attributes (Langfuse reads user.id / session.id).
+    for span in (child, spans["desk"]):
+        for key in ("langfuse.trace.name", "langfuse.session.id", "langfuse.user.id", "zelkor.langfuse.pk"):
+            assert key not in span.attributes, key
     assert child.parent.span_id == spans["desk"].context.span_id
 
 
@@ -548,3 +548,55 @@ def test_failed_tool_spans_carry_error_type():
     (tool,) = [s for s in exporter.get_finished_spans() if s.name == "postgres__query"]
     assert tool.attributes["error.type"] == "permission_denied"
     assert tool.status.status_code.name == "ERROR"
+
+
+# Langfuse keys the sidecar may still write: the observation type (no standard TOOL /
+# GENERATION source) and evaluator-filterable metadata.
+ALLOWED_LANGFUSE = ("langfuse.observation.type", "langfuse.observation.metadata.")
+
+
+def test_sidecar_spans_use_the_standard_attribute_set():
+    def gw(request):
+        if request.url.path.endswith("/mcp"):
+            msg = json.loads(request.content)
+            return httpx.Response(200, json={"jsonrpc": "2.0", "id": msg["id"],
+                                             "result": {"isError": True, "content": [{"type": "text", "text": "x"}]}})
+        return httpx.Response(200, json={"id": "c1", "model": "m", "usage": USAGE,
+                                         "choices": [{"index": 0, "finish_reason": "stop",
+                                                      "message": {"role": "assistant", "content": "ok"}}]})
+
+    tracing, exporter = _recording_tracing()
+    tracing.public_key = "pk-lf"  # Langfuse export: still no Langfuse identity on spans
+    slot = RunSlot()
+    config = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                          tool_allow_all=True)
+    client = TestClient(Egress(slot, tracing, config,
+                               http=httpx.AsyncClient(transport=httpx.MockTransport(gw))).app())
+    ctx = _activate(slot)
+    ctx.root_span = tracing.start_root(ctx, input_text="hi")
+    client.post("/run/active/v1/chat/completions", json={"model": "m"})
+    client.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+    tracing.end_root(ctx.root_span, ctx, output_text="done")
+    spans = exporter.get_finished_spans()
+    assert {s.name for s in spans} == {"desk", "chat m", "postgres__query"}
+    for span in spans:
+        stray = [k for k in span.attributes if k.startswith(("langfuse.", "zelkor.langfuse"))
+                 and not k.startswith(ALLOWED_LANGFUSE)]
+        assert not stray, (span.name, stray)
+        assert span.attributes["user.id"] == "tenant-a" and span.attributes["session.id"] == "t1"
+    root = next(s for s in spans if s.name == "desk")
+    assert json.loads(root.attributes["gen_ai.prompt"]) == "hi"
+    assert json.loads(root.attributes["gen_ai.completion"]) == "done"
+    assert json.loads(root.attributes["langfuse.observation.metadata.tool_names"]) == ["postgres__query"]
+
+
+def test_propagation_carries_identity_as_baggage_not_langfuse_headers():
+    tracing, _exporter = _recording_tracing()
+    tracing.public_key = "pk-lf"
+    ctx = RunContext(tenant_id="tenant-a", bearer=JWT, graph_id="desk", thread_id="t1", run_id="r1")
+    ctx.root_span = tracing.start_root(ctx)
+    headers = tracing.propagation_headers(ctx)
+    assert "traceparent" in headers and headers["x-zelkor-langfuse-pk"] == "pk-lf"
+    assert not [h for h in headers if h.startswith("x-zelkor-langfuse-") and h != "x-zelkor-langfuse-pk"]
+    for item in ("user.id=tenant-a", "session.id=t1", "langfuse.trace.name=desk"):
+        assert item in headers["baggage"], headers["baggage"]

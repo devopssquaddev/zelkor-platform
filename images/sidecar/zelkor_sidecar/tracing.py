@@ -1,9 +1,14 @@
-"""One run = one Langfuse waterfall for runtimes we do not control (CE-14).
+"""One run = one waterfall for runtimes we do not control (CE-14), in Langfuse or any OTLP backend.
 
 The sidecar opens the run root span (named ``graph_id``) and records every LLM and MCP
 hop it proxies as a child. Runtime-internal spans join only via the ``traceparent`` the
-sidecar injects. Export mirrors Aegra's Langfuse target (OTLP HTTP, Basic pk:sk,
-ingestion v4). Without OTEL deps or Langfuse keys, tracing is a no-op.
+sidecar injects. Export: bundled Langfuse (OTLP HTTP, Basic pk:sk, ingestion v4) or a plain
+OTLP endpoint; without OTEL deps or a target, tracing is a no-op.
+
+Spans carry the standard set only (span name, ``user.id``, ``session.id``, ``gen_ai.*``,
+``error.type``, status). Langfuse keys kept on purpose: ``langfuse.observation.type`` (Langfuse
+has no standard source for TOOL / GENERATION) and ``langfuse.observation.metadata.*`` (CE-12
+evaluators filter on it). Langfuse identity for NeMo travels as baggage, not span attributes.
 """
 from __future__ import annotations
 
@@ -16,11 +21,8 @@ from typing import Any, Dict, Iterator, Optional
 
 logger = logging.getLogger("zelkor-sidecar")
 
-IDENTITY_HEADERS = (
-    ("graph_id", "langfuse.trace.name", "x-zelkor-langfuse-trace-name"),
-    ("thread_id", "langfuse.session.id", "x-zelkor-langfuse-session-id"),
-    ("tenant_id", "langfuse.user.id", "x-zelkor-langfuse-user-id"),
-)
+# Standard identity on every span (ctx field -> attribute).
+SPAN_IDENTITY = (("tenant_id", "user.id"), ("thread_id", "session.id"))
 
 
 def _parse_otlp_headers(raw: str) -> Dict[str, str]:
@@ -105,17 +107,15 @@ class Tracing:
         return self._tracer is not None
 
     def _identity(self, ctx: Any) -> Dict[str, str]:
-        out = {}
-        for attr, key, _h in IDENTITY_HEADERS:
-            value = getattr(ctx, attr, "")
-            if value:
-                out[key] = str(value)
-        # CE-15a-3: standard identity read by both Langfuse v4.76 and generic OTLP backends.
-        # The root span name (graph_id) is the Langfuse trace name; user/session ride every span.
-        if getattr(ctx, "tenant_id", ""):
-            out["user.id"] = str(ctx.tenant_id)
-        if getattr(ctx, "thread_id", ""):
-            out["session.id"] = str(ctx.thread_id)
+        """Span attributes: user.id / session.id (Langfuse v4 and OTLP backends read them per span)."""
+        return {key: str(getattr(ctx, attr)) for attr, key in SPAN_IDENTITY if getattr(ctx, attr, "")}
+
+    def _baggage(self, ctx: Any) -> Dict[str, str]:
+        """Baggage for downstream hops: the standard identity, plus the trace name and Langfuse
+        project key NeMo stamps in Langfuse mode (baggage, never attributes on our spans)."""
+        out = self._identity(ctx)
+        if getattr(ctx, "graph_id", ""):
+            out["langfuse.trace.name"] = str(ctx.graph_id)
         if self.public_key:
             out["zelkor.langfuse.pk"] = self.public_key
         return out
@@ -130,11 +130,11 @@ class Tracing:
         span = self._tracer.start_span(ctx.graph_id, context=parent, kind=trace.SpanKind.INTERNAL)
         for key, value in self._identity(ctx).items():
             span.set_attribute(key, value)
-        span.set_attribute("langfuse.trace.metadata.tenant_id", ctx.tenant_id)
-        span.set_attribute("langfuse.trace.metadata.runtime", getattr(ctx, "runtime", ""))
+        # Langfuse trace metadata falls back to the root observation's metadata.
+        span.set_attribute("langfuse.observation.metadata.tenant_id", ctx.tenant_id)
+        span.set_attribute("langfuse.observation.metadata.runtime", getattr(ctx, "runtime", ""))
         if input_text:
-            span.set_attribute("langfuse.observation.input", json.dumps(input_text))
-            span.set_attribute("langfuse.trace.input", json.dumps(input_text))
+            span.set_attribute("gen_ai.prompt", json.dumps(input_text))
         return span
 
     def end_root(self, span: Any, ctx: Any, *, output_text: str = "", error: str = "") -> None:
@@ -143,10 +143,9 @@ class Tracing:
             return
         from opentelemetry.trace import Status, StatusCode
 
-        span.set_attribute("langfuse.trace.metadata.tool_names", json.dumps(list(ctx.tool_names)))
+        span.set_attribute("langfuse.observation.metadata.tool_names", json.dumps(list(ctx.tool_names)))
         if output_text:
-            span.set_attribute("langfuse.observation.output", json.dumps(output_text))
-            span.set_attribute("langfuse.trace.output", json.dumps(output_text))
+            span.set_attribute("gen_ai.completion", json.dumps(output_text))
         if error:
             span.set_status(Status(StatusCode.ERROR, error[:200]))
         span.end()
@@ -173,7 +172,7 @@ class Tracing:
             span.end()
 
     def propagation_headers(self, ctx: Any, span: Any = None) -> Dict[str, str]:
-        """traceparent + baggage + x-zelkor-langfuse-* so NeMo joins the same trace."""
+        """traceparent + baggage so NeMo joins the same trace; x-zelkor-langfuse-pk routes its export."""
         headers: Dict[str, str] = {}
         target = span if span is not None and span.is_recording() else ctx.root_span
         if self._tracer and target is not None and target.is_recording():
@@ -182,16 +181,12 @@ class Tracing:
 
             carrier: Dict[str, str] = {}
             otel_ctx = trace.set_span_in_context(target)
-            for key, value in self._identity(ctx).items():
+            for key, value in self._baggage(ctx).items():
                 otel_ctx = baggage.set_baggage(key, value, context=otel_ctx)
             inject(carrier, context=otel_ctx)
             headers.update(carrier)
         elif ctx.traceparent:
             headers["traceparent"] = ctx.traceparent
-        identity = self._identity(ctx)
-        if identity.get("zelkor.langfuse.pk"):
-            headers["x-zelkor-langfuse-pk"] = identity["zelkor.langfuse.pk"]
-        for _attr, key, header in IDENTITY_HEADERS:
-            if identity.get(key):
-                headers[header] = identity[key]
+        if self.public_key:
+            headers["x-zelkor-langfuse-pk"] = self.public_key
         return headers
