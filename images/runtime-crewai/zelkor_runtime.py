@@ -23,6 +23,7 @@ from crewai.a2a.utils.task import execute as crew_execute
 from crewai.mcp import MCPServerHTTP
 
 import quiet_console
+import unknown_tools
 from zelkor_runtime_spec import load_spec
 
 logger = logging.getLogger("zelkor-runtime-crewai")
@@ -55,7 +56,7 @@ def build_app():
     quiet_console.install()
     spec = load_spec()
     url = f"http://{HOST}:{PORT}"
-    llm = LLM(model=f"openai/{spec.model}", base_url=spec.llm_base_url, api_key="via-sidecar")
+    llm = unknown_tools.guard(LLM(model=f"openai/{spec.model}", base_url=spec.llm_base_url, api_key="via-sidecar"))
     agent = Agent(
         role=spec.name,
         goal=spec.instructions or f"Help the user as {spec.name}.",
