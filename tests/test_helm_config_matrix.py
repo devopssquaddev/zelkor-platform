@@ -127,10 +127,7 @@ def test_matrix_row_renders_and_holds_invariants(row):
 
     # security.mcp floor policies render regardless of the opt-in; everything else follows it.
     opt_in = {d["metadata"]["name"] for d in docs if d.get("kind") == "NetworkPolicy" and _intent(d) != "security.mcp"}
-    expected = row["security.networkPolicies.enabled"] == "true" and "true" in (
-        row["workload.agents.enabled"],
-        row["workspace.tools.enabled"],
-    )
+    expected = row["security.networkPolicies.enabled"] == "true"
     assert ("zelkor-platform-default-deny-ingress" in opt_in) == expected, sorted(opt_in)
     if not expected:
         assert not opt_in, sorted(opt_in)
@@ -175,3 +172,15 @@ def test_model_params_exist_in_values():
 def test_matrix_is_current_with_model():
     out = subprocess.run(["pict", str(MODEL)], check=True, capture_output=True, text=True).stdout
     assert out == MATRIX.read_text(), "regenerate: pict tests/config_matrix/model.pict > tests/config_matrix/matrix.tsv"
+
+
+def test_network_policies_without_agents_or_tools_fails_with_message():
+    row = dict(_rows()[0])
+    row.update({
+        "security.networkPolicies.enabled": "true",
+        "workload.agents.enabled": "false",
+        "workspace.tools.enabled": "false",
+    })
+    r = _render(row)
+    assert r.returncode != 0
+    assert "security.networkPolicies.enabled requires workload.agents.enabled or workspace.tools.enabled" in r.stderr

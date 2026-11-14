@@ -41,3 +41,6 @@ workload.agents.mcpInject.enabled:               false, true
 
 # Isolation promises interact: cover every 3-way combination of these.
 { @gateway, security.networkPolicies.enabled, security.sandbox.enabled, workspace.tools.enabled, workload.agents.enabled } @ 3
+
+# templates/security/networkpolicies.yaml fails: NetworkPolicies need agents or tools to enforce anything.
+IF [security.networkPolicies.enabled] = "true" THEN [workload.agents.enabled] = "true" OR [workspace.tools.enabled] = "true";

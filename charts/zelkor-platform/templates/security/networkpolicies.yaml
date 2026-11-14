@@ -445,4 +445,6 @@ spec:
     {{- end }}
     {{- include "zelkor-platform.jwksEgressRules" . | nindent 4 }}
 {{- end }}
+{{- else if .Values.security.networkPolicies.enabled }}
+{{- fail "security.networkPolicies.enabled requires workload.agents.enabled or workspace.tools.enabled. Zelkor NetworkPolicies isolate agent and tool traffic; with both off nothing would be enforced. Enable one, or set security.networkPolicies.enabled=false and isolate Langfuse and the datastores with your own policies. See docs/architecture-network.md." }}
 {{- end }}
