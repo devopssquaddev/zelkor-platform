@@ -8,7 +8,7 @@
   "labels": ["dev-harness", "loop2-currency"],
   "prConcurrentLimit": 8,
   "prHourlyLimit": 0,
-  "dependencyDashboard": false,
+  "dependencyDashboard": { "enabled": false },
   "helm-values": {
     "managerFilePatterns": ["/^charts/zelkor-platform/values\\.yaml$/"]
   },
