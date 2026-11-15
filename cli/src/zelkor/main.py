@@ -72,8 +72,7 @@ class PlatformInfo:
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     otel_targets: str = ""
-    agent_route_names: list[str] = field(default_factory=list)
-    default_route_names: list[str] = field(default_factory=list)  # agent routes holding the catch-all
+    agent_route_names: list[str] = field(default_factory=list)  # every namespace
     image_pull_secrets: list[dict[str, str]] = field(default_factory=list)
     helm_values: dict[str, Any] = field(default_factory=dict)
     profile: str = ""  # platform `profile` value: "" / "full" / "perimeter"
@@ -333,7 +332,8 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         break
     logger.info("get httproutes")
     routes = _run(
-        kube_argv(env, "get", "httproute", "-o", "json"),
+        # -A: agents deployed with --agent-namespace register routes outside the platform namespace
+        kube_argv(env, "get", "httproute", "-A", "-o", "json"),
         runner=runner,
         check=False,
         timeout=KUBE_RUN_TIMEOUT_SEC,
@@ -344,11 +344,8 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
             rname = str((route.get("metadata") or {}).get("name") or "")
             if labels.get("zelkor.io/workload-type") == "agent" or rname.endswith("-zelkor-agent-route"):
                 info.agent_route_names.append(rname)
-                matches = [m for rule in ((route.get("spec") or {}).get("rules") or [])
-                           for m in (rule.get("matches") or [])]
-                if any(not m.get("headers") and not m.get("queryParams") for m in matches):
-                    info.default_route_names.append(rname)
-            if not info.gateway_name:
+            rns = str((route.get("metadata") or {}).get("namespace") or env.namespace)
+            if not info.gateway_name and rns == env.namespace:
                 refs = (route.get("spec") or {}).get("parentRefs") or []
                 if refs:
                     info.gateway_name = str(refs[0].get("name") or "")
@@ -814,6 +811,30 @@ def find_agent_release_namespace(
     return env.namespace
 
 
+def agent_default_holders(env: Env, platform_release: str, *, runner: Optional[RunFn] = None) -> list[str]:
+    """Agent releases (any namespace) of this platform whose Helm values set sharedRoute.asDefault."""
+    listed = _run(helm_argv(env, "list", "-A", "-o", "json"), runner=runner, check=False,
+                  timeout=KUBE_RUN_TIMEOUT_SEC)
+    if listed.returncode != 0:
+        return []
+    holders: list[str] = []
+    for rel in json.loads(listed.stdout or "[]"):
+        name = str(rel.get("name") or "")
+        if not name or not str(rel.get("chart") or "").startswith("zelkor-agent-"):
+            continue
+        got = _run(
+            helm_argv(env_for_namespace(env, str(rel.get("namespace") or "")), "get", "values", name, "-o", "yaml"),
+            runner=runner,
+            check=False,
+            timeout=KUBE_RUN_TIMEOUT_SEC,
+        )
+        values = (yaml.safe_load(got.stdout or "") or {}) if got.returncode == 0 else {}
+        platform = str((values.get("platform") or {}).get("releaseName") or "")
+        if (values.get("sharedRoute") or {}).get("asDefault") and platform in ("", platform_release):
+            holders.append(name)
+    return holders
+
+
 def discovered_worker_values(info: PlatformInfo, *, platform_namespace: str = "") -> dict[str, Any]:
     platform: dict[str, Any] = {
         "releaseName": info.release,
@@ -1261,7 +1282,11 @@ def deploy_agent(
             runner=runner,
         )
     _require_registered_extras(info, shape.mcp_servers)
-    as_default = should_attach_as_default(info.agent_route_names, release, info.default_route_names)
+    holders = agent_default_holders(env, info.release, runner=runner)
+    as_default = should_attach_as_default(info.agent_route_names, release, holders,
+                                          front_door=info.aegra_present)
+    # Platform Aegra gives up `/` only when this release takes it over, not on a redeploy that keeps it.
+    takes_over_front_door = as_default and info.aegra_present and release not in holders
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
     image_ref = f"{image_repo}:{tag}"
@@ -1337,7 +1362,7 @@ def deploy_agent(
         agent_chart=agent_chart,
         platform_chart=platform_chart,
         platform_release=info.release,
-        as_default=as_default and info.aegra_present,
+        as_default=takes_over_front_door,
         runner=runner,
         agent_namespace=agent_ns,
     )

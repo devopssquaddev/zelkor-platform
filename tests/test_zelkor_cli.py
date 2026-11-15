@@ -24,6 +24,7 @@ from zelkor.main import (  # noqa: E402
     PlatformInfo,
     auth_values,
     default_llm_model_from,
+    agent_default_holders,
     deploy_agent,
     deploy_from_values,
     fill_empty,
@@ -117,9 +118,116 @@ def test_should_attach_as_default_skips_existing_workers():
 def test_redeploying_the_default_agent_keeps_the_default():
     routes = ["rt-pydantic-zelkor-agent-route", "rt-crewai-zelkor-agent-route"]
     # rt-pydantic holds the catch-all; redeploying it must not drop the default (404 on "/")
-    assert should_attach_as_default(routes, "rt-pydantic", defaults=["rt-pydantic-zelkor-agent-route"]) is True
-    assert should_attach_as_default(routes, "rt-crewai", defaults=["rt-pydantic-zelkor-agent-route"]) is False
-    assert should_attach_as_default(routes, "rt-crewai") is False
+    assert should_attach_as_default(routes, "rt-pydantic", ["rt-pydantic"]) is True
+    assert should_attach_as_default(routes, "rt-crewai", ["rt-pydantic"]) is False
+    assert should_attach_as_default(routes, "rt-crewai") is False  # Aegra front door keeps `/`
+
+
+def test_without_a_front_door_the_next_deploy_takes_an_unheld_default():
+    # perimeter: the default holder was undeployed and nothing restores `/`
+    routes = ["rt-crewai-zelkor-agent-route"]
+    assert should_attach_as_default(routes, "rt-crewai", [], front_door=False) is True
+    assert should_attach_as_default(routes, "rt-crewai", ["rt-pydantic"], front_door=False) is False
+
+
+def test_double_claim_resolves_to_the_other_holder_on_redeploy():
+    assert should_attach_as_default([], "a", ["a", "b"]) is False
+    assert should_attach_as_default([], "b", ["b"]) is True
+
+
+def _helm_values_runner(releases: list[dict], values: dict[str, str], seen: list[list[str]]):
+    def runner(argv, **_kwargs):
+        seen.append(list(argv))
+        if "helm" in argv and "list" in argv:
+            return SimpleNamespace(returncode=0, stdout=json.dumps(releases), stderr="")
+        if "helm" in argv and "get" in argv and "values" in argv:
+            return SimpleNamespace(returncode=0, stdout=values.get(argv[argv.index("values") + 1], ""), stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    return runner
+
+
+def test_default_holders_come_from_helm_values_in_every_namespace():
+    releases = [
+        {"name": "zelkor-platform", "namespace": "zelkor", "chart": "zelkor-platform-2.4.4"},
+        {"name": "rt-pydantic", "namespace": "agents-a", "chart": "zelkor-agent-2.4.4"},
+        {"name": "rt-crewai", "namespace": "zelkor", "chart": "zelkor-agent-2.4.4"},
+        {"name": "elsewhere", "namespace": "other", "chart": "zelkor-agent-2.4.4"},
+        {"name": "finserve", "namespace": "zelkor", "chart": "finserve-2.4.4"},
+    ]
+    values = {
+        "rt-pydantic": "platform:\n  releaseName: zelkor-platform\nsharedRoute:\n  asDefault: true\n",
+        "rt-crewai": "platform:\n  releaseName: zelkor-platform\nsharedRoute:\n  asDefault: false\n",
+        "elsewhere": "platform:\n  releaseName: other-platform\nsharedRoute:\n  asDefault: true\n",
+        "finserve": "desk:\n  sharedRoute:\n    asDefault: true\n",
+    }
+    seen: list[list[str]] = []
+    env = Env(name="local", kube_context="kind-zelkor", namespace="zelkor")
+    holders = agent_default_holders(env, "zelkor-platform", runner=_helm_values_runner(releases, values, seen))
+    assert holders == ["rt-pydantic"]
+    get_pydantic = next(a for a in seen if "get" in a and "rt-pydantic" in a)
+    assert get_pydantic[get_pydantic.index("-n") + 1] == "agents-a"
+
+
+def _aegra_deploy_commands(tmp_path, monkeypatch, releases: list[dict], agent_values: str) -> list[str]:
+    """`zelkor deploy` of `desk` against a mocked Aegra platform; returns the helm/kubectl commands."""
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
+    seen: list[list[str]] = []
+    aegra = {"items": [{"metadata": {"name": "zelkor-platform-aegra"},
+                        "spec": {"template": {"spec": {"containers": [{"env": [
+                            {"name": "DATABASE_URL", "value": "postgresql://x"}]}]}}}}]}
+    routes = {"items": [{"metadata": {"name": "rt-crewai-zelkor-agent-route", "namespace": "agents-b",
+                                      "labels": {"zelkor.io/workload-type": "agent"}}}]}
+
+    def runner(argv, **_kwargs):
+        seen.append(list(argv))
+        stdout = ""
+        if "helm" in argv and "list" in argv:
+            stdout = json.dumps([{"name": "zelkor-platform", "namespace": "default",
+                                  "chart": "zelkor-platform-2.4.4"}] + releases)
+        elif "helm" in argv and "get" in argv and "values" in argv and "zelkor-platform" in argv:
+            stdout = ("gateway:\n  hosts:\n    agents: agents.example\n"
+                      "platform:\n  tenants:\n    jwt:\n      issuer: https://issuer.example\n"
+                      "      audiences:\n      - zelkor\n")
+        elif "helm" in argv and "get" in argv and "values" in argv:
+            stdout = agent_values
+        elif "get" in argv and "deploy" in argv:
+            stdout = json.dumps(aegra)
+        elif "get" in argv and "httproute" in argv:
+            stdout = json.dumps(routes)
+        elif "get" in argv and "svc" in argv:
+            stdout = json.dumps({"items": []})
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    try:
+        deploy_agent(root=tmp_path, env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                     push=False, skip_build=True, agent_chart=ROOT / "charts" / "zelkor-agent",
+                     platform_chart=ROOT / "charts" / "zelkor-platform", runner=runner, all_tools=True)
+    except RuntimeError:
+        pass  # the mocked rollout never reports ready; the upgrades already ran
+    return [" ".join(a) for a in seen]
+
+
+def test_redeploying_the_default_holder_skips_the_platform_upgrade(tmp_path, monkeypatch):
+    holder = [{"name": "desk", "namespace": "default", "chart": "zelkor-agent-2.4.4"}]
+    cmds = _aegra_deploy_commands(tmp_path, monkeypatch, holder, "sharedRoute:\n  asDefault: true\n")
+    assert any("upgrade --install desk" in c for c in cmds)
+    assert not any("attachDefaultRoute=false" in c for c in cmds)
+
+
+def test_agent_routes_in_other_namespaces_keep_the_front_door(tmp_path, monkeypatch):
+    # rt-crewai lives in agents-b: a first deploy of desk must not take `/` from the Aegra front door
+    cmds = _aegra_deploy_commands(tmp_path, monkeypatch, [], "")
+    assert any("get httproute -A" in c for c in cmds)
+    assert any("upgrade --install desk" in c for c in cmds)
+    assert not any("attachDefaultRoute=false" in c for c in cmds)
+
+
+def test_first_agent_takes_the_front_door_once(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.should_attach_as_default", lambda *a, **k: True)
+    cmds = _aegra_deploy_commands(tmp_path, monkeypatch, [], "")
+    assert sum("attachDefaultRoute=false" in c for c in cmds) == 1
 
 
 def test_agent_deployment_name_matches_helm_fullname():

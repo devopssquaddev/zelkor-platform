@@ -145,10 +145,18 @@ def agent_http_route_name(release: str) -> str:
 
 
 def should_attach_as_default(existing_route_names: list[str], this_release: str,
-                             defaults: list[str] | tuple[str, ...] = ()) -> bool:
-    """The first agent takes the catch-all route; a release that already holds it keeps it."""
-    ours = agent_http_route_name(this_release)
-    if ours in defaults:
+                             holders: list[str] | tuple[str, ...] = (), *,
+                             front_door: bool = True) -> bool:
+    """Whether this release serves `/` on the agents host.
+
+    `holders` are the agent releases whose Helm values set `sharedRoute.asDefault`. Another holder
+    wins (a double claim resolves on redeploy); this release keeps a default it holds. With nobody
+    holding it, a platform front door (Aegra) keeps `/` unless no other agent route exists; without
+    one (perimeter) this release takes it, so `/` never stays unserved after an undeploy.
+    """
+    if [h for h in holders if h != this_release]:
+        return False
+    if this_release in holders or not front_door:
         return True
-    others = [n for n in existing_route_names if n != ours]
-    return not others
+    ours = agent_http_route_name(this_release)
+    return not [n for n in existing_route_names if n != ours]
