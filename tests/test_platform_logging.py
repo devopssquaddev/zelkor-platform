@@ -73,6 +73,26 @@ def test_json_formatter_required_keys_and_optional_event():
     assert "Authorization" not in json.dumps(payload)
 
 
+def test_json_formatter_keeps_zero_byte_counts_on_denied_audit_record():
+    """A denied tools/call has response_bytes=0; the audit record (S-73) must still carry it."""
+    record = logging.LogRecord(
+        name="zelkor-mcp",
+        level=logging.WARNING,
+        pathname="",
+        lineno=0,
+        msg="MCP permission denied: tools/call query (policy)",
+        args=(),
+        exc_info=None,
+    )
+    for key, value in {"event": "tools_call", "tool": "query", "tenant_id": "tenant-a",
+                       "status": "denied", "deny_reason": "policy", "elapsed_s": 0.001,
+                       "request_bytes": 0, "response_bytes": 0}.items():
+        setattr(record, key, value)
+    payload = json.loads(JsonFormatter().format(record))
+    assert payload["request_bytes"] == 0
+    assert payload["response_bytes"] == 0
+
+
 def test_configure_honors_error_level(monkeypatch, capsys):
     monkeypatch.setenv("ZELKOR_LOG_LEVEL", "ERROR")
     monkeypatch.setenv("ZELKOR_LOG_FORMAT", "json")

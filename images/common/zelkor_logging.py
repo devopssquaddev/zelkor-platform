@@ -61,7 +61,8 @@ class JsonFormatter(logging.Formatter):
             val = getattr(record, key, None)
             if val is None or val == "":
                 continue
-            if key in ("elapsed_s", "since_send_s", "sse_drops", "id", "pending_id") and val == 0:
+            if key in ("elapsed_s", "since_send_s", "sse_drops", "id", "pending_id",
+                       "request_bytes", "response_bytes") and val == 0:
                 payload[key] = val
                 continue
             if val or val is False:
