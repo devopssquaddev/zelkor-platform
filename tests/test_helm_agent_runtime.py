@@ -35,9 +35,9 @@ def test_default_runtime_is_aegra_single_container():
 
 def test_unknown_runtime_fails():
     r = _helm_agent("--set", "runtime=hermes")
-    # the values schema (or, without it, the template guard) refuses it
-    assert r.returncode != 0 and ("runtime must be aegra, a2a or opencode" in r.stderr
-                                  or 'runtime must be one of the following: "aegra", "a2a", "opencode"' in r.stderr)
+    # the values schema (or, without it, the template guard) refuses it; Helm 3 and 4 word it differently
+    assert r.returncode != 0
+    assert "runtime" in r.stderr and all(rt in r.stderr for rt in ("aegra", "a2a", "opencode")), r.stderr
 
 
 @pytest.mark.parametrize("runtime", ["a2a", "opencode"])

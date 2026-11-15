@@ -2,6 +2,10 @@
 # Self-register: HTTPRoute when sharedRoute.host + sharedRoute.gatewayName are set.
 # Do not edit platform aegra.workers as a second step. Overlay workers are optional fallback.
 
+# Resource names: default {release}-zelkor-agent; parent charts set fullnameOverride per agent.
+nameOverride: ""
+fullnameOverride: ""
+
 global:
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
