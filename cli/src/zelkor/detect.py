@@ -152,7 +152,8 @@ def should_attach_as_default(existing_route_names: list[str], this_release: str,
     `holders` are the agent releases whose Helm values set `sharedRoute.asDefault`. Another holder
     wins (a double claim resolves on redeploy); this release keeps a default it holds. With nobody
     holding it, a platform front door (Aegra) keeps `/` unless no other agent route exists; without
-    one (perimeter) this release takes it, so `/` never stays unserved after an undeploy.
+    one (perimeter) this release takes it. Perimeter has nothing to restore on undeploy, so `/` stays
+    unserved until the next deploy.
     """
     if [h for h in holders if h != this_release]:
         return False

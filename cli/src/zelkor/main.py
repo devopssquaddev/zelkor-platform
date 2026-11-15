@@ -331,25 +331,26 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
             info.gateway_name = f"{str(name).rsplit('-aegra', 1)[0]}-gateway"
         break
     logger.info("get httproutes")
-    routes = _run(
-        # -A: agents deployed with --agent-namespace register routes outside the platform namespace
-        kube_argv(env, "get", "httproute", "-A", "-o", "json"),
-        runner=runner,
-        check=False,
-        timeout=KUBE_RUN_TIMEOUT_SEC,
-    )
+    # -A: agents deployed with --agent-namespace register routes outside the platform namespace.
+    # Namespace-scoped RBAC cannot list across namespaces: fall back to the platform namespace.
+    routes = _run(kube_argv(env, "get", "httproute", "-A", "-o", "json"),
+                  runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    if routes.returncode != 0:
+        logger.warning("cannot list HTTPRoutes in all namespaces; using namespace %s", env.namespace)
+        routes = _run(kube_argv(env, "get", "httproute", "-o", "json"),
+                      runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC)
+    agent_routes: list[tuple[str, str, list[dict[str, Any]]]] = []
     if routes.returncode == 0:
         for route in (json.loads(routes.stdout or "{}") or {}).get("items") or []:
             labels = (route.get("metadata") or {}).get("labels") or {}
             rname = str((route.get("metadata") or {}).get("name") or "")
-            if labels.get("zelkor.io/workload-type") == "agent" or rname.endswith("-zelkor-agent-route"):
-                info.agent_route_names.append(rname)
             rns = str((route.get("metadata") or {}).get("namespace") or env.namespace)
-            if not info.gateway_name and rns == env.namespace:
-                refs = (route.get("spec") or {}).get("parentRefs") or []
-                if refs:
-                    info.gateway_name = str(refs[0].get("name") or "")
-                    info.gateway_namespace = str(refs[0].get("namespace") or env.namespace)
+            refs = (route.get("spec") or {}).get("parentRefs") or []
+            if labels.get("zelkor.io/workload-type") == "agent" or rname.endswith("-zelkor-agent-route"):
+                agent_routes.append((rname, rns, refs))
+            if not info.gateway_name and rns == env.namespace and refs:
+                info.gateway_name = str(refs[0].get("name") or "")
+                info.gateway_namespace = str(refs[0].get("namespace") or env.namespace)
     # Pre-2.5 perimeter platform: no contract and no Aegra, so the tenant-JWT contract
     # only exists in the platform's Helm values (Finding A).
     if not info.jwt_issuer:
@@ -366,6 +367,13 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.jwt_jwks_configmap = f"{info.release}-tenant-jwks"
     if not info.gateway_name:
         info.gateway_name = f"{info.release}-gateway"
+    # Only routes on this platform's Gateway: another platform's agents do not hold this agents host.
+    gw_ns = info.gateway_namespace or env.namespace
+    info.agent_route_names = [
+        rname for rname, rns, refs in agent_routes
+        if any(str(r.get("name") or "") == info.gateway_name and str(r.get("namespace") or rns) == gw_ns
+               for r in refs)
+    ]
     cluster_gw = in_cluster_openai_base_url(env, runner=runner)
     if cluster_gw:
         info.openai_base_url = cluster_gw
@@ -811,28 +819,79 @@ def find_agent_release_namespace(
     return env.namespace
 
 
+def _mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def agent_default_holders(env: Env, platform_release: str, *, runner: Optional[RunFn] = None) -> list[str]:
-    """Agent releases (any namespace) of this platform whose Helm values set sharedRoute.asDefault."""
+    """Agent releases of this platform (release name + namespace) whose Helm values set sharedRoute.asDefault.
+
+    Lists every namespace; with namespace-scoped RBAC, the platform namespace only. Raises when no
+    listing works: an unknown holder must not read as "nobody holds `/`".
+    """
     listed = _run(helm_argv(env, "list", "-A", "-o", "json"), runner=runner, check=False,
                   timeout=KUBE_RUN_TIMEOUT_SEC)
     if listed.returncode != 0:
-        return []
+        logger.warning("cannot list Helm releases in all namespaces; using namespace %s", env.namespace)
+        listed = _run(helm_argv(env, "list", "-o", "json"), runner=runner, check=False,
+                      timeout=KUBE_RUN_TIMEOUT_SEC)
+    if listed.returncode != 0:
+        raise RuntimeError(
+            f"cannot list Helm releases to find which agent serves `/` on the agents host: "
+            f"{(listed.stderr or '').strip()}"
+        )
     holders: list[str] = []
-    for rel in json.loads(listed.stdout or "[]"):
+    for rel in json.loads(listed.stdout or "[]") or []:
+        rel = _mapping(rel)
         name = str(rel.get("name") or "")
+        rel_ns = str(rel.get("namespace") or env.namespace)
         if not name or not str(rel.get("chart") or "").startswith("zelkor-agent-"):
             continue
         got = _run(
-            helm_argv(env_for_namespace(env, str(rel.get("namespace") or "")), "get", "values", name, "-o", "yaml"),
+            helm_argv(env_for_namespace(env, rel_ns), "get", "values", name, "-o", "yaml"),
             runner=runner,
             check=False,
             timeout=KUBE_RUN_TIMEOUT_SEC,
         )
-        values = (yaml.safe_load(got.stdout or "") or {}) if got.returncode == 0 else {}
-        platform = str((values.get("platform") or {}).get("releaseName") or "")
-        if (values.get("sharedRoute") or {}).get("asDefault") and platform in ("", platform_release):
+        try:
+            values = _mapping(yaml.safe_load(got.stdout or "")) if got.returncode == 0 else {}
+        except yaml.YAMLError:
+            values = {}
+        platform = _mapping(values.get("platform"))
+        same_platform = (str(platform.get("releaseName") or "") in ("", platform_release)
+                         and str(platform.get("namespace") or rel_ns) == env.namespace)
+        if _mapping(values.get("sharedRoute")).get("asDefault") and same_platform:
             holders.append(name)
     return holders
+
+
+def resolve_default_route(
+    env: Env,
+    info: PlatformInfo,
+    release: str,
+    *,
+    requested: Optional[bool] = None,
+    runner: Optional[RunFn] = None,
+) -> tuple[bool, bool]:
+    """(as_default, takes_over_front_door) for deploying `release`; one rule for deploy and deploy -f.
+
+    `requested` is a values file's explicit sharedRoute.asDefault (None = decide). A request for `/`
+    that another release holds fails instead of creating a second catch-all. Platform Aegra gives up
+    `/` only when this release takes it over, not on a redeploy that keeps it.
+    """
+    holders = agent_default_holders(env, info.release, runner=runner)
+    others = [h for h in holders if h != release]
+    if requested is None:
+        as_default = should_attach_as_default(info.agent_route_names, release, holders,
+                                              front_door=info.aegra_present)
+    elif requested and others:
+        raise RuntimeError(
+            f"sharedRoute.asDefault: {', '.join(others)} already serves `/` on the agents host; "
+            "undeploy it or set asDefault: false"
+        )
+    else:
+        as_default = requested
+    return as_default, as_default and info.aegra_present and release not in holders
 
 
 def discovered_worker_values(info: PlatformInfo, *, platform_namespace: str = "") -> dict[str, Any]:
@@ -1282,11 +1341,7 @@ def deploy_agent(
             runner=runner,
         )
     _require_registered_extras(info, shape.mcp_servers)
-    holders = agent_default_holders(env, info.release, runner=runner)
-    as_default = should_attach_as_default(info.agent_route_names, release, holders,
-                                          front_door=info.aegra_present)
-    # Platform Aegra gives up `/` only when this release takes it over, not on a redeploy that keeps it.
-    takes_over_front_door = as_default and info.aegra_present and release not in holders
+    as_default, takes_over_front_door = resolve_default_route(env, info, release, runner=runner)
     tag = os.getenv("ZELKOR_IMAGE_TAG") or ("dev" if not push else time.strftime("%Y%m%d%H%M%S"))
     image_repo = f"{registry}/zelkor-agent-{release}"
     image_ref = f"{image_repo}:{tag}"
@@ -1468,8 +1523,11 @@ def deploy_from_values(
     )
     if stateless:
         _apply_stateless_wrap(overlay, info)
-    as_default = bool(((overlay.get("sharedRoute") or {}).get("asDefault")))
     release = helm_release_name(graph_id)
+    # A catalog entry is a worker unless its file asks for `/`.
+    as_default, takes_over_front_door = resolve_default_route(
+        env, info, release, requested=bool(_mapping(overlay.get("sharedRoute")).get("asDefault")), runner=runner
+    )
     _helm_upgrade_agent(
         env=env,
         release=release,
@@ -1477,7 +1535,7 @@ def deploy_from_values(
         agent_chart=agent_chart,
         platform_chart=platform_chart,
         platform_release=info.release,
-        as_default=as_default and info.aegra_present,
+        as_default=takes_over_front_door,
         runner=runner,
         agent_namespace=agent_ns,
     )
@@ -1512,11 +1570,15 @@ def cmd_undeploy(
     if got.returncode != 0:
         print(f"agent release {release} not found", file=sys.stderr)
         return 1
-    values = yaml.safe_load(got.stdout or "") or {}
-    as_default = bool(((values.get("sharedRoute") or {}).get("asDefault")))
+    values = _mapping(yaml.safe_load(got.stdout or ""))
+    as_default = bool(_mapping(values.get("sharedRoute")).get("asDefault"))
+    # Aegra takes `/` back only when no other release still holds it (same rule as deploy).
+    restore = as_default and info.aegra_present and not [
+        h for h in agent_default_holders(env, info.release, runner=runner) if h != release
+    ]
     logger.info("helm uninstall %s", release)
     _run(helm_argv(agent_env, "uninstall", release), runner=runner, capture=False, timeout=KUBE_RUN_TIMEOUT_SEC)
-    restored = as_default and info.aegra_present
+    restored = restore
     if restored:
         _run(
             helm_argv(
