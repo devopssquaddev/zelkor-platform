@@ -298,6 +298,17 @@ def test_every_values_key_path_is_in_schema(chart: Path):
     assert not missing, f"{chart.name}: values.yaml keys missing from schema: {missing}"
 
 
+def test_agent_template_values_paths_have_schema_properties():
+    """Parent charts (FinServe, legal-redline) set keys the agent templates read, e.g. fullnameOverride."""
+    schema = json.loads((AGENT_CHART / "values.schema.json").read_text())
+    paths = set()
+    for p in (AGENT_CHART / "templates").rglob("*"):
+        if p.suffix in (".yaml", ".tpl"):
+            paths.update(re.findall(r"\.Values\.([a-zA-Z0-9_]+)", p.read_text(errors="ignore")))
+    stray = sorted(paths - set(schema["properties"]))
+    assert not stray, f"agent template references without schema property: {stray}"
+
+
 def test_agent_chart_unknown_top_level_key_fails_schema():
     r = subprocess.run(
         ["helm", "template", "a", str(AGENT_CHART), "--set", "graphId=x",

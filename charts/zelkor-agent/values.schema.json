@@ -4,6 +4,14 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "nameOverride": {
+      "type": "string",
+      "description": "Replaces the chart name in resource names."
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Full resource name prefix; parent charts (FinServe, legal-redline) set it per agent."
+    },
     "global": {
       "type": "object",
       "properties": {

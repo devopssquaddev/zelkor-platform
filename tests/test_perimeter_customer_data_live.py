@@ -30,12 +30,19 @@ EXTRA_SQL = os.environ.get("CUSTOMER_EXTRA_SQL", "select tenant_id, contact from
 EXTRA_MARK = {"tenant_a": "CONTACT-A-", "tenant_b": "CONTACT-B-"}
 
 
+def _contract() -> dict:
+    return platform_contract(os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "zelkor"))
+
+
 def _backends() -> set[str]:
-    raw = platform_contract(os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "zelkor")).get("MCP_BACKENDS", "")
+    raw = _contract().get("MCP_BACKENDS", "")
     return {b.strip() for b in raw.split(",") if b.strip()}
 
 
 def _need(backend: str) -> None:
+    # Full profile routes postgres__* / qdrant__* to its bundled databases, which hold no customer lab data.
+    if _contract().get("PROFILE") != "perimeter":
+        pytest.skip("customer databases are a perimeter install (contract PROFILE)")
     if backend not in _backends():
         pytest.skip(f"install does not route {backend}__* (contract MCP_BACKENDS)")
 
