@@ -35,6 +35,7 @@ from zelkor.detect import (
 from zelkor.envfile import Env, add_env, list_envs, load_store, remove_env, resolve_env
 from zelkor.extra_backends import format_missing_extras_error, missing_extra_registrations
 from zelkor.token_cmd import cmd_token_jwks, cmd_token_mint
+from zelkor.verify_cmd import cmd_verify
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
@@ -1919,6 +1920,9 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     p_status.add_argument("--namespace", default="", help="filter agent releases to this namespace")
     sub.add_parser("doctor", help="check discovered platform endpoints")
     sub.add_parser("version", help="CLI and platform chart version")
+    p_verify = sub.add_parser("verify", help="cosign-verify the Zelkor images a Helm release runs")
+    p_verify.add_argument("release", help="Helm release name (platform or agent)")
+    p_verify.add_argument("--namespace", default="", help="release namespace (default: the env namespace)")
 
     p_token = sub.add_parser("token", help="mint RS256 tokens from cluster signing key")
     token_sub = p_token.add_subparsers(dest="token_cmd", required=True)
@@ -2037,6 +2041,15 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         return cmd_status(env, runner=runner, agent_namespace=getattr(args, "namespace", "") or "")
     if args.cmd == "doctor":
         return cmd_doctor(env, runner=runner)
+    if args.cmd == "verify":
+        target = env_for_namespace(env, args.namespace) if args.namespace else env
+        return cmd_verify(
+            args.release,
+            target.namespace,
+            kubectl=kube_argv(target),
+            helm=helm_argv(target),
+            runner=runner or subprocess.run,
+        )
     if args.cmd == "undeploy":
         try:
             platform_chart = find_chart(
