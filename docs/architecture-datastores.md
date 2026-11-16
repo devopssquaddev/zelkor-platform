@@ -1,6 +1,6 @@
 ---
 title: Agent Datastores
-description: Overview of the stateful infrastructure (Postgres and Qdrant) used by agents and BYO options.
+description: Postgres and Qdrant used by agents, and bring-your-own options.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 40
