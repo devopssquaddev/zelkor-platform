@@ -1,6 +1,6 @@
 ---
 title: External and Third-Party MCP
-description: How Zelkor isolates third-party SaaS and external MCP without putting secrets on the agent.
+description: Third-party SaaS and external MCP, with no secrets on the agent.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 7

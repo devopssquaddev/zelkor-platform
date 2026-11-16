@@ -1,6 +1,6 @@
 ---
 title: Gateway Topologies
-description: Understand how Envoy Gateway integrates with your cluster and existing Ingress.
+description: How Envoy Gateway fits your cluster and existing Ingress.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 40

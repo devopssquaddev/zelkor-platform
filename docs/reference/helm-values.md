@@ -1,6 +1,6 @@
 ---
 title: Helm Values Reference
-description: V2 platform, workspace, and workload namespaces, substrate keys, schema validation, and Pro or Enterprise gates.
+description: V2 namespaces, substrate keys, schema validation and tier gates.
 type: reference
 sidebar_group: Reference
 sidebar_order: 20

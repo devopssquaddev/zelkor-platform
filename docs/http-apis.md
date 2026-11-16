@@ -1,6 +1,6 @@
 ---
 title: Call HTTP APIs Without Giving Agents the Key
-description: Let agents call GitHub, Stripe or an internal REST API through the gateway, which injects the credential and allows or denies each method and path.
+description: The gateway adds the API key and checks method and path; agents never hold the key.
 type: how-to
 sidebar_group: Agents
 sidebar_order: 32

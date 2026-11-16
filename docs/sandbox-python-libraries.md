@@ -1,6 +1,6 @@
 ---
 title: Add Python libraries to the sandbox
-description: Install private packages and pinned wheels into the gVisor sandbox worker image.
+description: Private packages and pinned wheels in the sandbox worker image.
 type: how-to
 sidebar_group: Agents
 sidebar_order: 35

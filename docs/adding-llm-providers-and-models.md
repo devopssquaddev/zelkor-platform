@@ -1,6 +1,6 @@
 ---
 title: Add LLM Providers and Models
-description: Wire OpenAI, Anthropic, Vertex, Bedrock, and OpenAI-compat hosts through the Zelkor AI Gateway with Helm overlays.
+description: Wire OpenAI, Anthropic, Vertex, Bedrock and OpenAI-compatible hosts through the AI Gateway.
 type: how-to
 sidebar_group: Reference
 sidebar_order: 10
