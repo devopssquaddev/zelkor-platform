@@ -22,6 +22,7 @@ from tests.helpers.langfuse import (
     wait_for_traces,
 )
 from tests.helpers.langgraph_client import aegra_sdk_client
+from tests.helpers.mcp_client import tenant_of
 
 WORKER_GRAPH_ID = os.environ.get("AEGRA_WORKER_GRAPH_ID", "")
 NEMO_HOST_HEADER = os.environ.get("NEMO_HOST_HEADER", "nemo.localhost")
@@ -147,7 +148,8 @@ async def test_agent_protocol_run_is_one_langfuse_trace():
 
     trace = joined[0]
     assert str(trace.get("name") or "") == graph_id
-    assert _user_of(trace).replace("_", "-") == tenant.replace("_", "-"), trace
+    # The platform's tenant id for the label (lab: same; Zitadel tokens: e.g. Bank_Alpha)
+    assert _user_of(trace).replace("_", "-") == tenant_of(tenant).replace("_", "-"), trace
     assert _session_of(trace) == thread_id, trace
     metadata = trace.get("metadata") or {}
     run_id = metadata.get("run_id")
