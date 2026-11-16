@@ -1666,6 +1666,83 @@
                 ]
               }
             },
+            "httpApis": {
+              "type": "array",
+              "description": "List at workspace.tools.httpApis.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "CE-15a-4 HTTP API relayed by the gateway with credential injection and method/path rules.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "DNS label; relay Service {release}-api-{name}."
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Upstream base URL (http or https); a path becomes the prefix."
+                  },
+                  "credential": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "secretRef": {
+                        "type": "string",
+                        "description": "Opaque Secret whose key \"credential\" is the full header value."
+                      },
+                      "header": {
+                        "type": "string",
+                        "description": "Header to inject (default Authorization)."
+                      }
+                    }
+                  },
+                  "rules": {
+                    "type": "array",
+                    "description": "First match wins; no match = 403. At least one Allow.",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "action": {
+                          "type": "string",
+                          "description": "Allow or Deny."
+                        },
+                        "methods": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "Upper-case HTTP methods; empty = any."
+                        },
+                        "path": {
+                          "description": "String = PathPrefix; or {type: Exact|PathPrefix|RegularExpression, value}.",
+                          "oneOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "type": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "value"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
             "policy": {
               "type": "object",
               "description": "CE-9 MCP tool policy for every backend on the gateway.",

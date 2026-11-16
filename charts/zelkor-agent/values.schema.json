@@ -267,6 +267,14 @@
         },
         "otelTargets": {
           "type": "string"
+        },
+        "httpApis": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"
+          },
+          "description": "CE-15a-4: platform HTTP API relays this agent may call (needs releaseName)."
         }
       }
     },

@@ -8,6 +8,8 @@ Minimal deploy-first agents (`agent.json` + `AGENTS.md`) for the non-Aegra runti
 | `crewai/` | CrewAI over A2A | `zelkor deploy --runtime a2a --a2a-framework crewai --tools postgres,sandbox` |
 | `opencode/` | OpenCode | `zelkor deploy --runtime opencode --tools postgres,sandbox` |
 
+On a perimeter install (`profile=perimeter`) the platform has no Postgres or sandbox tools by default: deploy with `--tools aigateway` and `zelkor deploy` wraps the agent statelessly ([Perimeter Profile](../../docs/perimeter.md)). For an agent with its own tools that calls an HTTP API without holding the key, see [perimeter-github](../perimeter-github/README.md).
+
 The model is the platform default (`DEFAULT_LLM_MODEL`). See [Choose a runtime](../../docs/agent-deploy.md#choose-a-runtime).
 
 For FinServe's advisor and quant on these runtimes, see [examples/finserve/runtimes](../finserve/runtimes/README.md).

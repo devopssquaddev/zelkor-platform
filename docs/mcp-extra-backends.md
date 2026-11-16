@@ -1,6 +1,6 @@
 ---
 title: Register Extra MCP Backends
-description: Register ClusterIP or hosted MCP servers on the unified gateway so agents see prefixed tools on MCP_URL.
+description: Register ClusterIP or hosted MCP servers on the unified MCP gateway.
 type: how-to
 sidebar_group: Agents
 sidebar_order: 30
