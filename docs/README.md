@@ -53,6 +53,7 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Add Python libraries to the sandbox](sandbox-python-libraries.md) | Private packages and pinned wheels on the gVisor worker |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
 | [Armored catalog](../examples/armored-agents/README.md) | Unmodified OSS agents as `zelkor deploy -f` overlays |
+| [Perimeter GitHub agent](../examples/perimeter-github/README.md) | Your own agent reads GitHub through the gateway; no token in the pod, writes refused |
 
 ## Reference
 
