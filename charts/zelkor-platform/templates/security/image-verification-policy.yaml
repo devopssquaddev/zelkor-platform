@@ -1,0 +1,62 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- $iv := .Values.security.imageVerification | default dict }}
+{{- if $iv.enabled }}
+{{- $keyless := $iv.keyless | default dict }}
+{{- $issuer := required "security.imageVerification.keyless.issuer must be set" $keyless.issuer }}
+{{- $subject := required "security.imageVerification.keyless.subjectRegExp must be set" $keyless.subjectRegExp }}
+{{- $attestor := dict "issuer" $issuer "subjectRegExp" $subject }}
+{{- with $keyless.rekorUrl }}{{- $_ := set $attestor "rekor" (dict "url" .) }}{{- end }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ include "zelkor-platform.fullname" . }}-verify-images
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security") | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Verify Zelkor release images
+    policies.kyverno.io/description: >-
+      Admits Zelkor images only when they carry a keyless cosign signature from the
+      Zelkor release workflow and (unless disabled) SLSA provenance naming its repository.
+spec:
+  validationFailureAction: {{ $iv.failureAction | default "Enforce" }}
+  background: false
+  failurePolicy: Fail
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: zelkor-release-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- with $iv.namespaces }}
+              namespaces:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+      verifyImages:
+        - imageReferences:
+            {{- toYaml (required "security.imageVerification.images must list at least one image pattern" $iv.images) | nindent 12 }}
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    {{- toYaml $attestor | nindent 20 }}
+          {{- if $iv.requireProvenance }}
+          attestations:
+            - type: https://slsa.dev/provenance/v1
+              attestors:
+                - entries:
+                    - keyless:
+                        {{- toYaml $attestor | nindent 24 }}
+              conditions:
+                - all:
+                    - key: '{{`{{ buildDefinition.externalParameters.workflow.repository }}`}}'
+                      operator: Equals
+                      value: {{ required "security.imageVerification.sourceRepository must be set" $iv.sourceRepository | quote }}
+                    - key: '{{`{{ buildDefinition.externalParameters.workflow.path }}`}}'
+                      operator: Equals
+                      value: .github/workflows/release.yml
+          {{- end }}
+{{- end }}

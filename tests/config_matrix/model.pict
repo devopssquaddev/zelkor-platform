@@ -18,6 +18,7 @@ seaweedfs.enabled:                               true, false
 highAvailability.enabled:                        false, true
 gateway.tls.enabled:                             false, true
 security.networkPolicies.enabled:                false, true
+security.imageVerification.enabled:              false, true
 security.sandbox.enabled:                        true, false
 security.sandbox.provisioning.mode:              auto, daemonset
 security.sandbox.executionLog.enabled:           true, false

@@ -21,6 +21,7 @@ ENUMS = {
   "platform.telemetry.format" => %w[json text],
   "databases.mode" => %w[in-cluster-basic operator-cr external],
   "global.tier" => %w[oss pro enterprise],
+  "security.imageVerification.failureAction" => %w[Enforce Audit],
 }.freeze
 
 STRING_OR_OBJECT_PATHS = %w[

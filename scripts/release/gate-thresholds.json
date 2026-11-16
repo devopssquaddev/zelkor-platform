@@ -1,0 +1,22 @@
+{
+  "_doc": "CE-19g published gate thresholds (one file). upgrade-gates.yml reads it; docs/security/verify-release.md links it.",
+  "upgrade_rollback": {
+    "rps": 5,
+    "max_failed_requests": 0,
+    "settle_seconds": 60,
+    "ready_timeout_seconds": 600,
+    "model": "vllm/ok"
+  },
+  "retry_storm": {
+    "duration_seconds": 1800,
+    "rps": 2,
+    "client_retries": 3,
+    "model": "vllm/fail",
+    "sample_interval_seconds": 15,
+    "warmup_seconds": 180,
+    "window_seconds": 300,
+    "container": "envoy",
+    "envoy_memory_ceiling_mib": 384,
+    "max_growth_pct": 15
+  }
+}

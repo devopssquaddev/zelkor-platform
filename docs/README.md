@@ -86,6 +86,14 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Agent Datastores](architecture-datastores.md) | Stateful infrastructure (Postgres, Qdrant) and BYO options |
 | [Threat Model](threat-model.md) | Assets, boundaries, and security promises |
 
+## Security
+
+| Page | Job |
+| :--- | :--- |
+| [Verify a Release](security/verify-release.md) | Check signatures, provenance and SBOMs; admit only signed images |
+| [CVE Log](security/cve-log.md) | Fixed CVEs in first-party images with time to fix |
+| [Security Policy](../SECURITY.md) | Report a vulnerability; fix targets |
+
 ## Troubleshooting (KB)
 
 | Page | Job |

@@ -1,6 +1,6 @@
 ---
 title: Use the zelkor CLI
-description: Install the CLI, target a cluster env, deploy an agent, run a graph, and inspect platform endpoints.
+description: Install the CLI, target a cluster, deploy and run an agent, verify a release.
 type: how-to
 sidebar_group: Agents
 sidebar_order: 20
@@ -100,6 +100,15 @@ zelkor undeploy
 
 `doctor` checks the discovered `DATABASE_URL`, `OPENAI_BASE_URL`, `MCP_URL`, and agents host. On a perimeter platform `DATABASE_URL` reports `n/a (perimeter)`. `logs` shows every container of the agent pod, prefixed by container name.
 
+## Verify a release
+
+```bash
+zelkor verify zelkor-platform --env staging
+zelkor verify desk --namespace agents
+```
+
+`verify` lists the Zelkor images running in the release's pods and runs `cosign verify` and `cosign verify-attestation --type slsaprovenance1` on each digest, bound to the Zelkor release workflow identity. It exits non-zero if any check fails or no Zelkor image runs. Needs [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) on your PATH. See [Verify a Release](security/verify-release.md).
+
 ## Global flags
 
 | Flag | Purpose |
@@ -126,6 +135,7 @@ Commands registered by the `zelkor` binary:
 | `status` | ● | List platform and agent Helm releases and HTTPRoutes |
 | `doctor` | ● | Probe discovered platform endpoints |
 | `version` | ● | CLI version; platform chart when env resolves |
+| `verify RELEASE` | ● | `cosign verify` signature and SLSA provenance of every running Zelkor image |
 | `env add\|list\|use\|remove` | ● | Manage kube targets |
 | `token mint` | ● | Mint RS256 JWT from cluster signing key (ops/testing) |
 | `token jwks` | ● | Write public JWKS from cluster ConfigMap |
