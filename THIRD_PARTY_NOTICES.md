@@ -65,7 +65,7 @@ inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 | deepagents | 0.7.32 | MIT | Embedded (deep image) |
 | mcp-server-qdrant | 0.8.1 | Apache-2.0 | Embedded |
 | boto3 | 1.43.118 | Apache-2.0 | Embedded |
-| OpenTelemetry (SDK / instrumentation) | 1.45.1 / 0.66b1 | Apache-2.0 | Embedded |
+| OpenTelemetry (SDK / instrumentation) | 1.45.2 / 0.66b2 | Apache-2.0 | Embedded |
 | a2a-sdk | 1.3.0 | Apache-2.0 | Embedded (sidecar) |
 | Pydantic AI (`pydantic-ai-slim`) | 2.62.0 | MIT | Embedded (runtime) |
 | fasta2a | 2.1.1 | MIT | Embedded (runtime) |
