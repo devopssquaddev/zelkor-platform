@@ -7,7 +7,7 @@ updated whenever component pins change (see
 `internal/plan/component_compatibility_matrix.md` for the authoritative pin
 inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 
-**As of CE `2.4.4`** (2026-11-11).
+**As of CE `2.4.5`** (2026-11-11).
 
 ## Distribution paths
 
@@ -85,3 +85,4 @@ inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 | Date | Change |
 | :--- | :--- |
 | 2026-11-11 | Initial `THIRD_PARTY_NOTICES` for CE `2.4.4`: Agent Router v1.2.1, Envoy Gateway v1.10.0 (Gateway API 1.6.2), Langfuse 4.76.0; OpenCode LICENSE vendored (CE-18d). |
+| 2026-11-16 | CE `2.4.5`: no third-party changes (first-party audit-log fix only). |

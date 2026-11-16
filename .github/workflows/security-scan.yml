@@ -64,7 +64,7 @@ jobs:
           tag=$(awk -F'[:"[:space:]]+' '/^appVersion:/{print $2}' charts/zelkor-platform/Chart.yaml)
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ghcr.io/devopssquaddev/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
           severity: CRITICAL
