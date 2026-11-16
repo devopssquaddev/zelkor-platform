@@ -58,6 +58,26 @@ spec:
     wellKnownCACertificates: System
     hostname: {{ $api.host | quote }}
 {{- end }}
+{{- if $api.prefix }}
+---
+{{- /* Envoy Gateway trims the slash of a ReplacePrefixMatch on "/" (/p + /x -> /px), so the
+     prefix is a regex rewrite of the leading "/". */}}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: {{ $n }}-prefix
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: "^/"
+        substitution: {{ printf "%s/" $api.prefix | quote }}
+{{- end }}
 {{- if $api.credential }}
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
@@ -98,8 +118,18 @@ spec:
         - path:
             type: PathPrefix
             value: /
-      {{- if or $api.credential $api.prefix }}
       filters:
+        {{- /* The upstream sees its own host (virtual-hosted APIs reject the relay's hostname). */}}
+        - type: URLRewrite
+          urlRewrite:
+            hostname: {{ $api.host | quote }}
+        {{- if $api.prefix }}
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: {{ $n }}-prefix
+        {{- end }}
         {{- if $api.credential }}
         - type: ExtensionRef
           extensionRef:
@@ -107,14 +137,6 @@ spec:
             kind: HTTPRouteFilter
             name: {{ $n }}-credential
         {{- end }}
-        {{- if $api.prefix }}
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: {{ $api.prefix | quote }}
-        {{- end }}
-      {{- end }}
       backendRefs:
         - group: gateway.envoyproxy.io
           kind: Backend
@@ -139,7 +161,6 @@ spec:
       - name: {{ include "zelkor-platform.aiGatewayConsumerSecret" $ }}
     extractFrom:
       - headers: [authorization]
-    forwardClientIDHeader: x-zelkor-caller
     sanitize: true
   authorization:
     defaultAction: Deny

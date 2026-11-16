@@ -580,8 +580,9 @@ class Egress:
         span.set_attribute("http.response.status_code", resp.status_code)
         if resp.status_code >= 400:
             set_span_error(span, f"upstream {resp.status_code}")
-        logger.info("http_api", extra={"event": "http_api", "api": name, "method": request.method,
-                                        "status": resp.status_code, "run_id": ctx.run_id})
+        # api/method in the message: the shared JSON formatter keeps only its context keys
+        logger.info("http_api %s %s", request.method, name,
+                    extra={"event": "http_api", "status": resp.status_code, "run_id": ctx.run_id})
 
         async def relay():
             try:
