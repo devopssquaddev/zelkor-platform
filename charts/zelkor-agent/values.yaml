@@ -40,7 +40,7 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "2.4.5"
+  tag: "2.4.6"
   digest: ""
   pullPolicy: ""
 
@@ -54,7 +54,7 @@ runtime: aegra
 sidecar:
   image:
     repository: ghcr.io/devopssquaddev/zelkor-sidecar
-    tag: "2.4.5"
+    tag: "2.4.6"
     digest: ""
     pullPolicy: ""
   # CE-15a-2 perimeter: run the sidecar stateless (in-memory store, no Postgres, no migrate
