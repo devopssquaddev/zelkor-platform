@@ -1,5 +1,9 @@
 psycopg2-binary>=2.9.9
-mcp-server-qdrant==0.8.1
+# mcp-server-qdrant is installed --no-deps in the Dockerfile (it pins fastmcp==2.7.0, CVE-2026-32871,
+# which the Qdrant connector does not use); these are the dependencies its connector needs.
+fastembed==0.9.1
+qdrant-client==1.20.0
+pydantic==2.11.10
 prometheus_client>=0.21.0
 PyJWT[crypto]>=2.8.0
 mcp==1.30.0
