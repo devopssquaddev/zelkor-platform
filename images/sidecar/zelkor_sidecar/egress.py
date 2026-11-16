@@ -1,7 +1,9 @@
 """Loopback egress on 127.0.0.1:8001 for the runtime container (CE-14).
 
 ``/run/active/v1/*`` → AI Gateway ``/v1``: consumer key, ``max_tokens`` cap, NeMo tools
-stream rewrite, Langfuse/trace headers. ``/run/active/mcp`` → MCP gateway: the run's
+stream rewrite, Langfuse/trace headers. ``/run/active/api/{name}/*`` → the gateway's
+``{release}-api-{name}`` relay (CE-15a-4): consumer key only; the gateway injects the API
+credential and enforces method/path rules. ``/run/active/mcp`` → MCP gateway: the run's
 verified JWT replaces whatever the runtime sent, ``tools/list`` is filtered and
 ``tools/call`` outside the agent's tool scope is refused before upstream, model-supplied
 ``tenant_id`` is stripped, every call becomes a TOOL span (+ CE-13 sandbox stamp) and an
@@ -47,6 +49,7 @@ class EgressConfig:
     tool_prefixes: Tuple[str, ...] = ()
     tool_allow_all: bool = False
     timeout_s: float = 600.0
+    http_apis: Dict[str, str] = field(default_factory=dict)
     extra: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -60,7 +63,18 @@ class EgressConfig:
             nemo_tools_no_stream=_truthy(os.getenv("ZELKOR_NEMO_TOOLS_NO_STREAM", "false")),
             tool_prefixes=prefixes,
             tool_allow_all=_truthy(os.getenv("ZELKOR_TOOL_ALLOW_ALL", "false")),
+            http_apis=parse_http_apis(os.getenv("ZELKOR_API_UPSTREAMS", "")),
         )
+
+
+def parse_http_apis(raw: str) -> Dict[str, str]:
+    """``name=http://{release}-api-{name},...`` → {name: base URL}."""
+    out: Dict[str, str] = {}
+    for item in raw.split(","):
+        name, _, url = item.strip().partition("=")
+        if name.strip() and url.strip():
+            out[name.strip()] = url.strip().rstrip("/")
+    return out
 
 
 def tool_in_scope(name: str, cfg: EgressConfig) -> bool:
@@ -534,6 +548,52 @@ class Egress:
             if not streaming:
                 cm.__exit__(None, None, None)
 
+    # -- HTTP APIs (CE-15a-4) -----------------------------------------------------------
+
+    async def api(self, request):
+        from starlette.responses import JSONResponse, StreamingResponse
+
+        ctx = self.slot.active
+        if ctx is None:
+            return JSONResponse({"error": "no active run"}, status_code=409)
+        name = request.path_params["name"]
+        base = self.cfg.http_apis.get(name)
+        if not base:
+            return JSONResponse({"error": f"unknown HTTP API {name!r}"}, status_code=404)
+        url = f"{base}/{request.path_params.get('path', '')}"
+        if request.url.query:
+            url = f"{url}?{request.url.query}"
+        http = await self.client()
+        cm = self.tracing.child(ctx, f"http {request.method} {name}", observation_type="span",
+                                attrs={"http.request.method": request.method, "zelkor.http_api": name})
+        span = cm.__enter__()
+        try:
+            headers = _clean_headers(dict(request.headers))
+            if self.cfg.consumer_key:
+                headers["authorization"] = f"Bearer {self.cfg.consumer_key}"
+            headers.update(self._trace_headers(ctx, span))
+            upstream = http.build_request(request.method, url, content=await request.body(), headers=headers)
+            resp = await http.send(upstream, stream=True)
+        except Exception:
+            cm.__exit__(None, None, None)
+            raise
+        span.set_attribute("http.response.status_code", resp.status_code)
+        if resp.status_code >= 400:
+            set_span_error(span, f"upstream {resp.status_code}")
+        logger.info("http_api", extra={"event": "http_api", "api": name, "method": request.method,
+                                        "status": resp.status_code, "run_id": ctx.run_id})
+
+        async def relay():
+            try:
+                async for chunk in resp.aiter_raw():
+                    yield chunk
+            finally:
+                await resp.aclose()
+                cm.__exit__(None, None, None)
+
+        out_headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP_HEADERS}
+        return StreamingResponse(relay(), status_code=resp.status_code, headers=out_headers)
+
     def app(self):
         from starlette.applications import Starlette
         from starlette.routing import Route
@@ -541,4 +601,6 @@ class Egress:
         return Starlette(routes=[
             Route("/run/active/v1/{path:path}", self.llm, methods=["GET", "POST"]),
             Route("/run/active/mcp", self.mcp, methods=["GET", "POST", "DELETE"]),
+            Route("/run/active/api/{name}/{path:path}", self.api,
+                  methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]),
         ])

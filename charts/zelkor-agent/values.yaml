@@ -116,6 +116,10 @@ platform:
   # with platform.telemetry.otlp.endpoint set. Used only when the sidecar has no Langfuse
   # keys (perimeter). `zelkor deploy --egress-only` sets it when the platform renders the relay.
   otlp: false
+  # CE-15a-4: names of the platform's workspace.tools.httpApis this agent may call. The sidecar
+  # relays /run/active/api/<name> to {releaseName}-api-<name> on the gateway; the runtime gets
+  # ZELKOR_API_<NAME>_URL. `zelkor deploy` fills it from the platform. Needs releaseName.
+  httpApis: []
   # Existing platform Aegra checkpointer (typically .../aegra). Do not create a new DB.
   databaseUrl: ""
   # Existing platform Valkey Service. Isolate agents with redis.prefix.

@@ -1,0 +1,152 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- /* CE-15a-4: one gateway relay per workspace.tools.httpApis entry. Callers send the agents
+     consumer key to {release}-api-{name} (the Envoy dataplane); the gateway strips it, checks
+     the method/path rules, injects the API credential from a Secret and forwards to the API.
+     Own hostnames, plain HTTPRoute: no AIGatewayRoute/extProc applies. */}}
+{{- $fullname := include "zelkor-platform.fullname" . -}}
+{{- $targetHost := include "zelkor-platform.envoyDataplaneHost" . | trim -}}
+{{- range $api := (.Values.__httpApis | default "[]" | fromJsonArray) }}
+{{- $n := printf "%s-api-%s" $fullname $api.name }}
+{{- if $targetHost }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $n }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  type: ExternalName
+  externalName: {{ $targetHost }}
+  ports:
+    - name: http
+      port: {{ $.Values.aiGateway.inClusterService.port | default 80 }}
+      protocol: TCP
+{{- end }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: {{ $n }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  endpoints:
+    - fqdn:
+        hostname: {{ $api.host | quote }}
+        port: {{ $api.port | int }}
+{{- if $api.tls }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: {{ $n }}-tls
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  targetRefs:
+    - group: gateway.envoyproxy.io
+      kind: Backend
+      name: {{ $n }}
+  validation:
+    wellKnownCACertificates: System
+    hostname: {{ $api.host | quote }}
+{{- end }}
+{{- if $api.credential }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: {{ $n }}-credential
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  credentialInjection:
+    header: {{ $api.credential.header | quote }}
+    overwrite: true
+    credential:
+      valueRef:
+        group: ""
+        kind: Secret
+        name: {{ $api.credential.secretRef | quote }}
+{{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $n }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  parentRefs:
+    {{- include "zelkor-platform.gatewayParentRef" $ | nindent 4 }}
+  hostnames:
+    - {{ $n | quote }}
+    - {{ printf "%s.%s.svc.cluster.local" $n $.Release.Namespace | quote }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      {{- if or $api.credential $api.prefix }}
+      filters:
+        {{- if $api.credential }}
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: {{ $n }}-credential
+        {{- end }}
+        {{- if $api.prefix }}
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: {{ $api.prefix | quote }}
+        {{- end }}
+      {{- end }}
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: {{ $n }}
+          port: {{ $api.port | int }}
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ $n }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" $ "intent" "workspace.tools") | nindent 4 }}
+    app.kubernetes.io/component: http-api
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ $n }}
+  apiKeyAuth:
+    credentialRefs:
+      - name: {{ include "zelkor-platform.aiGatewayConsumerSecret" $ }}
+    extractFrom:
+      - headers: [authorization]
+    forwardClientIDHeader: x-zelkor-caller
+    sanitize: true
+  authorization:
+    defaultAction: Deny
+    rules:
+      {{- range $api.rules }}
+      - name: {{ .name | quote }}
+        action: {{ .action }}
+        cel: {{ .cel | quote }}
+      {{- end }}
+{{- end }}
