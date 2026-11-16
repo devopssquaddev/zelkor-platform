@@ -4,8 +4,13 @@
 # Usage (from repo root):
 #   ./scripts/build-images.sh
 #   ./scripts/build-images.sh --push
+#   ./scripts/build-images.sh --list        # first-party images, build order (one per line)
+#   ./scripts/build-images.sh --list-json   # [{name, dockerfile, base, tier}] for the CI release matrix
 #
 # Deprecated: --kind-load (use GHCR push + pull-through registries / containerd mirrors).
+#
+# Release tags (IMAGE_TAG=X.Y.Z) are pushed by CI only (.github/workflows/release.yml, which
+# signs them); --push of a semver tag outside GitHub Actions is refused. :dev pushes stay allowed.
 #
 # Env:
 #   IMAGE_REGISTRY  default ghcr.io/devopssquaddev
@@ -25,13 +30,16 @@ KIND_CLUSTER="${KIND_CLUSTER:-zelkor}"
 PUSH=false
 KIND_LOAD=false
 LOAD_ONLY=false
+LIST=""
 for arg in "$@"; do
   case "$arg" in
     --push) PUSH=true ;;
     --kind-load) KIND_LOAD=true ;;
     --load-only) LOAD_ONLY=true ;;
+    --list) LIST=plain ;;
+    --list-json) LIST=json ;;
     -h|--help)
-      sed -n '2,16p' "$0"
+      sed -n '2,22p' "$0"
       exit 0
       ;;
     *)
@@ -80,6 +88,53 @@ dockerfile_for() {
   esac
 }
 
+# First-party base image an image is built FROM (passed as a build arg), or empty.
+base_for() {
+  case "$1" in
+    zelkor-aegra-deep|zelkor-example-finserve|zelkor-example-legal-redline) echo zelkor-aegra ;;
+    zelkor-example-finserve-coder|zelkor-armored-gpt-researcher) echo zelkor-aegra-deep ;;
+    zelkor-example-sandbox-python) echo zelkor-sandbox-worker ;;
+    *) echo "" ;;
+  esac
+}
+
+base_arg_for() {
+  case "$(base_for "$1")" in
+    zelkor-aegra) echo ZELKOR_AEGRA_IMAGE ;;
+    zelkor-aegra-deep) echo ZELKOR_AEGRA_DEEP_IMAGE ;;
+    zelkor-sandbox-worker) echo ZELKOR_SANDBOX_WORKER_IMAGE ;;
+    *) echo "" ;;
+  esac
+}
+
+# Build tier: 0 for images on third-party bases, base tier + 1 otherwise (CI builds tiers in order).
+tier_for() {
+  local base
+  base="$(base_for "$1")"
+  if [[ -z "$base" ]]; then echo 0; else echo $(( $(tier_for "$base") + 1 )); fi
+}
+
+if [[ "$LIST" == plain ]]; then
+  printf '%s\n' "${ALL_IMAGES[@]}"
+  exit 0
+fi
+if [[ "$LIST" == json ]]; then
+  sep=""
+  printf '['
+  for name in "${ALL_IMAGES[@]}"; do
+    printf '%s{"name":"%s","dockerfile":"%s","base":"%s","tier":%s}' \
+      "$sep" "$name" "$(dockerfile_for "$name")" "$(base_for "$name")" "$(tier_for "$name")"
+    sep=","
+  done
+  printf ']\n'
+  exit 0
+fi
+
+if [[ "$PUSH" == true && "$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ && "${GITHUB_ACTIONS:-}" != true ]]; then
+  echo "[build-images] refusing to push ${IMAGE_TAG}: release tags are pushed by CI only (release.yml signs them). Use IMAGE_TAG=dev for laptop pushes." >&2
+  exit 1
+fi
+
 if [[ "$PUSH" == true && "$LOAD_ONLY" == true ]]; then
   echo "[build-images] --push cannot be combined with --load-only" >&2
   exit 1
@@ -98,28 +153,19 @@ for name in "${SELECTED[@]}"; do
   ref="${IMAGE_REGISTRY}/${name}:${IMAGE_TAG}"
   if [[ "$LOAD_ONLY" != true ]]; then
     echo "[build-images] docker build ${ref}"
-    extra_args=()
-    case "$name" in
-      zelkor-aegra-deep|zelkor-example-finserve|zelkor-example-legal-redline)
-        extra_args+=(--build-arg "ZELKOR_AEGRA_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra:${IMAGE_TAG}")
-        ;;
-      zelkor-example-finserve-coder|zelkor-armored-gpt-researcher)
-        extra_args+=(--build-arg "ZELKOR_AEGRA_DEEP_IMAGE=${IMAGE_REGISTRY}/zelkor-aegra-deep:${IMAGE_TAG}")
-        ;;
-      zelkor-example-sandbox-python)
-        extra_args+=(--build-arg "ZELKOR_SANDBOX_WORKER_IMAGE=${IMAGE_REGISTRY}/zelkor-sandbox-worker:${IMAGE_TAG}")
-        ;;
-    esac
-    if ((${#extra_args[@]} > 0)); then
-      docker build -f "$df" -t "$ref" \
-        --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
-        "${extra_args[@]}" \
-        "$ROOT"
-    else
-      docker build -f "$df" -t "$ref" \
-        --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
-        "$ROOT"
+    extra_args=(--label "org.opencontainers.image.version=${IMAGE_TAG}")
+    if [[ -n "${GITHUB_SHA:-}" ]]; then
+      extra_args+=(--label "org.opencontainers.image.revision=${GITHUB_SHA}")
     fi
+    base="$(base_for "$name")"
+    if [[ -n "$base" ]]; then
+      # BASE_IMAGE_REF (CI) pins the base by digest; otherwise the same tag from the registry.
+      extra_args+=(--build-arg "$(base_arg_for "$name")=${BASE_IMAGE_REF:-${IMAGE_REGISTRY}/${base}:${IMAGE_TAG}}")
+    fi
+    docker build -f "$df" -t "$ref" \
+      --label "org.opencontainers.image.source=https://github.com/devopssquaddev/zelkor-platform" \
+      "${extra_args[@]}" \
+      "$ROOT"
   fi
   BUILT+=("$ref")
 done
