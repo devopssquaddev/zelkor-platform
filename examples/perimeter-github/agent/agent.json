@@ -1,0 +1,1 @@
+{"name": "repo-triage", "description": "Reads GitHub issues through the Zelkor gateway; holds no GitHub token"}

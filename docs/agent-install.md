@@ -1,6 +1,6 @@
 ---
 title: Install the Platform (Agent Guide)
-description: How to install and uninstall Zelkor Community Edition on a Kubernetes cluster.
+description: Install and uninstall Zelkor CE on Kubernetes.
 type: tutorial
 sidebar_group: Agents
 sidebar_order: 1

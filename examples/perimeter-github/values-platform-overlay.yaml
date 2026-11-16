@@ -1,0 +1,17 @@
+# Platform overlay for the perimeter-github example: one HTTP API the gateway relays for agents.
+# Reads only. Every other method and path gets 403 at the gateway. The token stays in the
+# platform namespace (Secret github-api, key "credential"); the agent never receives it.
+workspace:
+  tools:
+    httpApis:
+      - name: github
+        url: https://api.github.com
+        credential:
+          secretRef: github-api
+        rules:
+          - action: Allow
+            methods: [GET]
+            path: /repos/
+          - action: Allow
+            methods: [GET]
+            path: {type: Exact, value: /search/issues}

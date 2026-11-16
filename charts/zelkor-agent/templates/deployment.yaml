@@ -279,6 +279,17 @@ spec:
             - name: OTEL_EXPORTER_OTLP_HEADERS
               value: "authorization=Bearer $(ZELKOR_CONSUMER_KEY)"
             {{- end }}
+            {{- if .Values.platform.httpApis }}
+            {{- /* CE-15a-4: the platform's {release}-api-{name} relays (gateway: consumer-key auth,
+                 credential injection, method/path rules). The API credential never enters the pod. */}}
+            {{- $rel := include "zelkor-agent.platformReleaseName" . | required "platform.httpApis needs platform.releaseName (the platform release that renders the API relays)" }}
+            {{- $ups := list }}
+            {{- range .Values.platform.httpApis }}
+            {{- $ups = append $ups (printf "%s=http://%s" . (include "zelkor-agent.clusterHost" (dict "root" $ "name" (printf "%s-api-%s" $rel .)))) }}
+            {{- end }}
+            - name: ZELKOR_API_UPSTREAMS
+              value: {{ join "," $ups | quote }}
+            {{- end }}
           volumeMounts:
             - name: sidecar-tmp
               mountPath: /tmp
@@ -303,6 +314,10 @@ spec:
               value: "via-sidecar"
             - name: MCP_URL
               value: "http://127.0.0.1:8001/run/active/mcp"
+            {{- range .Values.platform.httpApis }}
+            - name: {{ printf "ZELKOR_API_%s_URL" (. | upper | replace "-" "_") | quote }}
+              value: {{ printf "http://127.0.0.1:8001/run/active/api/%s" . | quote }}
+            {{- end }}
             - name: ZELKOR_GRAPH_ID
               value: {{ $graphId | quote }}
             {{- if .Values.platform.defaultLlmModel }}

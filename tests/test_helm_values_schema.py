@@ -253,6 +253,7 @@ def test_template_values_paths_have_schema_properties():
         "__mcpExtraBackendVolumes",
         "__mcpExtraBackendVolumeMounts",
         "__mcpExtraBackendSeedJson",
+        "__httpApis",
     }
     stray = sorted(paths - allowed)
     assert not stray, f"template references without schema property: {stray}"

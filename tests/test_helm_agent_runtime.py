@@ -192,3 +192,32 @@ def test_stateless_sidecar_is_single_replica():
         r = _helm_agent(*PERIMETER, *extra)
         assert r.returncode != 0 and "one replica" in r.stderr, extra
     assert _helm_agent(*PERIMETER, "--set", "replicaCount=1").returncode == 0
+
+
+def test_http_apis_are_loopback_urls_for_the_agent_and_relays_for_the_sidecar():
+    # CE-15a-4: the agent calls the sidecar; the sidecar calls {release}-api-{name} (the gateway)
+    # with the consumer key; the API credential never enters the pod.
+    spec = _deploy(*PERIMETER, "--set", "platform.httpApis[0]=github", "--set", "platform.httpApis[1]=gh-ent")
+    assert _env(_c(spec, "sidecar"))["ZELKOR_API_UPSTREAMS"] == \
+        "github=http://zelkor-platform-api-github,gh-ent=http://zelkor-platform-api-gh-ent"
+    a_env = _env(_c(spec, "agent"))
+    assert a_env["ZELKOR_API_GITHUB_URL"] == "http://127.0.0.1:8001/run/active/api/github"
+    assert a_env["ZELKOR_API_GH_ENT_URL"] == "http://127.0.0.1:8001/run/active/api/gh-ent"
+
+
+def test_http_apis_cross_namespace_use_fqdn():
+    spec = _deploy(*PERIMETER, "--set", "platform.httpApis[0]=github", "--set", "platform.namespace=zelkor-sys")
+    assert _env(_c(spec, "sidecar"))["ZELKOR_API_UPSTREAMS"] == \
+        "github=http://zelkor-platform-api-github.zelkor-sys.svc.cluster.local"
+
+
+def test_no_http_apis_no_env():
+    spec = _deploy(*PERIMETER)
+    assert "ZELKOR_API_UPSTREAMS" not in _env(_c(spec, "sidecar"))
+    assert not any(k.startswith("ZELKOR_API_") for k in _env(_c(spec, "agent")))
+
+
+def test_http_apis_require_platform_release():
+    r = _helm_agent(*PERIMETER, "--set", "platform.httpApis[0]=github", "--set", "platform.releaseName=",
+                    "--set", "auth.jwksUri=https://issuer.example/jwks")
+    assert r.returncode != 0 and "platform.httpApis needs platform.releaseName" in r.stderr
