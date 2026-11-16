@@ -99,8 +99,10 @@ def test_s73_audit_record_has_metadata_and_no_arguments():
         pass
     time.sleep(2)
     release = os.environ.get("ZELKOR_RELEASE", "zelkor-platform")
-    backend, short = AUDIT_TOOL.split("__", 1)  # {backend}__{tool} -> the backend's Deployment logs
-    cmd = kubectl_cmd("logs", f"deploy/{release}-mcp-{backend}", "--since=2m")
+    backend, short = AUDIT_TOOL.split("__", 1)  # {backend}__{tool} -> the backend's pod logs
+    # Every replica: with HA the call may land on any pod (`logs deploy/...` reads only one).
+    selector = f"app.kubernetes.io/component=mcp-{backend},app.kubernetes.io/instance={release}"
+    cmd = kubectl_cmd("logs", "-l", selector, "--since=2m", "--tail=-1", "--max-log-requests=20")
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
     except FileNotFoundError:
@@ -117,7 +119,8 @@ def test_s73_audit_record_has_metadata_and_no_arguments():
         if rec.get("event") == "tools_call" and rec.get("tool") == short:
             records.append(rec)
     assert records, f"no tools_call audit record for {short}"
-    rec = records[-1]
-    for key in ("tenant_id", "status", "elapsed_s", "request_bytes", "response_bytes"):
-        assert key in rec, rec
-    assert rec["status"] in {"ok", "error", "denied", "rate_limited"}
+    # Every record in the window (ok and denied alike) carries the audit metadata.
+    for rec in records:
+        for key in ("tenant_id", "status", "elapsed_s", "request_bytes", "response_bytes"):
+            assert key in rec, rec
+        assert rec["status"] in {"ok", "error", "denied", "rate_limited"}
