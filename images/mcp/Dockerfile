@@ -10,7 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 COPY images/mcp/requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt && rm /tmp/requirements.txt \
+    && pip install --no-deps mcp-server-qdrant==0.8.1 \
+    && python -c "import mcp_server_qdrant.qdrant, mcp_server_qdrant.embeddings.base" \
+    && ! pip show fastmcp >/dev/null 2>&1
 
 COPY mcp /app/mcp
 COPY images/common/zelkor_logging.py /app/mcp/zelkor_logging.py
