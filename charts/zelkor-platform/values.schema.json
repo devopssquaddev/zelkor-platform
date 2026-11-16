@@ -4042,6 +4042,72 @@
             }
           },
           "additionalProperties": false
+        },
+        "imageVerification": {
+          "type": "object",
+          "description": "Values under security.imageVerification.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for security.imageVerification.enabled."
+            },
+            "failureAction": {
+              "type": "string",
+              "enum": [
+                "Enforce",
+                "Audit"
+              ],
+              "description": "Allowed values for security.imageVerification.failureAction."
+            },
+            "images": {
+              "type": "array",
+              "description": "List at security.imageVerification.images.",
+              "items": {
+                "type": "string",
+                "description": "Value for security.imageVerification.images.0."
+              }
+            },
+            "namespaces": {
+              "type": "array",
+              "description": "List at security.imageVerification.namespaces.",
+              "items": {
+                "type": [
+                  "string",
+                  "object",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "keyless": {
+              "type": "object",
+              "description": "Values under security.imageVerification.keyless.",
+              "properties": {
+                "issuer": {
+                  "type": "string",
+                  "description": "Value for security.imageVerification.keyless.issuer."
+                },
+                "subjectRegExp": {
+                  "type": "string",
+                  "description": "Value for security.imageVerification.keyless.subjectRegExp."
+                },
+                "rekorUrl": {
+                  "type": "string",
+                  "description": "Value for security.imageVerification.keyless.rekorUrl."
+                }
+              },
+              "additionalProperties": false
+            },
+            "requireProvenance": {
+              "type": "boolean",
+              "description": "Value for security.imageVerification.requireProvenance."
+            },
+            "sourceRepository": {
+              "type": "string",
+              "description": "Value for security.imageVerification.sourceRepository."
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
