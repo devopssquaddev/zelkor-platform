@@ -7,7 +7,7 @@ updated whenever component pins change (see
 `internal/plan/component_compatibility_matrix.md` for the authoritative pin
 inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 
-**As of CE `2.5.3`** (2026-11-17).
+**As of CE `2.5.4`** (2026-11-17).
 
 ## Distribution paths
 
@@ -90,3 +90,4 @@ inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 | 2026-11-16 | CE `2.5.0`: no third-party pin changes in shipped images or charts. Release tooling (cosign, syft, crane, Kyverno policy for opt-in admission) runs in CI or the customer's cluster and is not redistributed. |
 | 2026-11-17 | CE `2.5.1`: no third-party pin changes (release workflow fix only). |
 | 2026-11-17 | CE `2.5.3`: OpenTelemetry SDK/exporter 1.45.1 → 1.45.2 and instrumentation 0.66b1 → 0.66b2 in `zelkor-guardrails`, `zelkor-sidecar`, `zelkor-aegra` (CVE-2026-126360). Same license (Apache-2.0) and distribution path (embedded); CE-18 a–g unchanged. Guardrails self-check change (#133) adds no third-party component. 2.5.2 was not released. |
+| 2026-11-17 | CE `2.5.4`: no third-party pin changes (guardrails self-check trace tags, timeout default, onUnavailable). |

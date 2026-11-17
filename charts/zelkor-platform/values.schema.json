@@ -1295,6 +1295,14 @@
                         "string"
                       ],
                       "description": "Value for workspace.policies.nemo.selfCheck.timeoutMs."
+                    },
+                    "onUnavailable": {
+                      "type": "string",
+                      "enum": [
+                        "allow",
+                        "block"
+                      ],
+                      "description": "Allowed values for workspace.policies.nemo.selfCheck.onUnavailable."
                     }
                   },
                   "additionalProperties": false

@@ -11,7 +11,8 @@ from zelkor_self_check import check
 async def zelkor_self_check(
     side: str,
     mode: str = "log",
-    timeout_ms: int = 1500,
+    timeout_ms: int = 5000,
+    on_unavailable: str = "allow",
     llms: Optional[Dict[str, Any]] = None,
     llm_task_manager: Any = None,
     context: Optional[dict] = None,
@@ -35,4 +36,5 @@ async def zelkor_self_check(
         )
 
     text = prompt_context["user_input" if side == "input" else "bot_response"]
-    return await check(side=side, mode=mode, timeout_ms=int(timeout_ms), text=text, run_task=run)
+    return await check(side=side, mode=mode, timeout_ms=int(timeout_ms), text=text, run_task=run,
+                       on_unavailable=on_unavailable)

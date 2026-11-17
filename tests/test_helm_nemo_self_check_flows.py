@@ -31,7 +31,7 @@ def test_default_input_logs_and_output_is_off():
     assert _rails(data)["input"]["flows"] == ["self check input"]
     assert _rails(data)["output"].get("flows") == []
     body = _flow(data["content_safety-flows.co"], "self check input")
-    assert 'execute zelkor_self_check(side="input", mode="log", timeout_ms=1500)' in body
+    assert 'execute zelkor_self_check(side="input", mode="log", timeout_ms=5000, on_unavailable="allow")' in body
     assert "$verdict.blocked" in body
     assert "define flow self check output" not in data["content_safety-flows.co"]
 
@@ -77,3 +77,17 @@ def test_self_check_prompts_treat_the_text_as_data_and_ask_for_json():
     assert "<message>\n{{ user_input }}\n</message>" in tasks["self_check_input"]
     assert "<response>\n{{ bot_response }}\n</response>" in tasks["self_check_output"]
     assert all('{"block": true}' in c and '{"block": false}' in c for c in tasks.values())
+
+
+
+def test_2_5_4_timeout_default_and_on_unavailable_wiring():
+    flows = _cm()["content_safety-flows.co"]
+    assert "timeout_ms=5000" in flows and 'on_unavailable="allow"' in flows
+    blocked = _cm("--set", "workspace.policies.nemo.selfCheck.input=block",
+                  "--set", "workspace.policies.nemo.selfCheck.onUnavailable=block")["content_safety-flows.co"]
+    assert 'on_unavailable="block"' in blocked
+
+
+def test_invalid_on_unavailable_fails_render():
+    err = _helm(*OLLAMA, "--set", "workspace.policies.nemo.selfCheck.onUnavailable=maybe", check=False)
+    assert "selfCheck.onUnavailable" in err
