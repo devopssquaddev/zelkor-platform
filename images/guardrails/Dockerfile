@@ -23,6 +23,9 @@ COPY images/guardrails/otel_project_route.py /app/otel_project_route.py
 COPY images/guardrails/structured_output.py /app/structured_output.py
 COPY images/guardrails/quiet_verbose.py /app/quiet_verbose.py
 COPY images/guardrails/boot.py /app/boot.py
+COPY images/guardrails/zelkor_self_check.py /app/zelkor_self_check.py
+# NeMo loads actions.py from the config directory (the ConfigMap mounts single files next to it).
+COPY images/guardrails/actions.py /etc/nemoguardrails/configs/content_safety/actions.py
 COPY images/guardrails/sitecustomize.py /usr/local/lib/python3.13/site-packages/sitecustomize.py
 COPY images/common/zelkor_logging.py /app/zelkor_logging.py
 COPY images/common/langfuse_keep.py /app/langfuse_keep.py
@@ -30,7 +33,8 @@ COPY images/common/langfuse_keep.py /app/langfuse_keep.py
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin zelkor \
     && mkdir -p /etc/nemoguardrails/configs/content_safety \
     && chmod 644 /usr/local/lib/python3.13/site-packages/sitecustomize.py \
-    && chown -R zelkor:zelkor /etc/nemoguardrails /app/otel_project_route.py /app/structured_output.py /app/boot.py /app/zelkor_logging.py /app/langfuse_keep.py
+    && chown -R zelkor:zelkor /etc/nemoguardrails /app/otel_project_route.py /app/structured_output.py /app/boot.py /app/zelkor_logging.py /app/langfuse_keep.py /app/zelkor_self_check.py
+RUN python -c "import sys; sys.path.insert(0, '/etc/nemoguardrails/configs/content_safety'); import actions"
 USER 1000
 
 EXPOSE 8000

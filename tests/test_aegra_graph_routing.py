@@ -109,7 +109,7 @@ def test_nemo_content_safety_passthrough_for_tools():
     )
     assert "passthrough: true" in rendered
     assert "- self check input" in rendered
-    assert "- self check output" in rendered
+    assert "- self check output" not in rendered  # output check is off by default
     assert "define flow self check input" in rendered
     assert "name: OpenTelemetry" in rendered
     assert "enable_content_capture: true" in rendered
@@ -253,15 +253,15 @@ def test_nemo_otel_uses_instrument_and_early_sitecustomize():
     assert "boot.py" in dockerfile
     assert (ROOT / "images/guardrails/boot.py").exists()
     assert (ROOT / "images/guardrails/otel_project_route.py").exists()
-    assert "opentelemetry-distro==0.66b1" in reqs
-    assert "opentelemetry-instrumentation-fastapi==0.66b1" in reqs
-    assert "opentelemetry-instrumentation-asgi==0.66b1" in reqs
-    assert "opentelemetry-instrumentation-httpx==0.66b1" in reqs
+    assert "opentelemetry-distro==0.66b2" in reqs
+    assert "opentelemetry-instrumentation-fastapi==0.66b2" in reqs
+    assert "opentelemetry-instrumentation-asgi==0.66b2" in reqs
+    assert "opentelemetry-instrumentation-httpx==0.66b2" in reqs
     assert "prometheus-fastapi-instrumentator==8.1.0" in reqs
     assert '"nemoguardrails", "server"' in dockerfile
     assert "--disable-chat-ui" in dockerfile
     aegra_reqs = (ROOT / "images/aegra/requirements.txt").read_text()
-    assert "opentelemetry-instrumentation-httpx==0.66b1" in aegra_reqs
+    assert "opentelemetry-instrumentation-httpx==0.66b2" in aegra_reqs
 
 
 def _helm(*args: str) -> str:

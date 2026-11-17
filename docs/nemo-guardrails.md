@@ -21,7 +21,10 @@ Custom rails go in your platform values file under `workspace.policies.nemo`. Th
 | `extraRailsConfig` | Merged under `rails.config` of the `content_safety` config (for example `regex_detection`). |
 | `extraInputFlows` | Flow names appended to the input rails, after `self check input`. |
 | `extraColang` | Colang text appended to the `content_safety` flows file. |
-| `selfCheck.model` | Model id for the yes/no self-check rails. Empty uses the NeMo model (`workspace.policies.nemo.model`, then `workspace.models.defaultModel`). Use a model id your AI Gateway routes. |
+| `selfCheck.input` | `log` (default): check each prompt and log the verdict (`guardrail_verdict`) without refusing. `block`: refuse with `safetyRefusal`. `none`: skip the check. |
+| `selfCheck.output` | Same values for the model's answer. Default `none`, because it adds a second model call to every request. |
+| `selfCheck.timeoutMs` | Time limit per check (default `1500`). An unclear, slow or failed check never refuses; it logs `guardrail_unparseable` or `guardrail_unavailable`. |
+| `selfCheck.model` | Model id for the self-check rails. Empty uses the NeMo model (`workspace.policies.nemo.model`, then `workspace.models.defaultModel`). Use a model id your AI Gateway routes. |
 | `safetyRefusal` | Text returned when a rail blocks a request. |
 
 Create an overlay file (e.g., `my-nemo-overlay.yaml`). This one blocks off-topic requests with NeMo's built-in regex input rail:

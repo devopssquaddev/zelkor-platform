@@ -272,7 +272,7 @@ def _aigateway_rules(docs: list[dict]) -> list[dict]:
 
 
 def test_nemo_derives_model_from_single_provider():
-    docs = _docs(_helm("--set", "workspace.models.providers.ollamaCloud.apiKey=ollama-key"))
+    docs = _docs(_helm("--set", "workspace.policies.nemo.selfCheck.output=log", "--set", "workspace.models.providers.ollamaCloud.apiKey=ollama-key"))
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
     assert by_type["main"] == "gpt-oss:20b"
     assert by_type["self_check_input"] == "gpt-oss:20b"
@@ -308,7 +308,7 @@ def test_guardrails_nemo_model_wins_over_default_model():
 
 
 def test_self_check_models_inherit_nemo_model():
-    docs = _docs(_helm("--set", "workspace.policies.nemo.model=qwen3:8b"))
+    docs = _docs(_helm("--set", "workspace.policies.nemo.selfCheck.output=log", "--set", "workspace.policies.nemo.model=qwen3:8b"))
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
     assert by_type["main"] == "qwen3:8b"
     assert by_type["self_check_input"] == "qwen3:8b"
@@ -322,6 +322,8 @@ def test_self_check_model_override_does_not_change_main():
             "workspace.policies.nemo.model=qwen3:8b",
             "--set",
             "workspace.policies.nemo.selfCheck.model=gpt-oss:20b",
+            "--set",
+            "workspace.policies.nemo.selfCheck.output=log",
         )
     )
     by_type = {row["type"]: row["model"] for row in _nemo_config_models(docs)}
