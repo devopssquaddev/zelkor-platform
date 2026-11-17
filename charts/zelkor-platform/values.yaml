@@ -255,6 +255,11 @@ workspace:
       selfCheck:
         enabled: true
         model: ''
+        # log: record the verdict, never refuse. block: refuse on a block verdict. none: skip.
+        # An unclear, slow or failed answer never refuses; it logs guardrail_unavailable/unparseable.
+        input: log
+        output: none
+        timeoutMs: 1500
       extraInputFlows: []
       extraColang: ''
       extraRailsConfig: {}

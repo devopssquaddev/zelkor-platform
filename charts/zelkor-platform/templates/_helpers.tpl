@@ -803,6 +803,20 @@ true
 {{- end }}
 
 {{/*
+Self-check mode for one side (.side = input|output): log records the verdict and never refuses,
+block refuses on a block verdict, none skips the check. Defaults: input log, output none.
+*/}}
+{{- define "zelkor-platform.nemoSelfCheckMode" -}}
+{{- $sc := .root.Values.guardrails.nemo.selfCheck | default dict -}}
+{{- $mode := ternary "log" "none" (eq .side "input") -}}
+{{- if hasKey $sc .side -}}{{- $mode = index $sc .side | toString -}}{{- end -}}
+{{- if not (has $mode (list "log" "block" "none")) -}}
+{{- fail (printf "workspace.policies.nemo.selfCheck.%s must be log, block or none (got %q)" .side $mode) -}}
+{{- end -}}
+{{- if eq (include "zelkor-platform.nemoSelfCheckEnabled" .root) "true" -}}{{ $mode }}{{- else -}}none{{- end -}}
+{{- end }}
+
+{{/*
 Default model id from enabled providers. Matches scripts/lib/cluster-install.sh DEFAULT_LLM_MODEL precedence.
 */}}
 {{- define "zelkor-platform.aiGatewayDerivedDefaultModel" -}}

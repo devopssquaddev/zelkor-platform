@@ -22,6 +22,8 @@ ENUMS = {
   "databases.mode" => %w[in-cluster-basic operator-cr external],
   "global.tier" => %w[oss pro enterprise],
   "security.imageVerification.failureAction" => %w[Enforce Audit],
+  "workspace.policies.nemo.selfCheck.input" => %w[log block none],
+  "workspace.policies.nemo.selfCheck.output" => %w[log block none],
 }.freeze
 
 STRING_OR_OBJECT_PATHS = %w[

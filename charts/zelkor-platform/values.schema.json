@@ -1270,6 +1270,31 @@
                     "model": {
                       "type": "string",
                       "description": "Value for workspace.policies.nemo.selfCheck.model."
+                    },
+                    "input": {
+                      "type": "string",
+                      "enum": [
+                        "log",
+                        "block",
+                        "none"
+                      ],
+                      "description": "Allowed values for workspace.policies.nemo.selfCheck.input."
+                    },
+                    "output": {
+                      "type": "string",
+                      "enum": [
+                        "log",
+                        "block",
+                        "none"
+                      ],
+                      "description": "Allowed values for workspace.policies.nemo.selfCheck.output."
+                    },
+                    "timeoutMs": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for workspace.policies.nemo.selfCheck.timeoutMs."
                     }
                   },
                   "additionalProperties": false
