@@ -85,7 +85,7 @@ platform:
         evaluators:
           seedCode: true
         image:
-          tag: 2.5.0
+          tag: 2.5.1
           digest: ''
   mTLS:
     enabled: false
@@ -95,22 +95,22 @@ workspace:
   policies:
     nemo:
       image:
-        tag: 2.5.0
+        tag: 2.5.1
         digest: ''
   tools:
     image:
-      tag: 2.5.0
+      tag: 2.5.1
       digest: ''
     sandboxMCP:
       workerImage:
-        tag: 2.5.0
+        tag: 2.5.1
         digest: ''
 workload:
   agents:
     image:
-      tag: 2.5.0
+      tag: 2.5.1
       digest: ''
     cli:
       image:
-        tag: 2.5.0
+        tag: 2.5.1
         digest: ''
