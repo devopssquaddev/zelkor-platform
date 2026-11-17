@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bootstrap_runner import parse_bootstrap_line  # noqa: E402
-from execution_report import analyze_execution, log_sandbox_execution  # noqa: E402
+from execution_report import analyze_execution, log_sandbox_execution, result_status  # noqa: E402
 
 logger = logging.getLogger("zelkor-sandbox-worker")
 
@@ -112,7 +112,7 @@ class WorkerHandler(BaseHTTPRequestHandler):
                 bootstrap=bootstrap or None,
             )
             response = {
-                "status": "success" if report.outcome == "allowed" else "error",
+                "status": result_status(report.outcome),
                 "stdout": user_stdout,
                 "stderr": user_stderr,
                 "exit_code": exit_code,

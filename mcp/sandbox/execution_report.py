@@ -48,6 +48,14 @@ def suspicious_on_probe_plus_error() -> bool:
     return _env_bool("SANDBOX_SUSPICIOUS_ON_PROBE_PLUS_ERROR", True)
 
 
+def result_status(outcome: str) -> str:
+    """Top-level ``status`` of an execute result: ``denied`` when the sandbox refused a probe and
+    the script carried on (not a failure of the run), ``error`` for every other non-allowed outcome."""
+    if outcome == "allowed":
+        return "success"
+    return "denied" if outcome == "denied" else "error"
+
+
 @dataclass(frozen=True)
 class ExecutionReport:
     outcome: str  # allowed | denied | suspicious | exploit | error | timeout

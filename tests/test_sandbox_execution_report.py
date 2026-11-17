@@ -15,6 +15,7 @@ from sandbox.execution_report import (  # noqa: E402
     analyze_execution,
     detect_code_probes,
     log_sandbox_execution,
+    result_status,
 )
 from zelkor_logging import JsonFormatter  # noqa: E402
 from tests.test_mcp_sandbox import ADVERSARIAL_DMESG_SCRIPT, ADVERSARIAL_MKNOD_SCRIPT  # noqa: E402
@@ -161,3 +162,8 @@ def test_dmesg_script_probes_and_isolation_signal():
     )
     assert "dmesg_not_isolated" in leaked.violation_types
     assert leaked.outcome == "denied"
+
+
+def test_result_status_tells_a_refused_probe_from_a_failed_run():
+    assert [result_status(o) for o in ("allowed", "denied", "exploit", "suspicious", "error", "timeout")] == [
+        "success", "denied", "error", "error", "error", "error"]

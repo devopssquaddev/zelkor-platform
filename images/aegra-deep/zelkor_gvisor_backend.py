@@ -82,7 +82,7 @@ def _parse_execute_payload(result: Any) -> tuple[str, int]:
     if err and err not in output:
         output = f"{output}\n{err}".strip() if output else err
     exit_code = int(parsed.get("exit_code") or 0)
-    if parsed.get("status") == "error" and exit_code == 0:
+    if parsed.get("status") in ("error", "denied") and exit_code == 0:
         exit_code = 1
     try:
         from sandbox_trace import stamp_sandbox_execution_span
