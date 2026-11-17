@@ -1,7 +1,7 @@
 {{- $inMode := include "zelkor-platform.nemoSelfCheckMode" (dict "root" . "side" "input") }}
 {{- $outMode := include "zelkor-platform.nemoSelfCheckMode" (dict "root" . "side" "output") }}
 {{- $sc := .Values.guardrails.nemo.selfCheck | default dict }}
-{{- $timeout := $sc.timeoutMs | default 5000 | int }}
+{{- $timeout := $sc.timeoutMs | default 15000 | int }}
 {{- $onUnavailable := $sc.onUnavailable | default "allow" | toString }}
 {{- if not (has $onUnavailable (list "allow" "block")) }}
 {{- fail (printf "workspace.policies.nemo.selfCheck.onUnavailable must be allow or block (got %q)" $onUnavailable) }}

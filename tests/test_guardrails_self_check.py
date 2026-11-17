@@ -90,7 +90,7 @@ def test_enforced_only_when_block_mode_refuses():
 
 def test_every_check_is_tagged_in_the_trace(monkeypatch):
     spans = []
-    monkeypatch.setattr(sc, "_record_span", lambda side, attrs: spans.append((side, attrs)))
+    monkeypatch.setattr(sc, "_record_span", lambda side, attrs, error="": spans.append((side, attrs)))
     _run('{"block": true}', mode="log")
     _run('{"block": false}', delay=0.2, timeout_ms=50, mode="block")
     (side, a), (_, b) = spans
@@ -107,3 +107,68 @@ def test_span_failure_never_changes_a_verdict(monkeypatch):
         raise RuntimeError("no tracer")
     monkeypatch.setattr(sc, "_record_span", boom)
     assert _run('{"block": true}', mode="block")["blocked"] is True
+
+
+def test_check_without_verdict_is_an_error_span(monkeypatch):
+    spans = []
+    monkeypatch.setattr(sc, "_record_span", lambda side, attrs, error="": spans.append((attrs, error)))
+    _run('{"block": false}', mode="log")
+    _run('{"block": false}', delay=0.2, timeout_ms=50, mode="log")
+    _run(error=RuntimeError("429"), mode="block", on_unavailable="block")
+    (ok, ok_err), (timeout, timeout_err), (error, error_err) = spans
+    assert ok_err == "" and "error.type" not in ok
+    assert (timeout["error.type"], timeout_err) == ("timeout", "self-check timeout; request allowed")
+    assert (error["error.type"], error_err) == ("error", "self-check error; request refused")
+    assert not any(k.startswith("langfuse.observation.level") for a, _ in spans for k in a)
+
+
+def test_record_span_sets_error_status():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import StatusCode
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("t")
+    import opentelemetry.trace as ot
+
+    orig = ot.get_tracer
+    ot.get_tracer = lambda *_a, **_k: tracer
+    try:
+        sc._record_span("input", {"zelkor.guardrail.status": "timeout"}, "self-check timeout; request allowed")
+        sc._record_span("input", {"zelkor.guardrail.status": "ok"})
+    finally:
+        ot.get_tracer = orig
+    bad, good = exporter.get_finished_spans()
+    assert (bad.status.status_code, bad.status.description) == (StatusCode.ERROR, "self-check timeout; request allowed")
+    assert good.status.status_code is StatusCode.UNSET
+
+
+def test_result_lands_on_the_request_span_and_the_check_model_call():
+    """NeMo emits ``self_check_input <model>`` after the check; it must carry the result too."""
+    import opentelemetry.trace as ot
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.trace import StatusCode
+
+    provider = TracerProvider()
+    tracer = provider.get_tracer("t")
+    orig = ot.get_tracer
+    ot.get_tracer = lambda *_a, **_k: tracer
+    try:
+        with tracer.start_as_current_span("POST /v1/chat/completions") as request:
+            _run('{"block": false}', delay=0.2, timeout_ms=50, mode="log")
+            with tracer.start_as_current_span("self_check_input gpt-oss:20b") as gen:
+                sc.stamp_check_generation(gen)
+            with tracer.start_as_current_span("general gpt-oss:20b") as other:
+                sc.stamp_check_generation(other)
+    finally:
+        ot.get_tracer = orig
+    assert request.attributes["zelkor.guardrail.input.mode"] == "log"
+    assert request.attributes["langfuse.observation.metadata.guardrail_input_status"] == "timeout"
+    assert gen.attributes["zelkor.guardrail.status"] == "timeout"
+    assert gen.attributes["langfuse.observation.metadata.guardrail_mode"] == "log"
+    assert (gen.status.status_code, gen.status.description) == (StatusCode.ERROR, "self-check timeout; request allowed")
+    assert "zelkor.guardrail.status" not in other.attributes
+    assert request.status.status_code is StatusCode.UNSET

@@ -147,6 +147,18 @@ def stamp_identity(span: Any, values: Dict[str, str], *, langfuse: bool = True) 
         span.set_attribute("langfuse.session.id", session)
 
 
+def mark_http_status(span: Any, status_code: int) -> None:
+    """OTel leaves a 4xx server span unset, so a rate-limited or rejected call looked like a normal
+    one. NeMo answers a valid request with 200 (a refusal included), so a 4xx is an ERROR span.
+    5xx is already one."""
+    if not 400 <= status_code < 500 or span is None or not span.is_recording():
+        return
+    from opentelemetry.trace import Status, StatusCode
+
+    span.set_attribute("error.type", str(status_code))
+    span.set_status(Status(StatusCode.ERROR, f"HTTP {status_code}"))
+
+
 def _client_hop_of_kept_trace(span: Any) -> bool:
     if "SERVER" in str(getattr(getattr(span, "kind", None), "name", "") or ""):
         return False
@@ -273,6 +285,12 @@ def install() -> None:
                 if value:
                     values[key] = str(value)
             stamp_identity(span, values, langfuse=langfuse_mode())
+            try:
+                from zelkor_self_check import stamp_check_generation
+
+                stamp_check_generation(span)
+            except Exception:  # noqa: BLE001 - tagging never breaks tracing
+                _log.debug("guardrail tag on model call skipped", exc_info=True)
 
         def on_end(self, span):  # type: ignore[no-untyped-def]
             return
@@ -309,17 +327,21 @@ def install() -> None:
             orig_init(self, *args, **kwargs)
 
             async def _identity_mw(request, call_next):  # type: ignore[no-untyped-def]
+                server_span = trace.get_current_span()
                 values = identity_from_headers(request.headers)
-                if not values:
-                    return await call_next(request)
-                ctx = context.get_current()
-                for key, value in values.items():
-                    ctx = baggage.set_baggage(key, value, context=ctx)
-                token = context.attach(ctx)
+                token = None
+                if values:
+                    ctx = context.get_current()
+                    for key, value in values.items():
+                        ctx = baggage.set_baggage(key, value, context=ctx)
+                    token = context.attach(ctx)
                 try:
-                    return await call_next(request)
+                    response = await call_next(request)
                 finally:
-                    context.detach(token)
+                    if token is not None:
+                        context.detach(token)
+                mark_http_status(server_span, response.status_code)
+                return response
 
             self.middleware("http")(_identity_mw)
 

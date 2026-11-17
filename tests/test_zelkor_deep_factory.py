@@ -235,3 +235,11 @@ def test_deep_image_contract():
     assert "zelkor_deep_factory.py:graph" in lg["graphs"]["agent"]
     build = (root / "scripts/build-images.sh").read_text()
     assert "zelkor-aegra-deep" in build
+
+
+def test_gvisor_parse_denied_status_is_exit_1():
+    payload = {"status": "denied", "stdout": "BLOCKED", "stderr": "", "exit_code": 0,
+               "execution": {"outcome": "denied"}}
+    result = SimpleNamespace(isError=False, content=[SimpleNamespace(text=json.dumps(payload))])
+    output, exit_code = _parse_execute_payload(result)
+    assert (output, exit_code) == ("BLOCKED", 1)

@@ -374,3 +374,21 @@ def test_otlp_mode_keeps_a_run_hop_that_ends_before_its_kept_spans():
     hop.attributes = {"session.id": "th-7"}  # the run's identity, stamped at span start
     assert kept_spans([hop], langfuse=False) == [hop]
     assert kept_spans([_child_hop("POST", 78)], langfuse=False) == []
+
+
+def test_4xx_answer_is_an_error_span():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.trace import StatusCode
+    from otel_project_route import mark_http_status
+
+    tracer = TracerProvider().get_tracer("t")
+    spans = {}
+    for code in (200, 400, 429, 500):
+        with tracer.start_as_current_span(f"POST {code}") as span:
+            mark_http_status(span, code)
+            spans[code] = span
+    assert (spans[429].status.status_code, spans[429].status.description) == (StatusCode.ERROR, "HTTP 429")
+    assert spans[429].attributes["error.type"] == "429"
+    assert spans[400].status.status_code is StatusCode.ERROR
+    assert spans[200].status.status_code is StatusCode.UNSET and "error.type" not in spans[200].attributes
+    assert spans[500].status.status_code is StatusCode.UNSET  # the ASGI instrumentation owns 5xx

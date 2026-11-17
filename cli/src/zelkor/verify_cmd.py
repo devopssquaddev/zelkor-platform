@@ -10,8 +10,10 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Callable
 
 # One place each in the CLI; tests assert they equal charts/zelkor-platform values
@@ -51,7 +53,12 @@ def verify_ref(image: str, image_id: str) -> str:
 
 
 def _call(runner: RunFn, argv: list[str]) -> Any:
-    return runner(argv, capture_output=True, text=True, check=False, timeout=COSIGN_TIMEOUT_SEC)
+    """Run argv; a timeout is a failed check (rc 124, like timeout(1)), not a traceback."""
+    try:
+        return runner(argv, capture_output=True, text=True, check=False, timeout=COSIGN_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        return SimpleNamespace(returncode=124, stdout="",
+                               stderr=f"{argv[0]} {argv[1] if len(argv) > 1 else ''} timed out after {COSIGN_TIMEOUT_SEC}s")
 
 
 def running_images(runner: RunFn, kubectl: list[str], release: str) -> list[RunningImage]:

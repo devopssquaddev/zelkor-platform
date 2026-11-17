@@ -23,12 +23,12 @@ Custom rails go in your platform values file under `workspace.policies.nemo`. Th
 | `extraColang` | Colang text appended to the `content_safety` flows file. |
 | `selfCheck.input` | `log` (default): check each prompt and log the verdict (`guardrail_verdict`) without refusing. `block`: refuse with `safetyRefusal`. `none`: skip the check. |
 | `selfCheck.output` | Same values for the model's answer. Default `none`, because it adds a second model call to every request. |
-| `selfCheck.timeoutMs` | Time limit per check (default `5000`). A check with no verdict (timeout, error, unclear answer) logs `guardrail_unavailable` or `guardrail_unparseable`. |
+| `selfCheck.timeoutMs` | Time limit per check (default `15000`). The input check runs before the answer, so a slow check delays the request by up to this long. A check with no verdict (timeout, error, unclear answer) logs `guardrail_unavailable` or `guardrail_unparseable`. |
 | `selfCheck.onUnavailable` | What `block` mode does when a check has no verdict: `allow` (default) lets the request through, `block` refuses it. Ignored in `log` mode. |
 | `selfCheck.model` | Model id for the self-check rails. Empty uses the NeMo model (`workspace.policies.nemo.model`, then `workspace.models.defaultModel`). Use a model id your AI Gateway routes. |
 | `safetyRefusal` | Text returned when a rail blocks a request. |
 
-Every check also adds a `guardrail self_check input` (or `output`) span to the request's trace, with `zelkor.guardrail.mode` (`log` / `block`), `verdict` (`allow` / `block` / `none`), `status` (`ok` / `timeout` / `error` / `unparseable`), `enforced` (true only when the request was refused) and `latency_ms`. In Langfuse the same fields appear as `guardrail_*` metadata, so you can filter for checks that would have blocked in `log` mode, or for timeouts.
+The result of every check is on the check's own model call (`self_check_input <model>` or `self_check_output <model>`) as `zelkor.guardrail.mode` (`log` / `block`), `verdict` (`allow` / `block` / `none`), `status` (`ok` / `timeout` / `error` / `unparseable`), `enforced` (true only when the request was refused) and `latency_ms`, and in Langfuse as `guardrail_*` metadata, so you can filter for checks that would have blocked in `log` mode, or for timeouts. The guardrails request span (`POST /v1/chat/completions`) carries the same fields per side (`guardrail_input_mode`, `guardrail_input_verdict`, …), and a `guardrail self_check input` span repeats them. A check with no verdict makes its model call an error (level ERROR in Langfuse) whose status message says whether the request was allowed or refused, for example `self-check timeout; request allowed`. A 4xx answer from the guardrails service, such as a 429 rate limit, is also an error span with the message `HTTP 429`.
 
 Create an overlay file (e.g., `my-nemo-overlay.yaml`). This one blocks off-topic requests with NeMo's built-in regex input rail:
 

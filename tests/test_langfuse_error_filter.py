@@ -37,3 +37,21 @@ def test_failed_tool_output_is_flagged():
 def test_guardrail_refusal_is_not_flagged():
     rows = [{"id": "a", "type": "SPAN", "name": "rail", "level": "ERROR", "output": "request blocked by content_safety"}]
     assert _ids(rows) == []
+
+
+def test_log_mode_self_check_without_verdict_is_known():
+    meta = {"guardrail_mode": "log", "guardrail_status": "timeout"}
+    rows = [
+        {"id": "a", "type": "GENERATION", "name": "self_check_input gpt-oss:20b", "level": "ERROR",
+         "statusMessage": "self-check timeout; request allowed", "metadata": meta},
+        {"id": "b", "type": "SPAN", "name": "guardrail self_check input", "level": "ERROR",
+         "statusMessage": "self-check error; request allowed",
+         "metadata": {"guardrail_mode": "log", "guardrail_status": "error"}},
+        {"id": "c", "type": "SPAN", "name": "guardrail self_check input", "level": "ERROR",
+         "statusMessage": "self-check timeout; request allowed",
+         "metadata": {"guardrail_mode": "block", "guardrail_status": "timeout"}},
+        {"id": "d", "type": "GENERATION", "name": "self_check_input gpt-oss:20b", "level": "ERROR",
+         "statusMessage": "self-check unparseable; request allowed",
+         "metadata": {"guardrail_mode": "log", "guardrail_status": "unparseable"}},
+    ]
+    assert _ids(rows) == ["b", "c"]
