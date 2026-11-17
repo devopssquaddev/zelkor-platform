@@ -145,13 +145,15 @@ def test_default_chart_has_no_hpa_https_or_servicemonitor():
 
 
 def test_production_overlay_uses_semver_not_dev():
+    # The release commit carries the semver tag with empty digests (CI builds and signs the images
+    # from the tag); the follow-up PR pins the signed digests. Either is fine; :dev never is.
     proc = _helm("-f", str(PRODUCTION))
     assert proc.returncode == 0, proc.stderr
-    assert "ghcr.io/devopssquaddev/zelkor-aegra@sha256:" in proc.stdout
-    assert "ghcr.io/devopssquaddev/zelkor-mcp@sha256:" in proc.stdout
-    assert "ghcr.io/devopssquaddev/zelkor-guardrails@sha256:" in proc.stdout
-    assert "zelkor-aegra:dev" not in proc.stdout
-    assert "zelkor-mcp:dev" not in proc.stdout
+    version = _chart_app_version()
+    for image in ("zelkor-aegra", "zelkor-mcp", "zelkor-guardrails"):
+        ref = f"ghcr.io/devopssquaddev/{image}"
+        assert f"{ref}@sha256:" in proc.stdout or f"{ref}:{version}" in proc.stdout, image
+        assert f"{image}:dev" not in proc.stdout
 
 
 def _chart_app_version() -> str:
