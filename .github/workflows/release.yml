@@ -1,0 +1,280 @@
+# CE-19: verifiable release. "Don't trust us, verify us."
+# A vX.Y.Z-ce tag is the only trigger. The run checks the tag against Chart.yaml and every
+# first-party image tag, audits pins, then builds every image in scripts/build-images.sh in CI
+# (no laptop pushes), signs each digest keyless under THIS workflow's identity, attests an SBOM and
+# SLSA provenance, pushes and signs the OCI charts, attests the release manifest (first-party and
+# upstream digests) on the platform chart, verifies it all, and attaches the evidence to the
+# GitHub release (a draft when none exists yet).
+# Do not split signing into a reusable workflow: the certificate identity would change.
+name: release
+
+on:
+  push:
+    tags: ["v*-ce"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/devopssquaddev
+  CHART_REPO: oci://ghcr.io/devopssquaddev/charts
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tier0: ${{ steps.matrix.outputs.tier0 }}
+      tier1: ${{ steps.matrix.outputs.tier1 }}
+      tier2: ${{ steps.matrix.outputs.tier2 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: python -m pip install pyyaml==6.0.2
+      - name: Source tag matches Chart.yaml and every first-party image tag
+        id: version
+        run: python3 scripts/release/check_version.py "${GITHUB_REF_NAME}" --github-output "$GITHUB_OUTPUT"
+      - name: Pin audit (actions by SHA, tools by version)
+        run: python3 scripts/release/pin_audit.py .
+      - name: Image matrix from scripts/build-images.sh
+        id: matrix
+        run: |
+          plan=$(scripts/build-images.sh --list-json)
+          max=$(jq '[.[].tier] | max' <<<"$plan")
+          if [ "$max" -gt 2 ]; then echo "::error::build tier $max needs another images-tier job"; exit 1; fi
+          for t in 0 1 2; do
+            echo "tier$t=$(jq -c --argjson t "$t" '[.[] | select(.tier == $t) | .name]' <<<"$plan")" >> "$GITHUB_OUTPUT"
+          done
+
+  images-tier0:
+    needs: [plan]
+    if: ${{ needs.plan.outputs.tier0 != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.tier0) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-image
+        with:
+          image: ${{ matrix.image }}
+          version: ${{ needs.plan.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  images-tier1:
+    needs: [plan, images-tier0]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.tier1 != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.tier1) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-image
+        with:
+          image: ${{ matrix.image }}
+          version: ${{ needs.plan.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  images-tier2:
+    needs: [plan, images-tier1]
+    if: ${{ !failure() && !cancelled() && needs.plan.outputs.tier2 != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.tier2) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/release-image
+        with:
+          image: ${{ matrix.image }}
+          version: ${{ needs.plan.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  chart:
+    needs: [plan, images-tier0, images-tier1, images-tier2]
+    if: ${{ !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      platform_digest: ${{ steps.charts.outputs.platform_digest }}
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: python -m pip install pyyaml==6.0.2
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: v3.16.4
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v2.6.5
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        with:
+          version: v0.22.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Helm registry login
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: helm registry login ghcr.io --username "${GITHUB_ACTOR}" --password-stdin <<<"$TOKEN"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-image-*
+          merge-multiple: true
+          path: dist
+
+      - name: Package, push and sign the OCI charts
+        id: charts
+        run: |
+          set -euo pipefail
+          mkdir -p dist/charts
+          charts='[]'
+          for c in zelkor-platform zelkor-agent; do
+            helm package "charts/$c" -d dist/charts
+            out=$(helm push "dist/charts/$c-${VERSION}.tgz" "$CHART_REPO" 2>&1)
+            echo "$out"
+            digest=$(grep -o 'sha256:[0-9a-f]\{64\}' <<<"$out" | tail -1)
+            [ -n "$digest" ] || { echo "::error::no digest from helm push $c"; exit 1; }
+            ref="${REGISTRY}/charts/$c"
+            cosign sign --yes "$ref@$digest"
+            python3 scripts/release/release_attest.py provenance --tag "$TAG" --artifact "$ref@$digest" \
+              --out "dist/provenance-$c.json"
+            cosign attest --yes --type slsaprovenance1 --predicate "dist/provenance-$c.json" "$ref@$digest"
+            charts=$(jq -c --arg n "$c" --arg r "$ref" --arg d "$digest" '. + [{name: $n, ref: $r, digest: $d}]' <<<"$charts")
+            if [ "$c" = zelkor-platform ]; then echo "platform_digest=$digest" >> "$GITHUB_OUTPUT"; fi
+          done
+          echo "$charts" > dist/charts.json
+
+      - name: Upstream image digests (CE-19c, resolved, never mirrored)
+        run: python3 scripts/release/upstream_digests.py --out dist/upstream-digests.json
+
+      - name: Attest the release manifest on the platform chart
+        env:
+          PLATFORM_DIGEST: ${{ steps.charts.outputs.platform_digest }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release/release_attest.py manifest --tag "$TAG" --digests dist/release-digests \
+            --upstream dist/upstream-digests.json --charts dist/charts.json --out dist/release-manifest.json
+          cosign attest --yes --type https://zelkor.io/attestations/release/v1 \
+            --predicate dist/release-manifest.json "${REGISTRY}/charts/zelkor-platform@${PLATFORM_DIGEST}"
+
+      - name: GitHub build provenance for the platform chart
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/devopssquaddev/charts/zelkor-platform
+          subject-digest: ${{ steps.charts.outputs.platform_digest }}
+          # false: a registry referrer bundle makes cosign skip the .att release-manifest attestation
+          push-to-registry: false
+
+      - name: Verify every signature and attestation (round trip)
+        run: scripts/release/verify_artifacts.sh dist/release-manifest.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: |
+            dist/release-manifest.json
+            dist/upstream-digests.json
+            dist/charts/*.tgz
+            dist/sboms/*.spdx.json
+          if-no-files-found: error
+
+  evidence:
+    # CE-19e: the S-gate runs on a lab before tagging; its JUnit is committed at
+    # release-evidence/<tag>/s-gate.junit.xml. Missing evidence publishes an all-GAP matrix.
+    needs: [plan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: python -m pip install pyyaml==6.0.2
+      - name: Fail-closed matrix from the S-gate run
+        run: |
+          mkdir -p dist
+          python3 scripts/release/fail_closed_matrix.py --tag "${GITHUB_REF_NAME}" \
+            --junit "release-evidence/${GITHUB_REF_NAME}/s-gate.junit.xml" --out dist/fail-closed-matrix.md
+          cat dist/fail-closed-matrix.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fail-closed-matrix
+          path: dist/fail-closed-matrix.md
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, chart, evidence]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: "{release-dist,fail-closed-matrix}"
+          merge-multiple: true
+          path: dist
+      - name: Attach evidence to the GitHub release (draft when none exists)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/release-manifest.json dist/upstream-digests.json dist/fail-closed-matrix.md dist/charts/*.tgz dist/sboms/*.spdx.json)
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "${assets[@]}" --draft --verify-tag --title "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --notes "Signed CE release. Verify with docs/security/verify-release.md; fail-closed matrix attached."
+          fi

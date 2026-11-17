@@ -21,6 +21,7 @@ ENUMS = {
   "platform.telemetry.format" => %w[json text],
   "databases.mode" => %w[in-cluster-basic operator-cr external],
   "global.tier" => %w[oss pro enterprise],
+  "security.imageVerification.failureAction" => %w[Enforce Audit],
 }.freeze
 
 STRING_OR_OBJECT_PATHS = %w[
@@ -125,6 +126,47 @@ STRICT_ARRAY_ITEM_SCHEMAS = {
       },
     },
     "required" => %w[name],
+  },
+  "workspace.tools.httpApis" => {
+    "type" => "object",
+    "additionalProperties" => false,
+    "description" => "CE-15a-4 HTTP API relayed by the gateway with credential injection and method/path rules.",
+    "properties" => {
+      "name" => { "type" => "string", "description" => "DNS label; relay Service {release}-api-{name}." },
+      "url" => { "type" => "string", "description" => "Upstream base URL (http or https); a path becomes the prefix." },
+      "credential" => {
+        "type" => "object",
+        "additionalProperties" => false,
+        "properties" => {
+          "secretRef" => { "type" => "string", "description" => "Opaque Secret whose key \"credential\" is the full header value." },
+          "header" => { "type" => "string", "description" => "Header to inject (default Authorization)." },
+        },
+      },
+      "rules" => {
+        "type" => "array",
+        "description" => "First match wins; no match = 403. At least one Allow.",
+        "items" => {
+          "type" => "object",
+          "additionalProperties" => false,
+          "properties" => {
+            "action" => { "type" => "string", "description" => "Allow or Deny." },
+            "methods" => { "type" => "array", "items" => { "type" => "string" }, "description" => "Upper-case HTTP methods; empty = any." },
+            "path" => {
+              "description" => "String = PathPrefix; or {type: Exact|PathPrefix|RegularExpression, value}.",
+              "oneOf" => [
+                { "type" => "string" },
+                {
+                  "type" => "object",
+                  "additionalProperties" => false,
+                  "properties" => { "type" => { "type" => "string" }, "value" => { "type" => "string" } },
+                  "required" => %w[value],
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
   },
   "workspace.models.providers.openaiCompat" => {
     "type" => "object",

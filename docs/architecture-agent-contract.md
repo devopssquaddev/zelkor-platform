@@ -1,6 +1,6 @@
 ---
 title: Drop-In Agent Contract
-description: How the self-hosted agent runtime wraps and governs your agent using Intercept, Wrap, and MCP planes.
+description: How the runtime wraps and governs your agent (Intercept, Wrap, MCP).
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 30

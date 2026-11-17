@@ -1,6 +1,6 @@
 ---
 title: Helm Values Reference
-description: V2 platform, workspace, and workload namespaces, substrate keys, schema validation, and Pro or Enterprise gates.
+description: V2 namespaces, substrate keys, schema validation and tier gates.
 type: reference
 sidebar_group: Reference
 sidebar_order: 20
@@ -82,6 +82,7 @@ Infrastructure the chart owns outside the three intent layers:
 | `postgresql`, `valkey`, `clickhouse`, `qdrant`, `seaweedfs` | Datastore pins and URLs |
 | `security.networkPolicies` | Agent default-deny egress; gateway allow lists for extra MCP |
 | `security.sandbox` | gVisor for sandbox workers. `provisioning.mode: auto` does not install `runsc`. `daemonset` installs it on `nodes.selector` and labels successes `zelkor.io/gvisor-ready=true` |
+| `security.imageVerification` | Opt-in Kyverno `ClusterPolicy` (default off): Pods run only Zelkor images signed by the release workflow, with SLSA provenance. See [Verify a Release](../security/verify-release.md) |
 | `highAvailability`, `observability` | Replicas and monitoring hooks |
 
 ## `extraManifests`

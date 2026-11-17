@@ -1,6 +1,6 @@
 ---
 title: Hosted extra MCP tools missing
-description: tools/list omits a hosted extra prefix, or Envoy cannot TLS-handshake the FQDN.
+description: Missing prefix or TLS handshake failure on a hosted extra.
 type: kb
 sidebar_group: KB
 sidebar_order: 24

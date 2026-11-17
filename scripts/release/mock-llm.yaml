@@ -1,0 +1,55 @@
+# CE-19g gate provider (CI kind cluster only; never part of the chart). Code: mock_llm.py via ConfigMap.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-llm
+  labels:
+    app: mock-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-llm
+  template:
+    metadata:
+      labels:
+        app: mock-llm
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: mock-llm
+          image: python:3.13.1-slim
+          command: ["python", "/app/mock_llm.py", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: app
+              mountPath: /app
+      volumes:
+        - name: app
+          configMap:
+            name: mock-llm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-llm
+spec:
+  selector:
+    app: mock-llm
+  ports:
+    - port: 8000
+      targetPort: 8000

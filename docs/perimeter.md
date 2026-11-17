@@ -1,6 +1,6 @@
 ---
 title: Perimeter Profile
-description: A zero-database AI and MCP egress boundary — a gateway plus a stateless sidecar that wraps your agent.
+description: A zero-database AI and MCP egress boundary around your agent.
 type: explanation
 sidebar_group: Install
 sidebar_order: 15

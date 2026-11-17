@@ -1,6 +1,6 @@
 ---
 title: "AI Gateway: 404 route_not_found on /v1/chat/completions"
-description: POST /v1/chat/completions returns 404 route_not_found after a Helm upgrade.
+description: Seen after a Helm upgrade; cause and fix.
 type: kb
 sidebar_group: KB
 sidebar_order: 22

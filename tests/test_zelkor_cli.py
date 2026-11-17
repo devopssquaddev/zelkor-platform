@@ -2103,3 +2103,38 @@ def test_token_mint_targets_the_selected_env(tmp_path, monkeypatch):
     assert main(["--store", str(store), "--env", "prod", "token", "mint", "--release", "zelkor-platform",
                  "--tenant", "tenant-a", "--namespace", "other", "--context", "kind-x"]) == 0
     assert seen == {"ns": "other", "ctx": "kind-x"}  # explicit flags still win
+
+
+HTTP_APIS = ("workspace:\n  tools:\n    httpApis:\n"
+             "    - name: github\n      url: https://api.github.com\n"
+             "      rules:\n      - action: Allow\n"
+             "    - name: billing\n      url: http://billing.internal:8080\n"
+             "      rules:\n      - action: Allow\n")
+
+
+def test_deploy_agent_gets_the_platform_http_apis(tmp_path, monkeypatch):
+    # CE-15a-4: every sidecar-wrapped agent can call the platform's API relays by name
+    # (--egress-only on full; plain deploy on perimeter). Aegra-hosted agents have no sidecar.
+    for egress_only, top in ((True, HTTP_APIS), (False, PERIMETER + HTTP_APIS)):
+        ov = _deploy_overlay(tmp_path, monkeypatch, egress_only=egress_only, top_extra=top)
+        assert ov["platform"]["httpApis"] == ["github", "billing"]
+    ov = _deploy_overlay(tmp_path, monkeypatch, egress_only=False, top_extra=HTTP_APIS)
+    assert ov["runtime"] == "aegra" and "httpApis" not in ov["platform"]
+
+
+def test_deploy_agent_without_http_apis_sets_none(tmp_path, monkeypatch):
+    assert "httpApis" not in _egress_only_overlay(tmp_path, monkeypatch)["platform"]
+
+
+def test_deploy_f_gets_the_platform_http_apis(tmp_path, monkeypatch):
+    monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
+    captured: dict = {}
+    try:
+        deploy_from_values(values_path=_catalog_values(tmp_path, "a2a"), egress_only=True,
+                           env=Env(name="local", kube_context="kind-zelkor", namespace="default"),
+                           agent_chart=ROOT / "charts" / "zelkor-agent",
+                           platform_chart=ROOT / "charts" / "zelkor-platform",
+                           runner=_no_aegra_runner(captured, top_extra=HTTP_APIS))
+    except RuntimeError:
+        pass
+    assert captured["overlay"]["platform"]["httpApis"] == ["github", "billing"]

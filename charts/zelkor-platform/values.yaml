@@ -22,7 +22,7 @@ perimeter:
 # V2 intent API: platform.*, workspace.*, workload.* (compiled to internal templates at render).
 # Substrate keys (postgresql, gateway, databases, security.sandbox, …) stay at the root.
 #
-# First-party images published as ghcr.io/devopssquaddev/zelkor-*:2.4.6 (Chart.yaml appVersion). Kind inherits these tags; IMAGE_TAG=dev is opt-in.
+# First-party images published as ghcr.io/devopssquaddev/zelkor-*:2.5.1 (Chart.yaml appVersion). Kind inherits these tags; IMAGE_TAG=dev is opt-in.
 
 global:
   tier: oss
@@ -112,7 +112,7 @@ platform:
           sampling: 0.1
         image:
           repository: ghcr.io/devopssquaddev/zelkor-langfuse-seed
-          tag: 2.4.6
+          tag: 2.5.1
           digest: ''
       extraProjects: []
       nextauthUrl: ''
@@ -237,7 +237,7 @@ workspace:
       replicaCount: 1
       image:
         repository: ghcr.io/devopssquaddev/zelkor-guardrails
-        tag: 2.4.6
+        tag: 2.5.1
         digest: ''
       configsDir: "/etc/nemoguardrails/configs"
       defaultConfigId: content_safety
@@ -290,6 +290,20 @@ workspace:
   tools:
     enabled: true
     extraBackends: []
+    # CE-15a-4: plain HTTP APIs agents call through the gateway ({release}-api-{name}). The
+    # gateway injects the credential (agents never hold it) and allows/denies each call by
+    # method and path: first matching rule wins, no match = 403. Callers present the agents
+    # consumer key. Wrapped agents get $ZELKOR_API_<NAME>_URL (sidecar loopback).
+    #   - name: github                     # DNS label
+    #     url: https://api.github.com      # http|https; a path becomes the upstream prefix
+    #     credential:                      # optional
+    #       secretRef: github-api          # Opaque Secret; key "credential" = full header value
+    #       header: Authorization          # default Authorization (always overwritten)
+    #     rules:                           # >= 1 Allow; methods empty = any; path string = prefix
+    #       - {action: Deny, methods: [DELETE]}
+    #       - {action: Allow, methods: [GET], path: /repos/}
+    #       - {action: Allow, path: {type: RegularExpression, value: "^/orgs/[^/]+/issues$"}}
+    httpApis: []
     # CE-9: tool policy for natives and extras. deny uses agent-visible names
     # ("object__delete", "object__write*", "qdrant__*"); enforced at Envoy and mirrored
     # by native backends. MCP readOnlyHint/destructiveHint are never trusted.
@@ -300,7 +314,7 @@ workspace:
         callsPerMinute: 60
     image:
       repository: ghcr.io/devopssquaddev/zelkor-mcp
-      tag: 2.4.6
+      tag: 2.5.1
       digest: ''
     postgresMCP:
       enabled: true
@@ -425,7 +439,7 @@ workspace:
       strictIsolation: false
       workerImage:
         repository: ghcr.io/devopssquaddev/zelkor-sandbox-worker
-        tag: 2.4.6
+        tag: 2.5.1
         digest: ''
       resources:
         requests:
@@ -557,12 +571,12 @@ workload:
       enabled: false
     image:
       repository: ghcr.io/devopssquaddev/zelkor-aegra
-      tag: 2.4.6
+      tag: 2.5.1
       digest: ''
     cli:
       image:
         repository: ghcr.io/devopssquaddev/zelkor-aegra-cli
-        tag: 2.4.6
+        tag: 2.5.1
         digest: ''
     resources:
       requests:
@@ -691,6 +705,22 @@ security:
     enabled: false
   mTLS:
     enabled: false
+  # Opt-in admission policy (needs Kyverno >= 1.12 in the cluster): Pods may only run Zelkor images
+  # signed by this repository's release workflow, with SLSA provenance naming the repository and
+  # workflow. Unsigned, re-tagged or mismatched images are rejected. See docs/security/verify-release.md.
+  imageVerification:
+    enabled: false
+    failureAction: Enforce
+    images:
+    - ghcr.io/devopssquaddev/zelkor-*
+    # Empty: every namespace (Kyverno's own exclusions apply).
+    namespaces: []
+    keyless:
+      issuer: https://token.actions.githubusercontent.com
+      subjectRegExp: '^https://github\.com/devopssquaddev/zelkor-platform/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+-ce$'
+      rekorUrl: https://rekor.sigstore.dev
+    requireProvenance: true
+    sourceRepository: https://github.com/devopssquaddev/zelkor-platform
 gateway:
   dataplane:
     namespace: envoy-gateway-system

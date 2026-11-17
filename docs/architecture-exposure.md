@@ -1,6 +1,6 @@
 ---
 title: North-South Exposure
-description: Understand what Zelkor publishes to the internet versus what stays inside the cluster.
+description: What Zelkor publishes to the internet and what stays in the cluster.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 10

@@ -600,3 +600,51 @@ def test_propagation_carries_identity_as_baggage_not_langfuse_headers():
     assert not [h for h in headers if h.startswith("x-zelkor-langfuse-") and h != "x-zelkor-langfuse-pk"]
     for item in ("user.id=tenant-a", "session.id=t1", "langfuse.trace.name=desk"):
         assert item in headers["baggage"], headers["baggage"]
+
+
+# -- CE-15a-4: HTTP APIs via the gateway relay ---------------------------------------------
+
+class ApiUpstream:
+    def __init__(self):
+        self.requests = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        return httpx.Response(201, stream=_Stream(b'{"ok": true}'),
+                              headers={"content-type": "application/json", "x-ratelimit-remaining": "9"})
+
+
+def _api_egress(up):
+    return _egress(up, http_apis={"github": "http://zp-api-github.zelkor.svc.cluster.local"})
+
+
+def test_http_api_call_gets_consumer_key_never_runtime_identity():
+    up = ApiUpstream()
+    client, slot = _api_egress(up)
+    _activate(slot)
+    r = client.post("/run/active/api/github/repos/o/r/issues?state=open", json={"title": "t"},
+                    headers={"Authorization": "Bearer stolen", "X-Tenant-ID": "tenant-b",
+                             "x-zelkor-caller": "admin", "Accept": "application/vnd.github+json"})
+    assert r.status_code == 201 and r.json() == {"ok": True}
+    assert r.headers["x-ratelimit-remaining"] == "9"
+    sent = up.requests[-1]
+    assert str(sent.url) == "http://zp-api-github.zelkor.svc.cluster.local/repos/o/r/issues?state=open"
+    assert sent.method == "POST" and json.loads(sent.content) == {"title": "t"}
+    assert sent.headers["authorization"] == "Bearer ck"
+    assert sent.headers["accept"] == "application/vnd.github+json"
+    assert "x-tenant-id" not in sent.headers and "x-zelkor-caller" not in sent.headers
+
+
+def test_http_api_unknown_name_or_no_run_never_reaches_upstream():
+    up = ApiUpstream()
+    client, slot = _api_egress(up)
+    assert client.get("/run/active/api/github/user").status_code == 409
+    _activate(slot)
+    assert client.get("/run/active/api/stripe/v1/charges").status_code == 404
+    assert up.requests == []
+
+
+def test_http_apis_from_env(monkeypatch):
+    monkeypatch.setenv("ZELKOR_API_UPSTREAMS", "github=http://a-api-github, billing=http://a-api-billing/")
+    assert EgressConfig.from_env().http_apis == {"github": "http://a-api-github",
+                                                "billing": "http://a-api-billing"}

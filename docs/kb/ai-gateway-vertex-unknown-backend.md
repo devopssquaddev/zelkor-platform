@@ -1,6 +1,6 @@
 ---
 title: "AI Gateway: Vertex gemini-* returns 500 unknown backend"
-description: AI Gateway returns 500 unknown backend for Vertex gemini-* models.
+description: Vertex model routing; cause and fix.
 type: kb
 sidebar_group: KB
 sidebar_order: 10

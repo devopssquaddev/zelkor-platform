@@ -49,9 +49,11 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Deploy an Agent (Agent Guide)](agent-deploy.md) | How coding agents deploy/remove customer agents |
 | [Use the zelkor CLI](cli.md) | Env targets, deploy, run, logs, doctor |
 | [Register extra MCP backends](mcp-extra-backends.md) | BYO ClusterIP MCP on the unified gateway |
+| [Call HTTP APIs without giving agents the key](http-apis.md) | Gateway-injected API credentials with method/path rules |
 | [Add Python libraries to the sandbox](sandbox-python-libraries.md) | Private packages and pinned wheels on the gVisor worker |
 | [FinServe example](../examples/finserve/README.md) | Optional reference agents (not required to learn the platform) |
 | [Armored catalog](../examples/armored-agents/README.md) | Unmodified OSS agents as `zelkor deploy -f` overlays |
+| [Perimeter GitHub agent](../examples/perimeter-github/README.md) | Your own agent reads GitHub through the gateway; no token in the pod, writes refused |
 
 ## Reference
 
@@ -83,6 +85,14 @@ Start with Community Edition. Pro and Enterprise layers sit on the same platform
 | [Tenant Isolation](architecture-tenants.md) | How one tenant identity is applied on a run |
 | [Agent Datastores](architecture-datastores.md) | Stateful infrastructure (Postgres, Qdrant) and BYO options |
 | [Threat Model](threat-model.md) | Assets, boundaries, and security promises |
+
+## Security
+
+| Page | Job |
+| :--- | :--- |
+| [Verify a Release](security/verify-release.md) | Check signatures, provenance and SBOMs; admit only signed images |
+| [CVE Log](security/cve-log.md) | Fixed CVEs in first-party images with time to fix |
+| [Security Policy](../SECURITY.md) | Report a vulnerability; fix targets |
 
 ## Troubleshooting (KB)
 

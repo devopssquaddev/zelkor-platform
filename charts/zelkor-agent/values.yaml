@@ -40,7 +40,7 @@ redis:
 
 image:
   repository: ghcr.io/devopssquaddev/zelkor-aegra
-  tag: "2.4.6"
+  tag: "2.5.1"
   digest: ""
   pullPolicy: ""
 
@@ -54,7 +54,7 @@ runtime: aegra
 sidecar:
   image:
     repository: ghcr.io/devopssquaddev/zelkor-sidecar
-    tag: "2.4.6"
+    tag: "2.5.1"
     digest: ""
     pullPolicy: ""
   # CE-15a-2 perimeter: run the sidecar stateless (in-memory store, no Postgres, no migrate
@@ -116,6 +116,10 @@ platform:
   # with platform.telemetry.otlp.endpoint set. Used only when the sidecar has no Langfuse
   # keys (perimeter). `zelkor deploy --egress-only` sets it when the platform renders the relay.
   otlp: false
+  # CE-15a-4: names of the platform's workspace.tools.httpApis this agent may call. The sidecar
+  # relays /run/active/api/<name> to {releaseName}-api-<name> on the gateway; the runtime gets
+  # ZELKOR_API_<NAME>_URL. `zelkor deploy` fills it from the platform. Needs releaseName.
+  httpApis: []
   # Existing platform Aegra checkpointer (typically .../aegra). Do not create a new DB.
   databaseUrl: ""
   # Existing platform Valkey Service. Isolate agents with redis.prefix.

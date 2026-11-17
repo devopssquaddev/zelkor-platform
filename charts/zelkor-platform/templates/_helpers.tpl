@@ -238,6 +238,7 @@ true
 {{- end -}}
 {{- include "zelkor-platform.compile.mcpExtraBackends" . -}}
 {{- include "zelkor-platform.compile.objectMCP" . -}}
+{{- include "zelkor-platform.compile.httpApis" . -}}
 {{- end }}
 
 {{- define "zelkor-platform.compile.workload" -}}

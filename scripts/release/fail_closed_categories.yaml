@@ -1,0 +1,33 @@
+# CE-19e: which S-gate tests prove which fail-closed promise. Read by fail_closed_matrix.py.
+# A test belongs to a category by S-id (parsed from its file or test name, e.g. test_s09_*) or by
+# file stem. A category with no passing test is a GAP in the published matrix, never a PASS.
+# Unmapped S-ids are listed under "Not mapped". S-ids are the security test ids in tests/test_sNN_*.py.
+categories:
+  auth:
+    title: Auth (north-south tokens, tenant identity)
+    s_ids: [S-01, S-02, S-19, S-24, S-74, S-80, S-88]
+    files: [test_tenant_auth, test_no_dev_auth, test_aegra_auth_inject, test_uat_caller_auth_live]
+  guardrails:
+    title: Guardrails (no provider answer that skipped the rails)
+    s_ids: [S-03, S-12, S-13, S-78, S-81, S-83]
+    files: [test_uat12_self_check]
+  egress:
+    title: Egress (agent, runtime and sandbox network reach)
+    s_ids: [S-09, S-27, S-28, S-29, S-75, S-86]
+    files: [test_sidecar_egress, test_helm_agent_egress_scope]
+  egress-dns:
+    title: Egress via DNS (resolution and exfiltration over DNS)
+    s_ids: []
+    files: []
+  admin-plane:
+    title: Admin plane unreachable from the data plane
+    s_ids: [S-08, S-10, S-11, S-87]
+    files: [test_mcp_envoy_bypass, test_ingress]
+  provider-keys:
+    title: Provider keys unreadable by tenants and agents
+    s_ids: [S-14, S-16, S-18, S-75, S-82, S-86]
+    files: []
+  component-down:
+    title: Component down fails closed (guardrails, sandbox, datastore)
+    s_ids: [S-03, S-25]
+    files: [test_mcp_postgres_fail_closed, test_uat_runtime_resilience]

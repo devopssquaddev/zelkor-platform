@@ -1,0 +1,24 @@
+# CE-19a: every action is pinned by commit SHA and every CI tool download names a version.
+# Offline: no secrets, no registry. release.yml runs the same check before it builds anything.
+name: pin-audit
+
+on:
+  pull_request:
+    paths:
+      - ".github/**"
+      - "scripts/release/pin_audit.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/**"
+
+permissions:
+  contents: read
+
+jobs:
+  pin-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Audit action and tool pins
+        run: python3 scripts/release/pin_audit.py .
