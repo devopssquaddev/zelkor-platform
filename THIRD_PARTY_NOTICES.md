@@ -7,7 +7,7 @@ updated whenever component pins change (see
 `internal/plan/component_compatibility_matrix.md` for the authoritative pin
 inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 
-**As of CE `2.5.0`** (2026-11-16).
+**As of CE `2.5.1`** (2026-11-17).
 
 ## Distribution paths
 
@@ -88,3 +88,4 @@ inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 | 2026-11-16 | CE `2.4.5`: no third-party changes (first-party audit-log fix only). |
 | 2026-11-16 | CE `2.4.6`: `fastmcp` 2.7.0 (transitive via `mcp-server-qdrant`) is no longer installed in `zelkor-mcp`; no other third-party changes. |
 | 2026-11-16 | CE `2.5.0`: no third-party pin changes in shipped images or charts. Release tooling (cosign, syft, crane, Kyverno policy for opt-in admission) runs in CI or the customer's cluster and is not redistributed. |
+| 2026-11-17 | CE `2.5.1`: no third-party pin changes (release workflow fix only). |
