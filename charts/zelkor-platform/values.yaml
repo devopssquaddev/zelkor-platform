@@ -259,7 +259,10 @@ workspace:
         # An unclear, slow or failed answer never refuses; it logs guardrail_unavailable/unparseable.
         input: log
         output: none
-        timeoutMs: 1500
+        # A check with no verdict (timeout, error, unclear answer) lets the request through. In block
+        # mode, onUnavailable: block refuses instead. Never applies to log mode.
+        timeoutMs: 5000
+        onUnavailable: allow
       extraInputFlows: []
       extraColang: ''
       extraRailsConfig: {}
