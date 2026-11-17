@@ -347,3 +347,21 @@ def test_verify_artifacts_fails_on_any_bad_check(tmp_path):
     r = _run_verify(tmp_path, bindir)
     assert r.returncode == 1
     assert "FAIL" in r.stdout
+
+
+def test_github_provenance_is_not_pushed_as_an_oci_referrer():
+    # cosign >= 2.5 verifies only the Sigstore bundles it finds as OCI referrers and then ignores
+    # the classic .att attestations (our SBOM, SLSA and release manifest). Live v2.5.0-ce: every
+    # `verify-attestation --type spdxjson` failed with "found: https://slsa.dev/provenance/v1".
+    # GitHub keeps its provenance in the attestation API, so `gh attestation verify` still works.
+    sources = [ROOT / ".github" / "actions" / "release-image" / "action.yml",
+               ROOT / ".github" / "workflows" / "release.yml"]
+    steps = []
+    for src in sources:
+        doc = yaml.safe_load(src.read_text())
+        jobs = doc.get("jobs") or {"action": {"steps": (doc.get("runs") or {}).get("steps", [])}}
+        steps += [s for job in jobs.values() for s in job.get("steps", [])]
+    gh = [s for s in steps if "actions/attest-build-provenance@" in str(s.get("uses", ""))]
+    assert gh, "expected GitHub build provenance steps"
+    for step in gh:
+        assert step.get("with", {}).get("push-to-registry") is False, step.get("name")

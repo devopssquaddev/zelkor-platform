@@ -211,7 +211,8 @@ jobs:
         with:
           subject-name: ghcr.io/devopssquaddev/charts/zelkor-platform
           subject-digest: ${{ steps.charts.outputs.platform_digest }}
-          push-to-registry: true
+          # false: a registry referrer bundle makes cosign skip the .att release-manifest attestation
+          push-to-registry: false
 
       - name: Verify every signature and attestation (round trip)
         run: scripts/release/verify_artifacts.sh dist/release-manifest.json
