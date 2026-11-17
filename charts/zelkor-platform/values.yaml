@@ -261,7 +261,7 @@ workspace:
         output: none
         # A check with no verdict (timeout, error, unclear answer) lets the request through. In block
         # mode, onUnavailable: block refuses instead. Never applies to log mode.
-        timeoutMs: 5000
+        timeoutMs: 15000
         onUnavailable: allow
       extraInputFlows: []
       extraColang: ''

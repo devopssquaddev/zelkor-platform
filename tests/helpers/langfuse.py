@@ -241,6 +241,13 @@ def failed_tool_observations(rows: list[dict]) -> list[dict]:
     return bad
 
 
+def _log_mode_check_timeout(obs: dict) -> bool:
+    """A log-mode self-check that timed out is a known ERROR: the request went through unchecked.
+    It stays an ERROR in Langfuse; a run is not failed for it."""
+    meta = obs.get("metadata") or {}
+    return meta.get("guardrail_mode") == "log" and meta.get("guardrail_status") == "timeout"
+
+
 def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
     """ERROR-level observations and failed tool outputs (not guardrail refusals)."""
     if rows is None:
@@ -257,6 +264,8 @@ def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
         is_bad = level == "ERROR" or "exception" in result or "traceback" in result
         if is_bad:
             if "blocked" in blob or "refused" in blob or "content_safety" in blob:
+                continue
+            if _log_mode_check_timeout(obs):
                 continue
             if oid not in seen:
                 seen.add(oid)

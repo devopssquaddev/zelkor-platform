@@ -23,7 +23,7 @@ Custom rails go in your platform values file under `workspace.policies.nemo`. Th
 | `extraColang` | Colang text appended to the `content_safety` flows file. |
 | `selfCheck.input` | `log` (default): check each prompt and log the verdict (`guardrail_verdict`) without refusing. `block`: refuse with `safetyRefusal`. `none`: skip the check. |
 | `selfCheck.output` | Same values for the model's answer. Default `none`, because it adds a second model call to every request. |
-| `selfCheck.timeoutMs` | Time limit per check (default `5000`). A check with no verdict (timeout, error, unclear answer) logs `guardrail_unavailable` or `guardrail_unparseable`. |
+| `selfCheck.timeoutMs` | Time limit per check (default `15000`). The input check runs before the answer, so a slow check delays the request by up to this long. A check with no verdict (timeout, error, unclear answer) logs `guardrail_unavailable` or `guardrail_unparseable`. |
 | `selfCheck.onUnavailable` | What `block` mode does when a check has no verdict: `allow` (default) lets the request through, `block` refuses it. Ignored in `log` mode. |
 | `selfCheck.model` | Model id for the self-check rails. Empty uses the NeMo model (`workspace.policies.nemo.model`, then `workspace.models.defaultModel`). Use a model id your AI Gateway routes. |
 | `safetyRefusal` | Text returned when a rail blocks a request. |

@@ -11,7 +11,7 @@ from zelkor_self_check import check
 async def zelkor_self_check(
     side: str,
     mode: str = "log",
-    timeout_ms: int = 5000,
+    timeout_ms: int = 15000,
     on_unavailable: str = "allow",
     llms: Optional[Dict[str, Any]] = None,
     llm_task_manager: Any = None,

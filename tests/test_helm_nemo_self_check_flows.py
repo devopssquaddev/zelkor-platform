@@ -31,7 +31,7 @@ def test_default_input_logs_and_output_is_off():
     assert _rails(data)["input"]["flows"] == ["self check input"]
     assert _rails(data)["output"].get("flows") == []
     body = _flow(data["content_safety-flows.co"], "self check input")
-    assert 'execute zelkor_self_check(side="input", mode="log", timeout_ms=5000, on_unavailable="allow")' in body
+    assert 'execute zelkor_self_check(side="input", mode="log", timeout_ms=15000, on_unavailable="allow")' in body
     assert "$verdict.blocked" in body
     assert "define flow self check output" not in data["content_safety-flows.co"]
 
@@ -82,7 +82,7 @@ def test_self_check_prompts_treat_the_text_as_data_and_ask_for_json():
 
 def test_2_5_4_timeout_default_and_on_unavailable_wiring():
     flows = _cm()["content_safety-flows.co"]
-    assert "timeout_ms=5000" in flows and 'on_unavailable="allow"' in flows
+    assert "timeout_ms=15000" in flows and 'on_unavailable="allow"' in flows
     blocked = _cm("--set", "workspace.policies.nemo.selfCheck.input=block",
                   "--set", "workspace.policies.nemo.selfCheck.onUnavailable=block")["content_safety-flows.co"]
     assert 'on_unavailable="block"' in blocked
