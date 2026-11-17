@@ -78,3 +78,25 @@ def test_boot_installs_patch_before_the_nemo_cli():
     # The server runs under opentelemetry-instrument, whose sitecustomize shadows ours.
     src = (ROOT / "images" / "guardrails" / "boot.py").read_text()
     assert src.index("install_quiet_verbose()") < src.index("from nemoguardrails.cli import app")
+
+
+def test_zelkor_lines_survive_the_nemo_cli_root_level(monkeypatch, capsys):
+    # nemoguardrails/cli/__init__.py sets the ROOT logger to WARNING at import, after boot.py has
+    # configured Zelkor logging. guardrail_verdict (INFO) then never reached stdout on a live
+    # cluster. The fix pins zelkor-nemo itself; the root (NeMo's prompt-bearing INFO) stays quiet.
+    import logging
+
+    import quiet_verbose
+
+    monkeypatch.setenv("ZELKOR_LOG_LEVEL", "INFO")
+    zl = logging.getLogger("zelkor-nemo")
+    monkeypatch.setattr(zl, "level", logging.NOTSET)
+    root = logging.getLogger()
+    old = root.level
+    try:
+        root.setLevel(logging.WARNING)  # what importing the NeMo CLI does
+        quiet_verbose.keep_component_level("zelkor-nemo")
+        assert zl.isEnabledFor(logging.INFO)
+        assert not logging.getLogger("nemoguardrails.colang").isEnabledFor(logging.INFO)
+    finally:
+        root.setLevel(old)

@@ -19,4 +19,7 @@ logger.info("NeMo intercept ready", extra={"event": "startup"})
 sys.argv = ["nemoguardrails"] + sys.argv[1:]
 from nemoguardrails.cli import app  # noqa: E402
 
+from quiet_verbose import keep_component_level  # noqa: E402
+
+keep_component_level("zelkor-nemo")  # the CLI import just set the root logger to WARNING
 app()

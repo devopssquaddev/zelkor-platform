@@ -30,3 +30,11 @@ def install() -> bool:
             module = __import__(name, fromlist=["set_verbose"])
         module.set_verbose = _quiet_set_verbose  # llmrails imported the name directly
     return True
+
+
+def keep_component_level(name: str = "zelkor-nemo") -> None:
+    """Importing nemoguardrails.cli sets the ROOT logger to WARNING. Pin our own logger to
+    ZELKOR_LOG_LEVEL so guardrail_verdict (INFO) still reaches stdout, while the root, and
+    with it NeMo's INFO logs that carry user text, stays at WARNING."""
+    level = logging.getLevelName(os.getenv("ZELKOR_LOG_LEVEL", "INFO").strip().upper())
+    logging.getLogger(name).setLevel(level if isinstance(level, int) else logging.INFO)
