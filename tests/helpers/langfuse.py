@@ -242,10 +242,11 @@ def failed_tool_observations(rows: list[dict]) -> list[dict]:
 
 
 def _log_mode_check_timeout(obs: dict) -> bool:
-    """A log-mode self-check that timed out is a known ERROR: the request went through unchecked.
-    It stays an ERROR in Langfuse; a run is not failed for it."""
+    """A log-mode self-check that timed out or answered without a verdict (a reasoning model that
+    spent its budget thinking) is a known ERROR: the request went through unchecked. It stays an
+    ERROR in Langfuse; a run is not failed for it. A failed check call (``error``) still counts."""
     meta = obs.get("metadata") or {}
-    return meta.get("guardrail_mode") == "log" and meta.get("guardrail_status") == "timeout"
+    return meta.get("guardrail_mode") == "log" and meta.get("guardrail_status") in ("timeout", "unparseable")
 
 
 def unexpected_error_observations(rows: list[dict] | None = None) -> list[dict]:
