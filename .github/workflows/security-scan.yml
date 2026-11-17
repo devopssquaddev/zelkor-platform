@@ -2,6 +2,8 @@
 # harness (Loop 1 patch). This is the scan FEED the harness reads; a green scan is NEVER recorded
 # as an S-id PASS (the S-gate is a separate process — internal/requirements/security-assurance).
 # Findings become a harness PR or a GAP row, not a release gate here.
+# Verdict: findings are written to the job summary on every run. Scheduled and manual runs fail
+# red on a finding; pull_request runs stay soft so an unrelated pin PR is not blocked.
 name: security-scan
 
 on:
@@ -13,6 +15,7 @@ on:
       - "images/**/requirements.txt"
       - "images/**/Dockerfile"
       - "charts/zelkor-platform/values.yaml"
+      - ".github/workflows/security-scan.yml"
 
 permissions:
   contents: read
@@ -31,14 +34,23 @@ jobs:
       - name: Audit requirements
         run: |
           status=0
+          echo "## pip-audit" >> "$GITHUB_STEP_SUMMARY"
           for req in images/*/requirements.txt; do
             echo "::group::pip-audit ${req}"
-            pip-audit -r "${req}" --strict || status=1
+            rc=0
+            out=$(pip-audit -r "${req}" --strict -f markdown 2>&1) || rc=$?
+            echo "$out"
             echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then
+              status=1
+              echo "::error file=${req}::pip-audit reported findings"
+              { echo "### ${req}"; echo; echo "$out"; echo; } >> "$GITHUB_STEP_SUMMARY"
+            fi
           done
-          # Loop 1 reads the findings; a CVE here becomes a PR or a GAP, not a hard gate.
+          [ "$status" -eq 0 ] && echo "No known vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+          # Loop 1 reads the findings; a CVE here becomes a PR or a GAP, not a release gate.
           exit $status
-        continue-on-error: true
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
 
   trivy-images:
     # CE-8a: scan the first-party GHCR images at the chart appVersion. Fail on a CRITICAL in OUR
@@ -70,7 +82,22 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+          format: table
+          output: trivy.txt
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+      - name: Write Trivy findings to job summary
+        if: always()
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          cat trivy.txt 2>/dev/null || true
+          {
+            echo "## Trivy ${IMAGE}"
+            echo
+            echo '```'
+            cat trivy.txt 2>/dev/null || echo "no Trivy output (scan did not run)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
