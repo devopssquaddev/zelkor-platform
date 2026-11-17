@@ -108,7 +108,8 @@ runs:
       with:
         subject-name: ${{ steps.build.outputs.repo }}
         subject-digest: ${{ steps.build.outputs.digest }}
-        push-to-registry: true
+        # false: a registry referrer bundle makes cosign skip the .att SBOM/SLSA attestations
+        push-to-registry: false
 
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
