@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,8 +49,9 @@ PODS = {
 
 
 class Runner:
-    def __init__(self, pods=PODS, cosign_fail=(), helm_rc=0):
+    def __init__(self, pods=PODS, cosign_fail=(), helm_rc=0, cosign_timeout=()):
         self.pods, self.cosign_fail, self.helm_rc = pods, set(cosign_fail), helm_rc
+        self.cosign_timeout = set(cosign_timeout)
         self.calls: list[list[str]] = []
 
     def __call__(self, argv, **_kw):
@@ -60,6 +62,8 @@ class Runner:
             return SimpleNamespace(returncode=0, stdout=json.dumps(self.pods), stderr="")
         if argv[0] == "cosign":
             key = (argv[1], argv[-1])
+            if key in self.cosign_timeout:
+                raise subprocess.TimeoutExpired(argv, 120)
             if key in self.cosign_fail:
                 return SimpleNamespace(returncode=1, stdout="", stderr="Error: no matching signatures")
             return SimpleNamespace(returncode=0, stdout="[]", stderr="Verified OK")
@@ -174,3 +178,19 @@ def test_digest_pinned_spec_is_kept():
     ref = verify_cmd.verify_ref("ghcr.io/devopssquaddev/zelkor-mcp:2.4.6",
                                 f"docker-pullable://ghcr.io/devopssquaddev/zelkor-mcp@{DIGEST_MCP}")
     assert ref == f"ghcr.io/devopssquaddev/zelkor-mcp@{DIGEST_MCP}"
+
+
+def test_cosign_timeout_is_a_failed_check_not_a_crash(store, capsys):
+    mcp = f"ghcr.io/devopssquaddev/zelkor-mcp@{DIGEST_MCP}"
+    r = Runner(cosign_timeout={("verify", mcp)})
+    assert _verify(store, r) == 1
+    out = capsys.readouterr().out
+    assert f"FAIL signature  {mcp}" in out and "timed out after 120s" in out
+    assert "3/4 checks passed" in out  # the other checks still ran
+
+
+def test_env_after_the_command_overrides_the_global_flag(store):
+    r = Runner()
+    assert main(["--store", str(store), "verify", "zp", "--env", "lab"], runner=r) == 0
+    kube = next(c for c in r.calls if c[0] == "kubectl")
+    assert "kind-zelkor" in kube

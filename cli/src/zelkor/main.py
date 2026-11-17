@@ -2011,6 +2011,11 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         help="zelkor-agent values overlay (repeatable; builds sibling Dockerfile unless ZELKOR_SKIP_BUILD=1)",
     )
 
+    # `zelkor status --env staging` works as well as `zelkor --env staging status`; after the
+    # command it overrides the global flag (SUPPRESS keeps the global value when absent).
+    for sub_parser in sub.choices.values():
+        sub_parser.add_argument("--env", default=argparse.SUPPRESS, help="named env (overrides the global --env)")
+
     args = parser.parse_args(argv)
     logger.info("cli cmd=%s", args.cmd)
     if args.cmd in PAID:
