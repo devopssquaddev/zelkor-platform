@@ -1,6 +1,6 @@
 dependencies:
 - name: zelkor-agent
   repository: file://../../../charts/zelkor-agent
-  version: 2.5.5
-digest: sha256:cbe456d64a110e10ac9f912f333a708de6a760f94dbd1a800f6f1cc3b541e5fb
-generated: "2026-11-17T16:57:11.798488+01:00"
+  version: 2.5.6
+digest: sha256:b71626836b1eec3c32e5bd58c8a86901ba84436c4e16929a0c621aa239869c05
+generated: "2026-11-18T08:53:11.214984+01:00"
