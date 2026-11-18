@@ -14,6 +14,31 @@ edition: ce
 
 Works in both profiles ([full](quickstart.md) and [perimeter](perimeter.md)). For MCP servers, use [extra MCP backends](mcp-extra-backends.md) instead: `apiKey` injects their credential and `workspace.tools.policy.deny` restricts tools.
 
+Where is the API key added, and where is a call refused?
+
+```mermaid
+---
+config:
+  theme: neutral
+---
+sequenceDiagram
+  autonumber
+  participant A as Your agent
+  participant S as Sidecar (in the agent pod)
+  participant G as Gateway relay api-github
+  participant K as Secret github-api (platform namespace)
+  participant U as api.github.com
+  A->>S: GET $ZELKOR_API_GITHUB_URL/repos/... (no key)
+  S->>G: forward with the agent's gateway key
+  G->>G: check agent key (else 401)
+  G->>G: check method and path rules (else 403)
+  K-->>G: credential
+  G->>U: same call, Authorization replaced
+  U-->>G: response
+  G-->>S: response
+  S-->>A: response (the agent never sees the token)
+```
+
 ## Before you start
 
 - The platform is installed with its AI gateway on (the default). The API relays use the same agent key as `/v1`.
