@@ -106,6 +106,7 @@ COMPANIONS = {
 # Toggle off => no rendered object carries one of these zelkor.io/intent labels, or (kind, name part).
 ABSENT_WHEN_OFF = {
     "postgresql.enabled": {"postgresql"},
+    "security.dnsLockdown.enabled": {"security.dnsLockdown"},
     "workspace.tools.objectMCP.enabled": {"mcp.objectMCP"},
     "workspace.tools.enabled": {"mcp.postgres", "mcp.qdrant", "mcp.aigateway", "mcp.sandbox", "mcp.objectMCP"},
     "platform.telemetry.langfuse.worker.enabled": ("Deployment", "langfuse-worker"),
