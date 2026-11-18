@@ -84,3 +84,22 @@ def test_plan_on_this_repo_names_the_open_gaps(capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "GAP all: global env unset" in out
     assert "tests/test_uat_window_hygiene.py" in out.splitlines()[-1]  # window sweep runs last
+
+
+def test_report_merges_phases_best_outcome_wins(tmp_path):
+    def junit(name, cases, props=""):
+        body = "".join(f'<testcase classname="tests.{c}" name="{n}">{"<skipped/>" if o == "skipped" else "<failure/>" if o == "failed" else ""}</testcase>'
+                       for c, n, o in cases)
+        p = tmp_path / name
+        p.write_text(f"<testsuites><testsuite>{props}{body}</testsuite></testsuites>")
+        return p
+    a = junit("a.xml", [("test_mcp_tool_policy_live", "test_s72_rate", "skipped"),
+                        ("test_s09_agent_egress", "test_tcp", "passed")],
+              '<properties><property name="zelkor_release" value="9.9.9"/></properties>')
+    b = junit("b.xml", [("test_mcp_tool_policy_live", "test_s72_rate", "passed"),
+                        ("test_s09_agent_egress", "test_tcp", "failed")])
+    out = tmp_path / "m.xml"
+    s_gate.merge_junit([a, b], out)
+    cases = {c.name: c.outcome for c in fcm.parse_junit(out)}
+    assert cases == {"test_s72_rate": "passed", "test_tcp": "failed"}
+    assert fcm.parse_properties(out)["zelkor_release"] == "9.9.9"
