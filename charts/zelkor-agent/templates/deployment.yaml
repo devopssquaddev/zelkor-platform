@@ -57,7 +57,10 @@ spec:
         {{- with (include "zelkor-agent.platformReleaseName" .) }}
         zelkor.io/platform-release: {{ . | quote }}
         {{- end }}
-        {{- if eq (include "zelkor-agent.dnsLockdown" .) "true" }}
+        {{- if eq (include "zelkor-agent.dnsLockdown" .) "map" }}
+        # CE-21: the platform admission policy locks the pod and flips this to "on" atomically.
+        zelkor.io/dns-lockdown: requested
+        {{- else if eq (include "zelkor-agent.dnsLockdown" .) "true" }}
         zelkor.io/dns-lockdown: "on"
         {{- end }}
     spec:

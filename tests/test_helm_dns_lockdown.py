@@ -99,12 +99,15 @@ def test_admission_policy_only_when_the_api_is_served():
     (policy,) = _kind(docs, "MutatingAdmissionPolicy")
     (binding,) = _kind(docs, "MutatingAdmissionPolicyBinding")
     selector = policy["spec"]["matchConstraints"]["objectSelector"]
-    assert selector["matchLabels"] == {"zelkor.io/platform-release": "zelkor-platform", "zelkor.io/dns-lockdown": "on"}
+    assert selector["matchLabels"] == {"zelkor.io/platform-release": "zelkor-platform",
+                                       "zelkor.io/dns-lockdown": "requested"}
     assert binding["spec"]["paramRef"] == {"name": "zelkor-platform-agent-hosts", "namespace": "zelkor",
                                            "parameterNotFoundAction": "Deny"}
     expr = policy["spec"]["mutations"][0]["jsonPatch"]["expression"]
     # One patch per entry; a CEL-built list of objects panics the 1.36.4 API server.
     assert '"/spec/hostAliases/-"' in expr and "split(" not in expr
+    # The label flips to "on" in the same mutation, so a locked pod is never half-locked.
+    assert 'escapeKey("zelkor.io/dns-lockdown")' in expr and 'value: "on"' in expr
 
 
 def test_lockdown_off_keeps_dns_and_renders_no_writer():
@@ -125,15 +128,13 @@ def _aegra_pod_template(docs: list[dict]) -> dict:
     return next(d for d in _kind(docs, "Deployment") if d["metadata"]["name"] == "zelkor-platform-aegra")["spec"]["template"]
 
 
-def test_platform_aegra_is_locked_by_the_admission_policy_on_136():
+def test_platform_aegra_asks_the_admission_policy_on_136():
     docs = _docs("--api-versions", MAP_API)
     pod = _aegra_pod_template(docs)
-    assert pod["metadata"]["labels"]["zelkor.io/dns-lockdown"] == "on"
+    assert pod["metadata"]["labels"]["zelkor.io/dns-lockdown"] == "requested"
     assert pod["metadata"]["labels"]["zelkor.io/platform-release"] == "zelkor-platform"
-    assert pod["spec"]["dnsPolicy"] == "None" and pod["spec"]["dnsConfig"] == {"nameservers": ["127.0.0.1"]}
-    (policy,) = _kind(docs, "MutatingAdmissionPolicy")
-    assert policy["spec"]["matchConstraints"]["objectSelector"]["matchLabels"] == {
-        "zelkor.io/platform-release": "zelkor-platform", "zelkor.io/dns-lockdown": "on"}
+    # The policy sets these with the label; the template must not, or a missed pod hangs without DNS.
+    assert "dnsPolicy" not in pod["spec"] and "dnsConfig" not in pod["spec"]
 
 
 def test_platform_aegra_without_policy_or_map_keeps_dns_and_is_marked():

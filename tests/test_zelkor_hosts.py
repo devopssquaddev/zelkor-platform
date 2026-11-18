@@ -148,3 +148,8 @@ def test_unrelated_pods_are_ignored(capsys):
     assert _check(_cluster(extra_pods=[other])) == 0
     assert "coredns" not in capsys.readouterr().out
 
+
+def test_pod_the_policy_missed_is_a_warning(capsys):
+    assert _check(_cluster(lockdown="requested")) == 0
+    assert "did not lock it; delete the pod" in capsys.readouterr().out
+

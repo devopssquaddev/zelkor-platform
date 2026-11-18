@@ -45,20 +45,22 @@ spec:
       labels:
         {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: aegra
-        {{- if or (eq $dnsLock "map") (eq $dnsLock "lookup") }}
+        {{- if eq $dnsLock "map" }}
+        # CE-21: the admission policy locks the pod and flips this to "on" atomically.
+        zelkor.io/dns-lockdown: requested
+        zelkor.io/platform-release: {{ .Release.Name | quote }}
+        {{- else if eq $dnsLock "lookup" }}
         zelkor.io/dns-lockdown: "on"
         zelkor.io/platform-release: {{ .Release.Name | quote }}
         {{- end }}
     spec:
-      {{- if or (eq $dnsLock "map") (eq $dnsLock "lookup") }}
+      {{- if eq $dnsLock "lookup" }}
       # CE-21: no DNS. Names resolve from /etc/hosts; nothing answers on 127.0.0.1:53.
       dnsPolicy: None
       dnsConfig:
         nameservers: ["127.0.0.1"]
-      {{- if eq $dnsLock "lookup" }}
       hostAliases:
         {{- include "zelkor-platform.agentHostAliases" . | nindent 8 }}
-      {{- end }}
       {{- end }}
       {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
       terminationGracePeriodSeconds: {{ .Values.aegra.terminationGracePeriodSeconds | default 35 }}

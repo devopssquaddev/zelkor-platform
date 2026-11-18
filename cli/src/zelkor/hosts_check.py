@@ -108,7 +108,9 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
             continue
         if labels.get("zelkor.io/platform-release", release) != release:
             continue
-        if (meta.get("annotations") or {}).get("zelkor.io/dns-lockdown") == "inactive":
+        if labels.get("zelkor.io/dns-lockdown") == "requested":
+            print(f"WARN dns         {where} asked for lockdown but the admission policy did not lock it; delete the pod")
+        elif (meta.get("annotations") or {}).get("zelkor.io/dns-lockdown") == "inactive":
             print(f"WARN dns         {where} keeps DNS (lockdown inactive); redeploy with `zelkor deploy`")
         elif labels.get("zelkor.io/dns-lockdown") == "on":
             have = {_short(h, namespace): ip for h, ip in _pod_aliases(pod).items()}
