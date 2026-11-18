@@ -69,6 +69,38 @@ spec:
           port: 3000
     {{- end }}
 {{- if .Values.aegra.enabled }}
+{{- if .Values.security.dnsLockdown.enabled }}
+---
+# CE-21: DNS only for agent pods that are NOT locked down (older agent charts, or lockdown
+# inactive because nothing could fill their hostAliases). Locked pods carry dns-lockdown=on.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-agent-dns-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      zelkor.io/workload-type: agent
+    matchExpressions:
+      - key: zelkor.io/dns-lockdown
+        operator: NotIn
+        values: ["on"]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
 ---
 # Aegra runtimes (front door + workers) need Postgres + Valkey for the checkpointer.
 # Agent pods that state a narrower need (zelkor.io/datastores: none | postgres; sidecar runtimes)

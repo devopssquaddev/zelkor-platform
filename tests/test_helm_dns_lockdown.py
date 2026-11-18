@@ -54,6 +54,11 @@ def test_default_writes_the_host_map_and_agent_egress_has_no_dns():
     # A plain Job, never a hook: Helm must not wait on it.
     assert "helm.sh/hook" not in (job["metadata"].get("annotations") or {})
     assert not _allows_dns(_agent_egress(docs))
+    # Agents not locked down (older charts, lockdown inactive) keep DNS through their own policy.
+    dns = next(d for d in _kind(docs, "NetworkPolicy") if d["metadata"]["name"] == "zelkor-platform-agent-dns-egress")
+    assert dns["spec"]["podSelector"]["matchExpressions"] == [
+        {"key": "zelkor.io/dns-lockdown", "operator": "NotIn", "values": ["on"]}]
+    assert _allows_dns(dns)
 
 
 def test_writer_rbac_is_namespaced_and_scoped_to_its_configmap():
