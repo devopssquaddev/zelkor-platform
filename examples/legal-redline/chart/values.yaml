@@ -27,7 +27,7 @@ legalRedline:
     <<: *agentsHost
   image:
     repository: ghcr.io/devopssquaddev/zelkor-example-legal-redline
-    tag: "2.5.5"
+    tag: "2.5.6"
     digest: ""
   platform:
     <<: *platformRelease
