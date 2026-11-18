@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "release"))
 import fail_closed_matrix as fcm  # noqa: E402
 import s_gate  # noqa: E402
 
-CE_IDS = {f"S-{n:02d}" for n in [*range(1, 30), *range(70, 90)]}
+CE_IDS = {f"S-{n:02d}" for n in [*range(1, 30), *range(70, 91)]}
 
 
 def test_manifest_covers_every_ce_id_once():
@@ -38,7 +38,7 @@ def test_every_matrix_oracle_is_gated():
     gated = set(s_gate.load()["s_ids"])
     for key, cat in fcm.load_mapping().items():
         for sid in cat["oracle_s_ids"]:
-            assert sid in gated or sid == "S-90", f"{key}: oracle {sid} not in s_gate.yaml"
+            assert sid in gated, f"{key}: oracle {sid} not in s_gate.yaml"
 
 
 def _manifest(tmp_path: Path) -> dict:
