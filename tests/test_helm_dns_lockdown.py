@@ -61,6 +61,20 @@ def test_default_writes_the_host_map_and_agent_egress_has_no_dns():
     assert _allows_dns(dns)
 
 
+def test_no_policy_gives_locked_pods_dns():
+    """Every policy allowing port 53 excludes zelkor.io/dns-lockdown=on (S-90 caught aegra-egress)."""
+    docs = _docs()
+    for np in _kind(docs, "NetworkPolicy"):
+        if not _allows_dns(np):
+            continue
+        sel = np["spec"]["podSelector"]
+        labels = sel.get("matchLabels") or {}
+        if labels.get("app.kubernetes.io/component") not in ("aegra", None) and "zelkor.io/workload-type" not in labels:
+            continue  # selects platform components only (MCP, Langfuse), never agent pods
+        assert {"key": "zelkor.io/dns-lockdown", "operator": "NotIn", "values": ["on"]} in \
+            (sel.get("matchExpressions") or []), np["metadata"]["name"]
+
+
 def test_writer_rbac_is_namespaced_and_scoped_to_its_configmap():
     docs = _docs()
     assert not _kind(docs, "ClusterRole") or all(
