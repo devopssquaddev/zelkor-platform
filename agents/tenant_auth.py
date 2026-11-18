@@ -70,7 +70,9 @@ else:
     async def authenticate(headers: Dict[str, str]) -> Dict[str, Any]:
         result = await _handler.authenticate(headers)
         if not result.get("is_authenticated"):
-            raise Exception(result.get("error") or "Authentication required")
+            # A refused token is an auth outcome, not a server fault: Aegra logs HTTPException at
+            # WARNING and answers 401; any other exception is logged at ERROR with a stack (S-02).
+            raise Auth.exceptions.HTTPException(status_code=401, detail=result.get("error") or "Authentication required")
         identity = result.get("identity") or result.get("tenant_id")
         out = {
             "identity": identity,
