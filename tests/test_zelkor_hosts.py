@@ -63,7 +63,8 @@ def test_deploy_fails_naming_the_writer_job_when_the_map_never_appears():
         load_host_aliases(ENV, info, runner=lambda *a, **k: MISSING, wait_sec=0, sleep=lambda _s: None)
 
 
-def _cluster(*, live_gw=GW, pod_aliases=None, upstreams="", annotations=None, lockdown="on"):
+def _cluster(*, live_gw=GW, pod_aliases=None, upstreams="", annotations=None, lockdown="on", extra_pods=()):
+    extra_pods = list(extra_pods)
     contract = {"data": {"AGENT_HOSTS_CONFIGMAP": "zelkor-platform-agent-hosts", "HTTP_APIS": "github"}}
     services = {
         "zelkor-platform-ai-gateway": {"spec": {"type": "ExternalName",
@@ -90,7 +91,7 @@ def _cluster(*, live_gw=GW, pod_aliases=None, upstreams="", annotations=None, lo
             svc = services.get(argv[argv.index("svc") + 1])
             return _ok(svc) if svc else MISSING
         if "pods" in argv:
-            return _ok({"items": [pod]})
+            return _ok({"items": [pod] + extra_pods})
         return MISSING
 
     return runner
@@ -126,3 +127,24 @@ def test_stale_http_api_name_is_reported(capsys):
 def test_inactive_lockdown_is_a_warning_not_a_failure(capsys):
     assert _check(_cluster(lockdown="", annotations={"zelkor.io/dns-lockdown": "inactive"})) == 0
     assert "WARN dns" in capsys.readouterr().out
+
+
+def _aegra_pod(aliases):
+    return {"metadata": {"namespace": "zelkor", "name": "zelkor-platform-aegra-x",
+                         "labels": {"app.kubernetes.io/instance": "zelkor-platform", "app.kubernetes.io/component": "aegra",
+                                    "zelkor.io/dns-lockdown": "on", "zelkor.io/platform-release": "zelkor-platform"}},
+            "spec": {"hostAliases": aliases, "containers": [{"name": "aegra", "env": []}]}}
+
+
+def test_platform_aegra_is_checked_too(capsys):
+    stale = [{"ip": "10.43.1.1", "hostnames": ["zelkor-platform-ai-gateway"]}]
+    assert _check(_cluster(extra_pods=[_aegra_pod(stale)])) == 1
+    assert "FAIL pod hosts   zelkor/zelkor-platform-aegra-x" in capsys.readouterr().out
+
+
+def test_unrelated_pods_are_ignored(capsys):
+    other = {"metadata": {"namespace": "kube-system", "name": "coredns-x", "labels": {"k8s-app": "kube-dns"}},
+             "spec": {"containers": []}}
+    assert _check(_cluster(extra_pods=[other])) == 0
+    assert "coredns" not in capsys.readouterr().out
+

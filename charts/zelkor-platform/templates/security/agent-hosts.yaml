@@ -9,7 +9,7 @@
 {{- $dataplane := include "zelkor-platform.envoyDataplaneHost" . | trim }}
 {{- $dpNs := "" }}
 {{- if $dataplane }}{{- $dpNs = index (splitList "." $dataplane) 1 }}{{- end }}
-{{- $services := list (printf "%s-ai-gateway" $fullname) (printf "%s-mcp" $fullname) (printf "%s-otlp" $fullname) (printf "%s-postgresql" $fullname) (printf "%s-langfuse" $fullname) (printf "%s-valkey" $fullname) }}
+{{- $services := list (printf "%s-ai-gateway" $fullname) (printf "%s-mcp" $fullname) (printf "%s-otlp" $fullname) (printf "%s-postgresql" $fullname) (printf "%s-langfuse" $fullname) (printf "%s-valkey" $fullname) (printf "%s-qdrant" $fullname) }}
 {{- range (.Values.__httpApis | default "[]" | fromJsonArray) }}
 {{- $services = append $services (printf "%s-api-%s" $fullname .name) }}
 {{- end }}
@@ -142,7 +142,8 @@ spec:
             limits: {cpu: 200m, memory: 128Mi}
 {{- if .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy" }}
 ---
-# K8s >= 1.36: every new agent pod of this platform gets no DNS and the current host map.
+# K8s >= 1.36: every new locked pod of this platform (agents, platform Aegra) gets no DNS and
+# the current host map.
 # One JSONPatch per entry: a CEL-built list of objects panics the 1.36.4 API server.
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingAdmissionPolicy
@@ -160,13 +161,11 @@ spec:
         apiVersions: [v1]
         operations: [CREATE]
         resources: [pods]
+    # Opt-in by label: agent pods and the platform Aegra set dns-lockdown=on when they are locked.
     objectSelector:
       matchLabels:
         zelkor.io/platform-release: {{ .Release.Name | quote }}
-      matchExpressions:
-        - key: zelkor.io/workload-type
-          operator: In
-          values: [agent, app]
+        zelkor.io/dns-lockdown: "on"
   failurePolicy: Fail
   reinvocationPolicy: IfNeeded
   mutations:

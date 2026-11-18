@@ -4150,6 +4150,10 @@
               "type": "boolean",
               "description": "Value for security.dnsLockdown.enabled."
             },
+            "aegra": {
+              "type": "boolean",
+              "description": "Value for security.dnsLockdown.aegra."
+            },
             "writerDeadlineSeconds": {
               "type": [
                 "integer",

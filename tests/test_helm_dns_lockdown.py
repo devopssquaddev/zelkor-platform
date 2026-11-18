@@ -99,7 +99,7 @@ def test_admission_policy_only_when_the_api_is_served():
     (policy,) = _kind(docs, "MutatingAdmissionPolicy")
     (binding,) = _kind(docs, "MutatingAdmissionPolicyBinding")
     selector = policy["spec"]["matchConstraints"]["objectSelector"]
-    assert selector["matchLabels"] == {"zelkor.io/platform-release": "zelkor-platform"}
+    assert selector["matchLabels"] == {"zelkor.io/platform-release": "zelkor-platform", "zelkor.io/dns-lockdown": "on"}
     assert binding["spec"]["paramRef"] == {"name": "zelkor-platform-agent-hosts", "namespace": "zelkor",
                                            "parameterNotFoundAction": "Deny"}
     expr = policy["spec"]["mutations"][0]["jsonPatch"]["expression"]
@@ -119,3 +119,34 @@ def test_reuse_values_upgrade_without_the_key_still_locks_down():
     docs = _docs("--set", "security.dnsLockdown=null")
     assert _writer_env(docs)["AGENT_HOSTS_DEADLINE_S"] == "900"
     assert not _allows_dns(_agent_egress(docs))
+
+
+def _aegra_pod_template(docs: list[dict]) -> dict:
+    return next(d for d in _kind(docs, "Deployment") if d["metadata"]["name"] == "zelkor-platform-aegra")["spec"]["template"]
+
+
+def test_platform_aegra_is_locked_by_the_admission_policy_on_136():
+    docs = _docs("--api-versions", MAP_API)
+    pod = _aegra_pod_template(docs)
+    assert pod["metadata"]["labels"]["zelkor.io/dns-lockdown"] == "on"
+    assert pod["metadata"]["labels"]["zelkor.io/platform-release"] == "zelkor-platform"
+    assert pod["spec"]["dnsPolicy"] == "None" and pod["spec"]["dnsConfig"] == {"nameservers": ["127.0.0.1"]}
+    (policy,) = _kind(docs, "MutatingAdmissionPolicy")
+    assert policy["spec"]["matchConstraints"]["objectSelector"]["matchLabels"] == {
+        "zelkor.io/platform-release": "zelkor-platform", "zelkor.io/dns-lockdown": "on"}
+
+
+def test_platform_aegra_without_policy_or_map_keeps_dns_and_is_marked():
+    pod = _aegra_pod_template(_docs())
+    assert "dnsPolicy" not in pod["spec"] and "zelkor.io/dns-lockdown" not in pod["metadata"]["labels"]
+    assert pod["metadata"]["annotations"]["zelkor.io/dns-lockdown"] == "inactive"
+
+
+def test_platform_aegra_opt_out():
+    pod = _aegra_pod_template(_docs("--set", "security.dnsLockdown.aegra=false", "--api-versions", MAP_API))
+    assert "dnsPolicy" not in pod["spec"] and "zelkor.io/dns-lockdown" not in pod["metadata"].get("annotations", {})
+
+
+def test_qdrant_joins_the_host_map():
+    assert "zelkor-platform-qdrant" in _writer_env(_docs())["AGENT_HOSTS_SERVICES"].split()
+

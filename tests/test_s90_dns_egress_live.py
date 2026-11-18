@@ -5,7 +5,8 @@ label reached the attacker's authoritative nameserver although every direct conn
 blocked. Proof 2026-11-18 on demohetzner: a never-seen `<random>.example.com` came back with
 example.com's SOA from ns.cloudflare.com.
 
-Live (L3): for every locked agent pod (zelkor.io/dns-lockdown=on) the probe runs in its sidecar:
+Live (L3): for every locked pod (zelkor.io/dns-lockdown=on: agents, platform Aegra) the probe runs
+in its sidecar or main container, and for every sandbox worker:
 A and TXT lookups of a never-seen outside name and of github.com must fail, kube-dns must be
 unreachable on UDP and TCP 53, and no answer may carry an outside SOA. Positive control: the
 gateway is still reachable by name from /etc/hosts.
@@ -57,7 +58,7 @@ out = {
     "udp_a": dns(tag, 1, kube_dns),
     "udp_txt": dns("example.com", 16, kube_dns),
     "tcp_a": dns(tag, 1, kube_dns, tcp=True),
-    "gateway": resolves(os.environ.get("S90_GATEWAY_HOST", "")),
+    "gateway": bool(os.environ.get("S90_GATEWAY_HOST")) and resolves(os.environ["S90_GATEWAY_HOST"]),
 }
 print("S90 " + json.dumps(out))
 """
@@ -117,3 +118,27 @@ def test_s90_locked_agents_cannot_resolve_or_reach_dns():
         host = _gateway_host(pod)
         assert host, f"{where}: no gateway URL in the pod env; the positive control cannot run"
         assert out["gateway"], f"{where}: positive control failed, {host} does not resolve from /etc/hosts"
+
+
+def test_s90_sandbox_workers_have_no_dns_path():
+    """Sandbox workers run the code agents generate; their egress is deny-all, DNS included."""
+    if not os.environ.get("KUBECONTEXT", "").strip():
+        pytest.skip("KUBECONTEXT not set")
+    pods = [p for p in _kubectl_json("get", "pods", "-A", "-l", "app.kubernetes.io/component=mcp-sandbox-worker")
+            .get("items") or [] if (p.get("status") or {}).get("phase") == "Running"]
+    if not pods:
+        pytest.skip("no running sandbox worker (sandboxMCP off)")
+    kube_dns = _kube_dns_ip()
+    for pod in pods:
+        meta = pod["metadata"]
+        where = f"{meta['namespace']}/{meta['name']}"
+        res = subprocess.run(
+            kubectl_cmd("exec", "-i", "-n", meta["namespace"], meta["name"], "-c", pod["spec"]["containers"][0]["name"],
+                        "--", "env", f"S90_KUBE_DNS={kube_dns}", "S90_GATEWAY_HOST=", "python3", "-"),
+            input=PROBE, capture_output=True, text=True, timeout=120)
+        line = next((ln for ln in res.stdout.splitlines() if ln.startswith("S90 ")), "")
+        assert line, f"{where}: probe did not run: {res.stderr[-300:]}"
+        out = json.loads(line[4:])
+        assert not out["random_resolves"] and not out["github_resolves"], f"{where}: outside names resolve: {out}"
+        for key in ("udp_a", "udp_txt", "tcp_a"):
+            assert not out[key]["answered"], f"{where}: kube-dns answered {key}: {out[key]}"
