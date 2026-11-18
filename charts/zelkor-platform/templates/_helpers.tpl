@@ -1786,3 +1786,65 @@ key carries no security.dnsLockdown, and the lockdown must still default on.
 {{- define "zelkor-platform.dnsLockdownWriterDeadline" -}}
 {{- (((.Values.security | default dict).dnsLockdown | default dict).writerDeadlineSeconds | default 900) | int -}}
 {{- end }}
+
+{{/*
+CE-21 second slice: how the platform Aegra gets its hostAliases.
+"map"      K8s >= 1.36: the admission policy injects them at pod create.
+"lookup"   older clusters: the host map already exists (Helm lookup at upgrade time).
+"inactive" lockdown on, but no policy and no map yet (first install): Aegra keeps DNS.
+"false"    lockdown off, or security.dnsLockdown.aegra=false.
+*/}}
+{{- define "zelkor-platform.aegraDnsLockdown" -}}
+{{- $dl := (.Values.security | default dict).dnsLockdown | default dict -}}
+{{- $aegraOn := ternary true (eq (toString $dl.aegra) "true") (not (hasKey $dl "aegra")) -}}
+{{- if or (ne (include "zelkor-platform.dnsLockdownEnabled" .) "true") (not $aegraOn) -}}
+false
+{{- else if .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy" -}}
+map
+{{- else if eq (include "zelkor-platform.aegraHostsComplete" .) "true" -}}
+lookup
+{{- else -}}
+inactive
+{{- end -}}
+{{- end }}
+
+{{/* The live host map as {"data": {...}} (empty under `helm template`). */}}
+{{- define "zelkor-platform.agentHostsLookup" -}}
+{{- $cm := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-agent-hosts" (include "zelkor-platform.fullname" .)) -}}
+{{- dict "data" (($cm | default dict).data | default dict) | toJson -}}
+{{- end }}
+
+{{/* hostAliases from the live host map, one entry per IP (older clusters, platform Aegra). */}}
+{{- define "zelkor-platform.agentHostAliases" -}}
+{{- $data := (include "zelkor-platform.agentHostsLookup" . | fromJson).data -}}
+{{- $byIp := dict -}}
+{{- range $host, $ip := $data -}}
+{{- $_ := set $byIp $ip (append (get $byIp $ip | default list) $host) -}}
+{{- end -}}
+{{- range $ip := keys $byIp | sortAlpha }}
+- ip: {{ $ip | quote }}
+  hostnames:
+    {{- range (get $byIp $ip | sortAlpha) }}
+    - {{ . | quote }}
+    {{- end }}
+{{- end -}}
+{{- end }}
+
+{{/*
+"true" when the live host map already holds every platform name the Aegra pod calls. A map written
+by an older revision can lack a Service this revision added (qdrant, in 2.6.0); locking Aegra on it
+would cut that name until the next upgrade, so Aegra stays inactive for one more round instead.
+*/}}
+{{- define "zelkor-platform.aegraHostsComplete" -}}
+{{- $data := (include "zelkor-platform.agentHostsLookup" . | fromJson).data -}}
+{{- $fn := include "zelkor-platform.fullname" . -}}
+{{- $need := list -}}
+{{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled -}}{{- $need = append $need (printf "%s-ai-gateway" $fn) -}}{{- end -}}
+{{- if eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true" -}}{{- $need = append $need (printf "%s-mcp" $fn) -}}{{- end -}}
+{{- if (.Values.postgresql).enabled -}}{{- $need = append $need (printf "%s-postgresql" $fn) -}}{{- end -}}
+{{- if (.Values.valkey).enabled -}}{{- $need = append $need (printf "%s-valkey" $fn) -}}{{- end -}}
+{{- if (.Values.qdrant).enabled -}}{{- $need = append $need (printf "%s-qdrant" $fn) -}}{{- end -}}
+{{- $ok := and $data true -}}
+{{- range $need -}}{{- if not (hasKey $data .) -}}{{- $ok = false -}}{{- end -}}{{- end -}}
+{{- ternary "true" "false" (and $ok true) -}}
+{{- end }}

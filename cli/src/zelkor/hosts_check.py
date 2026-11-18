@@ -2,7 +2,7 @@
 
 Checks, each printed as PASS / FAIL / WARN:
   1. every host-map entry still points at the live ClusterIP (ExternalName followed);
-  2. every running agent pod of this platform carries exactly the map's entries;
+  2. every running locked pod of this platform (agents, platform Aegra) carries exactly the map's entries;
   3. every HTTP API an agent's sidecar relays to exists on the platform (no stale route names);
   4. agents left with DNS (lockdown inactive) are reported.
 """
@@ -94,14 +94,23 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
               + ("" if ok else f" (live: {live or 'missing'}; upgrade the platform to rewrite the map)"))
 
     apis = {n.strip() for n in contract_data.get("HTTP_APIS", "").split(",") if n.strip()}
-    pods = _json(runner, kubectl + ["get", "pods", "-A", "-l", "zelkor.io/workload-type=agent", "-o", "json"]) or {}
+    # Agents (any namespace) and this platform's own Aegra; anything else is not ours to judge.
+    pods = _json(runner, kubectl + ["get", "pods", "-A", "-o", "json"]) or {}
     for pod in pods.get("items") or []:
         meta = pod.get("metadata") or {}
         where = f"{meta.get('namespace')}/{meta.get('name')}"
         labels = meta.get("labels") or {}
+        is_agent = labels.get("zelkor.io/workload-type") == "agent"
+        is_platform_aegra = (meta.get("namespace") == namespace
+                             and labels.get("app.kubernetes.io/instance") == release
+                             and labels.get("app.kubernetes.io/component") == "aegra")
+        if not (is_agent or is_platform_aegra):
+            continue
         if labels.get("zelkor.io/platform-release", release) != release:
             continue
-        if (meta.get("annotations") or {}).get("zelkor.io/dns-lockdown") == "inactive":
+        if labels.get("zelkor.io/dns-lockdown") == "requested":
+            print(f"WARN dns         {where} asked for lockdown but the admission policy did not lock it; delete the pod")
+        elif (meta.get("annotations") or {}).get("zelkor.io/dns-lockdown") == "inactive":
             print(f"WARN dns         {where} keeps DNS (lockdown inactive); redeploy with `zelkor deploy`")
         elif labels.get("zelkor.io/dns-lockdown") == "on":
             have = {_short(h, namespace): ip for h, ip in _pod_aliases(pod).items()}

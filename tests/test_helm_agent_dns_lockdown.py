@@ -42,14 +42,24 @@ def test_host_aliases_from_zelkor_deploy_lock_the_pod():
     assert pod["metadata"]["labels"]["zelkor.io/dns-lockdown"] == "on"
     assert pod["metadata"]["labels"]["zelkor.io/platform-release"] == "zelkor-platform"
     assert not _egress_allows_dns(docs)
+    # Locked by the chart: the label is "on", so the label-keyed DNS policy no longer selects it.
+    assert _dns_policy(docs)["spec"]["podSelector"]["matchExpressions"][0]["values"] == ["on"]
 
 
-def test_admission_policy_cluster_locks_without_host_aliases():
-    docs = _docs("--api-versions", MAP_API)
+def _dns_policy(docs: list[dict]) -> dict:
+    return next(d for d in docs if d["kind"] == "NetworkPolicy" and d["metadata"]["name"].endswith("-egress-dns"))
+
+
+def test_admission_policy_cluster_asks_and_keeps_dns_until_locked():
+    """The policy sets dnsPolicy, hostAliases and label "on" together; until then DNS works."""
+    docs = _docs("--api-versions", MAP_API, *ALIASES)
     pod = _pod(docs)
-    assert pod["spec"]["dnsPolicy"] == "None" and "hostAliases" not in pod["spec"]
-    assert pod["metadata"]["labels"]["zelkor.io/dns-lockdown"] == "on"
+    assert "dnsPolicy" not in pod["spec"] and "hostAliases" not in pod["spec"]
+    assert pod["metadata"]["labels"]["zelkor.io/dns-lockdown"] == "requested"
     assert not _egress_allows_dns(docs)
+    dns = _dns_policy(docs)
+    assert dns["spec"]["podSelector"]["matchExpressions"] == [
+        {"key": "zelkor.io/dns-lockdown", "operator": "NotIn", "values": ["on"]}]
 
 
 def test_plain_helm_on_an_older_cluster_keeps_dns_and_is_marked():
@@ -58,7 +68,8 @@ def test_plain_helm_on_an_older_cluster_keeps_dns_and_is_marked():
     assert "dnsPolicy" not in pod["spec"]
     assert "zelkor.io/dns-lockdown" not in pod["metadata"]["labels"]
     assert pod["metadata"]["annotations"]["zelkor.io/dns-lockdown"] == "inactive"
-    assert _egress_allows_dns(docs)
+    assert not _egress_allows_dns(docs)
+    assert _dns_policy(docs)  # inactive pods keep DNS through the label-keyed policy
 
 
 def test_lockdown_off_keeps_dns_unmarked():

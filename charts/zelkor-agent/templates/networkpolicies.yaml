@@ -18,7 +18,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    {{- if ne (include "zelkor-agent.dnsLockdown" .) "true" }}
+    {{- if eq (include "zelkor-agent.dnsLockdown" .) "false" }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -99,6 +99,38 @@ spec:
         - protocol: TCP
           port: 6379
     {{- end }}
+{{- if ne (include "zelkor-agent.dnsLockdown" .) "false" }}
+---
+# CE-21: DNS only while this pod is not locked (requested, inactive). The admission policy or the
+# chart sets dns-lockdown=on together with dnsPolicy None and hostAliases.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-egress-dns
+  labels:
+    {{- include "zelkor-agent.labels" . | nindent 4 }}
+    zelkor.io/intent: security.dnsLockdown
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "zelkor-agent.selectorLabels" . | nindent 6 }}
+    matchExpressions:
+      - key: zelkor.io/dns-lockdown
+        operator: NotIn
+        values: ["on"]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

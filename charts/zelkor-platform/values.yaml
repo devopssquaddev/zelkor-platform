@@ -715,6 +715,9 @@ security:
   # writes the map; agents get it from the admission policy (K8s >= 1.36) or `zelkor deploy`.
   dnsLockdown:
     enabled: true
+    # The platform Aegra too (locked from the first upgrade on clusters without the admission
+    # API). Turn off only if platform graphs must resolve names outside the platform.
+    aegra: true
     writerDeadlineSeconds: 900
   mTLS:
     enabled: false
