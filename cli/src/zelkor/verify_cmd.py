@@ -68,10 +68,28 @@ def running_images(runner: RunFn, kubectl: list[str], release: str) -> list[Runn
     out: list[RunningImage] = []
     for pod in (json.loads(res.stdout or "{}") or {}).get("items") or []:
         name = (pod.get("metadata") or {}).get("name", "")
+        spec = pod.get("spec") or {}
+        spec_images = {c.get("name", ""): c.get("image", "")
+                       for c in (spec.get("initContainers") or []) + (spec.get("containers") or [])}
         status = pod.get("status") or {}
         for cs in (status.get("initContainerStatuses") or []) + (status.get("containerStatuses") or []):
-            out.append(RunningImage(name, cs.get("name", ""), cs.get("image", ""), cs.get("imageID", "")))
+            image_id = cs.get("imageID", "")
+            out.append(RunningImage(name, cs.get("name", ""),
+                                    _image_name(spec_images.get(cs.get("name", ""), ""), cs.get("image", ""), image_id),
+                                    image_id))
     return out
+
+
+def _image_name(spec_image: str, status_image: str, image_id: str) -> str:
+    """Image reference with its repository. containerd reports ``status.image`` as a bare config
+    digest (``sha256:…``) when the pod pins a digest, so prefer the pod spec, then the status,
+    then the repository in ``imageID``."""
+    for ref in (spec_image, status_image):
+        if ref and not ref.startswith("sha256:"):
+            return ref
+    if "@sha256:" in image_id:
+        return image_id.split("://", 1)[-1]
+    return status_image
 
 
 def _cosign_argv(verb: str, ref: str) -> list[str]:

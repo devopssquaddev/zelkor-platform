@@ -194,3 +194,27 @@ def test_env_after_the_command_overrides_the_global_flag(store):
     assert main(["--store", str(store), "verify", "zp", "--env", "lab"], runner=r) == 0
     kube = next(c for c in r.calls if c[0] == "kubectl")
     assert "kind-zelkor" in kube
+
+
+def test_digest_pinned_pod_with_bare_status_image_is_verified(store, capsys):
+    """containerd (k3s) reports status.image as the config digest when the spec pins a digest;
+    the repository comes from the pod spec, so the image is still verified (it was skipped)."""
+    pinned = f"ghcr.io/devopssquaddev/zelkor-aegra@{DIGEST_AEGRA}"
+    pod = {"metadata": {"name": "zp-aegra-0"},
+           "spec": {"containers": [{"name": "aegra", "image": pinned}]},
+           "status": {"containerStatuses": [{"name": "aegra", "image": "sha256:" + "9" * 64,
+                                             "imageID": pinned}]}}
+    r = Runner(pods={"items": [pod]})
+    assert _verify(store, r) == 0
+    assert sorted({c[-1] for c in r.cosign_calls()}) == [pinned]
+    assert "2/2 checks passed for 1 Zelkor image(s)" in capsys.readouterr().out
+
+
+def test_bare_status_image_without_spec_falls_back_to_image_id():
+    from zelkor.verify_cmd import _image_name
+
+    ref = f"ghcr.io/devopssquaddev/zelkor-mcp@{DIGEST_MCP}"
+    assert _image_name("", "sha256:" + "9" * 64, ref) == ref
+    assert _image_name("", "sha256:" + "9" * 64, "docker-pullable://" + ref) == ref
+    assert _image_name("ghcr.io/devopssquaddev/zelkor-mcp:2.5.5", "sha256:" + "9" * 64, ref) == \
+        "ghcr.io/devopssquaddev/zelkor-mcp:2.5.5"
