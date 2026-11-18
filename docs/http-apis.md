@@ -14,10 +14,35 @@ edition: ce
 
 Works in both profiles ([full](quickstart.md) and [perimeter](perimeter.md)). For MCP servers, use [extra MCP backends](mcp-extra-backends.md) instead: `apiKey` injects their credential and `workspace.tools.policy.deny` restricts tools.
 
+Where is the API key added, and where is a call refused?
+
+```mermaid
+---
+config:
+  theme: neutral
+---
+sequenceDiagram
+  autonumber
+  participant A as Your agent
+  participant S as Sidecar (in the agent pod)
+  participant G as Gateway route api-github
+  participant K as Secret github-api (platform namespace)
+  participant U as api.github.com
+  A->>S: GET $ZELKOR_API_GITHUB_URL/repos/... (no key)
+  S->>G: forward with the agent's gateway key
+  G->>G: check agent key (else 401)
+  G->>G: check method and path rules (else 403)
+  K-->>G: credential
+  G->>U: same call, Authorization replaced
+  U-->>G: response
+  G-->>S: response
+  S-->>A: response (the agent never sees the token)
+```
+
 ## Before you start
 
-- The platform is installed with its AI gateway on (the default). The API relays use the same agent key as `/v1`.
-- Your agent runs behind the Zelkor sidecar: deploy it with `zelkor deploy` on a perimeter platform, or with `zelkor deploy --egress-only` on a full one. Agents that run inside the platform's own Aegra host do not get the relay URLs.
+- The platform is installed with its AI gateway on (the default). The API routes use the same agent key as `/v1`.
+- Your agent runs behind the Zelkor sidecar: deploy it with `zelkor deploy` on a perimeter platform, or with `zelkor deploy --egress-only` on a full one. Agents that run inside the platform's own Aegra host do not get the API route URLs.
 
 ## 1. Store the credential
 
@@ -55,7 +80,7 @@ helm upgrade zelkor-platform charts/zelkor-platform -n zelkor --reuse-values -f 
 
 | Field | Meaning |
 | :--- | :--- |
-| `name` | Lower-case DNS label. The relay is `<release>-api-<name>`. |
+| `name` | Lower-case DNS label. The gateway route (its hostname) is `<release>-api-<name>`. |
 | `url` | `http://` or `https://` base URL. A path (for example `/api/v2`) is prepended to every call. HTTPS uses the system CA bundle. |
 | `credential.secretRef` | Secret in the platform namespace whose key `credential` is the header value. Optional. |
 | `credential.header` | Header to set. Default `Authorization`. Whatever the caller sent in that header is replaced. |
