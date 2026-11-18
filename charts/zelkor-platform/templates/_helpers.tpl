@@ -1801,7 +1801,7 @@ CE-21 second slice: how the platform Aegra gets its hostAliases.
 false
 {{- else if .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy" -}}
 map
-{{- else if (include "zelkor-platform.agentHostsLookup" . | fromJson).data -}}
+{{- else if eq (include "zelkor-platform.aegraHostsComplete" .) "true" -}}
 lookup
 {{- else -}}
 inactive
@@ -1828,4 +1828,23 @@ inactive
     - {{ . | quote }}
     {{- end }}
 {{- end -}}
+{{- end }}
+
+{{/*
+"true" when the live host map already holds every platform name the Aegra pod calls. A map written
+by an older revision can lack a Service this revision added (qdrant, in 2.6.0); locking Aegra on it
+would cut that name until the next upgrade, so Aegra stays inactive for one more round instead.
+*/}}
+{{- define "zelkor-platform.aegraHostsComplete" -}}
+{{- $data := (include "zelkor-platform.agentHostsLookup" . | fromJson).data -}}
+{{- $fn := include "zelkor-platform.fullname" . -}}
+{{- $need := list -}}
+{{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled -}}{{- $need = append $need (printf "%s-ai-gateway" $fn) -}}{{- end -}}
+{{- if eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true" -}}{{- $need = append $need (printf "%s-mcp" $fn) -}}{{- end -}}
+{{- if (.Values.postgresql).enabled -}}{{- $need = append $need (printf "%s-postgresql" $fn) -}}{{- end -}}
+{{- if (.Values.valkey).enabled -}}{{- $need = append $need (printf "%s-valkey" $fn) -}}{{- end -}}
+{{- if (.Values.qdrant).enabled -}}{{- $need = append $need (printf "%s-qdrant" $fn) -}}{{- end -}}
+{{- $ok := and $data true -}}
+{{- range $need -}}{{- if not (hasKey $data .) -}}{{- $ok = false -}}{{- end -}}{{- end -}}
+{{- ternary "true" "false" (and $ok true) -}}
 {{- end }}
