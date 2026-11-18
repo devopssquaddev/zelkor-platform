@@ -4316,6 +4316,27 @@
                 "name": {
                   "type": "string",
                   "description": "Value for gateway.envoyProxy.service.name."
+                },
+                "nodePorts": {
+                  "type": "object",
+                  "description": "Values under gateway.envoyProxy.service.nodePorts.",
+                  "properties": {
+                    "http": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for gateway.envoyProxy.service.nodePorts.http."
+                    },
+                    "https": {
+                      "type": [
+                        "integer",
+                        "string"
+                      ],
+                      "description": "Value for gateway.envoyProxy.service.nodePorts.https."
+                    }
+                  },
+                  "additionalProperties": false
                 }
               },
               "additionalProperties": false

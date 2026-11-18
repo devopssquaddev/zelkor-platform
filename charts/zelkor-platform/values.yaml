@@ -750,6 +750,11 @@ gateway:
     service:
       type: ''
       name: ''
+      # Fixed node ports for the Envoy dataplane Service (type NodePort or LoadBalancer only).
+      # 0 = let Kubernetes pick. Kind local profiles pin these to match kind-config.yaml.
+      nodePorts:
+        http: 0
+        https: 0
     resources:
       requests:
         cpu: 100m

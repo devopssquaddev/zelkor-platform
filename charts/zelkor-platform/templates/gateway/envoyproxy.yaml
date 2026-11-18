@@ -88,6 +88,25 @@ spec:
         {{- if $svcType }}
         type: {{ $svcType | quote }}
         {{- end }}
+        {{- $np := $svc.nodePorts | default dict }}
+        {{- if or $np.http $np.https }}
+        {{- if not (has $svcType (list "NodePort" "LoadBalancer")) }}
+        {{- fail "gateway.envoyProxy.service.nodePorts needs service.type NodePort or LoadBalancer" }}
+        {{- end }}
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                {{- if $np.http }}
+                - port: 80
+                  nodePort: {{ int $np.http }}
+                {{- end }}
+                {{- if $np.https }}
+                - port: {{ int (.Values.gateway.tls.port | default 443) }}
+                  nodePort: {{ int $np.https }}
+                {{- end }}
+        {{- end }}
       {{- if $ha }}
       envoyHpa:
         minReplicas: {{ int (.Values.highAvailability.minReplicas | default 2) }}

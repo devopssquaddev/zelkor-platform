@@ -216,9 +216,32 @@ def test_envoyproxy_local_overlay_keeps_kind_nodeselector():
     assert proxies
     spec = proxies[0]["spec"]["provider"]["kubernetes"]["envoyDeployment"]["patch"]["value"]["spec"]["template"]["spec"]
     assert spec["nodeSelector"]["ingress-ready"] == "true"
-    assert spec["hostNetwork"] is True
-    k8s = proxies[0]["spec"]["provider"]["kubernetes"]
-    assert "envoyService" not in k8s or not (k8s.get("envoyService") or {}).get("type")
+    # NodePort, not hostNetwork: a host-network Envoy is invisible to NetworkPolicy namespace
+    # selectors, so policy-restricted pods could not reach it on current kindnet.
+    assert spec.get("hostNetwork") is not True
+    svc = proxies[0]["spec"]["provider"]["kubernetes"]["envoyService"]
+    assert svc["type"] == "NodePort"
+    ports = {p["port"]: p["nodePort"] for p in svc["patch"]["value"]["spec"]["ports"]}
+    assert ports[80] == 30080
+
+
+def test_local_profiles_match_kind_port_mappings():
+    import yaml as _yaml
+
+    kind = _yaml.safe_load((ROOT / "kind-config.yaml").read_text(encoding="utf-8"))
+    mapped = {m["hostPort"]: m["containerPort"] for m in kind["nodes"][0]["extraPortMappings"]}
+    for name in ("values-local.yaml", "values-local-fast.yaml", "values-local-perimeter.yaml"):
+        ep = _yaml.safe_load((ROOT / "profiles" / name).read_text(encoding="utf-8"))["gateway"]["envoyProxy"]
+        assert not ep.get("hostNetwork"), name
+        assert ep["service"]["type"] == "NodePort", name
+        assert mapped[8088] == ep["service"]["nodePorts"]["http"], name
+        assert mapped[8443] == ep["service"]["nodePorts"]["https"], name
+
+
+def test_envoyproxy_nodeports_need_nodeport_or_lb_service():
+    proc = _helm("--set", "gateway.envoyProxy.enabled=true", "--set", "gateway.envoyProxy.service.nodePorts.http=30080")
+    assert proc.returncode != 0
+    assert "nodePorts needs service.type NodePort or LoadBalancer" in proc.stderr
 
 
 def test_attach_skips_gatewayclass_and_uses_parent_ref():
