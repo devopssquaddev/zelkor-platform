@@ -1,14 +1,36 @@
-"""S-19 / P4: Mode B without langgraph_auth_user sends no tenant headers; MCP fail-closed."""
+"""S-19 / P4: Mode B without langgraph_auth_user sends no tenant headers; MCP fail-closed.
+
+Runs inside the platform Aegra container (the Mode B wrap), selected by name: an exec or import
+error there is a FAIL, not a skip. Only a missing Aegra (perimeter) or no cluster skips."""
 from __future__ import annotations
 
-from tests.helpers.ce8 import agent_pod, exec_python, running_pod_names
+import os
+
+import pytest
+
+from tests.helpers.kube import kubectl_run
+
+RELEASE = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
+
+
+def _aegra() -> str:
+    if not os.environ.get("KUBECONTEXT"):
+        pytest.skip("KUBECONTEXT not set")
+    target = f"deploy/{RELEASE}-aegra"
+    if kubectl_run(["get", target]).returncode != 0:
+        pytest.skip(f"no {target} (profile=perimeter)")
+    return target
+
+
+def exec_python(target: str, script: str, *, timeout: int = 20, site: bool = False) -> str:
+    py = ["python3", "-c", script] if site else ["python3", "-S", "-c", script]
+    res = kubectl_run(["exec", target, "-c", "aegra", "--", *py], timeout=timeout)
+    assert res.returncode == 0, f"exec in {target}/aegra failed: {(res.stderr or res.stdout)[-400:]}"
+    return (res.stdout or "").strip()
 
 
 def _mode_b_pod() -> str:
-    names = running_pod_names(label="app.kubernetes.io/component=aegra")
-    if names:
-        return names[0]
-    return agent_pod()
+    return _aegra()
 
 
 def test_s19_no_auth_user_no_tenant_headers():

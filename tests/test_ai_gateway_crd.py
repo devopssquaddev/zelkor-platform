@@ -108,37 +108,5 @@ def test_ai_gateway_real_routing_not_mock_string():
     assert is_chat_completion(data), f"Not an OpenAI chat.completion: {data}"
     assert "Hello from default/ollama/llama3.2 route via Envoy AI Gateway!" not in resp.text
 
-def test_ai_gateway_rate_limit_burst_429():
-    """HTTP 429 after workspace.models.rateLimit.requestsPerMinute + 1 /v1 calls.
 
-    Kind local overlay raises RPM so the suite does not starve; set
-    ZELKOR_RATE_LIMIT_RPM to the live install's cap (e.g. 50) to run this.
-    """
-    raw = os.environ.get("ZELKOR_RATE_LIMIT_RPM", "").strip()
-    if not raw:
-        pytest.skip("ZELKOR_RATE_LIMIT_RPM not set (kind overlay uses a high cap)")
-    try:
-        rpm = int(raw)
-    except ValueError:
-        pytest.skip(f"ZELKOR_RATE_LIMIT_RPM={raw!r} is not an integer")
-    if rpm < 1:
-        pytest.skip("ZELKOR_RATE_LIMIT_RPM must be >= 1")
-
-    model = llm_model_or_skip()
-    url = f"{GATEWAY_BASE_URL}/v1/chat/completions"
-    headers = {
-        "Host": AI_GATEWAY_HOST_HEADER,
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {AI_GATEWAY_API_KEY}",
-    }
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": "1"}],
-        "max_tokens": 1,
-    }
-    statuses = []
-    for _ in range(rpm + 1):
-        resp = httpx.post(url, headers=headers, json=payload, timeout=20.0)
-        statuses.append(resp.status_code)
-
-    assert 429 in statuses, f"expected HTTP 429 after {rpm + 1} calls; got {statuses}"
+# The /v1 global RPM 429 burst moved to tests/test_s70_rate_limit_429.py (S-70 oracle).
