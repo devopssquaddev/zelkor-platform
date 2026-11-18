@@ -36,8 +36,8 @@ s_ids:
   S-29: {files: [tests/test_s29_unlabeled_dest_deny.py]}
   S-70: {files: [tests/test_s70_rate_limit_429.py]}
   S-71: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_POLICY_DENY_TOOL]}
-  S-72: {files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE, MCP_POLICY_RATE_TOOL]}
-  S-73: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_AUDIT_TOOL]}
+  S-72: {files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE]}
+  S-73: {files: [tests/test_mcp_tool_policy_live.py]}
   S-74: {files: [tests/test_uat25_runtime_tenant_sessions.py], env: [ZELKOR_RUNTIME_GRAPHS]}
   S-75: {files: [tests/test_s75_runtime_egress.py], env: [ZELKOR_RUNTIME_GRAPHS]}
   S-77: {files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
