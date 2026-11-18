@@ -27,9 +27,13 @@ gateway:
   gatewayClassName: eg
   envoyProxy:
     enabled: true
-    hostNetwork: true
     nodeSelector:
       ingress-ready: 'true'
+    service:
+      type: NodePort
+      nodePorts:
+        http: 30080
+        https: 30443
   hosts:
     langfuse: langfuse.localhost
     aiGateway: ai-gateway.localhost

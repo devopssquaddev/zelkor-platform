@@ -667,7 +667,8 @@ def test_upgrade_text_constant():
     assert "Pro" in UPGRADE
 
 
-def _no_aegra_runner(captured: dict, *, platform_extra: str = "", top_extra: str = ""):
+def _no_aegra_runner(captured: dict, *, platform_extra: str = "", top_extra: str = "",
+                     envoy_host_network: bool = True):
     """A platform with NO Aegra deployment (perimeter shape): the tenant-JWT contract lives only
     in the platform's own Helm values (Finding A) — an Aegra-shaped mock would hide that."""
     import yaml as _yaml
@@ -690,6 +691,8 @@ def _no_aegra_runner(captured: dict, *, platform_extra: str = "", top_extra: str
             )
         elif "get" in argv and "nodes" in argv:
             stdout = "172.22.0.2 10.244.0.0/24\n"
+        elif "get" in argv and "pods" in argv and any("owning-gateway-namespace" in a for a in argv):
+            stdout = "true" if envoy_host_network else "false"
         elif "get" in argv and "deploy" in argv:
             stdout = json.dumps({"items": []})  # perimeter: no Aegra
         elif "get" in argv and ("svc" in argv or "httproute" in argv):
@@ -700,14 +703,16 @@ def _no_aegra_runner(captured: dict, *, platform_extra: str = "", top_extra: str
 
 
 def _deploy_overlay(tmp_path, monkeypatch, *, egress_only: bool,
-                    platform_extra: str = "", top_extra: str = "") -> dict:
+                    platform_extra: str = "", top_extra: str = "",
+                    envoy_host_network: bool = True) -> dict:
     """Run `zelkor deploy` on a deploy-first project against a mocked no-Aegra platform; return the overlay."""
     monkeypatch.setattr("zelkor.main.ROLLOUT_WAIT_SEC", 0.0, raising=False)
     (tmp_path / "agent.json").write_text('{"name": "desk"}', encoding="utf-8")
     (tmp_path / "AGENTS.md").write_text("hi\n", encoding="utf-8")
     env = Env(name="local", kube_context="kind-zelkor", namespace="default")
     captured: dict = {}
-    runner = _no_aegra_runner(captured, platform_extra=platform_extra, top_extra=top_extra)
+    runner = _no_aegra_runner(captured, platform_extra=platform_extra, top_extra=top_extra,
+                              envoy_host_network=envoy_host_network)
     try:
         deploy_agent(
             root=tmp_path, env=env, push=False, skip_build=True,
@@ -742,6 +747,14 @@ def test_plain_deploy_on_perimeter_platform_wraps_statelessly(tmp_path, monkeypa
     _assert_stateless_wrap(ov)
     # perimeter forces NetworkPolicies on, so kind's hostNetwork Envoy sources are allowed in
     assert ov["security"]["networkPolicies"]["hostNetworkGatewayCIDRs"] == ["10.244.0.1/32", "172.22.0.2/32"]
+
+
+def test_nodeport_envoy_on_kind_gets_no_node_cidrs(tmp_path, monkeypatch):
+    # Current kind-config runs Envoy as a NodePort pod: namespace selectors match it, no node exception.
+    ov = _deploy_overlay(tmp_path, monkeypatch, egress_only=False, top_extra=PERIMETER,
+                         envoy_host_network=False)
+    assert ov["security"]["networkPolicies"]["enabled"] is True
+    assert "hostNetworkGatewayCIDRs" not in ov["security"]["networkPolicies"]
 
 
 def test_langgraph_project_on_perimeter_fails_before_any_upgrade(tmp_path, monkeypatch):

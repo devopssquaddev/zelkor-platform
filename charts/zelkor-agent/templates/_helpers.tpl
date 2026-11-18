@@ -421,3 +421,22 @@ else inherit {releaseName}-ai-gateway-consumer (zelkor deploy copies it into oth
 {{- if and $s $s.data -}}{{- index $s.data "agents" | default "" | sha256sum | trunc 16 -}}{{- end -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+CE-21: "true" when the pod runs without DNS: lockdown is on and something fills its hostAliases
+(platform.hostAliases from `zelkor deploy`, or the platform admission policy on K8s >= 1.36).
+"inactive" when lockdown is on but neither can: the pod keeps DNS and is marked for
+`zelkor verify` (plain Helm / GitOps installs on older clusters must not break). "false" when off.
+*/}}
+{{- define "zelkor-agent.dnsLockdown" -}}
+{{- $on := (((.Values.security).dnsLockdown).enabled) | default false -}}
+{{- $aliases := ((.Values.platform).hostAliases) | default list -}}
+{{- $map := and (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy") (include "zelkor-agent.platformReleaseName" .) -}}
+{{- if not $on -}}
+false
+{{- else if or $aliases $map -}}
+true
+{{- else -}}
+inactive
+{{- end -}}
+{{- end }}

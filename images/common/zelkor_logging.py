@@ -45,6 +45,14 @@ _CONTEXT_KEYS = (
     "deny_reason",
     "request_bytes",
     "response_bytes",
+    # CE-21 agent host map: which upstream / name, never a credential.
+    "upstream",
+    "host",
+    "ip",
+    "hint",
+    "configmap",
+    "hostnames",
+    "missing",
 )
 
 

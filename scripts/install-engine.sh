@@ -757,6 +757,15 @@ if [[ "$FIRST_KIND_CREATE" == "true" ]]; then
 else
   log "Kind cluster already exists: $CLUSTER_NAME"
   kind export kubeconfig --name "$CLUSTER_NAME"
+  # Clusters created before the NodePort kind-config map host 8088 to node port 10080 (Envoy on
+  # hostNetwork). Port mappings are fixed at creation, so keep hostNetwork there and say how to move.
+  if docker inspect -f '{{json .HostConfig.PortBindings}}' "${CLUSTER_NAME}-control-plane" 2>/dev/null \
+      | grep -q '"10080/tcp"'; then
+    KIND_LEGACY_HOSTNETWORK=true
+    log "WARNING: kind cluster $CLUSTER_NAME uses the old 8088->10080 mapping; keeping Envoy on hostNetwork."
+    log "WARNING: on kind >= v0.33 pods with NetworkPolicies cannot reach a hostNetwork gateway."
+    log "WARNING: recreate the cluster (kind delete cluster --name $CLUSTER_NAME) to use the Envoy NodePort."
+  fi
 fi
 
 install_gvisor_on_kind_node
@@ -808,6 +817,9 @@ fi
 step_begin platform_helm
 log "Applying Platform Helm chart from $CHART_PATH..."
 HELM_EXTRA_ARGS=()
+if [[ "${KIND_LEGACY_HOSTNETWORK:-false}" == "true" ]]; then
+  HELM_EXTRA_ARGS+=(--set "gateway.envoyProxy.hostNetwork=true")
+fi
 if [[ "${GVISOR_INSTALL:-true}" == "true" ]]; then
   export GVISOR_INSTALL_OPT_IN=true
   # Lets preflight see a RuntimeClass this release rendered on an earlier pass; otherwise it

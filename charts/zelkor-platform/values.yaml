@@ -711,6 +711,11 @@ security:
       suspiciousOnProbePlusError: true
   networkPolicies:
     enabled: false
+  # CE-21: agent pods get no DNS (dnsPolicy None + hostAliases from the host map). The platform
+  # writes the map; agents get it from the admission policy (K8s >= 1.36) or `zelkor deploy`.
+  dnsLockdown:
+    enabled: true
+    writerDeadlineSeconds: 900
   mTLS:
     enabled: false
   # Opt-in admission policy (needs Kyverno >= 1.12 in the cluster): Pods may only run Zelkor images
@@ -750,6 +755,11 @@ gateway:
     service:
       type: ''
       name: ''
+      # Fixed node ports for the Envoy dataplane Service (type NodePort or LoadBalancer only).
+      # 0 = let Kubernetes pick. Kind local profiles pin these to match kind-config.yaml.
+      nodePorts:
+        http: 0
+        https: 0
     resources:
       requests:
         cpu: 100m

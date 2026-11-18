@@ -59,7 +59,7 @@ Only need the gateway around agents you already run? `OPENAI_API_KEY=sk-... ./in
 What `./install.sh` does (you do not run these by hand):
 
 1. Checks Docker, kind, helm, and kubectl
-2. Creates kind cluster `zelkor` with host port `8088`
+2. Creates kind cluster `zelkor` with host port `8088` (mapped to the Envoy gateway's node port `30080`). A `zelkor` cluster created by an older `install.sh` keeps working but prints a warning; recreate it with `kind delete cluster --name zelkor` so agents with NetworkPolicies can reach the gateway on kind v0.33 and later
 3. Installs the gVisor runtime on the kind node for sandboxed code
 4. Deploys Envoy Gateway, Envoy AI Gateway, and the Zelkor platform Helm chart (`appVersion` / image tag `2.5.6`)
 5. Deploys the optional FinServe example agents by default
