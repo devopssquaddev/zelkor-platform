@@ -46,11 +46,31 @@ spec:
     metadata:
       annotations:
         checksum/ai-gateway-consumer: {{ include "zelkor-agent.consumerKeyChecksum" . | quote }}
+        {{- if eq (include "zelkor-agent.dnsLockdown" .) "inactive" }}
+        # CE-21: lockdown requested, but no host map to fill hostAliases; DNS stays on.
+        zelkor.io/dns-lockdown: inactive
+        {{- end }}
       labels:
         {{- include "zelkor-agent.selectorLabels" . | nindent 8 }}
         zelkor.io/workload-type: agent
         zelkor.io/datastores: {{ include "zelkor-agent.datastores" . }}
+        {{- with (include "zelkor-agent.platformReleaseName" .) }}
+        zelkor.io/platform-release: {{ . | quote }}
+        {{- end }}
+        {{- if eq (include "zelkor-agent.dnsLockdown" .) "true" }}
+        zelkor.io/dns-lockdown: "on"
+        {{- end }}
     spec:
+      {{- if eq (include "zelkor-agent.dnsLockdown" .) "true" }}
+      # CE-21: no DNS. Names resolve from /etc/hosts; nothing answers on 127.0.0.1:53.
+      dnsPolicy: None
+      dnsConfig:
+        nameservers: ["127.0.0.1"]
+      {{- with ((.Values.platform).hostAliases) }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

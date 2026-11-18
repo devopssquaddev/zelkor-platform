@@ -17,8 +17,8 @@ categories:
     files: [test_sidecar_egress, test_helm_agent_egress_scope]
   egress-dns:
     title: Egress via DNS (resolution and exfiltration over DNS)
-    s_ids: []
-    files: []
+    s_ids: [S-90]
+    files: [test_s90_dns_egress_live]
   admin-plane:
     title: Admin plane unreachable from the data plane
     s_ids: [S-08, S-10, S-11, S-87]

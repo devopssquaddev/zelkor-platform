@@ -109,6 +109,12 @@ zelkor verify desk --namespace agents
 
 `verify` lists the Zelkor images running in the release's pods and runs `cosign verify` and `cosign verify-attestation --type slsaprovenance1` on each digest, bound to the Zelkor release workflow identity. It exits non-zero if any check fails or no Zelkor image runs. Needs [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) on your PATH. See [Verify a Release](security/verify-release.md).
 
+```bash
+zelkor verify zelkor-platform --hosts
+```
+
+`--hosts` checks agents that run without DNS instead of image signatures, so it needs no cosign. It reports `FAIL` when a host-map entry no longer matches its Service, when a running agent pod carries other entries than the map, or when an agent's sidecar relays to an HTTP API the platform no longer has. Agents that still have DNS show as `WARN`. To fix pod entries, delete the pod (Kubernetes 1.36 and later) or run `zelkor deploy` again.
+
 ## Global flags
 
 | Flag | Purpose |

@@ -67,6 +67,13 @@ def test_categories_pass_fail_and_gap(tmp_path):
     assert [o.s_ids for o in report.other] == [["S-04"]]
 
 
+def test_s90_turns_egress_dns_pass(tmp_path):
+    junit = _junit(tmp_path, [("tests.test_s90_dns_egress_live", "test_s90_locked_agents_cannot_resolve_or_reach_dns",
+                               "passed")])
+    report = fcm.build(fcm.load_mapping(MAPPING), fcm.parse_junit(junit))
+    assert {c.key: c.status for c in report.categories}["egress-dns"] == "PASS"
+
+
 def test_error_counts_as_failure(tmp_path):
     junit = _junit(tmp_path, [("tests.test_s09_agent_egress", "a", "passed"),
                               ("tests.test_s09_agent_egress", "b", "error")])

@@ -18,6 +18,7 @@ spec:
   policyTypes:
     - Egress
   egress:
+    {{- if ne (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -27,6 +28,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:
@@ -67,6 +69,68 @@ spec:
           port: 3000
     {{- end }}
 {{- if .Values.aegra.enabled }}
+{{- if eq (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
+---
+# CE-21: the platform Aegra and Aegra-labelled pods that are not locked down keep DNS. A locked
+# agent with Valkey access matches aegra-egress too, so port 53 cannot live in that policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-aegra-dns-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: aegra
+    matchExpressions:
+      - key: zelkor.io/dns-lockdown
+        operator: NotIn
+        values: ["on"]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# CE-21: DNS only for agent pods that are NOT locked down (older agent charts, or lockdown
+# inactive because nothing could fill their hostAliases). Locked pods carry dns-lockdown=on.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $fullname }}-agent-dns-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      zelkor.io/workload-type: agent
+    matchExpressions:
+      - key: zelkor.io/dns-lockdown
+        operator: NotIn
+        values: ["on"]
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
 ---
 # Aegra runtimes (front door + workers) need Postgres + Valkey for the checkpointer.
 # Agent pods that state a narrower need (zelkor.io/datastores: none | postgres; sidecar runtimes)
@@ -89,6 +153,7 @@ spec:
   policyTypes:
     - Egress
   egress:
+    {{- if ne (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -98,6 +163,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+    {{- end }}
     - to:
         - podSelector:
             matchLabels:

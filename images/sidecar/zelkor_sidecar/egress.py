@@ -15,11 +15,13 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from .runs import RunContext, RunSlot
 from .tracing import Tracing, set_span_error
@@ -65,6 +67,64 @@ class EgressConfig:
             tool_allow_all=_truthy(os.getenv("ZELKOR_TOOL_ALLOW_ALL", "false")),
             http_apis=parse_http_apis(os.getenv("ZELKOR_API_UPSTREAMS", "")),
         )
+
+
+class UpstreamProbe:
+    """CE-21: readiness needs the gateway upstreams reachable.
+
+    The pod runs without DNS; names resolve from /etc/hosts (hostAliases). A recreated Service
+    leaves a stale entry, so the sidecar says which upstream it cannot reach instead of failing
+    every run silently. One ERROR per transition to unreachable, one INFO on recovery; results
+    are cached so a probe storm does not open a connection per request.
+    """
+
+    def __init__(self, cfg: "EgressConfig", *, cache_s: float = 10.0, timeout_s: float = 2.0,
+                 connect=None, resolve=None, clock=time.monotonic) -> None:
+        self.targets = {name: url for name, url in (("llm", cfg.llm_upstream), ("mcp", cfg.mcp_upstream)) if url}
+        self.cache_s, self.timeout_s, self.clock = cache_s, timeout_s, clock
+        self._connect = connect or self._tcp_connect
+        self._resolve = resolve or self._getaddrinfo
+        self._checked_at = -1e9
+        self._ok = True
+        self._down: set = set()
+
+    @staticmethod
+    async def _getaddrinfo(host: str, port: int) -> str:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        return infos[0][4][0] if infos else ""
+
+    async def _tcp_connect(self, ip: str, port: int) -> None:
+        _reader, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), self.timeout_s)
+        writer.close()
+
+    async def _reachable(self, name: str, url: str) -> bool:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        ip = ""
+        try:
+            ip = await self._resolve(host, port)
+            await self._connect(ip, port)
+        except Exception as exc:  # noqa: BLE001 - any failure means not reachable
+            if name not in self._down:
+                self._down.add(name)
+                logger.error("upstream unreachable", extra={
+                    "event": "upstream_unreachable", "upstream": name, "host": host, "ip": ip or "unresolved",
+                    "exc_type": type(exc).__name__,
+                    "hint": "host entries may be stale: run zelkor deploy (or delete the pod on K8s >= 1.36)"})
+            return False
+        if name in self._down:
+            self._down.discard(name)
+            logger.info("upstream reachable again", extra={"event": "upstream_reachable", "upstream": name})
+        return True
+
+    async def check(self) -> bool:
+        now = self.clock()
+        if now - self._checked_at < self.cache_s:
+            return self._ok
+        results = [await self._reachable(n, u) for n, u in self.targets.items()]
+        self._ok, self._checked_at = all(results), now
+        return self._ok
 
 
 def parse_http_apis(raw: str) -> Dict[str, str]:
