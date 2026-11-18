@@ -11,3 +11,5 @@ langgraph-sdk==0.4.2
 # NeMo OTLP route unit tests (images/guardrails pins)
 opentelemetry-sdk==1.45.1
 opentelemetry-exporter-otlp-proto-http==1.45.1
+# S-80 L1 northbound A2A (images/sidecar pin)
+a2a-sdk[http-server]==1.3.0

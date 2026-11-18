@@ -228,14 +228,16 @@ jobs:
           if-no-files-found: error
 
   evidence:
-    # CE-19e: the S-gate runs on a lab before tagging; its JUnit is committed at
-    # release-evidence/<tag>/s-gate.junit.xml. Missing evidence publishes an all-GAP matrix.
+    # CE-19e: the S-gate runs on a lab before tagging (scripts/release/s_gate.py); its JUnit is
+    # committed at release-evidence/<tag>/s-gate.junit.xml. Missing or unbound evidence, or a FAIL,
+    # fails the job; the matrix is still written for the step summary.
     needs: [plan]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0  # carry-over check diffs the tested commit against the tag
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
@@ -244,9 +246,12 @@ jobs:
       - name: Fail-closed matrix from the S-gate run
         run: |
           mkdir -p dist
+          rc=0
           python3 scripts/release/fail_closed_matrix.py --tag "${GITHUB_REF_NAME}" \
-            --junit "release-evidence/${GITHUB_REF_NAME}/s-gate.junit.xml" --out dist/fail-closed-matrix.md
+            --junit "release-evidence/${GITHUB_REF_NAME}/s-gate.junit.xml" --out dist/fail-closed-matrix.md \
+            --require-evidence --repo . || rc=$?
           cat dist/fail-closed-matrix.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fail-closed-matrix

@@ -1,33 +1,57 @@
 # CE-19e: which S-gate tests prove which fail-closed promise. Read by fail_closed_matrix.py.
 # A test belongs to a category by S-id (parsed from its file or test name, e.g. test_s09_*) or by
-# file stem. A category with no passing test is a GAP in the published matrix, never a PASS.
+# file stem. oracle_s_ids are the tests that can see the failure: a category is PASS only when every
+# oracle S-id has a passing case and none of its cases skipped. Any failure is FAIL. Everything else
+# (no oracle listed, an oracle absent or skipped) is a GAP in the published matrix, never a PASS.
 # Unmapped S-ids are listed under "Not mapped". S-ids are the security test ids in tests/test_sNN_*.py.
 categories:
   auth:
     title: Auth (north-south tokens, tenant identity)
+    oracle_s_ids: [S-01, S-02, S-80]
     s_ids: [S-01, S-02, S-19, S-24, S-74, S-80, S-88]
     files: [test_tenant_auth, test_no_dev_auth, test_aegra_auth_inject, test_uat_caller_auth_live]
   guardrails:
     title: Guardrails (no provider answer that skipped the rails)
+    oracle_s_ids: [S-03, S-12, S-83]
     s_ids: [S-03, S-12, S-13, S-78, S-81, S-83]
     files: [test_uat12_self_check]
   egress:
     title: Egress (agent, runtime and sandbox network reach)
+    oracle_s_ids: [S-09, S-75]
     s_ids: [S-09, S-27, S-28, S-29, S-75, S-86]
     files: [test_sidecar_egress, test_helm_agent_egress_scope]
   egress-dns:
     title: Egress via DNS (resolution and exfiltration over DNS)
+    oracle_s_ids: [S-90]
     s_ids: [S-90]
     files: [test_s90_dns_egress_live]
   admin-plane:
     title: Admin plane unreachable from the data plane
+    oracle_s_ids: [S-08, S-10, S-11]
     s_ids: [S-08, S-10, S-11, S-87]
     files: [test_mcp_envoy_bypass, test_ingress]
   provider-keys:
     title: Provider keys unreadable by tenants and agents
-    s_ids: [S-14, S-16, S-18, S-75, S-82, S-86]
+    oracle_s_ids: [S-14, S-16]
+    s_ids: [S-14, S-16, S-18, S-75, S-86]
     files: []
   component-down:
     title: Component down fails closed (guardrails, sandbox, datastore)
+    oracle_s_ids: [S-03, S-25]
     s_ids: [S-03, S-25]
     files: [test_mcp_postgres_fail_closed, test_uat_runtime_resilience]
+  tenant-data:
+    title: Tenant data (SQL, vector and object reads stay in the caller's tenant)
+    oracle_s_ids: [S-04, S-05, S-06, S-84]
+    s_ids: [S-04, S-05, S-06, S-19, S-26, S-84, S-89]
+    files: [test_mcp_tenant, test_mcp_postgres, test_mcp_qdrant]
+  sandbox:
+    title: Sandbox (code runs only in the gVisor worker, behind its token)
+    oracle_s_ids: [S-07, S-08, S-25]
+    s_ids: [S-07, S-08, S-25, S-85]
+    files: [test_mcp_sandbox, test_sandbox_worker_token, test_runtime_class]
+  tool-and-rate-limits:
+    title: Tool policy and rate limits (deny list, per-tool and global caps)
+    oracle_s_ids: [S-70, S-71, S-72]
+    s_ids: [S-70, S-71, S-72, S-73, S-79]
+    files: [test_mcp_tool_policy_live]

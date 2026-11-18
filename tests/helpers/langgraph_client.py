@@ -33,7 +33,7 @@ def _request_headers(*, tenant_id: str, graph_id: str | None = None) -> dict[str
                     f"No bearer for tenant {tenant_id!r} in ZELKOR_TEST_TOKENS"
                 )
         else:
-            raise RuntimeError(
+            pytest.skip(
                 "Set AEGRA_AUTH_TOKEN or ZELKOR_TEST_TOKENS / ZELKOR_TEST_SIGNING_RELEASE for live Aegra tests"
             )
     headers = {
