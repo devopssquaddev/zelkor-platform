@@ -1773,3 +1773,16 @@ Usage: include "zelkor-platform.dataToolEgress" (dict "egressTo" list "component
 {{- end -}}
 {{- toYaml $rules -}}
 {{- end }}
+
+{{/*
+CE-21 agent DNS lockdown, nil-safe: `helm upgrade --reuse-values` from a release that predates the
+key carries no security.dnsLockdown, and the lockdown must still default on.
+*/}}
+{{- define "zelkor-platform.dnsLockdownEnabled" -}}
+{{- $dl := (.Values.security | default dict).dnsLockdown | default dict -}}
+{{- if hasKey $dl "enabled" -}}{{- ternary "true" "false" (eq (toString $dl.enabled) "true") -}}{{- else -}}true{{- end -}}
+{{- end }}
+
+{{- define "zelkor-platform.dnsLockdownWriterDeadline" -}}
+{{- (((.Values.security | default dict).dnsLockdown | default dict).writerDeadlineSeconds | default 900) | int -}}
+{{- end }}

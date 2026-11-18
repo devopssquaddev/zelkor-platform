@@ -2,7 +2,7 @@
 {{- /* CE-21: agent pods run without DNS. This writes the host map (one key per hostname, value =
      ClusterIP) that fills their hostAliases: the admission policy below on K8s >= 1.36, or
      `zelkor deploy` on older clusters. Plain Job, not a hook: Helm must not wait on it. */ -}}
-{{- if .Values.security.dnsLockdown.enabled }}
+{{- if eq (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
 {{- $fullname := include "zelkor-platform.fullname" . }}
 {{- $ns := .Release.Namespace }}
 {{- $cm := printf "%s-agent-hosts" $fullname }}
@@ -108,7 +108,7 @@ metadata:
 spec:
   ttlSecondsAfterFinished: 600
   backoffLimit: 10
-  activeDeadlineSeconds: {{ int .Values.security.dnsLockdown.writerDeadlineSeconds }}
+  activeDeadlineSeconds: {{ include "zelkor-platform.dnsLockdownWriterDeadline" . }}
   template:
     metadata:
       labels:
@@ -135,7 +135,7 @@ spec:
             - name: AGENT_HOSTS_RELEASE
               value: {{ .Release.Name | quote }}
             - name: AGENT_HOSTS_DEADLINE_S
-              value: {{ int .Values.security.dnsLockdown.writerDeadlineSeconds | quote }}
+              value: {{ include "zelkor-platform.dnsLockdownWriterDeadline" . | quote }}
             {{- include "zelkor-platform.logEnv" (dict "root" . "name" "zelkor-agent-hosts") | nindent 12 }}
           resources:
             requests: {cpu: 10m, memory: 32Mi}

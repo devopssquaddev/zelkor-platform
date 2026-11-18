@@ -18,7 +18,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    {{- if not .Values.security.dnsLockdown.enabled }}
+    {{- if ne (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
     - to:
         - namespaceSelector:
             matchLabels:
@@ -69,7 +69,7 @@ spec:
           port: 3000
     {{- end }}
 {{- if .Values.aegra.enabled }}
-{{- if .Values.security.dnsLockdown.enabled }}
+{{- if eq (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
 ---
 # CE-21: the platform Aegra and Aegra-labelled pods that are not locked down keep DNS. A locked
 # agent with Valkey access matches aegra-egress too, so port 53 cannot live in that policy.
@@ -153,7 +153,7 @@ spec:
   policyTypes:
     - Egress
   egress:
-    {{- if not .Values.security.dnsLockdown.enabled }}
+    {{- if ne (include "zelkor-platform.dnsLockdownEnabled" .) "true" }}
     - to:
         - namespaceSelector:
             matchLabels:

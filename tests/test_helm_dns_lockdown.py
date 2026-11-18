@@ -112,3 +112,10 @@ def test_lockdown_off_keeps_dns_and_renders_no_writer():
     assert not [j for j in _kind(docs, "Job") if "agent-hosts" in j["metadata"]["name"]]
     assert not _kind(docs, "MutatingAdmissionPolicy")
     assert _allows_dns(_agent_egress(docs))
+
+
+def test_reuse_values_upgrade_without_the_key_still_locks_down():
+    """`helm upgrade --reuse-values` from a pre-CE-21 release carries no security.dnsLockdown."""
+    docs = _docs("--set", "security.dnsLockdown=null")
+    assert _writer_env(docs)["AGENT_HOSTS_DEADLINE_S"] == "900"
+    assert not _allows_dns(_agent_egress(docs))
