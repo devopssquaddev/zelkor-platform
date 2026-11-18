@@ -241,3 +241,16 @@ def test_gate_scripts_pass_explicit_kube_context():
             if re.search(r"(^|[\s|;(])(kubectl|helm)\s", code) and not code.lstrip().startswith(("kube()", "hlm()")):
                 raise AssertionError(f"{name}: bare kubectl/helm: {line}")
     assert '"kubectl", "--context", context' in (REL / "gateway_memory.py").read_text()
+
+
+def test_gate_namespace_is_where_install_sh_installs():
+    """install.sh runs `helm upgrade --install` without -n, so a kind install lands in `default`;
+    the upgrade gate must read history and roll back there (it looked in `zelkor` and failed)."""
+    root = Path(__file__).resolve().parents[1]
+    engine = (root / "scripts" / "install-engine.sh").read_text()
+    install_lines = [ln for ln in engine.splitlines() if "helm upgrade --install \"$HELM_RELEASE_NAME\"" in ln]
+    assert install_lines and not any(" -n " in ln or "--namespace" in ln for ln in install_lines)
+    out = subprocess.run(
+        ["bash", "-c", f'unset ZELKOR_NAMESPACE; source "{root}/scripts/release/lib-gates.sh"; echo "$GATE_NS"'],
+        capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "default"

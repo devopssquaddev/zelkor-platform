@@ -28,8 +28,9 @@ install_platform "$prev_dir"
 deploy_mock_provider
 model="$(th upgrade_rollback model)"
 loadgen --model "$model" --wait-ready "$(th upgrade_rollback ready_timeout_seconds)"
-rev_prev="$(hlm -n "$GATE_NS" history "$GATE_RELEASE" -o json \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["revision"])')"
+history="$(hlm -n "$GATE_NS" history "$GATE_RELEASE" -o json)" \
+  || { log "helm release ${GATE_RELEASE} not found in namespace ${GATE_NS}"; exit 1; }
+rev_prev="$(python3 -c 'import json,sys; print(json.load(sys.stdin)[-1]["revision"])' <<<"$history")"
 settle="$(th upgrade_rollback settle_seconds)"
 
 loadgen --model "$model" --rps "$(th upgrade_rollback rps)" --duration 86400 --until-file "$stop" \
