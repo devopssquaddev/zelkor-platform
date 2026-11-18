@@ -7,6 +7,8 @@ lets the request through (and logs) when the answer is unclear or slow.
 """
 from __future__ import annotations
 
+import re
+
 import yaml
 
 from tests.test_helm_ai_gateway_providers import _docs, _helm, _named
@@ -62,7 +64,10 @@ def test_disabled_self_check_omits_both_rails():
 
 def test_invalid_mode_fails_render():
     err = _helm(*OLLAMA, "--set", "workspace.policies.nemo.selfCheck.input=shadow", check=False)
-    assert "selfCheck.input" in err and '"log", "block", "none"' in err
+    # Helm 3 prints `selfCheck.input` and "log", "block", "none"; Helm 4 prints the JSON pointer
+    # `/selfCheck/input` and 'log', 'block', 'none'. Assert the field and the allowed modes only.
+    assert re.search(r"selfCheck[./]input", err), err
+    assert all(re.search(rf"[\"']{mode}[\"']", err) for mode in ("log", "block", "none")), err
 
 
 def test_refusal_message_is_the_configured_one():
@@ -90,4 +95,4 @@ def test_2_5_4_timeout_default_and_on_unavailable_wiring():
 
 def test_invalid_on_unavailable_fails_render():
     err = _helm(*OLLAMA, "--set", "workspace.policies.nemo.selfCheck.onUnavailable=maybe", check=False)
-    assert "selfCheck.onUnavailable" in err
+    assert re.search(r"selfCheck[./]onUnavailable", err), err
