@@ -40,7 +40,7 @@ def build_store(store_mode: str | None = None):
 async def serve() -> None:
     import uvicorn
 
-    from .egress import Egress, EgressConfig
+    from .egress import Egress, EgressConfig, UpstreamProbe
     from .inbound import Inbound, graph_id_from_env
     from .runs import RunExecutor, RunSlot
     from .tracing import Tracing
@@ -55,13 +55,20 @@ async def serve() -> None:
     tracing = Tracing.from_env()
     slot = RunSlot()
     executor = RunExecutor(store, bridge, slot, tracing, runtime=runtime)
-    inbound = Inbound(store, executor, graph_id=graph_id_from_env(), ready=bridge.ready)
+    egress_cfg = EgressConfig.from_env()
+    upstreams = UpstreamProbe(egress_cfg)
+
+    async def ready() -> bool:
+        # CE-21: not ready while a gateway upstream is unreachable (stale host entries).
+        return await bridge.ready() and await upstreams.check()
+
+    inbound = Inbound(store, executor, graph_id=graph_id_from_env(), ready=ready)
     apps = [inbound.app()]
     if os.getenv("ZELKOR_A2A_ENABLED", "false").strip().lower() in ("1", "true", "yes"):
         from .a2a_server import mount_a2a
 
         mount_a2a(apps[0], inbound)
-    egress = Egress(slot, tracing, EgressConfig.from_env())
+    egress = Egress(slot, tracing, egress_cfg)
     log_config = None  # zelkor_logging owns the root logger
     servers = [
         uvicorn.Server(uvicorn.Config(apps[0], host="0.0.0.0", port=int(os.getenv("ZELKOR_SIDECAR_PORT", "8000")),
