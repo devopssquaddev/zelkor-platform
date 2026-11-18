@@ -222,7 +222,8 @@ def test_envoyproxy_local_overlay_keeps_kind_nodeselector():
     svc = proxies[0]["spec"]["provider"]["kubernetes"]["envoyService"]
     assert svc["type"] == "NodePort"
     ports = {p["port"]: p["nodePort"] for p in svc["patch"]["value"]["spec"]["ports"]}
-    assert ports[80] == 30080
+    # TLS is off locally: no HTTPS listener, so no 443 entry (an unnamed extra port is invalid).
+    assert ports == {80: 30080}
 
 
 def test_local_profiles_match_kind_port_mappings():
