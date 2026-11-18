@@ -608,11 +608,11 @@
                     },
                     "userName": {
                       "type": "string",
-                      "description": "Value for platform.telemetry.langfuse.init.userName."
+                      "description": "Deprecated: no effect. The Langfuse admin login is platform.telemetry.langfuse.admin."
                     },
                     "userPassword": {
                       "type": "string",
-                      "description": "Value for platform.telemetry.langfuse.init.userPassword."
+                      "description": "Deprecated: no effect. The Langfuse admin login is platform.telemetry.langfuse.admin."
                     }
                   },
                   "additionalProperties": false
@@ -1257,7 +1257,7 @@
                 },
                 "complianceRefusal": {
                   "type": "string",
-                  "description": "Value for workspace.policies.nemo.complianceRefusal."
+                  "description": "Deprecated: no effect. Put the refusal text of a custom rail in extraColang."
                 },
                 "selfCheck": {
                   "type": "object",
@@ -2542,7 +2542,7 @@
                 },
                 "environments": {
                   "type": "array",
-                  "description": "List at workspace.tools.sandboxMCP.environments.",
+                  "description": "Deprecated: no effect. The worker image defines the Python environment.",
                   "items": {
                     "type": "string",
                     "description": "Value for workspace.tools.sandboxMCP.environments.0."
@@ -2568,7 +2568,7 @@
                 },
                 "strictIsolation": {
                   "type": "boolean",
-                  "description": "Value for workspace.tools.sandboxMCP.strictIsolation."
+                  "description": "Deprecated: no effect. Every sandbox call already runs in a gVisor worker behind the worker token."
                 },
                 "workerImage": {
                   "type": "object",
