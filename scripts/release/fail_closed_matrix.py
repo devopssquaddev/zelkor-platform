@@ -29,6 +29,7 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_MAPPING = HERE / "fail_closed_categories.yaml"
+S_GATE = HERE / "s_gate.yaml"
 SID_RE = re.compile(r"S-\d{2}")
 NAME_SID_RE = re.compile(r"(?:^|[._])test_s(\d{2})(?=_|$)", re.I)
 OUTCOMES = ("passed", "failed", "skipped")
@@ -129,11 +130,22 @@ def load_mapping(path: Path = DEFAULT_MAPPING) -> dict:
     return yaml.safe_load(path.read_text())["categories"]
 
 
-def build(mapping: dict, cases: list[Case]) -> Report:
+def file_s_ids(path: Path = S_GATE) -> dict[str, set[str]]:
+    """test file stem -> the S-ids s_gate.yaml proves with it (for cases whose names carry no S-id)."""
+    if not path.is_file():
+        return {}
+    out: dict[str, set[str]] = {}
+    for sid, spec in (yaml.safe_load(path.read_text()).get("s_ids") or {}).items():
+        for f in spec.get("files") or []:
+            out.setdefault(Path(f).stem, set()).add(sid)
+    return out
+
+
+def build(mapping: dict, cases: list[Case], by_file: dict[str, set[str]] | None = None) -> Report:
     rows = {k: Row(k, v["title"], frozenset(v.get("oracle_s_ids") or [])) for k, v in mapping.items()}
     other: dict[str, Other] = {}
     for case in cases:
-        ids = s_ids(case.classname, case.name)
+        ids = s_ids(case.classname, case.name) or set((by_file or {}).get(case.module, set()))
         hit = False
         for key, cat in mapping.items():
             if ids & set(cat.get("s_ids") or []) or case.module in (cat.get("files") or []):
@@ -214,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     mapping = load_mapping(Path(args.mapping))
     junit = Path(args.junit)
     if junit.is_file():
-        report = build(mapping, parse_junit(junit))
+        report = build(mapping, parse_junit(junit), file_s_ids())
         report.properties = parse_properties(junit)
     else:
         report = Report([Row(k, v["title"], frozenset(v.get("oracle_s_ids") or [])) for k, v in mapping.items()],
