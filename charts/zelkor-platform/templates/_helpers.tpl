@@ -412,7 +412,9 @@ vendor: langfuse | postgres | qdrant | valkey | envoy | clickhouse | seaweedfs
 {{- else if eq $v "valkey" -}}
 {{- if eq $level "DEBUG" }}verbose{{ else if eq $level "INFO" }}notice{{ else }}warning{{ end -}}
 {{- else if eq $v "envoy" -}}
-{{- if eq $level "WARNING" }}warn{{ else if eq $level "CRITICAL" }}error{{ else }}{{ $level | lower }}{{ end -}}
+{{- /* Envoy debug dumps request headers (tenant JWTs, consumer and provider keys), so DEBUG stops at
+info for Envoy (P11). Debug a proxy with an EnvoyProxy override outside the chart. */ -}}
+{{- if eq $level "DEBUG" }}info{{ else if eq $level "WARNING" }}warn{{ else if eq $level "CRITICAL" }}error{{ else }}{{ $level | lower }}{{ end -}}
 {{- else if eq $v "clickhouse" -}}
 {{- if eq $level "DEBUG" }}debug{{ else if eq $level "INFO" }}information{{ else if eq $level "WARNING" }}warning{{ else if eq $level "ERROR" }}error{{ else }}fatal{{ end -}}
 {{- else if eq $v "seaweedfs" -}}

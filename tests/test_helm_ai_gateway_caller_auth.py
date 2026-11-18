@@ -210,3 +210,16 @@ def test_nemo_does_not_retry_gateway_errors():
     assert {m["type"] for m in models} == {"main", "self_check_input", "self_check_output"}
     for m in models:
         assert m["parameters"]["max_retries"] == 0, m["type"]
+
+
+def _envoy_log_level(*extra: str) -> str:
+    proxy = _named(_render(*extra), "EnvoyProxy", "zelkor-platform-envoy-proxy-config")
+    return proxy["spec"]["logging"]["level"]["default"]
+
+
+def test_platform_debug_overlay_keeps_envoy_at_info():
+    """Envoy debug dumps request headers (tenant JWT, consumer and provider keys): a platform-wide
+    DEBUG overlay must not switch it on (P11 / S-14)."""
+    assert _envoy_log_level() == "info"
+    assert _envoy_log_level("--set", "platform.telemetry.level=DEBUG") == "info"
+    assert _envoy_log_level("--set", "platform.telemetry.level=WARNING") == "warn"
