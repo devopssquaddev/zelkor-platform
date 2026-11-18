@@ -1,0 +1,45 @@
+# Offline chart render tests (helm template / lint) on every supported Helm major.
+# No cluster, no secrets. Drop the v3 row when Helm 3 leaves support.
+name: chart-render
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+      - "profiles/**"
+      - "kind-config.yaml"
+      - "tests/test_helm_*.py"
+      - "tests/helpers/**"
+      - ".github/workflows/chart-render.yml"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+      - "profiles/**"
+      - "tests/test_helm_*.py"
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        helm: [v3.16.4, v4.3.2]
+    name: render (helm ${{ matrix.helm }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5.1.0
+        with:
+          version: ${{ matrix.helm }}
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Chart render tests
+        run: pytest tests/test_helm_*.py -q

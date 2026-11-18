@@ -22,7 +22,7 @@ Published north-south hosts are `gateway.hosts.agents` and `gateway.hosts.langfu
 
 ## Prerequisites
 - Kubernetes v1.28+ cluster.
-- `kubectl` and `helm` v3.10+ installed.
+- `kubectl` and `helm` v3.16+ or v4 installed.
 - One LLM API key (e.g., OpenAI, Anthropic).
 
 ## Install using the quickstart script
