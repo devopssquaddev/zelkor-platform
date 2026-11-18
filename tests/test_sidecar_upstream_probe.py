@@ -78,3 +78,18 @@ def test_unresolvable_name_reports_unresolved(caplog):
     with caplog.at_level(logging.ERROR, logger="zelkor-sidecar"):
         assert asyncio.run(probe.check()) is False
     assert {r.ip for r in caplog.records} == {"unresolved"}
+
+
+def test_json_log_line_carries_upstream_ip_and_hint(caplog):
+    sys.path.insert(0, str(ROOT / "images" / "common"))
+    import json as _json
+    from zelkor_logging import JsonFormatter
+
+    net, now = Net(), [0.0]
+    net.down.add(80)
+    with caplog.at_level(logging.ERROR, logger="zelkor-sidecar"):
+        asyncio.run(_probe(net, now).check())
+    line = _json.loads(JsonFormatter().format(caplog.records[0]))
+    assert line["event"] == "upstream_unreachable"
+    assert line["upstream"] == "llm" and line["ip"] == "10.43.175.236" and "zelkor deploy" in line["hint"]
+

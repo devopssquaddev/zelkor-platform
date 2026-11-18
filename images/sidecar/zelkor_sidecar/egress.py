@@ -110,7 +110,7 @@ class UpstreamProbe:
                 self._down.add(name)
                 logger.error("upstream unreachable", extra={
                     "event": "upstream_unreachable", "upstream": name, "host": host, "ip": ip or "unresolved",
-                    "error": type(exc).__name__,
+                    "exc_type": type(exc).__name__,
                     "hint": "host entries may be stale: run zelkor deploy (or delete the pod on K8s >= 1.36)"})
             return False
         if name in self._down:
