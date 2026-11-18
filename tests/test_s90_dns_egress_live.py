@@ -81,10 +81,12 @@ def _locked_pods() -> list[dict]:
 
 
 def _gateway_host(pod: dict) -> str:
-    for c in pod["spec"]["containers"]:
-        for env in c.get("env") or []:
-            if env.get("name") == "ZELKOR_LLM_UPSTREAM":
-                return str(env.get("value") or "").split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    """Gateway host the pod calls: sidecar runtimes set ZELKOR_LLM_UPSTREAM, Aegra agents OPENAI_BASE_URL."""
+    env = {e.get("name"): str(e.get("value") or "") for c in pod["spec"]["containers"] for e in c.get("env") or []}
+    for key in ("ZELKOR_LLM_UPSTREAM", "OPENAI_BASE_URL", "MCP_URL"):
+        url = env.get(key, "")
+        if "//" in url:
+            return url.split("//", 1)[1].split("/", 1)[0].split(":", 1)[0]
     return ""
 
 
@@ -112,4 +114,6 @@ def test_s90_locked_agents_cannot_resolve_or_reach_dns():
         assert not out["random_resolves"] and not out["github_resolves"], f"{where}: outside names resolve: {out}"
         for key in ("udp_a", "udp_txt", "tcp_a"):
             assert not out[key]["answered"], f"{where}: kube-dns answered {key}: {out[key]}"
-        assert out["gateway"], f"{where}: positive control failed, the gateway name does not resolve from /etc/hosts"
+        host = _gateway_host(pod)
+        assert host, f"{where}: no gateway URL in the pod env; the positive control cannot run"
+        assert out["gateway"], f"{where}: positive control failed, {host} does not resolve from /etc/hosts"
