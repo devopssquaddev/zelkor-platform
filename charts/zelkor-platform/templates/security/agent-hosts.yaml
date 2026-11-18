@@ -1,0 +1,198 @@
+{{- include "zelkor-platform.compile" . -}}
+{{- /* CE-21: agent pods run without DNS. This writes the host map (one key per hostname, value =
+     ClusterIP) that fills their hostAliases: the admission policy below on K8s >= 1.36, or
+     `zelkor deploy` on older clusters. Plain Job, not a hook: Helm must not wait on it. */ -}}
+{{- if .Values.security.dnsLockdown.enabled }}
+{{- $fullname := include "zelkor-platform.fullname" . }}
+{{- $ns := .Release.Namespace }}
+{{- $cm := printf "%s-agent-hosts" $fullname }}
+{{- $dataplane := include "zelkor-platform.envoyDataplaneHost" . | trim }}
+{{- $dpNs := "" }}
+{{- if $dataplane }}{{- $dpNs = index (splitList "." $dataplane) 1 }}{{- end }}
+{{- $services := list (printf "%s-ai-gateway" $fullname) (printf "%s-mcp" $fullname) (printf "%s-otlp" $fullname) (printf "%s-postgresql" $fullname) (printf "%s-langfuse" $fullname) (printf "%s-valkey" $fullname) }}
+{{- range (.Values.__httpApis | default "[]" | fromJsonArray) }}
+{{- $services = append $services (printf "%s-api-%s" $fullname .name) }}
+{{- end }}
+{{- $required := list }}
+{{- if and .Values.aiGateway.enabled .Values.aiGateway.inClusterService.enabled $dataplane }}
+{{- $required = append $required (printf "%s-ai-gateway" $fullname) }}
+{{- end }}
+{{- if and (eq (include "zelkor-platform.mcpMcprouteEnabled" .) "true") $dataplane }}
+{{- $required = append $required (printf "%s-mcp" $fullname) }}
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $fullname }}-agent-hosts
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-agent-hosts
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [{{ $cm | quote }}]
+    verbs: [get, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-agent-hosts
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-agent-hosts
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-agent-hosts
+    namespace: {{ $ns }}
+{{- if and $dpNs (ne $dpNs $ns) }}
+---
+# Read the Envoy dataplane Service that the gateway ExternalNames point at.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-agent-hosts
+  namespace: {{ $dpNs }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-agent-hosts
+  namespace: {{ $dpNs }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-agent-hosts
+subjects:
+  - kind: ServiceAccount
+    name: {{ $fullname }}-agent-hosts
+    namespace: {{ $ns }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Per revision: a Job's pod template is immutable, so a fixed name would break `helm upgrade`.
+  name: {{ $fullname }}-agent-hosts-{{ .Release.Revision }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+    app.kubernetes.io/component: agent-hosts
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 10
+  activeDeadlineSeconds: {{ int .Values.security.dnsLockdown.writerDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "zelkor-platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: agent-hosts
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ $fullname }}-agent-hosts
+      {{- include "zelkor-platform.imagePullSecrets" . | nindent 6 }}
+      containers:
+        - name: writer
+          image: {{ include "zelkor-platform.image" .Values.mcp.image | quote }}
+          imagePullPolicy: {{ include "zelkor-platform.imagePullPolicy" (dict "root" . "image" .Values.mcp.image) }}
+          command: ["python", "/app/mcp/ops/agent_hosts.py"]
+          env:
+            - name: AGENT_HOSTS_SERVICES
+              value: {{ join " " $services | quote }}
+            - name: AGENT_HOSTS_REQUIRED
+              value: {{ join " " $required | quote }}
+            - name: AGENT_HOSTS_NAMESPACE
+              value: {{ $ns | quote }}
+            - name: AGENT_HOSTS_CONFIGMAP
+              value: {{ $cm | quote }}
+            - name: AGENT_HOSTS_RELEASE
+              value: {{ .Release.Name | quote }}
+            - name: AGENT_HOSTS_DEADLINE_S
+              value: {{ int .Values.security.dnsLockdown.writerDeadlineSeconds | quote }}
+            {{- include "zelkor-platform.logEnv" (dict "root" . "name" "zelkor-agent-hosts") | nindent 12 }}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+{{- if .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy" }}
+---
+# K8s >= 1.36: every new agent pod of this platform gets no DNS and the current host map.
+# One JSONPatch per entry: a CEL-built list of objects panics the 1.36.4 API server.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: {{ printf "%s-%s-agent-no-dns" $fullname $ns | trunc 253 }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+spec:
+  paramKind:
+    apiVersion: v1
+    kind: ConfigMap
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+    objectSelector:
+      matchLabels:
+        zelkor.io/platform-release: {{ .Release.Name | quote }}
+      matchExpressions:
+        - key: zelkor.io/workload-type
+          operator: In
+          values: [agent, app]
+  failurePolicy: Fail
+  reinvocationPolicy: IfNeeded
+  mutations:
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: >
+          [
+            JSONPatch{op: "add", path: "/spec/dnsPolicy", value: "None"},
+            JSONPatch{op: "add", path: "/spec/dnsConfig",
+              value: Object.spec.dnsConfig{nameservers: ["127.0.0.1"]}},
+            JSONPatch{op: "add", path: "/spec/hostAliases", value: []}
+          ] + params.data.map(h, JSONPatch{op: "add", path: "/spec/hostAliases/-",
+                value: Object.spec.hostAliases{ip: params.data[h], hostnames: [h]}})
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: {{ printf "%s-%s-agent-no-dns" $fullname $ns | trunc 253 }}
+  labels:
+    {{- include "zelkor-platform.labels" (dict "root" . "intent" "security.dnsLockdown") | nindent 4 }}
+spec:
+  policyName: {{ printf "%s-%s-agent-no-dns" $fullname $ns | trunc 253 }}
+  paramRef:
+    name: {{ $cm }}
+    namespace: {{ $ns }}
+    # No map yet: refuse the pod rather than start it with DNS. Its ReplicaSet retries.
+    parameterNotFoundAction: Deny
+{{- end }}
+{{- end }}

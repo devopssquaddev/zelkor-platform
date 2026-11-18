@@ -18,6 +18,7 @@ seaweedfs.enabled:                               true, false
 highAvailability.enabled:                        false, true
 gateway.tls.enabled:                             false, true
 security.networkPolicies.enabled:                false, true
+security.dnsLockdown.enabled:                    true, false
 security.imageVerification.enabled:              false, true
 security.sandbox.enabled:                        true, false
 security.sandbox.provisioning.mode:              auto, daemonset
@@ -46,7 +47,7 @@ workload.agents.graphModules.enabled:            false, true
 workload.agents.mcpInject.enabled:               false, true
 
 # Isolation promises interact: cover every 3-way combination of these.
-{ @gateway, security.networkPolicies.enabled, security.sandbox.enabled, workspace.tools.enabled, workload.agents.enabled } @ 3
+{ @gateway, security.networkPolicies.enabled, security.dnsLockdown.enabled, security.sandbox.enabled, workspace.tools.enabled, workload.agents.enabled } @ 3
 
 # templates/security/networkpolicies.yaml fails: NetworkPolicies need agents or tools to enforce anything
 # (full profile; perimeter turns them on itself and wrapped agents bring their own).
