@@ -235,6 +235,17 @@ def kind_node_cidrs(env: Env, *, runner: Optional[RunFn] = None) -> list[str]:
     return sorted(cidrs)
 
 
+def envoy_host_network(env: Env, gateway_namespace: str, *, runner: Optional[RunFn] = None) -> bool:
+    """True when the platform's Envoy dataplane pods run hostNetwork (legacy kind clusters)."""
+    out = _run(
+        kube_argv(env, "get", "pods", "-A", "-l",
+                  f"gateway.envoyproxy.io/owning-gateway-namespace={gateway_namespace}",
+                  "-o", "jsonpath={.items[*].spec.hostNetwork}"),
+        runner=runner, check=False, timeout=KUBE_RUN_TIMEOUT_SEC,
+    )
+    return "true" in (getattr(out, "stdout", "") or "").split()
+
+
 def _np_values(info: "PlatformInfo") -> dict[str, Any]:
     np: dict[str, Any] = {"enabled": info.network_policies_enabled}
     if info.gateway_host_cidrs:
@@ -305,7 +316,10 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
         info.network_policies_enabled = info.profile == PERIMETER or bool(
             ((values.get("security") or {}).get("networkPolicies") or {}).get("enabled")
         )
-    if info.network_policies_enabled and _is_kind(env):
+    # Only a hostNetwork Envoy reaches agent pods from node addresses; a NodePort Envoy (current
+    # kind-config) is a normal pod the namespace selectors already match.
+    if (info.network_policies_enabled and _is_kind(env)
+            and envoy_host_network(env, info.gateway_namespace or env.namespace, runner=runner)):
         info.gateway_host_cidrs = kind_node_cidrs(env, runner=runner)
     logger.info("agents host=%s", info.agents_host or "(empty)")
     logger.info("get aegra deployment")

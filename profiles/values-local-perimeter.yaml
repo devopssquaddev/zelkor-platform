@@ -3,7 +3,7 @@
 # `profile: perimeter` disables all datastores, Langfuse, Aegra and the data-plane MCP backends;
 # NeMo and the sandbox stay off unless perimeter.guardrails / perimeter.sandbox (install.sh
 # --with-guardrails / --with-sandbox). This overlay only adds kind-local hosts and dev signing.
-# Envoy hostNetwork:true maps kind extraPortMappings 8088; see docs/quickstart.md.
+# Envoy NodePort 30080/30443 is mapped to host 8088/8443 by kind-config.yaml; see docs/quickstart.md.
 ---
 profile: perimeter
 global:
@@ -18,9 +18,13 @@ gateway:
   gatewayClassName: eg
   envoyProxy:
     enabled: true
-    hostNetwork: true
     nodeSelector:
       ingress-ready: 'true'
+    service:
+      type: NodePort
+      nodePorts:
+        http: 30080
+        https: 30443
   hosts:
     agents: agents.localhost
     aiGateway: ai-gateway.localhost

@@ -88,6 +88,28 @@ spec:
         {{- if $svcType }}
         type: {{ $svcType | quote }}
         {{- end }}
+        {{- $np := $svc.nodePorts | default dict }}
+        {{- /* Patch only ports the Gateway has: a strategic-merge entry for a missing port adds an
+             unnamed port and the Service is rejected (no dataplane at all). HTTPS needs TLS on. */}}
+        {{- $npHttps := and $np.https .Values.gateway.tls.enabled }}
+        {{- if or $np.http $npHttps }}
+        {{- if not (has $svcType (list "NodePort" "LoadBalancer")) }}
+        {{- fail "gateway.envoyProxy.service.nodePorts needs service.type NodePort or LoadBalancer" }}
+        {{- end }}
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                {{- if $np.http }}
+                - port: 80
+                  nodePort: {{ int $np.http }}
+                {{- end }}
+                {{- if $npHttps }}
+                - port: {{ int (.Values.gateway.tls.port | default 443) }}
+                  nodePort: {{ int $np.https }}
+                {{- end }}
+        {{- end }}
       {{- if $ha }}
       envoyHpa:
         minReplicas: {{ int (.Values.highAvailability.minReplicas | default 2) }}
