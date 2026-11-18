@@ -80,6 +80,8 @@ def test_s83_bypass_headers_cannot_skip_nemo():
     if not _nemo_deployed():
         pytest.skip(f"no {REL}-ai-gateway-nemo Service: NeMo is not deployed (e.g. a perimeter without perimeter.guardrails)")
     out = _probe()
-    assert out["consumer_key_on_nemo_host"] == 401, out
+    # 401 at the gateway, or no route at all: a CE-21 locked agent has no name for the NeMo host
+    # (hostAliases carry only the hosts it may call), which refuses earlier than the key check.
+    assert out["consumer_key_on_nemo_host"] in (401, "URLError"), out
     status, text = out["bypass_with_key_harmful"]
     assert status == 200 and looks_like_refusal(text), f"bypass headers skipped NeMo: {status} {text[:120]}"
