@@ -36,6 +36,7 @@ from zelkor.envfile import Env, add_env, list_envs, load_store, remove_env, reso
 from zelkor.extra_backends import format_missing_extras_error, missing_extra_registrations
 from zelkor.token_cmd import cmd_token_jwks, cmd_token_mint
 from zelkor.verify_cmd import cmd_verify
+from zelkor.hosts_check import check_agent_hosts
 
 PAID = frozenset({"login", "license", "whoami", "team", "budget", "audit"})
 UPGRADE = "This command requires Zelkor Pro or Enterprise. Community Edition does not apply it."
@@ -82,6 +83,8 @@ class PlatformInfo:
     network_policies_enabled: bool = False
     gateway_host_cidrs: list[str] = field(default_factory=list)
     http_apis: list[str] = field(default_factory=list)  # CE-15a-4 relays {release}-api-{name}
+    agent_hosts_configmap: str = ""  # CE-21 contract AGENT_HOSTS_CONFIGMAP (empty: platform predates it)
+    host_aliases: list[dict[str, Any]] = field(default_factory=list)  # CE-21 [{ip, hostnames}]
 
 
 def find_chart(start: Path, chart_name: str, explicit: str = "", env_key: str = "") -> Path:
@@ -287,6 +290,7 @@ def discover_platform(env: Env, runner: Optional[RunFn] = None) -> PlatformInfo:
     if contract.get("PROFILE"):
         info.profile = contract["PROFILE"].strip().lower()
         info.http_apis = [n.strip() for n in contract.get("HTTP_APIS", "").split(",") if n.strip()]
+        info.agent_hosts_configmap = contract.get("AGENT_HOSTS_CONFIGMAP", "")
         info.aegra_present = bool(contract.get("AEGRA_FRONTDOOR_SERVICE"))
         info.mcp_service = contract.get("MCP_SERVICE", "")
         info.agents_host = contract.get("AGENTS_HOST", "")
@@ -537,6 +541,47 @@ def _apply_stateless_wrap(overlay: dict[str, Any], info: PlatformInfo) -> None:
     ai_gateway_on = (hv.get("aiGateway") or {}).get("enabled", True) is not False
     if str(otlp.get("endpoint") or "").strip() and ai_gateway_on:
         platform["otlp"] = True
+
+
+HOST_MAP_WAIT_SEC = float(os.getenv("ZELKOR_HOST_MAP_WAIT_SEC", "120"))
+
+
+def host_aliases_from_map(data: dict[str, str]) -> list[dict[str, Any]]:
+    """CE-21 host map (hostname -> IP) as pod hostAliases, one entry per IP, stable order."""
+    by_ip: dict[str, list[str]] = {}
+    for host, ip in data.items():
+        if host and ip:
+            by_ip.setdefault(ip.strip(), []).append(host.strip())
+    return [{"ip": ip, "hostnames": sorted(names)} for ip, names in sorted(by_ip.items())]
+
+
+def load_host_aliases(env: Env, info: PlatformInfo, *, runner: Optional[RunFn] = None,
+                      wait_sec: Optional[float] = None, sleep=time.sleep) -> None:
+    """CE-21: fill info.host_aliases from the platform host map, waiting for its writer Job.
+
+    A platform that publishes no AGENT_HOSTS_CONFIGMAP predates CE-21 (or turned lockdown off):
+    the agent keeps DNS and nothing is waited for.
+    """
+    if not info.agent_hosts_configmap:
+        return
+    deadline = time.monotonic() + (HOST_MAP_WAIT_SEC if wait_sec is None else wait_sec)
+    while True:
+        data = _configmap_data(env, info.agent_hosts_configmap, runner=runner)
+        if data:
+            info.host_aliases = host_aliases_from_map(data)
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"host map {info.agent_hosts_configmap} not written yet; check the platform Job "
+                f"{info.release}-agent-hosts-<revision> (kubectl -n {env.namespace} logs job/...)"
+            )
+        logger.info("waiting for host map %s", info.agent_hosts_configmap)
+        sleep(5)
+
+
+def _apply_host_aliases(overlay: dict[str, Any], info: PlatformInfo) -> None:
+    if info.host_aliases:
+        overlay.setdefault("platform", {})["hostAliases"] = list(info.host_aliases)
 
 
 def _apply_http_apis(overlay: dict[str, Any], info: PlatformInfo) -> None:
@@ -1410,6 +1455,8 @@ def deploy_agent(
     if egress_only:
         _apply_stateless_wrap(overlay, info)
     _apply_http_apis(overlay, info)
+    load_host_aliases(env, info, runner=runner)
+    _apply_host_aliases(overlay, info)
     if run_timeout or max_tokens or approval_threshold:
         overlay["workload"] = {
             "intent": {
@@ -1537,6 +1584,8 @@ def deploy_from_values(
     if stateless:
         _apply_stateless_wrap(overlay, info)
     _apply_http_apis(overlay, info)
+    load_host_aliases(env, info, runner=runner)
+    _apply_host_aliases(overlay, info)
     release = helm_release_name(graph_id)
     # A catalog entry is a worker unless its file asks for `/`.
     as_default, takes_over_front_door = resolve_default_route(
@@ -1936,6 +1985,9 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
     p_verify = sub.add_parser("verify", help="cosign-verify the Zelkor images a Helm release runs")
     p_verify.add_argument("release", help="Helm release name (platform or agent)")
     p_verify.add_argument("--namespace", default="", help="release namespace (default: the env namespace)")
+    p_verify.add_argument("--hosts", action="store_true",
+                          help="check agent pods without DNS (host map, pod hostAliases, HTTP API routes) "
+                               "instead of image signatures; release = the platform release")
 
     p_token = sub.add_parser("token", help="mint RS256 tokens from cluster signing key")
     token_sub = p_token.add_subparsers(dest="token_cmd", required=True)
@@ -2061,6 +2113,9 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         return cmd_doctor(env, runner=runner)
     if args.cmd == "verify":
         target = env_for_namespace(env, args.namespace) if args.namespace else env
+        if args.hosts:
+            return check_agent_hosts(args.release, target.namespace, kubectl=kube_argv(target),
+                                     runner=runner or subprocess.run, contract_configmap=CONTRACT_CONFIGMAP)
         return cmd_verify(
             args.release,
             target.namespace,

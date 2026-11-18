@@ -37,6 +37,10 @@ data:
   {{- /* CE-15a-4: HTTP APIs relayed as {release}-api-{name}. */}}
   HTTP_APIS: {{ join "," $apis | quote }}
   {{- end }}
+  {{- if .Values.security.dnsLockdown.enabled }}
+  {{- /* CE-21: agent pods get no DNS; their hostAliases come from this host map. */}}
+  AGENT_HOSTS_CONFIGMAP: {{ printf "%s-agent-hosts" $full | quote }}
+  {{- end }}
   {{- if .Values.gateway.enabled }}
   GATEWAY_NAME: {{ $pr.name | default (printf "%s-gateway" $full) | quote }}
   GATEWAY_NAMESPACE: {{ $pr.namespace | default $ns | quote }}
