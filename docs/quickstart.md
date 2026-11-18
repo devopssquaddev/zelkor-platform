@@ -20,7 +20,7 @@ Install and leave running:
 
 - Docker Desktop, Docker Engine, or OrbStack
 - [`kind`](https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
-- [`helm`](https://helm.sh/docs/intro/install/) v3.10+
+- [`helm`](https://helm.sh/docs/intro/install/) v3.16+ or v4
 - [`kubectl`](https://kubernetes.io/docs/tasks/tools/) v1.28+
 
 You also need **one** LLM provider credential (or a local Ollama). The install refuses to start without it. Upstream keys go into the cluster secret; client calls use a local consumer token (`dev-key` on this tutorial).
