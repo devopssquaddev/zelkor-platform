@@ -2,12 +2,15 @@
 {{- $outMode := include "zelkor-platform.nemoSelfCheckMode" (dict "root" . "side" "output") }}
 {{- $selfCheckModel := include "zelkor-platform.nemoSelfCheckModel" . }}
 {{- $mainModel := include "zelkor-platform.nemoEffectiveModel" . }}
+# max_retries 0: a gateway 429 (P15 cap) or 5xx reaches the agent with Retry-After instead of
+# NeMo retrying it inside the agent's request; the agent's client owns the retry.
 models:
   - type: main
     engine: openai
     model: {{ $mainModel | quote }}
     parameters:
       base_url: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
+      max_retries: 0
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         X-Ai-Eg-Model: {{ $mainModel | quote }}
@@ -20,6 +23,7 @@ models:
     model: {{ $selfCheckModel | quote }}
     parameters:
       base_url: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
+      max_retries: 0
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         X-Ai-Eg-Model: {{ $selfCheckModel | quote }}
@@ -33,6 +37,7 @@ models:
     model: {{ $selfCheckModel | quote }}
     parameters:
       base_url: {{ include "zelkor-platform.aiGatewayNemoUrl" . | quote }}
+      max_retries: 0
       default_headers:
         X-Zelkor-Guardrails-Bypass: "1"
         X-Ai-Eg-Model: {{ $selfCheckModel | quote }}

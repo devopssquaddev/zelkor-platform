@@ -201,3 +201,12 @@ def test_bootstrap_job_takes_credentials_by_reference():
     assert "test-pg" not in dumped and "test-salt" not in dumped and "sk-lf-inline" not in dumped
     secret = _named(docs, "Secret", "zelkor-platform-langfuse-bootstrap")
     assert set(secret["stringData"]) == {"database-url", "valkey-password", "mcp-auth-token"}
+
+
+def test_nemo_does_not_retry_gateway_errors():
+    """P15 / S-70: a gateway 429 reaches the agent (with Retry-After) instead of NeMo retrying it
+    inside the request until the window refills."""
+    models = _nemo_config_models(_render("--set", "workspace.policies.nemo.selfCheck.output=log"))
+    assert {m["type"] for m in models} == {"main", "self_check_input", "self_check_output"}
+    for m in models:
+        assert m["parameters"]["max_retries"] == 0, m["type"]
