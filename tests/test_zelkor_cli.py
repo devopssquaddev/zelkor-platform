@@ -1881,6 +1881,38 @@ def test_cli_parses_runtime_flags(monkeypatch):
     assert (seen["runtime"], seen["a2a_framework"], seen["tool_prefixes"]) == ("a2a", "crewai", "postgres")
 
 
+@pytest.mark.parametrize("flags, named", [
+    (["--tools", "postgres,sandbox"], "--tools (set platform.mcpInjectToolPrefixes"),
+    (["--graph-id", "rt-x"], "--graph-id (set graphId"),
+    (["--runtime", "a2a", "--timeout", "60s"], "--timeout (set workload.intent.timeout"),
+])
+def test_deploy_values_file_refuses_flags_it_would_drop(monkeypatch, tmp_path, capsys, flags, named):
+    """demohetzner 2026-11-19: `deploy -f v.yaml --tools postgres,sandbox` redeployed rt-pydantic
+    with no tool scope; the values-file path never read --tools. Refuse instead of dropping it."""
+    import zelkor.main as m
+
+    called = []
+    monkeypatch.setattr(m, "deploy_from_values", lambda **k: called.append(k) or {"ok": True})
+    monkeypatch.setattr(m, "_env_from_args", lambda args, **_k: Env(name="l", kube_context="kind-zelkor", namespace="default"))
+    values = tmp_path / "v.yaml"
+    values.write_text("graphId: rt-x\nruntime: a2a\n", encoding="utf-8")
+    assert m.main(["deploy", "-f", str(values), *flags, str(ROOT / "examples" / "runtimes" / "pydantic-ai")]) == 2
+    assert not called
+    assert named in capsys.readouterr().err
+
+
+def test_deploy_values_file_alone_still_deploys(monkeypatch, tmp_path):
+    import zelkor.main as m
+
+    called = []
+    monkeypatch.setattr(m, "deploy_from_values", lambda **k: called.append(k) or {"ok": True})
+    monkeypatch.setattr(m, "_env_from_args", lambda args, **_k: Env(name="l", kube_context="kind-zelkor", namespace="default"))
+    values = tmp_path / "v.yaml"
+    values.write_text("graphId: rt-x\n", encoding="utf-8")
+    assert m.main(["deploy", "-f", str(values), "--namespace", "agents", "--egress-only", str(ROOT / "examples" / "runtimes" / "pydantic-ai")]) == 0
+    assert called and called[0]["agent_namespace"] == "agents" and called[0]["egress_only"] is True
+
+
 def test_kind_node_cidrs_and_np_values():
     from zelkor.main import _np_values, kind_node_cidrs
 
