@@ -23,6 +23,13 @@ except Exception:
     _log.exception("NeMo structured output patch failed (sitecustomize)")
 
 try:
+    from message_content import install as install_message_content
+
+    install_message_content()
+except Exception:
+    _log.exception("NeMo message content patch failed (sitecustomize)")
+
+try:
     from quiet_verbose import install as install_quiet_verbose
 
     install_quiet_verbose()
