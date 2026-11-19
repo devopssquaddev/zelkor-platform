@@ -48,6 +48,7 @@ s_ids:
   S-84: {files: [tests/test_s84_postgres_tenant_guc.py]}
   S-88: {files: [tests/test_mcp_extra_identity_live.py], env: [MCP_IDENTITY_PROBE_PREFIX]}
   S-90: {files: [tests/test_s90_dns_egress_live.py]}
+  S-91: {files: [tests/test_s91_http_api_live.py], env: [ZELKOR_HTTP_API_CANARY, ZELKOR_RUNTIME_GRAPHS]}
   S-86: {profile: perimeter, files: [tests/test_s86_perimeter_stateless_sidecar.py]}
   S-87: {profile: perimeter, files: [tests/test_s87_perimeter_profile_boundary.py]}
   S-89: {profile: perimeter, files: [tests/test_perimeter_customer_data_live.py]}

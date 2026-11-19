@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "release"))
 import fail_closed_matrix as fcm  # noqa: E402
 import s_gate  # noqa: E402
 
-CE_IDS = {f"S-{n:02d}" for n in [*range(1, 30), *range(70, 91)]}
+CE_IDS = {f"S-{n:02d}" for n in [*range(1, 30), *range(70, 92)]}
 
 
 def test_manifest_covers_every_ce_id_once():
