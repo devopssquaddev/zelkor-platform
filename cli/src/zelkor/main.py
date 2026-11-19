@@ -1508,6 +1508,29 @@ def _merge_values_files(paths: list[Path]) -> dict[str, Any]:
     return merged
 
 
+# Flags `deploy -f` cannot apply: the values file is the whole agent config. Each maps to its key.
+_VALUES_FILE_KEYS = {
+    "graph_id": ("--graph-id", "graphId"),
+    "tools": ("--tools", "platform.mcpInjectToolPrefixes"),
+    "all_tools": ("--all-tools", "platform.mcpInjectAllowAll"),
+    "timeout": ("--timeout", "workload.intent.timeout"),
+    "max_tokens": ("--max-tokens", "workload.intent.maxTokens"),
+    "runtime": ("--runtime", "runtime"),
+    "a2a_framework": ("--a2a-framework", "image"),
+}
+_FLAG_DEFAULTS = {"runtime": "aegra", "a2a_framework": "pydantic-ai", "max_tokens": 0}
+
+
+def values_file_conflicts(args: argparse.Namespace) -> list[str]:
+    """Flags passed with `deploy -f` that it would drop; refused, never silently ignored."""
+    out = []
+    for dest, (flag, key) in _VALUES_FILE_KEYS.items():
+        value = getattr(args, dest, None)
+        if value not in (None, "", False, _FLAG_DEFAULTS.get(dest, "")):
+            out.append(f"{flag} (set {key} in the values file)")
+    return out
+
+
 def deploy_from_values(
     *,
     values_path: Path,
@@ -2190,6 +2213,11 @@ def main(argv: Optional[list[str]] = None, runner: Optional[RunFn] = None) -> in
         return 1
     try:
         if args.cmd == "deploy" and getattr(args, "values_files", None):
+            conflicts = values_file_conflicts(args)
+            if conflicts:
+                print("zelkor deploy -f takes the agent config from the values file; not applied: "
+                      + ", ".join(conflicts), file=sys.stderr)
+                return 2
             files = [Path(p).resolve() for p in args.values_files]
             result = deploy_from_values(
                 values_path=files[0],
