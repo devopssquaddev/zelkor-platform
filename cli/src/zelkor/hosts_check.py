@@ -129,8 +129,10 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
         elif not marker and (pod.get("spec") or {}).get("dnsPolicy", "ClusterFirst") != "None":
             # No CE-21 marker: an agent (or Aegra) deployed before CE-21 still resolves DNS.
             with_dns += 1
-            print(f"WARN dns         {where} keeps DNS (no CE-21 lockdown marker: deployed before CE-21); "
-                  "redeploy with `zelkor deploy` (or delete the pod on K8s >= 1.36)")
+            # Deleting the pod does not help: the admission policy only selects pods the CE-21 charts mark.
+            fix = ("run `helm upgrade` on the platform (a `helm template` render cannot lock it below K8s 1.36)" if is_platform_aegra else
+                   "redeploy with `zelkor deploy` (on K8s >= 1.36, a Helm upgrade to the current agent chart also works)")
+            print(f"WARN dns         {where} keeps DNS (no CE-21 lockdown marker: deployed before CE-21); {fix}")
         elif marker == "on":
             have = {_short(h, namespace): ip for h, ip in _pod_aliases(pod).items()}
             want = {_short(h, namespace): ip for h, ip in host_map.items()}

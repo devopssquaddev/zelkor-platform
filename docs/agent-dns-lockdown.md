@@ -66,7 +66,7 @@ Each line is `PASS`, `FAIL` or `WARN`:
 | `FAIL host map ... (live: ...)` | A Service was recreated with a new IP | `helm upgrade` the platform; it rewrites the map |
 | `PASS pod hosts` | A locked pod carries exactly the map's entries | — |
 | `FAIL pod hosts ... differs on ...` | A locked pod has stale entries | Delete the pod (1.36+) or run `zelkor deploy` |
-| `WARN dns ... keeps DNS (no CE-21 lockdown marker ...)` | The agent was deployed before the lockdown existed | Run `zelkor deploy` for it (or delete the pod on 1.36+) |
+| `WARN dns ... keeps DNS (no CE-21 lockdown marker ...)` | The agent, or the platform Aegra, was deployed before the lockdown existed. Deleting the pod does not lock it | Agent: run `zelkor deploy` (on 1.36+ a Helm upgrade to the current agent chart also works). Aegra: run `helm upgrade` on the platform |
 | `WARN dns ... (lockdown inactive)` | Plain Helm install on a cluster older than 1.36 | Run `zelkor deploy` for it |
 | `WARN dns ... did not lock it` | The pod was created before the admission policy loaded | Delete the pod |
 | `FAIL http api ...` | An agent relays to an HTTP API the platform no longer routes | Redeploy the agent, or add the API back |

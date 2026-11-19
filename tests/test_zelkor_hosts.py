@@ -160,6 +160,9 @@ def test_agent_deployed_before_ce21_is_reported_as_keeping_dns(capsys):
     assert _check(_cluster(lockdown="")) == 0  # a warning, not a failure
     out = capsys.readouterr().out
     assert "WARN dns         zelkor/rt-pydantic-x keeps DNS (no CE-21 lockdown marker" in out
+    assert "redeploy with `zelkor deploy`" in out
+    # The admission policy only selects pods the CE-21 charts mark: deleting this one changes nothing.
+    assert "delete the pod" not in out
     assert "1 pod(s) of zelkor/zelkor-platform can still resolve DNS" in out
 
 
@@ -184,7 +187,9 @@ def test_unmarked_platform_aegra_is_reported(capsys):
     aegra = _aegra_pod([])
     del aegra["metadata"]["labels"]["zelkor.io/dns-lockdown"]
     assert _check(_cluster(extra_pods=[aegra])) == 0
-    assert "zelkor/zelkor-platform-aegra-x keeps DNS (no CE-21 lockdown marker" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "zelkor/zelkor-platform-aegra-x keeps DNS (no CE-21 lockdown marker" in out
+    assert "run `helm upgrade` on the platform" in out
 
 
 def test_locked_pods_do_not_count_as_keeping_dns(capsys):
