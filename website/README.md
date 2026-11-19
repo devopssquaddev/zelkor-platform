@@ -12,6 +12,11 @@ npm run docs:dev
 
 - `npm run docs:build` writes `website/.vitepress/dist`
 - `npm run docs:preview` serves that directory
+- `npm run og` re-renders stale social preview cards (`docs/public/og/*.png`) with your local Chrome (`CHROME_PATH` to override). Commit the PNGs and `og-manifest.json`. CI runs `npm run og:check`.
+
+## Social preview cards
+
+LinkedIn and X do not run Mermaid. A page with a diagram gets a card with its title and first diagram. Set `og_diagram: 2` to use another diagram, or `og_diagram: none` for the default card. Every other page uses `og/default.png`. After deploy, re-scrape a URL in the [LinkedIn Post Inspector](https://www.linkedin.com/post-inspector/); LinkedIn caches previews for about 7 days.
 
 ## Cloudflare (Workers Git)
 

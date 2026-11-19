@@ -1,0 +1,18 @@
+{
+  "default": "fb45519a742a6b93",
+  "agent-dns-lockdown": "ac51299ecc869215",
+  "architecture-agent-contract": "3927fa2ac495b02b",
+  "architecture-exposure": "b0942495bfce3797",
+  "architecture-external-mcp": "6702041d34a1210d",
+  "architecture-mcp": "8a9302fc5c8c46b8",
+  "architecture-network": "7c074df6fb0fb765",
+  "architecture-request-path": "e42543ce491a6c29",
+  "architecture-routing": "82d85ac7ac3d90f2",
+  "architecture-sandbox": "8a35bdfe21e18e12",
+  "architecture-tenants": "a29c995339692eef",
+  "architecture-trace": "dcc19252d4e43652",
+  "architecture": "cff970bd37ca456b",
+  "http-apis": "268a7c0a33882702",
+  "perimeter": "5697dfa4862c0b51",
+  "topologies": "ceabdb63ec591c90"
+}
