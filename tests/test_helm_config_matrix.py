@@ -184,10 +184,41 @@ def test_model_params_exist_in_values():
             node = node[part]
 
 
+def _tsv(text: str) -> tuple[list[str], list[list[str]]]:
+    lines = [line.split("\t") for line in text.strip("\n").splitlines()]
+    return lines[0], lines[1:]
+
+
+def _coverage(header: list[str], rows: list[list[str]], params: list[str], k: int) -> set:
+    from itertools import combinations
+
+    idx = [header.index(p) for p in params]
+    return {tuple((header[i], row[i]) for i in combo) for row in rows for combo in combinations(idx, k)}
+
+
+def _sub_model() -> list[str]:
+    for line in MODEL.read_text().splitlines():
+        if line.strip().startswith("{") and "@" in line:
+            return [p.strip() for p in line.split("{", 1)[1].split("}", 1)[0].split(",")]
+    return []
+
+
 @pytest.mark.skipif(shutil.which("pict") is None, reason="pict not installed")
 def test_matrix_is_current_with_model():
+    """The committed matrix covers exactly the combinations pict covers for the model: every valid
+    pair, and every valid triple of the isolation sub-model. Row order and row count differ between
+    pict builds (macOS vs Linux), so rows are not compared byte for byte."""
     out = subprocess.run(["pict", str(MODEL)], check=True, capture_output=True, text=True).stdout
-    assert out == MATRIX.read_text(), "regenerate: pict tests/config_matrix/model.pict > tests/config_matrix/matrix.tsv"
+    fresh_header, fresh = _tsv(out)
+    header, committed = _tsv(MATRIX.read_text())
+    hint = "regenerate: pict tests/config_matrix/model.pict > tests/config_matrix/matrix.tsv"
+    assert header == fresh_header, f"parameters changed; {hint}"
+    pairs_fresh, pairs = _coverage(header, fresh, header, 2), _coverage(header, committed, header, 2)
+    assert pairs == pairs_fresh, (f"{len(pairs_fresh - pairs)} valid pairs uncovered, "
+                                  f"{len(pairs - pairs_fresh)} pairs pict excludes; {hint}")
+    sub = _sub_model()
+    if sub:
+        assert _coverage(header, committed, sub, 3) >= _coverage(header, fresh, sub, 3), f"3-way sub-model; {hint}"
 
 
 def test_network_policies_without_agents_or_tools_fails_with_message():

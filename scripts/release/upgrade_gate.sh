@@ -15,7 +15,7 @@ mkdir -p "$GATE_OUT"
 prev_dir="$(mktemp -d)/prev"
 stop="$GATE_OUT/upgrade-rollback.stop"
 rm -f "$stop"
-# shellcheck disable=SC2329  # invoked by the EXIT trap
+# shellcheck disable=SC2317,SC2329  # invoked by the EXIT trap (2317 in shellcheck <= 0.10)
 cleanup() {
   touch "$stop"
   git -C "$GATE_ROOT" worktree remove --force "$prev_dir" >/dev/null 2>&1 || true

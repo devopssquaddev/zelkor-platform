@@ -39,9 +39,9 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q cmake
           # shellcheck from the upstream release: apt versions differ per runner image
-          curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz \
+          curl -fsSL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz \
             | tar -xJ -C "$RUNNER_TEMP"
-          sudo install "$RUNNER_TEMP/shellcheck-v0.10.0/shellcheck" /usr/local/bin/shellcheck
+          sudo install "$RUNNER_TEMP/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
           shellcheck --version | head -2
           git clone -q --depth 1 --branch v3.7.4 https://github.com/microsoft/pict.git "$RUNNER_TEMP/pict"
           cmake -S "$RUNNER_TEMP/pict" -B "$RUNNER_TEMP/pict/build" -DCMAKE_BUILD_TYPE=Release >/dev/null
