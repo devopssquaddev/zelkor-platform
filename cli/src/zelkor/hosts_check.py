@@ -129,15 +129,21 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
         elif not marker and (pod.get("spec") or {}).get("dnsPolicy", "ClusterFirst") != "None":
             # No CE-21 marker: an agent (or Aegra) deployed before CE-21 still resolves DNS.
             with_dns += 1
-            print(f"WARN dns         {where} keeps DNS (no CE-21 lockdown marker: deployed before CE-21); "
-                  "redeploy with `zelkor deploy` (or delete the pod on K8s >= 1.36)")
+            # Deleting the pod does not help: the admission policy only selects pods the CE-21 charts mark.
+            fix = ("run `helm upgrade` on the platform (a `helm template` render cannot lock it below K8s 1.36)" if is_platform_aegra else
+                   "redeploy with `zelkor deploy` (on K8s >= 1.36, a Helm upgrade to the current agent chart also works)")
+            print(f"WARN dns         {where} keeps DNS (no CE-21 lockdown marker: deployed before CE-21); {fix}")
         elif marker == "on":
             have = {_short(h, namespace): ip for h, ip in _pod_aliases(pod).items()}
             want = {_short(h, namespace): ip for h, ip in host_map.items()}
             drift = sorted(h for h in set(have) | set(want) if have.get(h) != want.get(h))
             failed += 1 if drift else 0
+            # Below K8s 1.36 the platform Aegra takes its entries from a Helm lookup of the map at render
+            # time, before the same upgrade rewrites the map: it catches up on the next `helm upgrade`.
+            fix = ("run `helm upgrade` on the platform again (K8s < 1.36) or delete the pod (K8s >= 1.36)"
+                   if is_platform_aegra else "delete the pod (K8s >= 1.36) or run `zelkor deploy`")
             print(f"{'FAIL' if drift else 'PASS'} pod hosts   {where}"
-                  + (f" differs on {', '.join(drift)}; delete the pod (K8s >= 1.36) or run `zelkor deploy`" if drift else ""))
+                  + (f" differs on {', '.join(drift)}; {fix}" if drift else ""))
         for name in _api_upstreams(pod):
             ok = name in apis
             failed += 0 if ok else 1

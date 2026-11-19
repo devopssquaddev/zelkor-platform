@@ -114,7 +114,8 @@ def test_recreated_gateway_service_is_map_drift(capsys):
 def test_pod_with_old_entries_is_drift(capsys):
     stale = [{"ip": "10.43.1.1", "hostnames": ["zelkor-platform-ai-gateway"]}]
     assert _check(_cluster(pod_aliases=stale)) == 1
-    assert "FAIL pod hosts" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "FAIL pod hosts" in out and "run `zelkor deploy`" in out
 
 
 def test_stale_http_api_name_is_reported(capsys):
@@ -139,7 +140,12 @@ def _aegra_pod(aliases):
 def test_platform_aegra_is_checked_too(capsys):
     stale = [{"ip": "10.43.1.1", "hostnames": ["zelkor-platform-ai-gateway"]}]
     assert _check(_cluster(extra_pods=[_aegra_pod(stale)])) == 1
-    assert "FAIL pod hosts   zelkor/zelkor-platform-aegra-x" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "FAIL pod hosts   zelkor/zelkor-platform-aegra-x" in out
+    # demohetzner 2026-11-19 (K8s 1.35): adding an HTTP API left Aegra one name short until the
+    # next upgrade; `zelkor deploy` does not manage the platform, so it must not be the advice.
+    aegra_line = next(l for l in out.splitlines() if "zelkor-platform-aegra-x" in l and "FAIL" in l)
+    assert "run `helm upgrade` on the platform again" in aegra_line and "zelkor deploy" not in aegra_line
 
 
 def test_unrelated_pods_are_ignored(capsys):
@@ -160,6 +166,9 @@ def test_agent_deployed_before_ce21_is_reported_as_keeping_dns(capsys):
     assert _check(_cluster(lockdown="")) == 0  # a warning, not a failure
     out = capsys.readouterr().out
     assert "WARN dns         zelkor/rt-pydantic-x keeps DNS (no CE-21 lockdown marker" in out
+    assert "redeploy with `zelkor deploy`" in out
+    # The admission policy only selects pods the CE-21 charts mark: deleting this one changes nothing.
+    assert "delete the pod" not in out
     assert "1 pod(s) of zelkor/zelkor-platform can still resolve DNS" in out
 
 
@@ -184,7 +193,9 @@ def test_unmarked_platform_aegra_is_reported(capsys):
     aegra = _aegra_pod([])
     del aegra["metadata"]["labels"]["zelkor.io/dns-lockdown"]
     assert _check(_cluster(extra_pods=[aegra])) == 0
-    assert "zelkor/zelkor-platform-aegra-x keeps DNS (no CE-21 lockdown marker" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "zelkor/zelkor-platform-aegra-x keeps DNS (no CE-21 lockdown marker" in out
+    assert "run `helm upgrade` on the platform" in out
 
 
 def test_locked_pods_do_not_count_as_keeping_dns(capsys):
