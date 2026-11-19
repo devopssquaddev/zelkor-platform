@@ -385,3 +385,22 @@ def test_production_profile_renders_langfuse_seed_network_policy():
         [],
     )
     assert components == ["langfuse-bootstrap"]
+
+
+def test_production_profile_with_default_backend_protection_is_strict():
+    """Coverage audit finding 53: the other production renders set the lab opt-out
+    acceptUnprotectedBackends=true. With the shipped default (false) the profile must still render
+    and keep default-deny ingress, the MCP backend ingress policy and the datastore dest-deny set."""
+    cmd = ["helm", "template", "zelkor-platform", str(CHART), "--namespace", "zelkor", "-f", str(PRODUCTION)]
+    for item in SECRET_SETS:
+        if "acceptUnprotectedBackends" not in item:
+            cmd.extend(["--set", item])
+    r = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    nps = {d["metadata"]["name"]: d["spec"] for d in yaml.safe_load_all(r.stdout)
+           if d and d.get("kind") == "NetworkPolicy"}
+    deny = nps["zelkor-platform-default-deny-ingress"]
+    assert deny["podSelector"] == {} and deny["policyTypes"] == ["Ingress"] and not deny.get("ingress")
+    assert "zelkor-platform-mcp-backend-ingress" in nps
+    for name in ("aegra", "langfuse", "guardrails", "postgres", "valkey", "clickhouse", "qdrant"):
+        assert f"zelkor-platform-{name}-dest-deny" in nps, name

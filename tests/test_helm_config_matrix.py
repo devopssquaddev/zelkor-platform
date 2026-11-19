@@ -6,6 +6,7 @@ on purpose is a PICT constraint in the model, not a skipped row here.
 from __future__ import annotations
 
 import csv
+import re
 import shutil
 import subprocess
 from collections import Counter
@@ -31,17 +32,40 @@ EXCLUDED = {
     "platform.tenants.jwt.localSigning.enabled": "installer-managed JWKS; covered by lab profiles",
     "platform.telemetry.langfuse.init.enabled": "installer-managed seed keys",
     "platform.telemetry.langfuse.admin.enabled": "always on; needs admin email set by installer",
-    "platform.telemetry.langfuse.surfaces.llmConnection.enabled": "needs seeded tenant; test_langfuse_surfaces.py",
+    "platform.telemetry.langfuse.surfaces.llmConnection.enabled": "needs a seeded tenant; live only (Langfuse surfaces)",
     "gateway.enabled": "set by @gateway profile",
     "gateway.envoyProxy.enabled": "set by @gateway profile",
     "workspace.models.inClusterService.enabled": "internal wiring of workspace.models",
-    "workspace.policies.nemo.aiGatewayRoute.enabled": "experimental route; test_helm_nemo_self_check_flows.py",
+    "workspace.policies.nemo.aiGatewayRoute.enabled": "experimental NeMo AIGatewayRoute; no render test yet",
     "workspace.policies.nemo.observability.otel.enabled": "follows platform.telemetry.nemoOtel",
     "security.sandbox.provisioning.verify.enabled": "Job-only sub-switch of provisioning.mode",
-    "databases.postgresql.barman.enabled": "needs object-store credentials; test_helm_ce4_production.py",
+    "databases.postgresql.barman.enabled": "needs object-store credentials; test_helm_operator_mode.py",
     "seaweedfs.persistence.enabled": "storage sizing, not a feature",
     "platform.telemetry.otlp.enabled": "no-op switch: otlp.endpoint decides (single-sink gate); test_profile_perimeter.py",
+    # Security knobs that are not named enabled/mode (see SECURITY_KNOBS).
+    "platform.isolation.agentNamespaces": "agent-namespace NetworkPolicies; test_network_policies.py",
+    "security.sandbox.failClosed": "verify Job exit code only; test_s25_gvisor_fail_closed.py",
+    "security.imageVerification.failureAction": "ClusterPolicy field; test_helm_image_verification.py",
+    "security.imageVerification.requireProvenance": "ClusterPolicy attestation rule; test_helm_image_verification.py",
+    "workspace.policies.nemo.selfCheck.input": "NeMo rail mode; test_helm_nemo_self_check_flows.py",
+    "workspace.policies.nemo.selfCheck.output": "NeMo rail mode; test_helm_nemo_self_check_flows.py",
+    "workspace.policies.nemo.selfCheck.onUnavailable": "NeMo rail mode; test_helm_nemo_self_check_flows.py",
+    "workspace.tools.objectMCP.allowDelete": "object MCP tool list (env only); no render test yet",
 }
+# Booleans/enums that change rendered security objects but are not named enabled/mode/tier
+# (coverage audit finding 49). Each must be modeled or EXCLUDED like any other toggle.
+SECURITY_KNOBS = [
+    "platform.isolation.agentNamespaces",
+    "security.mcp.acceptUnprotectedBackends",
+    "security.sandbox.failClosed",
+    "security.imageVerification.failureAction",
+    "security.imageVerification.requireProvenance",
+    "gateway.envoyProxy.hostNetwork",
+    "workspace.policies.nemo.selfCheck.input",
+    "workspace.policies.nemo.selfCheck.output",
+    "workspace.policies.nemo.selfCheck.onUnavailable",
+    "workspace.tools.objectMCP.allowDelete",
+]
 
 # Values a toggle needs to be valid at all (what a customer must also set), not test fixtures.
 COMPANIONS = {
@@ -79,8 +103,20 @@ COMPANIONS = {
     ],
 }
 
-# Toggle off => no rendered object carries one of these zelkor.io/intent labels.
+# Toggle off => no rendered object carries one of these zelkor.io/intent labels, or (kind, name part).
 ABSENT_WHEN_OFF = {
+    "postgresql.enabled": {"postgresql"},
+    "security.dnsLockdown.enabled": {"security.dnsLockdown"},
+    "workspace.tools.objectMCP.enabled": {"mcp.objectMCP"},
+    "workspace.tools.enabled": {"mcp.postgres", "mcp.qdrant", "mcp.aigateway", "mcp.sandbox", "mcp.objectMCP"},
+    "platform.telemetry.langfuse.worker.enabled": ("Deployment", "langfuse-worker"),
+    "platform.telemetry.langfuse.publicHttpRoute.enabled": ("HTTPRoute", "langfuse-route"),
+    "security.imageVerification.enabled": ("ClusterPolicy", "verify-images"),
+    "security.sandbox.enabled": ("RuntimeClass", "gvisor"),
+    "observability.serviceMonitor.enabled": ("ServiceMonitor", ""),
+    "highAvailability.enabled": ("HorizontalPodAutoscaler", ""),
+    "workspace.models.enabled": ("Secret", "ai-gateway-consumer"),
+    "workspace.policies.nemo.intercept.enabled": ("Service", "ai-gateway-nemo"),
     "valkey.enabled": {"valkey"},
     "clickhouse.enabled": {"clickhouse"},
     "qdrant.enabled": {"qdrant"},
@@ -92,6 +128,19 @@ ABSENT_WHEN_OFF = {
     "workspace.tools.qdrantMCP.enabled": {"mcp.qdrant", "mcp.qdrantMCP"},
     "workspace.tools.aigatewayMCP.enabled": {"mcp.aigateway", "mcp.aigatewayMCP"},
     "workspace.tools.sandboxMCP.enabled": {"mcp.sandbox", "mcp.sandboxMCP"},
+}
+# Modeled *.enabled toggles whose "off" removes no object (they change fields or env); why.
+NO_ABSENCE_ORACLE = {
+    "security.networkPolicies.enabled": "the default-deny invariant in the row test",
+    "gateway.tls.enabled": "Gateway HTTPS listener field, no object of its own",
+    "security.sandbox.executionLog.enabled": "worker env only",
+    "platform.telemetry.nemoOtel.enabled": "NeMo env only",
+    "workspace.models.rateLimit.enabled": "BackendTrafficPolicy field; test_helm_ai_gateway_rate_limit.py",
+    "workspace.policies.nemo.selfCheck.enabled": "NeMo config content; test_helm_nemo_self_check_flows.py",
+    "workspace.tools.policy.rateLimit.enabled": "MCP env only; test_helm_mcp_tool_policy.py",
+    "workload.agents.redisBroker.enabled": "Aegra env only",
+    "workload.agents.graphModules.enabled": "Aegra ConfigMap content",
+    "workload.agents.mcpInject.enabled": "Aegra env only",
 }
 
 _BASE_SETS = [s for s in SECRET_SETS if not s.startswith("gateway.envoyProxy.")]
@@ -131,10 +180,15 @@ def test_matrix_row_renders_and_holds_invariants(row):
     )
     assert not [k for k, n in keys.items() if n > 1], "duplicate objects"
 
-    for toggle, intents in ABSENT_WHEN_OFF.items():
-        if row[toggle] == "false":
-            leaked = sorted({_intent(d) for d in docs} & intents)
-            assert not leaked, f"{toggle}=false still renders {leaked}"
+    for toggle, absent in ABSENT_WHEN_OFF.items():
+        if row.get(toggle) != "false":
+            continue
+        if isinstance(absent, tuple):
+            kind, part = absent
+            leaked = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == kind and part in d["metadata"]["name"])
+        else:
+            leaked = sorted({_intent(d) for d in docs} & absent)
+        assert not leaked, f"{toggle}=false still renders {leaked}"
 
     # security.mcp floor policies render regardless of the opt-in; everything else follows it.
     opt_in = {d["metadata"]["name"] for d in docs if d.get("kind") == "NetworkPolicy" and _intent(d) != "security.mcp"}
@@ -169,8 +223,36 @@ def _value_toggles(node, path=""):
 
 def test_every_values_toggle_is_modeled_or_excluded():
     modeled = set(_model_params())
-    missing = sorted(t for t in _value_toggles(yaml.safe_load(VALUES.read_text())) if t not in modeled | EXCLUDED.keys())
+    toggles = {*_value_toggles(yaml.safe_load(VALUES.read_text())), *SECURITY_KNOBS}
+    missing = sorted(t for t in toggles if t not in modeled | EXCLUDED.keys())
     assert not missing, f"add to tests/config_matrix/model.pict or EXCLUDED with a reason: {missing}"
+
+
+def test_security_knobs_exist_in_values():
+    values = yaml.safe_load(VALUES.read_text())
+    for knob in SECURITY_KNOBS:
+        node = values
+        for part in knob.split("."):
+            assert isinstance(node, dict) and part in node, f"SECURITY_KNOBS entry {knob} is not in values.yaml"
+            node = node[part]
+
+
+def test_every_modeled_enabled_toggle_has_an_absence_oracle_or_reason():
+    enabled = {p for p in _model_params() if p.endswith(".enabled")}
+    missing = sorted(enabled - ABSENT_WHEN_OFF.keys() - NO_ABSENCE_ORACLE.keys())
+    assert not missing, f"add to ABSENT_WHEN_OFF, or NO_ABSENCE_ORACLE with a reason: {missing}"
+
+
+@pytest.mark.parametrize("table", ["EXCLUDED", "NO_ABSENCE_ORACLE"])
+def test_reasons_that_name_a_test_point_at_a_test_that_sets_the_toggle(table):
+    """Coverage audit finding 50: a cited test must exist and mention the toggle it vouches for."""
+    tests_dir = Path(__file__).resolve().parent
+    for toggle, reason in globals()[table].items():
+        for name in re.findall(r"(test_\w+\.py)", reason):
+            path = tests_dir / name
+            assert path.is_file(), f"{toggle}: {name} does not exist"
+            leaf = toggle.rsplit(".", 1)[-1] if toggle.rsplit(".", 1)[-1] not in ("enabled", "mode") else toggle.split(".")[-2]
+            assert leaf in path.read_text(), f"{toggle}: {name} never mentions {leaf}"
 
 
 def test_model_params_exist_in_values():
