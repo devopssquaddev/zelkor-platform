@@ -1,6 +1,6 @@
 ---
 title: Call HTTP APIs Without Giving Agents the Key
-description: The gateway adds the API key and checks method and path; agents never hold the key.
+description: The gateway adds the API key and checks method and path.
 type: how-to
 sidebar_group: Agents
 sidebar_order: 32

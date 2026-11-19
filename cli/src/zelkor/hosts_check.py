@@ -4,7 +4,8 @@ Checks, each printed as PASS / FAIL / WARN:
   1. every host-map entry still points at the live ClusterIP (ExternalName followed);
   2. every running locked pod of this platform (agents, platform Aegra) carries exactly the map's entries;
   3. every HTTP API an agent's sidecar relays to exists on the platform (no stale route names);
-  4. agents left with DNS (lockdown inactive) are reported.
+  4. agents left with DNS are reported: lockdown inactive, requested but missed, or no CE-21 marker
+     at all (deployed before CE-21: judged by the pod's own dnsPolicy).
 """
 from __future__ import annotations
 
@@ -73,7 +74,16 @@ def _api_upstreams(pod: dict) -> list[str]:
 
 def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runner: RunFn,
                       contract_configmap: str = "zelkor-platform-contract") -> int:
-    contract = _json(runner, kubectl + ["get", "configmap", contract_configmap, "-n", namespace, "-o", "json"])
+    res = runner(kubectl + ["get", "configmap", contract_configmap, "-n", namespace, "-o", "json"],
+                 capture_output=True, text=True, check=False)
+    if res.returncode != 0 and "notfound" not in (res.stderr or "").replace(" ", "").lower():
+        # Unreachable cluster or no RBAC is not "lockdown off": an audit must not pass silently.
+        print(f"FAIL contract    cannot read {namespace}/{contract_configmap}: {(res.stderr or '').strip()[:200]}")
+        return 1
+    try:
+        contract = json.loads(res.stdout or "{}") if res.returncode == 0 else {}
+    except json.JSONDecodeError:
+        contract = {}
     contract_data = (contract or {}).get("data") or {}
     cm_name = contract_data.get("AGENT_HOSTS_CONFIGMAP", "")
     if not cm_name:
@@ -94,6 +104,7 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
               + ("" if ok else f" (live: {live or 'missing'}; upgrade the platform to rewrite the map)"))
 
     apis = {n.strip() for n in contract_data.get("HTTP_APIS", "").split(",") if n.strip()}
+    with_dns = 0
     # Agents (any namespace) and this platform's own Aegra; anything else is not ours to judge.
     pods = _json(runner, kubectl + ["get", "pods", "-A", "-o", "json"]) or {}
     for pod in pods.get("items") or []:
@@ -108,11 +119,19 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
             continue
         if labels.get("zelkor.io/platform-release", release) != release:
             continue
-        if labels.get("zelkor.io/dns-lockdown") == "requested":
+        marker = labels.get("zelkor.io/dns-lockdown")
+        if marker == "requested":
+            with_dns += 1
             print(f"WARN dns         {where} asked for lockdown but the admission policy did not lock it; delete the pod")
         elif (meta.get("annotations") or {}).get("zelkor.io/dns-lockdown") == "inactive":
+            with_dns += 1
             print(f"WARN dns         {where} keeps DNS (lockdown inactive); redeploy with `zelkor deploy`")
-        elif labels.get("zelkor.io/dns-lockdown") == "on":
+        elif not marker and (pod.get("spec") or {}).get("dnsPolicy", "ClusterFirst") != "None":
+            # No CE-21 marker: an agent (or Aegra) deployed before CE-21 still resolves DNS.
+            with_dns += 1
+            print(f"WARN dns         {where} keeps DNS (no CE-21 lockdown marker: deployed before CE-21); "
+                  "redeploy with `zelkor deploy` (or delete the pod on K8s >= 1.36)")
+        elif marker == "on":
             have = {_short(h, namespace): ip for h, ip in _pod_aliases(pod).items()}
             want = {_short(h, namespace): ip for h, ip in host_map.items()}
             drift = sorted(h for h in set(have) | set(want) if have.get(h) != want.get(h))
@@ -124,7 +143,10 @@ def check_agent_hosts(release: str, namespace: str, *, kubectl: list[str], runne
             failed += 0 if ok else 1
             print(f"{'PASS' if ok else 'FAIL'} http api    {where} -> {release}-api-{name}"
                   + ("" if ok else " has no route on the platform; redeploy the agent or add the API"))
-    logger.info("verify hosts release=%s failed=%s", release, failed)
-    print(f"{'FAILED' if failed else 'OK'}: {failed} problem(s) in the agent host checks for {namespace}/{release}",
+    if with_dns:
+        print(f"WARN dns         {with_dns} pod(s) of {namespace}/{release} can still resolve DNS (exfiltration path, CE-21)")
+    logger.info("verify hosts release=%s failed=%s with_dns=%s", release, failed, with_dns)
+    warned = f", {with_dns} pod(s) with DNS" if with_dns else ""
+    print(f"{'FAILED' if failed else 'OK'}: {failed} problem(s){warned} in the agent host checks for {namespace}/{release}",
           file=sys.stderr if failed else sys.stdout)
     return 1 if failed else 0

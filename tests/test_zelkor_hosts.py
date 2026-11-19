@@ -153,3 +153,52 @@ def test_pod_the_policy_missed_is_a_warning(capsys):
     assert _check(_cluster(lockdown="requested")) == 0
     assert "did not lock it; delete the pod" in capsys.readouterr().out
 
+
+
+def test_agent_deployed_before_ce21_is_reported_as_keeping_dns(capsys):
+    """Finding 3 (CE-21 review): a pre-CE-21 agent has neither marker; the audit must still see it."""
+    assert _check(_cluster(lockdown="")) == 0  # a warning, not a failure
+    out = capsys.readouterr().out
+    assert "WARN dns         zelkor/rt-pydantic-x keeps DNS (no CE-21 lockdown marker" in out
+    assert "1 pod(s) of zelkor/zelkor-platform can still resolve DNS" in out
+
+
+def test_unmarked_pod_without_dns_is_not_reported(capsys):
+    runner = _cluster(lockdown="")
+
+    def no_dns(argv, **k):
+        res = runner(argv, **k)
+        if "pods" in argv:
+            data = json.loads(res.stdout)
+            for pod in data["items"]:
+                pod["spec"]["dnsPolicy"] = "None"
+            return _ok(data)
+        return res
+
+    assert _check(no_dns) == 0
+    assert "keeps DNS" not in capsys.readouterr().out
+
+
+def test_unmarked_platform_aegra_is_reported(capsys):
+    """GitOps on K8s < 1.36: the Helm lookup finds nothing, so the platform Aegra is never locked."""
+    aegra = _aegra_pod([])
+    del aegra["metadata"]["labels"]["zelkor.io/dns-lockdown"]
+    assert _check(_cluster(extra_pods=[aegra])) == 0
+    assert "zelkor/zelkor-platform-aegra-x keeps DNS (no CE-21 lockdown marker" in capsys.readouterr().out
+
+
+def test_locked_pods_do_not_count_as_keeping_dns(capsys):
+    assert _check(_cluster()) == 0
+    assert "can still resolve DNS" not in capsys.readouterr().out
+
+
+def test_unreachable_cluster_fails_instead_of_skipping(capsys):
+    down = SimpleNamespace(returncode=1, stdout="", stderr="dial tcp 127.0.0.1:16443: connect: connection refused")
+    assert check_agent_hosts("zelkor-platform", "zelkor", kubectl=["kubectl"], runner=lambda *a, **k: down) == 1
+    assert "FAIL contract    cannot read zelkor/zelkor-platform-contract" in capsys.readouterr().out
+
+
+def test_missing_contract_is_still_a_skip(capsys):
+    absent = SimpleNamespace(returncode=1, stdout="", stderr='Error from server (NotFound): configmaps "x" not found')
+    assert check_agent_hosts("zelkor-platform", "zelkor", kubectl=["kubectl"], runner=lambda *a, **k: absent) == 0
+    assert "SKIP hosts" in capsys.readouterr().out

@@ -1,6 +1,6 @@
 ---
 title: Network Boundaries
-description: Who may talk to whom inside the cluster and how NetworkPolicies isolate the agent.
+description: Who may talk to whom in the cluster; how NetworkPolicies isolate the agent.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 4

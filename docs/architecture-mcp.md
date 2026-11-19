@@ -1,6 +1,6 @@
 ---
 title: MCP Governance
-description: How a tool call is isolated, authenticated, and routed without secrets in the agent.
+description: How a tool call is isolated, authenticated and routed with no secret in the agent.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 6
