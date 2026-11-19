@@ -13,7 +13,7 @@ import re
 
 import pytest
 
-from tests.helpers.kube import kubectl_run
+from tests.helpers.kube import kubectl_run, platform_contract
 from tests.helpers.langfuse import is_code_eval_observation, langfuse_get
 from tests.helpers.runtime_agents import require_kube
 
@@ -34,6 +34,9 @@ def _allow() -> list[re.Pattern]:
 
 def test_no_unexpected_error_observations_in_the_window():
     start = _start()
+    contract = platform_contract()
+    if contract.get("PROFILE") == "perimeter" or contract.get("OTLP_RELAY_SERVICE"):
+        pytest.skip("no Langfuse on this install (perimeter / OTLP sink): the ERROR-log sweep covers the window")
     bad = []
     for page in range(1, 60):
         resp = langfuse_get("/api/public/v2/observations", params={

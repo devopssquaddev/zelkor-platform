@@ -48,6 +48,12 @@ print("S91 " + json.dumps(out))
 """
 
 
+# A sandbox sleep holds the run open; an install without the sandbox (default perimeter) sets the
+# lab's long run instead (ZELKOR_LONG_RUN_PROMPT, as UAT-26 and UAT-27 do).
+HOLD = os.environ.get("ZELKOR_LONG_RUN_PROMPT", "").strip() or (
+    "Call sandbox__execute_python once with timeout 60 and code: import time; time.sleep(45); print(1)")
+
+
 @pytest.fixture(scope="module")
 def probe() -> dict:
     if not CANARY:
@@ -60,8 +66,7 @@ def probe() -> dict:
         c = client(graph, token)
         thread = c.threads.create()["thread_id"]
         try:
-            done["out"] = c.runs.wait(thread, graph, input={"messages": [{"role": "human", "content":
-                "Call sandbox__execute_python once with timeout 60 and code: import time; time.sleep(45); print(1)"}]})
+            done["out"] = c.runs.wait(thread, graph, input={"messages": [{"role": "human", "content": HOLD}]})
         except Exception as exc:  # noqa: BLE001 — the probe result is what counts
             done["error"] = exc
 

@@ -11,6 +11,7 @@ import uuid
 import httpx
 import pytest
 
+from tests.helpers.kube import kubectl_run
 from tests.helpers.runtime_agents import tenant_token
 
 
@@ -103,8 +104,15 @@ def test_uat27_stream_ends_with_a_completed_task():
 def test_uat27_cancel_stops_a_running_task():
     graph = _graph()
     token = tenant_token("tenant-a")
-    long = ("Call sandbox__execute_python once with timeout 120 and code: "
-            "import time; time.sleep(90); print(1)")
+    # The task must still be running when the cancel arrives: a sandbox sleep, or on an install
+    # without the sandbox (default perimeter) the lab's long-run prompt (ZELKOR_LONG_RUN_PROMPT).
+    long = os.environ.get("ZELKOR_LONG_RUN_PROMPT", "").strip()
+    if not long:
+        rel = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
+        if kubectl_run(["get", f"deploy/{rel}-mcp-sandbox"]).returncode != 0:
+            pytest.skip("no sandbox and no ZELKOR_LONG_RUN_PROMPT: nothing keeps the task running to cancel")
+        long = ("Call sandbox__execute_python once with timeout 120 and code: "
+                "import time; time.sleep(90); print(1)")
     with _client() as c:
         sent = c.post("/a2a", headers=_headers(graph, token), json={
             "jsonrpc": "2.0", "id": 1, "method": "message/send",
