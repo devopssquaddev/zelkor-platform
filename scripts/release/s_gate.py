@@ -165,7 +165,8 @@ def main(argv: list[str] | None = None) -> int:
     missing_global = [e for e in manifest["global_env"] if not env.get(e)]
     for line in _plan_lines(its, missing_global):
         print(line)
-    last = [f for f in manifest.get("last") or [] if (ROOT / f).is_file()]
+    # The window sweep closes the full run; a phase (--only) would sweep another phase's traffic.
+    last = [] if only else [f for f in manifest.get("last") or [] if (ROOT / f).is_file()]
     files = sorted({f for it in its for f in it.files if f not in it.missing_files} - set(last)) + last
     if args.cmd == "plan":
         print(f"{args.profile}: {len(its)} S-ids, {len(files)} files")

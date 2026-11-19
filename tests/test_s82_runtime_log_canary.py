@@ -69,8 +69,9 @@ def test_s82_canary_absent_from_logs_and_nemo_stays_json():
         print(f"S-82: not checked, logging at DEBUG: {sorted(debug)}")
     assert not leaks, f"canary in logs: {sorted(leaks)}"
 
-    if not nemo_debug:
-        assert "Entered verbose mode" not in nemo
+    if nemo_debug:
+        return  # NeMo's DEBUG verbose mode prints text, not the INFO JSON this checks
+    assert "Entered verbose mode" not in nemo
     json_after = [line for line in nemo.splitlines() if '"uvicorn.access"' in line or '"nemoguardrails' in line]
     assert json_after, "NeMo emitted no JSON request logs after traffic (handler muted?)"
     for line in json_after[:20]:

@@ -12,6 +12,7 @@ import pytest
 
 from tests.helpers.gateway import assistant_text, looks_like_refusal
 from tests.helpers.langfuse import list_observations, unexpected_error_observations
+from tests.helpers.kube import consumer_key
 from tests.helpers.llm import llm_model_or_skip
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
@@ -91,7 +92,7 @@ def _headers() -> dict[str, str]:
         "Host": os.environ.get("AI_GATEWAY_IN_CLUSTER_HOST", "zelkor-platform-ai-gateway"),
         "Content-Type": "application/json",
         "Authorization": (
-            f"Bearer {os.environ.get('AI_GATEWAY_API_KEY', os.environ.get('ZELKOR_CONSUMER_KEY', ''))}"
+            f"Bearer {consumer_key()}"
         ),
         "X-Tenant-ID": "tenant-a",
     }

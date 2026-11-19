@@ -28,9 +28,9 @@ def _nemo() -> tuple[str, int]:
 
 
 def _running() -> int:
+    """NeMo pods that still exist: a Terminating pod keeps serving open connections."""
     r = kubectl_run(["get", "pods", "-l", SELECTOR, "-o", "json"])
-    pods = json.loads(r.stdout or "{}").get("items") or []
-    return sum(1 for p in pods if p["status"].get("phase") == "Running" and not p["metadata"].get("deletionTimestamp"))
+    return len(json.loads(r.stdout or "{}").get("items") or [])
 
 
 def _scale(name: str, n: int) -> None:
@@ -57,7 +57,8 @@ def test_s03_completion_fails_closed_while_nemo_is_down():
         deadline = time.monotonic() + 120
         while _running() and time.monotonic() < deadline:
             time.sleep(2)
-        assert _running() == 0, "NeMo pods still running after 120 s"
+        assert _running() == 0, "NeMo pods still present after 120 s"
+        time.sleep(5)  # Envoy drops the endpoint
         down = httpx.post(f"{BASE}/v1/chat/completions", headers=headers, json=payload, timeout=60.0)
         assert down.status_code >= 500, f"NeMo down but /v1 answered {down.status_code}: {down.text[:200]}"
         try:
