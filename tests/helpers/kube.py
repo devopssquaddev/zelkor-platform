@@ -55,3 +55,20 @@ def platform_contract(namespace: str | None = None) -> dict[str, str]:
     if res.returncode != 0:
         return {}
     return (json.loads(res.stdout or "{}") or {}).get("data") or {}
+
+
+def secret_value(name: str, key: str, namespace: str | None = None) -> str:
+    """One decoded key of a Secret, or "" when unreadable (live tests only)."""
+    import base64
+
+    if not (os.environ.get("KUBECONTEXT", "").strip() or os.environ.get("KUBE_CONTEXT", "").strip()):
+        return ""
+    res = kubectl_run(["get", "secret", name, "-o", f"jsonpath={{.data.{key}}}"], namespace=namespace)
+    return base64.b64decode(res.stdout).decode() if res.returncode == 0 and res.stdout.strip() else ""
+
+
+def consumer_key() -> str:
+    """The agents' AI Gateway consumer key: env first, else the release's consumer Secret."""
+    release = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
+    return (os.environ.get("AI_GATEWAY_API_KEY") or os.environ.get("ZELKOR_CONSUMER_KEY")
+            or secret_value(f"{release}-ai-gateway-consumer", "agents"))

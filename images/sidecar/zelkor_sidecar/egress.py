@@ -445,16 +445,21 @@ class Egress:
         headers.update(self._trace_headers(ctx, next(iter(spans.values()))[1] if len(spans) == 1 else None))
         payload = json.dumps(body).encode("utf-8")
         send = asyncio.create_task(http.post(self.cfg.mcp_upstream, content=payload, headers=headers))
+        ended = asyncio.ensure_future(ctx.ended.wait())
         while calls:
-            done, _ = await asyncio.wait({send}, timeout=WAIT_BEAT_S)
-            if done:
+            done, _ = await asyncio.wait({send, ended}, timeout=WAIT_BEAT_S, return_when=asyncio.FIRST_COMPLETED)
+            if send in done:
                 break
+            if ended in done:  # the run timed out or ended: its tool call must not run on
+                send.cancel()
+                return self._cancelled_tools(ctx, spans, started)
             for _mid, (_cm, _span, name, key) in spans.items():
                 elapsed = int(time.monotonic() - started)
                 ctx.emit("custom", {"kind": "tool", "name": name, "phase": "wait", "elapsed_s": elapsed},
                          f"{key}-wait-{elapsed}")
                 logger.info("tool wait", extra={"event": "agent_step", "kind": "tool", "phase": "wait",
                                                 "tool": name, "elapsed_s": elapsed, "run_id": ctx.run_id})
+        ended.cancel()
         resp = await send
         raw = resp.content
         ctype = resp.headers.get("content-type", "")
@@ -526,6 +531,21 @@ class Egress:
         elif inits and out_headers.get("mcp-session-id") and resp.status_code < 400:
             self._remember_session(ctx, out_headers["mcp-session-id"], inits[0].get("params") or {})
         return Response(raw, status_code=resp.status_code, headers=out_headers)
+
+    def _cancelled_tools(self, ctx, spans, started):
+        from starlette.responses import JSONResponse
+
+        out = []
+        for mid, (cm, span, name, key) in spans.items():
+            span.set_attribute("error.type", "run_ended")
+            set_span_error(span, f"tool {name}: run ended before the call returned")
+            cm.__exit__(None, None, None)
+            logger.warning("tool cancelled: run ended", extra={
+                "event": "tools_call", "tool": name, "run_id": ctx.run_id, "status": "error",
+                "elapsed_s": round(time.monotonic() - started, 3)})
+            out.append({"jsonrpc": "2.0", "id": mid,
+                        "error": {"code": -32001, "message": "run ended (timeout); tool call cancelled"}})
+        return JSONResponse(out if len(out) != 1 else out[0])
 
     # -- LLM --------------------------------------------------------------------------
 

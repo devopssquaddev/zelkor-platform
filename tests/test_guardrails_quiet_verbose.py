@@ -70,8 +70,13 @@ def test_debug_keeps_vendor_verbose(nemo, monkeypatch):
     monkeypatch.setenv("ZELKOR_LOG_LEVEL", "DEBUG")
     quiet = importlib.reload(importlib.import_module("quiet_verbose"))
     assert quiet.install() is False
-    llmrails_mod.set_verbose(True, llm_calls=True)
+    handler = _handler()
+    try:
+        llmrails_mod.set_verbose(True, llm_calls=True)
+    finally:
+        logging.getLogger().removeHandler(handler)
     assert calls == [(True, True)]
+    assert handler.level == logging.INFO  # verbose console on, Zelkor JSON handler not muted
 
 
 def test_boot_installs_patch_before_the_nemo_cli():

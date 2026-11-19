@@ -142,3 +142,16 @@ def test_s02_aegra_tenant_auth_refuses(keys, variant):
 def test_s02_header_only_identity_is_refused(keys):
     result = asyncio.run(TenantAuth().authenticate({"x-tenant-id": "tenant_a", "x-zelkor-claim-sub": "u"}))
     assert result["is_authenticated"] is False
+
+
+def test_s02_aegra_auth_handler_refuses_with_http_401_not_a_server_error(keys):
+    """The langgraph Auth handler must raise Auth.exceptions.HTTPException(401): Aegra's middleware
+    logs that at WARNING; a plain exception is an ERROR with a stack trace on every forged token."""
+    from langgraph_sdk import Auth
+
+    from agents.tenant_auth import authenticate
+
+    for variant in ("alg_none", "hs256_signed_with_public_key", "dev_prefix"):
+        with pytest.raises(Auth.exceptions.HTTPException) as exc:
+            asyncio.run(authenticate({"authorization": _variants(keys)[variant]}))
+        assert exc.value.status_code == 401, variant

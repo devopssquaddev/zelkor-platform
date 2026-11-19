@@ -222,3 +222,16 @@ def test_require_evidence_fails_on_unbound_or_failed_run(tmp_path, repo):
     assert fcm.main([*args, "--junit", str(bound), "--strict"]) == 1  # GAPs remain
     failed = _junit(tmp_path, [("tests.test_s09_agent_egress", "a", "failed")], good)
     assert fcm.main([*args, "--junit", str(failed)]) == 1
+
+
+def test_cases_without_an_s_id_in_their_name_take_it_from_the_s_gate_file_map(tmp_path):
+    """UAT-27 proves S-80, test_mcp_tenant proves S-04: the S-gate manifest names the file."""
+    by_file = fcm.file_s_ids()
+    assert by_file["test_uat27_a2a_northbound"] == {"S-80"}
+    junit = _junit(tmp_path, [("tests.test_uat27_a2a_northbound", "test_uat27_card_is_public_rpc_needs_a_jwt", "passed"),
+                              ("tests.test_mcp_tool_policy_live", "test_s71_denied_tool_hidden", "passed")])
+    report = fcm.build(fcm.load_mapping(MAPPING), fcm.parse_junit(junit), by_file)
+    auth = next(c for c in report.categories if c.key == "auth")
+    assert "S-80" in auth.oracle_passed
+    tools = next(c for c in report.categories if c.key == "tool-and-rate-limits")
+    assert tools.oracle_passed == {"S-71"}  # a named case keeps its own id, not every id of its file

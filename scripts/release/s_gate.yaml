@@ -21,7 +21,7 @@ s_ids:
   S-09: {files: [tests/test_s09_agent_egress.py]}
   S-10: {files: [tests/test_mcp_envoy_bypass.py]}
   S-11: {files: [tests/test_ingress.py]}
-  S-12: {files: [tests/test_s12_safety_dataset.py], env: [NEMO_SAFETY_REFUSAL]}
+  S-12: {files: [tests/test_s12_safety_dataset.py], env: [ZELKOR_S12_DATASET]}
   S-14: {files: [tests/test_s14_log_secret_sweep.py]}
   S-15: {files: [tests/test_mcp_backend_jwt.py]}
   S-16: {files: [tests/test_s16_agent_env_no_secrets.py]}
@@ -34,10 +34,10 @@ s_ids:
   S-27: {files: [tests/test_helm_agent_egress_scope.py]}
   S-28: {files: [examples/armored-agents/gpt-researcher/tests/test_s28_agent_ns_egress.py], env: [GPTR_NAMESPACE]}
   S-29: {files: [tests/test_s29_unlabeled_dest_deny.py]}
-  S-70: {files: [tests/test_s70_rate_limit_429.py], env: [ZELKOR_RATE_LIMIT_RPM]}
+  S-70: {files: [tests/test_s70_rate_limit_429.py]}
   S-71: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_POLICY_DENY_TOOL]}
-  S-72: {files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE, MCP_POLICY_RATE_TOOL]}
-  S-73: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_AUDIT_TOOL]}
+  S-72: {files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE]}
+  S-73: {files: [tests/test_mcp_tool_policy_live.py]}
   S-74: {files: [tests/test_uat25_runtime_tenant_sessions.py], env: [ZELKOR_RUNTIME_GRAPHS]}
   S-75: {files: [tests/test_s75_runtime_egress.py], env: [ZELKOR_RUNTIME_GRAPHS]}
   S-77: {files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
@@ -48,6 +48,7 @@ s_ids:
   S-84: {files: [tests/test_s84_postgres_tenant_guc.py]}
   S-88: {files: [tests/test_mcp_extra_identity_live.py], env: [MCP_IDENTITY_PROBE_PREFIX]}
   S-90: {files: [tests/test_s90_dns_egress_live.py]}
+  S-91: {files: [tests/test_s91_http_api_live.py], env: [ZELKOR_HTTP_API_CANARY, ZELKOR_RUNTIME_GRAPHS]}
   S-86: {profile: perimeter, files: [tests/test_s86_perimeter_stateless_sidecar.py]}
   S-87: {profile: perimeter, files: [tests/test_s87_perimeter_profile_boundary.py]}
   S-89: {profile: perimeter, files: [tests/test_perimeter_customer_data_live.py]}

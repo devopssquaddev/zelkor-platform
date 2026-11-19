@@ -16,9 +16,8 @@ import pytest
 from tests.helpers.kube import kubectl_run, platform_contract
 
 
-def sign(claims: dict, *, ttl_minutes: int = 30) -> str:
-    import jwt
-
+def signing_material() -> tuple[bytes, str, str, list[str]]:
+    """(private key PEM, kid, issuer, audiences) of the lab release, or skip."""
     ns = os.environ.get("ZELKOR_PLATFORM_NAMESPACE", "zelkor")
     release = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
     sec = kubectl_run(["get", "secret", f"{release}-tenant-jwt-signing", "-o", "jsonpath={.data}"], namespace=ns)
@@ -33,6 +32,13 @@ def sign(claims: dict, *, ttl_minutes: int = 30) -> str:
                  .replace('"', "").split(",") if a.strip()]
     if not issuer:
         pytest.skip("tenant-JWT ConfigMap has no AUTH_JWT_ISSUER")
+    return data["privateKey"].encode(), data.get("kid", "1"), issuer, audiences
+
+
+def sign(claims: dict, *, ttl_minutes: int = 30) -> str:
+    import jwt
+
+    key, kid, issuer, audiences = signing_material()
     now = datetime.now(timezone.utc)
     payload = {"iss": issuer, "aud": audiences, "iat": now, "exp": now + timedelta(minutes=ttl_minutes), **claims}
-    return jwt.encode(payload, data["privateKey"].encode(), algorithm="RS256", headers={"kid": data.get("kid", "1")})
+    return jwt.encode(payload, key, algorithm="RS256", headers={"kid": kid})

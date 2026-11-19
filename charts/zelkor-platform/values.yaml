@@ -795,6 +795,13 @@ postgresql:
     password: ''
     postgresPassword: ''
     database: zelkor
+  # in-cluster-basic data volume. Off = emptyDir: every pod restart loses threads, runs and roles.
+  # An install created with an emptyDir keeps it on upgrade (the StatefulSet's claim templates are
+  # immutable); reinstall to move it to a PVC.
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ''
   resources:
     requests:
       cpu: 100m

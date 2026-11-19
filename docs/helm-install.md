@@ -10,7 +10,7 @@ edition: ce
 
 # Install on an Existing Cluster
 
-Evaluate Zelkor Community Edition on an existing Kubernetes cluster. This guide installs the evaluation shape (`databases.mode: in-cluster-basic`), which runs stateful components as simple StatefulSets without operators. The workload is a normal Helm release.
+Evaluate Zelkor Community Edition on an existing Kubernetes cluster. This guide installs the evaluation shape (`databases.mode: in-cluster-basic`), which runs stateful components as simple StatefulSets without operators. The workload is a normal Helm release. Postgres keeps its data on an 8Gi PVC (`postgresql.persistence`); an install created before that keeps its emptyDir across upgrades, so reinstall to move it to a PVC.
 
 **Zelkor is the self-hosted agent runtime.** Bring the agent you already wrote — it can't break out, reach unauthorized data or networks, its prompts are verified, budget is controlled, and it is under observation; tenants stay isolated.
 

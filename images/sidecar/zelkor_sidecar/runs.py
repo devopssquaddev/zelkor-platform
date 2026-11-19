@@ -36,6 +36,8 @@ class RunContext:
     tool_names: List[str] = field(default_factory=list)
     root_span: Any = None
     events: "asyncio.Queue[Any]" = field(default_factory=asyncio.Queue)
+    # Set when the run is over (done, error or timeout): in-flight egress calls of the run stop.
+    ended: asyncio.Event = field(default_factory=asyncio.Event)
 
     def emit(self, event: str, data: Dict[str, Any], key: str) -> None:
         """Side events from the egress proxy (tool start/end/wait)."""
@@ -54,6 +56,9 @@ class RunSlot:
     async def __aexit__(self, *_exc) -> None:
         self.active = None
         self._lock.release()
+
+
+ABORT_WAIT_S = 5.0  # a busy runtime may only answer cancel after its tool call: do not wait for it
 
 
 def run_timeout_seconds() -> float:
@@ -135,9 +140,15 @@ class RunExecutor:
                         raise RuntimeError(error)
             except TimeoutError as exc:
                 error = str(exc)
-                await self.bridge.abort(ctx)
+                ctx.ended.set()  # cancel the run's in-flight tool and LLM calls now
+                try:
+                    await asyncio.wait_for(self.bridge.abort(ctx), ABORT_WAIT_S)
+                except asyncio.TimeoutError:
+                    logger.warning("runtime did not confirm the cancel within %.0fs", ABORT_WAIT_S,
+                                   extra={"event": "run", "run_id": run_id})
                 raise
             finally:
+                ctx.ended.set()
                 if not task.done():
                     task.cancel()
                 if ctx.runtime_session_id and ctx.runtime_session_id != thread.get("runtime_session_id"):

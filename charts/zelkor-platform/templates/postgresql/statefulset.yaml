@@ -17,6 +17,13 @@ spec:
     {{- include "zelkor-platform.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: postgresql
 ---
+{{- /* An existing StatefulSet's claim templates are immutable: keep what it was created with. */ -}}
+{{- $persist := .Values.postgresql.persistence | default dict -}}
+{{- $pvc := ($persist.enabled | default false) -}}
+{{- $live := lookup "apps/v1" "StatefulSet" .Release.Namespace (printf "%s-postgresql" (include "zelkor-platform.fullname" .)) -}}
+{{- if $live -}}
+{{- $pvc = gt (len ($live.spec.volumeClaimTemplates | default list)) 0 -}}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -76,6 +83,22 @@ spec:
         - name: init-scripts
           configMap:
             name: {{ include "zelkor-platform.fullname" . }}-postgresql-init
+        {{- if not $pvc }}
         - name: data
           emptyDir: {}
+        {{- end }}
+  {{- if $pvc }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $persist.size | default "8Gi" | quote }}
+        {{- if $persist.storageClass }}
+        storageClassName: {{ $persist.storageClass | quote }}
+        {{- end }}
+  {{- end }}
 {{- end }}

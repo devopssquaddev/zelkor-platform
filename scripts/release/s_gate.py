@@ -7,7 +7,12 @@ release properties (tests/conftest.py) and prints a per-S-id verdict. An S-id is
 has a passing case and none skipped (cases named test_sNN_* for that id; else every case of its
 files). Exit 1 when any S-id is not PASS: an absent or skipped required S-id blocks the tag.
 
-Usage: s_gate.py plan|run [--profile full|perimeter] [--junit FILE] [-- extra pytest args]
+A lab whose overlay cannot hold every S-id at once (a low /v1 cap starves the rest) runs it in
+phases with --only / --skip and merges them with `report`: a case that skipped in one phase and
+passed in another counts as passed, a failure anywhere is a failure.
+
+Usage: s_gate.py plan|run [--profile full|perimeter] [--junit FILE] [--only IDS | --skip IDS] [-- pytest args]
+       s_gate.py report --junit OUT PHASE.xml [PHASE.xml ...]
 """
 from __future__ import annotations
 
@@ -18,6 +23,8 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import xml.etree.ElementTree as ET
 
 import yaml
 
@@ -87,23 +94,79 @@ def _plan_lines(its: list[Item], missing_global: list[str]) -> list[str]:
     return lines
 
 
+RANK = {"failed": 2, "passed": 1, "skipped": 0}
+
+
+def merge_junit(paths: list[Path], out: Path) -> None:
+    """One JUnit from phase JUnits: properties of the first, the best outcome per testcase."""
+    best: dict[tuple[str, str], tuple[int, ET.Element]] = {}
+    props = None
+    for path in paths:
+        root = ET.parse(path).getroot()
+        if props is None:
+            props = root.find(".//properties")
+        for tc in root.iter("testcase"):
+            outcome = ("failed" if tc.find("failure") is not None or tc.find("error") is not None
+                       else "skipped" if tc.find("skipped") is not None else "passed")
+            key = (tc.get("classname", ""), tc.get("name", ""))
+            if key not in best or RANK[outcome] > best[key][0]:
+                best[key] = (RANK[outcome], tc)
+    suite = ET.Element("testsuite", name="s-gate", tests=str(len(best)))
+    if props is not None:
+        suite.append(props)
+    for _, tc in best.values():
+        suite.append(tc)
+    root = ET.Element("testsuites")
+    root.append(suite)
+    ET.ElementTree(root).write(out, encoding="utf-8", xml_declaration=True)
+
+
+def _print_verdicts(its: list[Item], junit: Path, profile: str) -> int:
+    result = verdicts(its, fcm.parse_junit(junit))
+    print("\n| S-id | Verdict | Passed | Failed | Skipped |\n| :--- | :--- | ---: | ---: | ---: |")
+    for sid, (status, c) in result.items():
+        print(f"| {sid} | {status} | {c['passed']} | {c['failed']} | {c['skipped']} |")
+    bad = [sid for sid, (status, _) in result.items() if status != "PASS"]
+    if bad:
+        print(f"\nS-gate {profile}: NOT PASS for {', '.join(bad)}", file=sys.stderr)
+    return 1 if bad else 0
+
+
+def _ids(raw: str) -> set[str]:
+    return {i.strip() for i in raw.split(",") if i.strip()}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     extra = argv[argv.index("--") + 1:] if "--" in argv else []
     argv = argv[: argv.index("--")] if "--" in argv else argv
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=["plan", "run"])
+    ap.add_argument("cmd", choices=["plan", "run", "report"])
+    ap.add_argument("phases", nargs="*", help="report: the phase JUnits to merge")
     ap.add_argument("--profile", default="full", choices=["full", "perimeter"])
     ap.add_argument("--junit", default="s-gate.junit.xml")
+    ap.add_argument("--only", default="", help="comma-separated S-ids to run (a phase)")
+    ap.add_argument("--skip", default="", help="comma-separated S-ids to leave to another phase")
     args = ap.parse_args(argv)
 
     manifest = load()
     env = dict(os.environ)
     its = items(manifest, args.profile, env)
+    if args.cmd == "report":
+        out = Path(args.junit)
+        merge_junit([Path(p) for p in args.phases], out)
+        return _print_verdicts(items(manifest, args.profile, env | _all_env(manifest)),
+                               out, args.profile)
+    only, skip = _ids(args.only), _ids(args.skip)
+    if only:
+        its = [it for it in its if it.s_id in only]
+    if skip:
+        its = [it for it in its if it.s_id not in skip]
     missing_global = [e for e in manifest["global_env"] if not env.get(e)]
     for line in _plan_lines(its, missing_global):
         print(line)
-    last = [f for f in manifest.get("last") or [] if (ROOT / f).is_file()]
+    # The window sweep closes the full run; a phase (--only) would sweep another phase's traffic.
+    last = [] if only else [f for f in manifest.get("last") or [] if (ROOT / f).is_file()]
     files = sorted({f for it in its for f in it.files if f not in it.missing_files} - set(last)) + last
     if args.cmd == "plan":
         print(f"{args.profile}: {len(its)} S-ids, {len(files)} files")
@@ -120,14 +183,12 @@ def main(argv: list[str] | None = None) -> int:
     if not junit.is_file():
         print(f"pytest wrote no JUnit (exit {rc})", file=sys.stderr)
         return 1
-    result = verdicts(its, fcm.parse_junit(junit))
-    print("\n| S-id | Verdict | Passed | Failed | Skipped |\n| :--- | :--- | ---: | ---: | ---: |")
-    for sid, (status, c) in result.items():
-        print(f"| {sid} | {status} | {c['passed']} | {c['failed']} | {c['skipped']} |")
-    bad = [sid for sid, (status, _) in result.items() if status != "PASS"]
-    if bad:
-        print(f"\nS-gate {args.profile}: NOT PASS for {', '.join(bad)}", file=sys.stderr)
-    return 1 if bad or rc != 0 else 0
+    return 1 if _print_verdicts(its, junit, args.profile) or rc != 0 else 0
+
+
+def _all_env(manifest: dict) -> dict[str, str]:
+    """report judges outcomes only: env was checked by each phase's run."""
+    return {e: "set" for spec in manifest["s_ids"].values() for e in spec.get("env") or []}
 
 
 if __name__ == "__main__":
