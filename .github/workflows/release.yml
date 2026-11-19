@@ -229,7 +229,8 @@ jobs:
 
   evidence:
     # CE-19e: the S-gate runs on a lab before tagging (scripts/release/s_gate.py); its JUnit is
-    # committed at release-evidence/<tag>/s-gate.junit.xml. Missing or unbound evidence, or a FAIL,
+    # committed at release-evidence/<tag>/s-gate.junit.xml (full) and s-gate-perimeter.junit.xml
+    # (perimeter). Missing or unbound evidence, or a FAIL,
     # fails the job; the matrix is still written for the step summary.
     needs: [plan]
     runs-on: ubuntu-latest
@@ -252,6 +253,10 @@ jobs:
             --require-evidence --repo . || rc=$?
           cat dist/fail-closed-matrix.md >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
+      - name: S-gate evidence for both profiles
+        # full (s-gate.junit.xml) and perimeter (s-gate-perimeter.junit.xml): present, bound to the
+        # tag and its profile, no FAIL, every S-id of the profile in its file.
+        run: python3 scripts/release/s_gate.py evidence --tag "${GITHUB_REF_NAME}" --repo .
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fail-closed-matrix

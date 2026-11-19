@@ -3,7 +3,11 @@
 # s_gate.py). A listed file that does not exist yet, or a missing env var, is a GAP for that S-id
 # and blocks the tag; it is never silently dropped. Offline L1/L2 cases run in PR CI (tests.yml).
 #
-# profile: full = the Path B S-gate run; perimeter = the perimeter lab run (its evidence ships too).
+# profiles (default [full]): the installs an S-id is gated on. full = the Path B S-gate run
+# (release-evidence/<tag>/s-gate.junit.xml); perimeter = the perimeter lab run
+# (release-evidence/<tag>/s-gate-perimeter.junit.xml). A promise that holds on both installs is
+# gated on both; `s_gate.py evidence` fails the release when either file, or an S-id of its
+# profile, is absent.
 # Lab-specific values (hosts, keys, graph ids) come from the lab env file, never from this repo.
 global_env: [KUBECONTEXT, GATEWAY_BASE_URL, ZELKOR_TEST_TOKENS, ZELKOR_SGATE_VERSION,
              ZELKOR_SGATE_GIT_SHA, ZELKOR_SGATE_RUN_ID, ZELKOR_UAT_WINDOW_START]
@@ -20,12 +24,12 @@ s_ids:
   S-08: {files: [tests/test_s08_worker_unauth_run.py]}
   S-09: {files: [tests/test_s09_agent_egress.py]}
   S-10: {files: [tests/test_mcp_envoy_bypass.py]}
-  S-11: {files: [tests/test_ingress.py]}
+  S-11: {profiles: [full, perimeter], files: [tests/test_ingress.py]}
   S-12: {files: [tests/test_s12_safety_dataset.py], env: [ZELKOR_S12_DATASET]}
-  S-14: {files: [tests/test_s14_log_secret_sweep.py]}
-  S-15: {files: [tests/test_mcp_backend_jwt.py]}
-  S-16: {files: [tests/test_s16_agent_env_no_secrets.py]}
-  S-18: {files: [tests/test_s18_wrap_base_url.py]}
+  S-14: {profiles: [full, perimeter], files: [tests/test_s14_log_secret_sweep.py]}
+  S-15: {profiles: [full, perimeter], files: [tests/test_mcp_backend_jwt.py]}
+  S-16: {profiles: [full, perimeter], files: [tests/test_s16_agent_env_no_secrets.py]}
+  S-18: {profiles: [full, perimeter], files: [tests/test_s18_wrap_base_url.py]}
   S-19: {files: [tests/test_s19_mode_b_no_auth_user.py]}
   S-23: {files: [tests/test_helm_values_schema.py]}
   S-24: {files: [tests/test_s24_langfuse_project_isolation.py], env: [LANGFUSE_EXTRA_PUBLIC_KEY, LANGFUSE_EXTRA_SECRET_KEY]}
@@ -34,24 +38,24 @@ s_ids:
   S-27: {files: [tests/test_helm_agent_egress_scope.py]}
   S-28: {files: [examples/armored-agents/gpt-researcher/tests/test_s28_agent_ns_egress.py], env: [GPTR_NAMESPACE]}
   S-29: {files: [tests/test_s29_unlabeled_dest_deny.py]}
-  S-70: {files: [tests/test_s70_rate_limit_429.py]}
-  S-71: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_POLICY_DENY_TOOL]}
-  S-72: {files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE]}
-  S-73: {files: [tests/test_mcp_tool_policy_live.py]}
-  S-74: {files: [tests/test_uat25_runtime_tenant_sessions.py], env: [ZELKOR_RUNTIME_GRAPHS]}
-  S-75: {files: [tests/test_s75_runtime_egress.py], env: [ZELKOR_RUNTIME_GRAPHS]}
-  S-77: {files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
-  S-79: {files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
-  S-80: {files: [tests/test_uat27_a2a_northbound.py], env: [A2A_GRAPH_ID, A2A_OFF_GRAPH_ID]}
-  S-82: {files: [tests/test_s82_runtime_log_canary.py], env: [ZELKOR_RUNTIME_GRAPHS]}
-  S-83: {files: [tests/test_s83_gateway_bypass.py]}
+  S-70: {profiles: [full, perimeter], files: [tests/test_s70_rate_limit_429.py]}
+  S-71: {profiles: [full, perimeter], files: [tests/test_mcp_tool_policy_live.py], env: [MCP_POLICY_DENY_TOOL]}
+  S-72: {profiles: [full, perimeter], files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE]}
+  S-73: {profiles: [full, perimeter], files: [tests/test_mcp_tool_policy_live.py]}
+  S-74: {profiles: [full, perimeter], files: [tests/test_uat25_runtime_tenant_sessions.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-75: {profiles: [full, perimeter], files: [tests/test_s75_runtime_egress.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-77: {profiles: [full, perimeter], files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-79: {profiles: [full, perimeter], files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-80: {profiles: [full, perimeter], files: [tests/test_uat27_a2a_northbound.py], env: [A2A_GRAPH_ID, A2A_OFF_GRAPH_ID]}
+  S-82: {profiles: [full, perimeter], files: [tests/test_s82_runtime_log_canary.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-83: {profiles: [full, perimeter], files: [tests/test_s83_gateway_bypass.py]}
   S-84: {files: [tests/test_s84_postgres_tenant_guc.py]}
-  S-88: {files: [tests/test_mcp_extra_identity_live.py], env: [MCP_IDENTITY_PROBE_PREFIX]}
-  S-90: {files: [tests/test_s90_dns_egress_live.py]}
-  S-91: {files: [tests/test_s91_http_api_live.py], env: [ZELKOR_HTTP_API_CANARY, ZELKOR_RUNTIME_GRAPHS]}
-  S-86: {profile: perimeter, files: [tests/test_s86_perimeter_stateless_sidecar.py]}
-  S-87: {profile: perimeter, files: [tests/test_s87_perimeter_profile_boundary.py]}
-  S-89: {profile: perimeter, files: [tests/test_perimeter_customer_data_live.py]}
+  S-88: {profiles: [full, perimeter], files: [tests/test_mcp_extra_identity_live.py], env: [MCP_IDENTITY_PROBE_PREFIX]}
+  S-90: {profiles: [full, perimeter], files: [tests/test_s90_dns_egress_live.py]}
+  S-91: {profiles: [full, perimeter], files: [tests/test_s91_http_api_live.py], env: [ZELKOR_HTTP_API_CANARY, ZELKOR_RUNTIME_GRAPHS]}
+  S-86: {profiles: [perimeter], files: [tests/test_s86_perimeter_stateless_sidecar.py]}
+  S-87: {profiles: [perimeter], files: [tests/test_s87_perimeter_profile_boundary.py]}
+  S-89: {profiles: [perimeter], files: [tests/test_perimeter_customer_data_live.py]}
 # CE ids that are not in the live S-gate, with the reason. Together with s_ids this must cover every
 # CE catalog id (checked by tests/test_release_s_gate.py); a new id lands in one of the two.
 excluded:
