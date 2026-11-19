@@ -37,10 +37,11 @@ def test_ce2_init_dev_run_logs_undeploy(tmp_path):
     add = subprocess.run([exe, "--store", str(store), "env", "add", "lab", "--kube-context", ctx, "--namespace", ns],
                          capture_output=True, text=True, timeout=60)
     assert add.returncode == 0, add.stderr
+    agent.mkdir()
     init = _zelkor(store, "init", str(agent))
     assert init.returncode == 0, init.stderr[-500:]
     try:
-        dev = _zelkor(store, "dev", str(agent))
+        dev = _zelkor(store, "dev", str(agent), "--tools", "aigateway")
         assert dev.returncode == 0, dev.stderr[-1500:]
         run = _zelkor(store, "run", str(agent), "--input", "Say ok", timeout=300,
                       env={"ZELKOR_AEGRA_URL": os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088"),
