@@ -2,8 +2,8 @@
 off-topic prompt with the rail's own text (pass^k), keeps false refusals of on-topic prompts at or
 under 10%, and the refusal does not leak the policy (its patterns or flow names).
 
-The lab applies the rail (internal/dev/overlays/uat13-topic-rail.yaml) and exports its refusal as
-ZELKOR_UAT13_REFUSAL; tests never set chart values."""
+The lab applies the rail (extraColang + extraInputFlows + regex_detection patterns) and exports its
+refusal as ZELKOR_UAT13_REFUSAL; tests never set chart values."""
 from __future__ import annotations
 
 import os
