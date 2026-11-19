@@ -648,3 +648,46 @@ def test_http_apis_from_env(monkeypatch):
     monkeypatch.setenv("ZELKOR_API_UPSTREAMS", "github=http://a-api-github, billing=http://a-api-billing/")
     assert EgressConfig.from_env().http_apis == {"github": "http://a-api-github",
                                                 "billing": "http://a-api-billing"}
+
+
+def test_tool_call_is_cancelled_when_the_run_ends():
+    """UAT-15: a run past its timeout must not keep its tool call (and the sandbox) running."""
+    async def go():
+        async def hang(request):
+            await asyncio.sleep(30)
+            return httpx.Response(200, json={})
+
+        slot = RunSlot()
+        cfg = EgressConfig(llm_upstream="http://gw/v1", mcp_upstream="http://mcp/mcp", consumer_key="ck",
+                           tool_prefixes=("postgres",))
+        egress = Egress(slot, Tracing(tracer=None), cfg, http=httpx.AsyncClient(transport=httpx.MockTransport(hang)))
+        ctx = _activate(slot)
+        loop = asyncio.get_running_loop()
+        loop.call_later(0.2, ctx.ended.set)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=egress.app()), base_url="http://sc") as c:
+            t0 = loop.time()
+            r = await c.post("/run/active/mcp", json=_rpc("tools/call", name="postgres__query", arguments={}))
+            return r, loop.time() - t0
+
+    resp, took = asyncio.run(go())
+    assert took < 5, f"tool call outlived its run by {took:.1f}s"
+    assert resp.json()["error"]["code"] == -32001
+
+
+def test_timeout_does_not_wait_for_a_runtime_that_never_confirms_the_cancel(monkeypatch):
+    import zelkor_sidecar.runs as runs
+
+    class SlowAbort(FakeBridge):
+        async def abort(self, ctx):
+            await asyncio.sleep(30)
+
+    monkeypatch.setattr(runs, "ABORT_WAIT_S", 0.2)
+
+    async def go():
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        with pytest.raises(TimeoutError):
+            await _drive(SlowAbort(hang=True), timeout_s=0.5)
+        return loop.time() - t0
+
+    assert asyncio.run(go()) < 5
