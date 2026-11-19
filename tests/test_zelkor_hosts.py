@@ -114,7 +114,8 @@ def test_recreated_gateway_service_is_map_drift(capsys):
 def test_pod_with_old_entries_is_drift(capsys):
     stale = [{"ip": "10.43.1.1", "hostnames": ["zelkor-platform-ai-gateway"]}]
     assert _check(_cluster(pod_aliases=stale)) == 1
-    assert "FAIL pod hosts" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "FAIL pod hosts" in out and "run `zelkor deploy`" in out
 
 
 def test_stale_http_api_name_is_reported(capsys):
@@ -139,7 +140,12 @@ def _aegra_pod(aliases):
 def test_platform_aegra_is_checked_too(capsys):
     stale = [{"ip": "10.43.1.1", "hostnames": ["zelkor-platform-ai-gateway"]}]
     assert _check(_cluster(extra_pods=[_aegra_pod(stale)])) == 1
-    assert "FAIL pod hosts   zelkor/zelkor-platform-aegra-x" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "FAIL pod hosts   zelkor/zelkor-platform-aegra-x" in out
+    # demohetzner 2026-11-19 (K8s 1.35): adding an HTTP API left Aegra one name short until the
+    # next upgrade; `zelkor deploy` does not manage the platform, so it must not be the advice.
+    aegra_line = next(l for l in out.splitlines() if "zelkor-platform-aegra-x" in l and "FAIL" in l)
+    assert "run `helm upgrade` on the platform again" in aegra_line and "zelkor deploy" not in aegra_line
 
 
 def test_unrelated_pods_are_ignored(capsys):
