@@ -1,6 +1,6 @@
 ---
 title: Run Agents Without DNS
-description: Agent pods get no DNS, so data cannot leave through name lookups. How it is applied, how to check it, and when to opt out.
+description: Agent pods get no DNS, only the platform names they call.
 type: how-to
 sidebar_group: Agents
 sidebar_order: 34

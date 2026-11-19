@@ -1,6 +1,6 @@
 ---
 title: Zelkor Platform Threat Model
-description: The assets we protect, trust boundaries we enforce, and security promises we make.
+description: Assets, trust boundaries and the security promises Zelkor makes.
 type: explanation
 sidebar_group: Architecture
 sidebar_order: 15
