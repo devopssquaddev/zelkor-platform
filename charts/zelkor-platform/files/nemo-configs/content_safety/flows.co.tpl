@@ -16,6 +16,21 @@ define flow self check input
   if $verdict.blocked
     bot refuse to respond
     stop
+
+# Tool results reach the model as input: an injected instruction in a tool message is checked
+# like the user message, in the same mode (S-12 tool-output injection).
+define flow self check tool input
+  $verdict = execute zelkor_self_check(side="tool_input", mode="{{ $inMode }}", timeout_ms={{ $timeout }}, on_unavailable="{{ $onUnavailable }}")
+  if $verdict.blocked
+    bot refuse to respond
+    abort
+
+# NeMo 0.24.1 emits UserToolMessages instead of UserMessage when tool input rails exist, and
+# nothing then calls the model: resume the turn once every tool message passed.
+define parallel flow zelkor continue after tool input
+  priority 100
+  event ToolInputRailsFinished
+  create event UserMessage(text=$last_user_message)
 {{- end }}
 {{- if ne $outMode "none" }}
 

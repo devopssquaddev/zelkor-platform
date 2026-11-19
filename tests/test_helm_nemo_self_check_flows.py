@@ -96,3 +96,26 @@ def test_2_5_4_timeout_default_and_on_unavailable_wiring():
 def test_invalid_on_unavailable_fails_render():
     err = _helm(*OLLAMA, "--set", "workspace.policies.nemo.selfCheck.onUnavailable=maybe", check=False)
     assert re.search(r"selfCheck[./]onUnavailable", err), err
+
+
+def test_tool_messages_are_checked_in_the_input_mode():
+    """S-12 tool-output injection: the harmful text sits in a tool message, which the input rail
+    never sees. The tool input rail checks each tool message, then resumes the turn."""
+    for mode in ("log", "block"):
+        data = _cm("--set", f"workspace.policies.nemo.selfCheck.input={mode}")
+        assert _rails(data)["tool_input"]["flows"] == ["self check tool input"]
+        flows = data["content_safety-flows.co"]
+        body = _flow(flows, "self check tool input")
+        assert f'side="tool_input", mode="{mode}"' in body
+        assert "bot refuse to respond" in body and "abort" in body
+        resume = flows.split("define parallel flow zelkor continue after tool input", 1)[1]
+        assert "event ToolInputRailsFinished" in resume
+        assert "create event UserMessage(text=$last_user_message)" in resume
+    tasks = {p["task"]: p["content"] for p in yaml.safe_load(_cm()["content_safety-prompts.yml"])["prompts"]}
+    assert "<tool_result>\n{{ user_input }}\n</tool_result>" in tasks["self_check_input $variant=tool_input"]
+
+
+def test_input_none_has_no_tool_rail():
+    data = _cm("--set", "workspace.policies.nemo.selfCheck.input=none")
+    assert "tool_input" not in _rails(data)
+    assert "self check tool input" not in data["content_safety-flows.co"]
