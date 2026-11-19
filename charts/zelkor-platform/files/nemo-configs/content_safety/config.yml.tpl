@@ -74,6 +74,11 @@ rails:
 {{- else }}
     flows: []
 {{- end }}
+{{- if ne $inMode "none" }}
+  tool_input:
+    flows:
+      - self check tool input
+{{- end }}
   output:
     streaming:
       enabled: true
