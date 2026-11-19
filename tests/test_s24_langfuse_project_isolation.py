@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from tests.helpers.langfuse import GATEWAY_BASE_URL, langfuse_auth, langfuse_headers, list_traces
+from tests.helpers.kube import consumer_key
 from tests.helpers.llm import llm_model_or_skip
 
 
@@ -26,7 +27,7 @@ def _seed_init_trace() -> str:
     host = os.environ.get("AI_GATEWAY_IN_CLUSTER_HOST") or os.environ.get(
         "AI_GATEWAY_HOST_HEADER", "zelkor-platform-ai-gateway"
     )
-    key = os.environ.get("AI_GATEWAY_API_KEY", os.environ.get("ZELKOR_CONSUMER_KEY", ""))
+    key = consumer_key()
     headers = {
         "Host": host,
         "Content-Type": "application/json",
