@@ -41,6 +41,7 @@ EXCLUDED = {
     "security.sandbox.provisioning.verify.enabled": "Job-only sub-switch of provisioning.mode",
     "databases.postgresql.barman.enabled": "needs object-store credentials; test_helm_operator_mode.py",
     "seaweedfs.persistence.enabled": "storage sizing, not a feature",
+    "postgresql.persistence.enabled": "storage, not a feature; test_helm_postgres_persistence.py",
     "platform.telemetry.otlp.enabled": "no-op switch: otlp.endpoint decides (single-sink gate); test_profile_perimeter.py",
     # Security knobs that are not named enabled/mode (see SECURITY_KNOBS).
     "platform.isolation.agentNamespaces": "agent-namespace NetworkPolicies; test_network_policies.py",

@@ -4534,6 +4534,25 @@
           },
           "additionalProperties": false
         },
+        "persistence": {
+          "type": "object",
+          "description": "Data volume of the in-cluster-basic Postgres. enabled=false is an emptyDir (data lost on restart). An install created with an emptyDir keeps it on upgrade.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Value for postgresql.persistence.enabled."
+            },
+            "size": {
+              "type": "string",
+              "description": "Value for postgresql.persistence.size."
+            },
+            "storageClass": {
+              "type": "string",
+              "description": "Value for postgresql.persistence.storageClass."
+            }
+          },
+          "additionalProperties": false
+        },
         "resources": {
           "type": "object",
           "description": "Values under postgresql.resources.",
