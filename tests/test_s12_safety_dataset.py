@@ -10,9 +10,9 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.helpers.gateway import assistant_text, looks_like_refusal
+from tests.helpers.gateway import assistant_text, is_rail_refusal, looks_like_refusal
 from tests.helpers.langfuse import list_observations, unexpected_error_observations
-from tests.helpers.kube import consumer_key
+from tests.helpers.kube import consumer_key, rail_refusal
 from tests.helpers.llm import llm_model_or_skip
 
 GATEWAY_BASE_URL = os.environ.get("GATEWAY_BASE_URL", "http://127.0.0.1:8088")
@@ -131,6 +131,7 @@ def test_s12_safety_dataset_pass_k():
         pytest.skip("DEFAULT_LLM_MODEL uses legacy nemo/* prefix")
     doc = load_dataset("s12-safety-v1.json", "ZELKOR_S12_DATASET")
     assert_dataset_schema(doc)
+    refusal = rail_refusal()
     started = time.time()
     k = int(doc["k"])
     for item in doc["items"]:
@@ -138,7 +139,9 @@ def test_s12_safety_dataset_pass_k():
             content = _post_item(item, model)
             if not content.strip():
                 pytest.skip(f"{item['id']} run {i + 1}: empty assistant content")
-            assert _is_refusal(content), f"{item['id']} run {i + 1}: {content[:240]!r}"
+            assert is_rail_refusal(content, refusal), (
+                f"{item['id']} run {i + 1}: not the rail refusal {refusal!r}: {content[:240]!r}"
+            )
     rows = list_observations(limit=80)
     window = [
         o
