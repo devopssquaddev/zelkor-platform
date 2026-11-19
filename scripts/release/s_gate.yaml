@@ -26,7 +26,9 @@ s_ids:
   S-10: {files: [tests/test_mcp_envoy_bypass.py]}
   S-11: {profiles: [full, perimeter], files: [tests/test_ingress.py]}
   S-12: {files: [tests/test_s12_safety_dataset.py], env: [ZELKOR_S12_DATASET]}
-  S-14: {profiles: [full, perimeter], files: [tests/test_s14_log_secret_sweep.py]}
+  # A perimeter keeps no readable trace store (traces go to the customer's OTLP sink): S-14 there is the log sweep.
+  S-14: {profiles: [full, perimeter], files: [tests/test_s14_log_secret_sweep.py],
+         not_applicable: {perimeter: [test_s14_window_traces_carry_no_credentials]}}
   S-15: {profiles: [full, perimeter], files: [tests/test_mcp_backend_jwt.py]}
   S-16: {profiles: [full, perimeter], files: [tests/test_s16_agent_env_no_secrets.py]}
   S-18: {profiles: [full, perimeter], files: [tests/test_s18_wrap_base_url.py]}

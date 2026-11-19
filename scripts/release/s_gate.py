@@ -48,6 +48,9 @@ class Item:
     files: list[str]
     env: list[str]
     profiles: tuple[str, ...] = ("full",)
+    # Test functions that cannot apply on this profile (manifest `not_applicable: {profile: [...]}`):
+    # left out of the verdict, so they neither pass nor turn the S-id into a GAP.
+    not_applicable: tuple[str, ...] = ()
     missing_files: list[str] = field(default_factory=list)
     missing_env: list[str] = field(default_factory=list)
 
@@ -63,7 +66,8 @@ def load(path: Path = MANIFEST) -> dict:
 def items(manifest: dict, profile: str, env: dict[str, str], root: Path = ROOT) -> list[Item]:
     out = []
     for sid, spec in manifest["s_ids"].items():
-        it = Item(sid, list(spec["files"]), list(spec.get("env") or []), tuple(spec.get("profiles") or ["full"]))
+        it = Item(sid, list(spec["files"]), list(spec.get("env") or []), tuple(spec.get("profiles") or ["full"]),
+                  tuple((spec.get("not_applicable") or {}).get(profile) or ()))
         if profile not in it.profiles:
             continue
         it.missing_files = [f for f in it.files if not (root / f).is_file()]
@@ -75,7 +79,7 @@ def items(manifest: dict, profile: str, env: dict[str, str], root: Path = ROOT) 
 def verdicts(its: list[Item], cases: list[fcm.Case]) -> dict[str, tuple[str, Counter]]:
     out = {}
     for it in its:
-        mine = [c for c in cases if c.module in it.stems]
+        mine = [c for c in cases if c.module in it.stems and c.name.split("[")[0] not in it.not_applicable]
         named = [c for c in mine if it.s_id in fcm.s_ids(c.classname, c.name)]
         counts = Counter(c.outcome for c in (named or mine))
         if it.missing_files or it.missing_env:
@@ -212,7 +216,7 @@ def evidence_problems(manifest: dict, profile: str, junit: Path, tag: str, repo:
     cases = fcm.parse_junit(junit)
     gaps = []
     for it in its:
-        mine = [c for c in cases if c.module in it.stems]
+        mine = [c for c in cases if c.module in it.stems and c.name.split("[")[0] not in it.not_applicable]
         status, _ = verdicts([it], cases)[it.s_id]
         if not mine:
             problems.append(f"{profile}: {it.s_id} absent from {junit.name}")

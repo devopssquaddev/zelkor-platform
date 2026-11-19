@@ -206,3 +206,29 @@ def test_run_binds_the_profile_into_the_junit():
 def test_release_workflow_checks_both_profiles():
     wf = (ROOT / ".github" / "workflows" / "release.yml").read_text()
     assert "scripts/release/s_gate.py evidence --tag" in wf
+
+
+def test_not_applicable_cases_leave_the_verdict_on_that_profile_only():
+    manifest = {"s_ids": {"S-14": {"profiles": ["full", "perimeter"], "files": ["tests/test_s14_log_secret_sweep.py"],
+                                   "not_applicable": {"perimeter": ["test_s14_window_traces_carry_no_credentials"]}}}}
+    cases = [fcm.Case("tests.test_s14_log_secret_sweep", "test_s14_container_logs_carry_no_credentials_or_prompt", "passed"),
+             fcm.Case("tests.test_s14_log_secret_sweep", "test_s14_window_traces_carry_no_credentials", "skipped")]
+    perim = s_gate.verdicts(s_gate.items(manifest, "perimeter", {}), cases)
+    full = s_gate.verdicts(s_gate.items(manifest, "full", {}), cases)
+    assert perim["S-14"][0] == "PASS"
+    assert full["S-14"][0] == "GAP"
+
+
+def test_not_applicable_names_are_real_test_functions():
+    """A typo would silently drop nothing; a stale name would hide nothing. Both must fail here."""
+    import ast
+
+    manifest = s_gate.load()
+    for sid, spec in manifest["s_ids"].items():
+        for profile, names in (spec.get("not_applicable") or {}).items():
+            assert profile in (spec.get("profiles") or ["full"]), (sid, profile)
+            defined = set()
+            for f in spec["files"]:
+                tree = ast.parse((s_gate.ROOT / f).read_text())
+                defined |= {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+            assert set(names) <= defined, (sid, sorted(set(names) - defined))
