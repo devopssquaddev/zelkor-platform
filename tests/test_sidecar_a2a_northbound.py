@@ -10,7 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "images" / "sidecar"))
 
-pytest.importorskip("a2a")
+import a2a  # noqa: E402,F401  (requirements-dev.txt; a missing SDK is a FAIL, not a skip: S-80 L1)
 httpx = pytest.importorskip("httpx")
 
 from tests.test_sidecar_inbound import GRAPH, EchoExecutor, _resolver  # noqa: E402

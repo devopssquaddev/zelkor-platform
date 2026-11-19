@@ -132,6 +132,11 @@ def test_gateway_routing_http_endpoints(kubecontext):
     ]
     if not endpoints:
         pytest.skip(f"neither {LANGFUSE_HOST} nor {AEGRA_HOST} is routed (e.g. profile=perimeter)")
+    if routed is None:
+        try:
+            httpx.get(GATEWAY_BASE_URL, timeout=3.0)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            pytest.skip(f"no cluster and no gateway at {GATEWAY_BASE_URL}: {exc}")
 
     for host, path in endpoints:
         url = f"{GATEWAY_BASE_URL}{path}"

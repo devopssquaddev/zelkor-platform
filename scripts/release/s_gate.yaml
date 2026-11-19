@@ -1,0 +1,65 @@
+# CE S-gate manifest: every CE CLAIM S-id with an L3/L7 level, the live test files that prove it,
+# and the env the lab must export so they run instead of skipping. Read by run_s_gate.sh (via
+# s_gate.py). A listed file that does not exist yet, or a missing env var, is a GAP for that S-id
+# and blocks the tag; it is never silently dropped. Offline L1/L2 cases run in PR CI (tests.yml).
+#
+# profile: full = the Path B S-gate run; perimeter = the perimeter lab run (its evidence ships too).
+# Lab-specific values (hosts, keys, graph ids) come from the lab env file, never from this repo.
+global_env: [KUBECONTEXT, GATEWAY_BASE_URL, ZELKOR_TEST_TOKENS, ZELKOR_SGATE_VERSION,
+             ZELKOR_SGATE_GIT_SHA, ZELKOR_SGATE_RUN_ID, ZELKOR_UAT_WINDOW_START]
+# Runs last: the window sweep (S-14 container-log part and UAT-17).
+last: [tests/test_uat_window_hygiene.py]
+s_ids:
+  S-01: {files: [tests/test_tenant_auth.py, tests/test_aegra_auth_inject.py, tests/test_s01_cross_tenant_runs.py]}
+  S-02: {files: [tests/test_no_dev_auth.py, tests/test_s02_jwt_live.py]}
+  S-03: {files: [tests/test_s03_nemo_down.py]}
+  S-04: {files: [tests/test_mcp_tenant.py]}
+  S-05: {files: [tests/test_mcp_postgres.py]}
+  S-06: {files: [tests/test_mcp_qdrant.py]}
+  S-07: {files: [tests/test_runtime_class.py, tests/test_sandbox_worker_token.py, tests/test_mcp_sandbox.py]}
+  S-08: {files: [tests/test_s08_worker_unauth_run.py]}
+  S-09: {files: [tests/test_s09_agent_egress.py]}
+  S-10: {files: [tests/test_mcp_envoy_bypass.py]}
+  S-11: {files: [tests/test_ingress.py]}
+  S-12: {files: [tests/test_s12_safety_dataset.py], env: [NEMO_SAFETY_REFUSAL]}
+  S-14: {files: [tests/test_s14_log_secret_sweep.py]}
+  S-15: {files: [tests/test_mcp_backend_jwt.py]}
+  S-16: {files: [tests/test_s16_agent_env_no_secrets.py]}
+  S-18: {files: [tests/test_s18_wrap_base_url.py]}
+  S-19: {files: [tests/test_s19_mode_b_no_auth_user.py]}
+  S-23: {files: [tests/test_helm_values_schema.py]}
+  S-24: {files: [tests/test_s24_langfuse_project_isolation.py], env: [LANGFUSE_EXTRA_PUBLIC_KEY, LANGFUSE_EXTRA_SECRET_KEY]}
+  S-25: {files: [tests/test_s25_gvisor_live.py]}
+  S-26: {files: [tests/test_mcp_object.py], env: [OBJECT_MCP_ENABLED]}
+  S-27: {files: [tests/test_helm_agent_egress_scope.py]}
+  S-28: {files: [examples/armored-agents/gpt-researcher/tests/test_s28_agent_ns_egress.py], env: [GPTR_NAMESPACE]}
+  S-29: {files: [tests/test_s29_unlabeled_dest_deny.py]}
+  S-70: {files: [tests/test_s70_rate_limit_429.py], env: [ZELKOR_RATE_LIMIT_RPM]}
+  S-71: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_POLICY_DENY_TOOL]}
+  S-72: {files: [tests/test_mcp_tool_policy_live.py], env: [ZELKOR_MCP_RATE_LIMIT_PER_MINUTE, MCP_POLICY_RATE_TOOL]}
+  S-73: {files: [tests/test_mcp_tool_policy_live.py], env: [MCP_AUDIT_TOOL]}
+  S-74: {files: [tests/test_uat25_runtime_tenant_sessions.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-75: {files: [tests/test_s75_runtime_egress.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-77: {files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-79: {files: [tests/test_uat26_runtime_tool_scope.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-80: {files: [tests/test_uat27_a2a_northbound.py], env: [A2A_GRAPH_ID, A2A_OFF_GRAPH_ID]}
+  S-82: {files: [tests/test_s82_runtime_log_canary.py], env: [ZELKOR_RUNTIME_GRAPHS]}
+  S-83: {files: [tests/test_s83_gateway_bypass.py]}
+  S-84: {files: [tests/test_s84_postgres_tenant_guc.py]}
+  S-88: {files: [tests/test_mcp_extra_identity_live.py], env: [MCP_IDENTITY_PROBE_PREFIX]}
+  S-90: {files: [tests/test_s90_dns_egress_live.py]}
+  S-86: {profile: perimeter, files: [tests/test_s86_perimeter_stateless_sidecar.py]}
+  S-87: {profile: perimeter, files: [tests/test_s87_perimeter_profile_boundary.py]}
+  S-89: {profile: perimeter, files: [tests/test_perimeter_customer_data_live.py]}
+# CE ids that are not in the live S-gate, with the reason. Together with s_ids this must cover every
+# CE catalog id (checked by tests/test_release_s_gate.py); a new id lands in one of the two.
+excluded:
+  S-13: L5 benign false-refusal rate; reported, not a release gate until baselined
+  S-17: L0 chart scan (ai_sdlc_gates G3) in PR CI
+  S-20: NON claim; UAT-20 docs honesty review
+  S-21: NON claim; UAT-20 docs honesty review
+  S-22: NON claim (N5); docs must not call Deep file tools a sandbox
+  S-76: L1 only (tests/test_sidecar_egress.py) in PR CI
+  S-78: L5 runtime built-in tools dataset (tests/test_s78_runtime_builtin_tools.py)
+  S-81: L5 runtime guardrails dataset (tests/test_s81_runtime_guardrails.py), self-check block overlay
+  S-85: L1 only (tests/test_mcp_sandbox.py) in PR CI

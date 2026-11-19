@@ -79,8 +79,8 @@ The `ClusterPolicy` rejects any Pod whose `ghcr.io/devopssquaddev/zelkor-*` imag
 
 Each release publishes:
 
-- `fail-closed-matrix.md`: the security test run grouped by promise (auth, guardrails, egress, DNS egress, admin plane, provider keys, component down). A promise with no passing test shows as GAP, never as pass.
-- `upgrade-rollback.json`: upgrade from the previous release and `helm rollback`, with zero failed requests through the gateway.
+- `fail-closed-matrix.md`: the security test run grouped by promise (auth, guardrails, egress, DNS egress, admin plane, provider keys, component down, tenant data, sandbox, tool and rate limits), stamped with the release and commit it tested. Each promise names the tests that can see its failure; it shows PASS only when every one of them passed, and GAP when any is missing or skipped, never pass.
+- `upgrade-rollback.json` (planned; not yet green on a release): upgrade from the previous release and `helm rollback`, with zero failed requests through the gateway. Until then the upgrade is proven on a lab cluster before each tag.
 - `retry-storm.json`: 30 minutes of 100% provider failures; Envoy memory stays flat and under the ceiling in [`scripts/release/gate-thresholds.json`](../../scripts/release/gate-thresholds.json).
 
 Report vulnerabilities as described in [SECURITY.md](../../SECURITY.md). Fixed CVEs are in the [CVE log](cve-log.md).

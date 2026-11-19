@@ -14,6 +14,18 @@ import common.jwt_verifier as _jwt_verifier_module  # noqa: E402
 
 sys.modules.setdefault("jwt_verifier", _jwt_verifier_module)
 
+# CE-19e: bind S-gate JUnit evidence to the release it tested (read by scripts/release/fail_closed_matrix.py).
+_EVIDENCE_ENV = {"zelkor_release": "ZELKOR_SGATE_VERSION", "zelkor_git_sha": "ZELKOR_SGATE_GIT_SHA",
+                 "zelkor_run_id": "ZELKOR_SGATE_RUN_ID"}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _release_evidence_properties(record_testsuite_property):
+    for name, env in _EVIDENCE_ENV.items():
+        if os.environ.get(env):
+            record_testsuite_property(name, os.environ[env])
+
+
 @pytest.fixture(scope="session")
 def kubecontext():
     """
