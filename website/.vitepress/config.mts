@@ -3,11 +3,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { fileURLToPath } from 'node:url';
+import { pageSlug } from '../scripts/build-og.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const docsDir = path.resolve(__dirname, '../../docs');
 const repoRoot = path.resolve(docsDir, '..');
 const githubBlob = 'https://github.com/devopssquaddev/zelkor-platform/blob/main';
+const siteUrl = 'https://docs.zelkor.io';
+const siteDescription = 'The self-hosted agent runtime';
 const preferredGroupOrder = [
   'Get started',
   'Architecture',
@@ -145,10 +148,30 @@ function mermaidAndGithubMarkdown(md: {
 
 export default defineConfig({
   title: 'Zelkor',
-  description: 'The self-hosted agent runtime',
+  description: siteDescription,
   srcDir: '../docs',
   rewrites: {
     'README.md': 'index.md',
+  },
+  // Social previews (LinkedIn, X, Slack): cards come from `npm run og` (scripts/build-og.mjs).
+  transformHead({ pageData }) {
+    const slug = pageSlug(pageData.relativePath);
+    const url = slug === 'index' ? `${siteUrl}/` : `${siteUrl}/${slug}`;
+    const card = fs.existsSync(path.join(docsDir, 'public/og', `${slug}.png`)) ? slug : 'default';
+    const title = pageData.frontmatter.title || pageData.title;
+    return [
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { property: 'og:site_name', content: 'Zelkor' }],
+      ['meta', { property: 'og:type', content: slug === 'index' ? 'website' : 'article' }],
+      ['meta', { property: 'og:url', content: url }],
+      ['meta', { property: 'og:title', content: title ? `${title} | Zelkor` : 'Zelkor' }],
+      ['meta', { property: 'og:description', content: pageData.frontmatter.description || siteDescription }],
+      ['meta', { property: 'og:image', content: `${siteUrl}/og/${card}.png` }],
+      ['meta', { property: 'og:image:width', content: '1200' }],
+      ['meta', { property: 'og:image:height', content: '630' }],
+      ['meta', { property: 'og:image:alt', content: title || siteDescription }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ];
   },
   ignoreDeadLinks: (url) => url.startsWith(githubBlob),
   appearance: false,

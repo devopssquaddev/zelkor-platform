@@ -47,6 +47,9 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Docs, llms.txt and schema tests
         run: pytest tests/test_docs_frontmatter.py tests/test_llms_txt.py tests/test_helm_values_schema.py
+      - name: Social preview cards are current (run `npm run og` to fix)
+        run: npm run og:check
+        working-directory: website
       - name: Build site (fails if llms.txt exceeds 2,000 tokens)
         run: npm run docs:build
         working-directory: website

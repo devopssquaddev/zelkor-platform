@@ -37,3 +37,16 @@ def test_frontmatter_fields(page: Path):
     h1 = [line for line in prose.splitlines() if line.startswith("# ")]
     assert len(h1) == 1, f"expected one H1, found {h1}"
     assert str(data["title"]) == h1[0][2:].replace("`", "").strip(), "title must match the H1"
+
+
+@pytest.mark.parametrize("page", PAGES, ids=lambda p: str(p.relative_to(DOCS)))
+def test_og_diagram(page: Path):
+    """`og_diagram` (social card) picks an existing Mermaid block or opts out."""
+    data, body = _frontmatter(page)
+    if "og_diagram" not in data:
+        return
+    pick = data["og_diagram"]
+    count = len(re.findall(r"^```mermaid$", body, flags=re.M))
+    assert pick == "none" or (isinstance(pick, int) and 1 <= pick <= count), (
+        f"og_diagram={pick!r}: use 1..{count} or none"
+    )
