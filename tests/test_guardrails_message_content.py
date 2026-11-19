@@ -65,3 +65,12 @@ def test_image_loads_the_patch():
     assert "message_content import install" in (ROOT / "images/guardrails/sitecustomize.py").read_text()
     assert "images/guardrails/message_content.py /app/message_content.py" in (
         ROOT / "images/guardrails/Dockerfile").read_text()
+
+
+def test_boot_installs_the_patch_in_the_server_process():
+    """opentelemetry-instrument's sitecustomize shadows ours in the server process (live: the
+    patch logged "applied" from the wrapper, and the server still raised KeyError)."""
+    boot = (Path(__file__).resolve().parents[1] / "images" / "guardrails" / "boot.py").read_text()
+    cli = boot.index("from nemoguardrails.cli import app")
+    assert -1 < boot.index("install_message_content()") < cli
+

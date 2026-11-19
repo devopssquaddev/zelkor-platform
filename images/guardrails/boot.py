@@ -15,6 +15,11 @@ install()
 from quiet_verbose import install as install_quiet_verbose
 
 install_quiet_verbose()
+# Same reason: the server process never runs our sitecustomize, so a missing `content` key would
+# still reach NeMo (KeyError -> 500) if the patch were installed only there.
+from message_content import install as install_message_content
+
+install_message_content()
 logger.info("NeMo intercept ready", extra={"event": "startup"})
 sys.argv = ["nemoguardrails"] + sys.argv[1:]
 from nemoguardrails.cli import app  # noqa: E402
