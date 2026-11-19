@@ -82,18 +82,36 @@ def test_concurrent_runs_queue_and_both_complete():
 
 
 def test_run_timeout_ends_a_long_run():
+    """UAT-15: a run past workload.intent.timeout ends at the gateway (Envoy 504) or with a run
+    error, near the limit, and the run is not left running. The tool call itself stays inside the
+    sandbox cap (90 s), so the model makes it instead of refusing the arguments."""
+    import httpx
+
     graph = os.environ.get("ZELKOR_TIMEOUT_GRAPH", "").strip()
     if not graph:
         pytest.skip("ZELKOR_TIMEOUT_GRAPH not set")
     limit = int(os.environ.get("ZELKOR_TIMEOUT_SECONDS", "30"))
     c = client(graph, tenant_token("tenant-a"))
     thread = c.threads.create()["thread_id"]
+    sleep = min(85, limit * 3)
     started = time.monotonic()
-    out = c.runs.wait(thread, graph, input={"messages": [{"role": "human", "content":
-        f"Call sandbox__execute_python once with timeout 300 and code: import time; time.sleep({limit * 4}); print(1)"}]})
+    try:
+        out = c.runs.wait(thread, graph, input={"messages": [{"role": "human", "content":
+            f"Call sandbox__execute_python once with timeout 90 and code: import time; time.sleep({sleep}); print(1)"}]})
+        ended = "run error" if run_error(out) is not None else None
+    except httpx.HTTPStatusError as exc:
+        ended = "gateway 504" if exc.response.status_code == 504 else None
     elapsed = time.monotonic() - started
-    assert run_error(out) is not None, "a run past its timeout must end with an error"
+    assert ended, "a run past its timeout must end with a run error or the gateway timeout"
     assert elapsed < limit + 60, f"run took {elapsed:.0f}s with a {limit}s timeout"
+    deadline = time.monotonic() + 30  # the run (and its tool call) stops with the timeout, not after the tool
+    status = ""
+    while time.monotonic() < deadline:
+        status = str(c.threads.get(thread).get("status", ""))
+        if status != "busy":
+            break
+        time.sleep(5)
+    assert status != "busy", "the run kept going after its timeout (tool call not cancelled?)"
 
 
 def test_any_replica_serves_a_thread():
