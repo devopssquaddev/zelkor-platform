@@ -57,6 +57,26 @@ def platform_contract(namespace: str | None = None) -> dict[str, str]:
     return (json.loads(res.stdout or "{}") or {}).get("data") or {}
 
 
+def rail_refusal(namespace: str | None = None) -> str:
+    """The NeMo rail refusal: NEMO_SAFETY_REFUSAL, else the rendered `{release}-nemo-config`, else
+    the chart default."""
+    from tests.helpers.gateway import parse_rail_refusal
+
+    override = os.environ.get("NEMO_SAFETY_REFUSAL", "").strip()
+    if override:
+        return override
+    release = os.environ.get("ZELKOR_PLATFORM_RELEASE", "zelkor-platform")
+    if os.environ.get("KUBECONTEXT", "").strip() or os.environ.get("KUBE_CONTEXT", "").strip():
+        res = kubectl_run(["get", "configmap", f"{release}-nemo-config", "-o", "json"], namespace=namespace)
+        if res.returncode == 0:
+            import json
+
+            text = parse_rail_refusal((json.loads(res.stdout or "{}").get("data") or {}).get("content_safety-flows.co", ""))
+            if text:
+                return text
+    return "I can't help with that request."
+
+
 def secret_value(name: str, key: str, namespace: str | None = None) -> str:
     """One decoded key of a Secret, or "" when unreadable (live tests only)."""
     import base64
