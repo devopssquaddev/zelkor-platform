@@ -50,6 +50,25 @@ You deploy the agent as a ClusterIP workload. It is not the public edge. The pla
 
 The AI Gateway records the prompt and completion that actually went to the provider, and NeMo Guardrails records the prompt check. The graph worker records the run. Langfuse joins those spans on the thread id (`sessionId`) and the `run_id`. Tool calls use the `MCP_URL` the platform injects. You do not instrument the agent. Inbound HTTP on the graph worker (health checks, scanners, Agent Protocol envelope) is not ingested — the waterfall starts at the run root. Untitled NeMo client hops named only `POST` or `http send` are not ingested either; the chat check stays on `POST /v1/chat/completions` under that run.
 
+[//]: # (zelkor-proof flight-recorder begin)
+### Proof: Find an agent's run by user, with no tracing code in the agent
+
+**Problem.** After an agent's tool call is abused, the first question is which user the run acted for and what it did. Most agent code has no tracing, so there is no record to answer it.
+
+**Where it holds.** Agent → agent runtime → AI Gateway (guardrails) and MCP gateway → Langfuse. The runtime verifies the user's token once; each hop records its step under that user and session in one trace.
+
+```bash
+$ grep -E '^(import|from)' examples/finserve/chart/files/advisor_agent.py
+$ ASK='Run postgres__query with SELECT account_number FROM portfolios ORDER BY balance DESC LIMIT 1 and tell me which account number it returns.'
+$ zelkor run examples/finserve/runtimes/advisor --graph-id finserve-advisor --input "$ASK"
+```
+
+**Result.** The FinServe advisor (`examples/finserve/chart/files/advisor_agent.py`) imports only `os`, `langchain` and `langchain_openai`. Run as tenant user `Bank_Alpha`, the agent called `postgres__query` and answered `ACC-ALPHA-002`. Filtering Langfuse by that user returned one trace: guardrail check, model call, tool call, model call, 0 errors. A scan of its 35 steps found no Bearer header, JWT, provider key or Langfuse secret key.
+
+Every command exited 0 on a lab cluster running chart `2.5.5` on 2026-11-18. Security promises: Observability ([threat model](threat-model.md#_3-security-promises-ce)).
+
+[//]: # (zelkor-proof flight-recorder end)
+
 ## Trace Scores
 
 Open the trace in Langfuse and read the score on the span. These scores do not grade the answer. A **false** score points at the span that failed the check. The score comment says why.
