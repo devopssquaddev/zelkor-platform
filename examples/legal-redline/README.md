@@ -36,7 +36,7 @@ flowchart LR
 Build the image, then install the chart against your platform release.
 
 ```bash
-IMAGES=zelkor-example-legal-redline IMAGE_TAG=2.5.6 ./scripts/build-images.sh --push
+IMAGES=zelkor-example-legal-redline IMAGE_TAG=2.5.7 ./scripts/build-images.sh --push
 helm dependency update examples/legal-redline/chart
 helm upgrade --install legal-redline examples/legal-redline/chart \
   --namespace <platform-namespace> \
