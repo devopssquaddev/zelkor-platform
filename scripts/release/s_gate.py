@@ -11,8 +11,13 @@ A lab whose overlay cannot hold every S-id at once (a low /v1 cap starves the re
 phases with --only / --skip and merges them with `report`: a case that skipped in one phase and
 passed in another counts as passed, a failure anywhere is a failure.
 
+`evidence` checks a release's committed JUnits, one per profile (EVIDENCE): each must exist, be
+bound to the tag (fail_closed_matrix.evidence_problems) and to its profile, contain no failure, and
+hold a case for every S-id of that profile. A skipped S-id is reported as GAP.
+
 Usage: s_gate.py plan|run [--profile full|perimeter] [--junit FILE] [--only IDS | --skip IDS] [-- pytest args]
        s_gate.py report --junit OUT PHASE.xml [PHASE.xml ...]
+       s_gate.py evidence --tag vX.Y.Z-ce [--dir release-evidence/<tag>] [--repo DIR]
 """
 from __future__ import annotations
 
@@ -31,6 +36,8 @@ import yaml
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 MANIFEST = HERE / "s_gate.yaml"
+PROFILES = ("full", "perimeter")
+EVIDENCE = {"full": "s-gate.junit.xml", "perimeter": "s-gate-perimeter.junit.xml"}
 sys.path.insert(0, str(HERE))
 import fail_closed_matrix as fcm  # noqa: E402
 
@@ -40,7 +47,10 @@ class Item:
     s_id: str
     files: list[str]
     env: list[str]
-    profile: str = "full"
+    profiles: tuple[str, ...] = ("full",)
+    # Test functions that cannot apply on this profile (manifest `not_applicable: {profile: [...]}`):
+    # left out of the verdict, so they neither pass nor turn the S-id into a GAP.
+    not_applicable: tuple[str, ...] = ()
     missing_files: list[str] = field(default_factory=list)
     missing_env: list[str] = field(default_factory=list)
 
@@ -56,8 +66,9 @@ def load(path: Path = MANIFEST) -> dict:
 def items(manifest: dict, profile: str, env: dict[str, str], root: Path = ROOT) -> list[Item]:
     out = []
     for sid, spec in manifest["s_ids"].items():
-        it = Item(sid, list(spec["files"]), list(spec.get("env") or []), spec.get("profile", "full"))
-        if it.profile != profile:
+        it = Item(sid, list(spec["files"]), list(spec.get("env") or []), tuple(spec.get("profiles") or ["full"]),
+                  tuple((spec.get("not_applicable") or {}).get(profile) or ()))
+        if profile not in it.profiles:
             continue
         it.missing_files = [f for f in it.files if not (root / f).is_file()]
         it.missing_env = [e for e in it.env if not env.get(e)]
@@ -68,7 +79,7 @@ def items(manifest: dict, profile: str, env: dict[str, str], root: Path = ROOT) 
 def verdicts(its: list[Item], cases: list[fcm.Case]) -> dict[str, tuple[str, Counter]]:
     out = {}
     for it in its:
-        mine = [c for c in cases if c.module in it.stems]
+        mine = [c for c in cases if c.module in it.stems and c.name.split("[")[0] not in it.not_applicable]
         named = [c for c in mine if it.s_id in fcm.s_ids(c.classname, c.name)]
         counts = Counter(c.outcome for c in (named or mine))
         if it.missing_files or it.missing_env:
@@ -141,13 +152,18 @@ def main(argv: list[str] | None = None) -> int:
     extra = argv[argv.index("--") + 1:] if "--" in argv else []
     argv = argv[: argv.index("--")] if "--" in argv else argv
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("cmd", choices=["plan", "run", "report"])
+    ap.add_argument("cmd", choices=["plan", "run", "report", "evidence"])
     ap.add_argument("phases", nargs="*", help="report: the phase JUnits to merge")
     ap.add_argument("--profile", default="full", choices=["full", "perimeter"])
     ap.add_argument("--junit", default="s-gate.junit.xml")
     ap.add_argument("--only", default="", help="comma-separated S-ids to run (a phase)")
     ap.add_argument("--skip", default="", help="comma-separated S-ids to leave to another phase")
+    ap.add_argument("--tag", default="", help="evidence: the release tag vX.Y.Z-ce")
+    ap.add_argument("--dir", default="", help="evidence: directory of the JUnits (default release-evidence/<tag>)")
+    ap.add_argument("--repo", default=".", help="evidence: git checkout holding the tag (carry-over check)")
     args = ap.parse_args(argv)
+    if args.cmd == "evidence":
+        return evidence(load(), args.tag, Path(args.dir or f"release-evidence/{args.tag}"), Path(args.repo))
 
     manifest = load()
     env = dict(os.environ)
@@ -176,14 +192,54 @@ def main(argv: list[str] | None = None) -> int:
     if missing_global:
         print("refusing to run: the evidence would not be bound to a release (see global_env)", file=sys.stderr)
         return 1
-    # pytest runs files in argument order, so the window sweep stays last.
+    # pytest runs files in argument order, so the window sweep stays last. The profile is bound
+    # into the JUnit (tests/conftest.py) so a full run cannot stand in for the perimeter one.
     rc = subprocess.run([sys.executable, "-m", "pytest", *files, "-o", "addopts=", "-rs",
-                         f"--junitxml={args.junit}", *extra], cwd=ROOT).returncode
+                         f"--junitxml={args.junit}", *extra], cwd=ROOT,
+                        env=env | {"ZELKOR_SGATE_PROFILE": args.profile}).returncode
     junit = Path(args.junit) if Path(args.junit).is_absolute() else ROOT / args.junit
     if not junit.is_file():
         print(f"pytest wrote no JUnit (exit {rc})", file=sys.stderr)
         return 1
     return 1 if _print_verdicts(its, junit, args.profile) or rc != 0 else 0
+
+
+def evidence_problems(manifest: dict, profile: str, junit: Path, tag: str, repo: Path) -> tuple[list[str], list[str]]:
+    """(problems that block the tag, GAP S-ids) for one profile's committed JUnit."""
+    if not junit.is_file():
+        return [f"{profile}: no S-gate evidence at {junit}"], []
+    props = fcm.parse_properties(junit)
+    problems = [f"{profile}: {p}" for p in fcm.evidence_problems(props, tag, repo)]
+    if props.get("zelkor_profile") != profile:
+        problems.append(f"{profile}: {junit.name} was run for profile {props.get('zelkor_profile')!r}")
+    its = items(manifest, profile, _all_env(manifest), root=repo)
+    cases = fcm.parse_junit(junit)
+    gaps = []
+    for it in its:
+        mine = [c for c in cases if c.module in it.stems and c.name.split("[")[0] not in it.not_applicable]
+        status, _ = verdicts([it], cases)[it.s_id]
+        if not mine:
+            problems.append(f"{profile}: {it.s_id} absent from {junit.name}")
+        elif status == "FAIL":
+            problems.append(f"{profile}: {it.s_id} FAIL")
+        elif status != "PASS":
+            gaps.append(it.s_id)
+    return problems, gaps
+
+
+def evidence(manifest: dict, tag: str, directory: Path, repo: Path) -> int:
+    """Exit 1 when a profile's evidence is missing, unbound, failed or lacks one of its S-ids."""
+    bad = False
+    for profile in PROFILES:
+        problems, gaps = evidence_problems(manifest, profile, directory / EVIDENCE[profile], tag, repo)
+        for p in problems:
+            print(f"::error title=S-gate evidence::{p}")
+        if gaps:
+            print(f"::warning title=S-gate evidence::{profile}: GAP (skipped) {', '.join(gaps)}")
+        print(f"S-gate evidence {profile}: {'FAIL' if problems else 'ok'}"
+              f"{f' ({len(gaps)} GAP)' if gaps else ''}")
+        bad = bad or bool(problems)
+    return 1 if bad else 0
 
 
 def _all_env(manifest: dict) -> dict[str, str]:

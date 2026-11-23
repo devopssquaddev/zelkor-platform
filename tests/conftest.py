@@ -16,7 +16,7 @@ sys.modules.setdefault("jwt_verifier", _jwt_verifier_module)
 
 # CE-19e: bind S-gate JUnit evidence to the release it tested (read by scripts/release/fail_closed_matrix.py).
 _EVIDENCE_ENV = {"zelkor_release": "ZELKOR_SGATE_VERSION", "zelkor_git_sha": "ZELKOR_SGATE_GIT_SHA",
-                 "zelkor_run_id": "ZELKOR_SGATE_RUN_ID"}
+                 "zelkor_run_id": "ZELKOR_SGATE_RUN_ID", "zelkor_profile": "ZELKOR_SGATE_PROFILE"}
 
 
 @pytest.fixture(scope="session", autouse=True)

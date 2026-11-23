@@ -59,8 +59,10 @@ def test_s82_canary_absent_from_logs_and_nemo_stays_json():
             debug.append(name)
         elif canary in container_logs(target, container, since="10m"):
             leaks[name] = True
-    nemo = _nemo_logs("10m")
-    nemo_debug = _at_debug(f"deploy/{REL}-nemo", "nemo-guardrails")
+    # A perimeter without perimeter.guardrails runs no NeMo: nothing to sweep or check there.
+    has_nemo = kubectl_run(["get", f"deploy/{REL}-nemo"]).returncode == 0
+    nemo = _nemo_logs("10m") if has_nemo else ""
+    nemo_debug = has_nemo and _at_debug(f"deploy/{REL}-nemo", "nemo-guardrails")
     if nemo_debug:
         debug.append("nemo")
     elif canary in nemo:
@@ -69,8 +71,8 @@ def test_s82_canary_absent_from_logs_and_nemo_stays_json():
         print(f"S-82: not checked, logging at DEBUG: {sorted(debug)}")
     assert not leaks, f"canary in logs: {sorted(leaks)}"
 
-    if nemo_debug:
-        return  # NeMo's DEBUG verbose mode prints text, not the INFO JSON this checks
+    if nemo_debug or not has_nemo:
+        return  # NeMo's DEBUG verbose mode prints text, not the INFO JSON this checks; or no NeMo
     assert "Entered verbose mode" not in nemo
     json_after = [line for line in nemo.splitlines() if '"uvicorn.access"' in line or '"nemoguardrails' in line]
     assert json_after, "NeMo emitted no JSON request logs after traffic (handler muted?)"
