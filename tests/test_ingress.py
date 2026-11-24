@@ -200,14 +200,16 @@ def test_s11_ingress_inventory_no_public_mcp_nemo_db(kubecontext):
     public_ok = {h for h in (agents, langfuse) if h}
     if not public_ok:
         pytest.skip("AGENTS_HOST_HEADER / LANGFUSE_HOST_HEADER unset")
-    overlay_hosts = [
+    # The kind profile publishes mcp/nemo/ai-gateway .localhost hosts on purpose; that install
+    # cannot show P9. A lab that empties those hosts (the shipped default) is judged in full.
+    overlay_hosts = {
         h
         for route in items
         for h in (route.get("spec", {}).get("hostnames") or [])
-        if str(h).endswith(".localhost")
-    ]
+        if str(h).endswith(".localhost") and h not in public_ok
+    }
     if overlay_hosts:
-        pytest.skip(f"kind overlay publishes {sorted(set(overlay_hosts))}")
+        pytest.skip(f"kind overlay publishes {sorted(overlay_hosts)}")
 
     forbidden_public_needles = (
         "mcp",
