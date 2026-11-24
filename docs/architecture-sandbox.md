@@ -55,24 +55,28 @@ In **Community Edition**, these workers use gVisor to intercept syscalls and iso
 The stock worker image includes pandas and numpy. It has no outbound network, so packages are installed in the image, not by the code that runs. Extra libraries are an image built `FROM` that worker. The warm pool runs that one image. Steps: [Add Python libraries to the sandbox](sandbox-python-libraries.md).
 
 [//]: # (zelkor-proof shell-moved begin)
-### Proof: An injected command runs in the sandbox, not the agent pod
+### Proof: Generated code runs off the host kernel
 
-**Problem.** An argument-injection bug (for example simple-git CVE-2026-134815, an `--exec` option bypass) turns arguments an agent passes to a library into shell commands. In most stacks that command runs in the agent pod, on the node's kernel, next to the agent's model keys.
+**Problem.** If an agent is compromised, or a tool-argument injection bug turns its arguments into shell commands, that code runs wherever `exec()` runs. In most stacks that is the agent pod, on the node's kernel, next to the agent's model keys.
 
-**Where it holds.** Agent → MCP gateway → Sandbox MCP → sandbox worker pod on RuntimeClass `gvisor`. The agent's `execute()` code runs in the worker, not in the agent pod. Zelkor does not fix the bug; it changes where the command lands.
+**Where it holds.** Agent → MCP gateway → Sandbox MCP → sandbox worker pod on RuntimeClass `gvisor`. The agent pod cannot connect to a worker directly.
 
 ```bash
-$ kubectl -n zelkor get deploy zelkor-platform-mcp-sandbox-worker-0 -o jsonpath='{.spec.template.spec.runtimeClassName}'
+$ kubectl get runtimeclass gvisor -o jsonpath='{.handler}'
+$ kubectl -n zelkor get pods -l app.kubernetes.io/component=mcp-sandbox-worker -o jsonpath='{range .items[*]}{.metadata.name} {.spec.runtimeClassName}{"\n"}{end}'
+$ kubectl -n zelkor get deploy <agent-deployment> -o jsonpath='rc=[{.spec.template.spec.runtimeClassName}]'
 $ kubectl -n zelkor exec deploy/<agent-deployment> -c agent -- uname -r
 $ kubectl -n zelkor exec deploy/zelkor-platform-mcp-sandbox-worker-0 -- uname -r
+$ kubectl -n zelkor exec deploy/<agent-deployment> -c agent -- python3 -c 'import socket; s=socket.socket(); s.settimeout(3); print(s.connect_ex(("zelkor-platform-mcp-sandbox-worker-0", 8081)))'
+$ kubectl -n zelkor exec deploy/zelkor-platform-mcp-sandbox-worker-0 -- sh -c 'for p in /host /var/run/docker.sock /run/containerd/containerd.sock; do test -e $p && echo "$p present" || echo "$p not there"; done'
+$ kubectl -n zelkor exec deploy/zelkor-platform-mcp-sandbox-worker-0 -- sh -c 'mknod /tmp/blk b 8 0 2>&1 || true'
 $ kubectl -n zelkor exec deploy/zelkor-platform-mcp-sandbox-worker-0 -- sh -c 'env | cut -d= -f1 | grep -ciE "openai|anthropic|gemini|api_key" || true'
 $ kubectl -n zelkor exec deploy/zelkor-platform-mcp-sandbox-worker-0 -- python3 -c 'import socket; s=socket.socket(); s.settimeout(3); print(s.connect_ex(("1.1.1.1", 443)))'
-$ kubectl -n zelkor exec deploy/zelkor-platform-mcp-sandbox-worker-0 -- sh -c 'test -e /host && echo visible || echo "/host not there"'
 ```
 
-**Result.** The sandbox worker reports RuntimeClass `gvisor`. The agent pod sees the host kernel (`6.1.0-44-amd64`); the worker sees `4.19.0-gvisor`. In the worker, no model API key name is in the environment (`0`), a connection to `1.1.1.1:443` returns `111` (connection refused), and there is no `/host`. The command was sent straight to the worker, as a hijacked agent's tool call would send it; no agent ran in this proof.
+**Result.** RuntimeClass `gvisor` uses handler `runsc`, and every sandbox worker reports it; the agent pod reports none (`rc=[]`). The agent pod sees the host kernel (`6.1.0-44-amd64`); the worker sees `4.19.0-gvisor`. The agent pod's connect to a worker on port 8081 returns `111` (connection refused). In the worker: no `/host`, no Docker or containerd socket, creating a block device fails with `Operation not permitted`, no model API key name is in the environment (`0`), and a connection to `1.1.1.1:443` returns `111` (connection refused).
 
-Every command exited 0 on a lab cluster running chart `2.5.6` on 2026-11-24. Security promises: Code Execution ([threat model](threat-model.md#_3-security-promises-ce)).
+Every command exited 0 on a lab cluster running chart `2.5.7` on 2026-11-24. Security promises: Code Execution, Network Isolation ([threat model](threat-model.md#_3-security-promises-ce)).
 
 [//]: # (zelkor-proof shell-moved end)
 
