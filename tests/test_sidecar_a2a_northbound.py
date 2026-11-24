@@ -228,3 +228,52 @@ def test_cancel_wins_over_the_runtime_answering_the_abort(monkeypatch):
     assert task["status"]["state"] in ("submitted", "working"), task
     assert cancel["result"]["status"]["state"] == "canceled", cancel
     assert got["result"]["status"]["state"] == "canceled", got
+
+
+class _SerialBridge:
+    """fasta2a's worker takes one operation at a time: its tasks/cancel waits for the run to end."""
+
+    def __init__(self):
+        self.release = asyncio.Event()
+
+    async def abort(self, _ctx):
+        await self.release.wait()
+
+
+class SerialExecutor:
+    def __init__(self):
+        self.bridge = _SerialBridge()
+        self.slot = _Slot()
+        self.started = asyncio.Event()
+
+    async def execute(self, **_kw):
+        self.started.set()
+        await self.bridge.release.wait()
+        yield "updates", {"agent": {"messages": []}}
+
+
+def test_cancel_does_not_wait_for_a_runtime_that_answers_after_its_run(monkeypatch):
+    """S-80 / UAT-27: tasks/cancel returns canceled at once; the runtime abort runs in the background."""
+    monkeypatch.setenv("ZELKOR_A2A_PUBLIC_URL", f"{BASE}/a2a?graph_id={GRAPH}")
+    executor = SerialExecutor()
+    inbound = Inbound(MemoryStore(), executor, graph_id=GRAPH, tenant_resolver=_resolver)
+    starlette_app = inbound.app()
+    mount_a2a(starlette_app, inbound)
+
+    async def go():
+        async with _http(starlette_app, "tok-a") as http:
+            sent = (await http.post("/a2a", json={
+                "jsonrpc": "2.0", "id": 1, "method": "message/send",
+                "params": {"message": {"role": "user", "messageId": "m-1", "kind": "message",
+                                       "parts": [{"kind": "text", "text": "long run"}]},
+                           "configuration": {"blocking": False}}})).json()
+            await asyncio.wait_for(executor.started.wait(), 5)
+            try:
+                return (await asyncio.wait_for(http.post("/a2a", json={
+                    "jsonrpc": "2.0", "id": 2, "method": "tasks/cancel",
+                    "params": {"id": sent["result"]["id"]}}), 3)).json()
+            finally:
+                executor.bridge.release.set()
+
+    cancel = asyncio.run(go())
+    assert cancel["result"]["status"]["state"] == "canceled", cancel
