@@ -70,6 +70,22 @@ def langfuse_get(
     )
 
 
+def observation_pages(params: dict[str, Any], *, max_pages: int = 500):
+    """Yield each /api/public/v2/observations response of a window. The v2 API pages by
+    ``meta.cursor`` and ignores ``page``: paging by number re-reads the first page."""
+    query = dict(params)
+    for _ in range(max_pages):
+        resp = langfuse_get("/api/public/v2/observations", params=query)
+        yield resp
+        if resp.status_code != 200:
+            return
+        body = resp.json()
+        cursor = (body.get("meta") or {}).get("cursor")
+        if not body.get("data") or not cursor:
+            return
+        query["cursor"] = cursor
+
+
 def observation_io_nonempty(payload: Any) -> bool:
     if payload is None or payload == "" or payload == {} or payload == []:
         return False

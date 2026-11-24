@@ -18,7 +18,7 @@ import httpx
 import pytest
 
 from tests.helpers.kube import consumer_key, kubectl_run, secret_value
-from tests.helpers.langfuse import langfuse_get
+from tests.helpers.langfuse import observation_pages
 from tests.helpers.langgraph_client import _gateway_url, _request_headers
 from tests.helpers.llm import llm_model_or_skip
 from tests.helpers.tokens import token_for
@@ -122,19 +122,14 @@ def test_s14_container_logs_carry_no_credentials_or_prompt(traffic):
 def test_s14_window_traces_carry_no_credentials(traffic):
     needles = [traffic["jwt"], traffic["key"], *traffic["providers"]]
     hits, seen = [], 0
-    for page in range(1, 40):
-        resp = langfuse_get("/api/public/v2/observations", params={
-            "fromStartTime": traffic["start"].strftime("%Y-%m-%dT%H:%M:%SZ"), "limit": 80, "page": page,
-            "fields": "core,basic,io,metadata"})
+    for resp in observation_pages({"fromStartTime": traffic["start"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                   "limit": 80, "fields": "core,basic,io,metadata"}):
         if resp.status_code in (401, 404) or resp.status_code >= 500:
             pytest.skip(f"Langfuse not readable: {resp.status_code}")
-        rows = resp.json().get("data") or []
-        for o in rows:
+        for o in resp.json().get("data") or []:
             seen += 1
             blob = json.dumps(o)
             if any(n and n in blob for n in needles) or BEARER_JWT.search(blob):
                 hits.append(f"{o.get('traceId')}/{o.get('name')}")
-        if len(rows) < 80:
-            break
     assert seen, "no observations in the window: the traffic produced no trace to sweep"
     assert not hits, hits[:10]
