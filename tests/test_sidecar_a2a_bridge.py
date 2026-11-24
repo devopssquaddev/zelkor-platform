@@ -28,19 +28,11 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="module")
-def a2a_runtime():
+def _serve(reply):
+    """A real fasta2a server (Pydantic AI) on a free port whose model is ``reply``."""
     from fasta2a.pydantic_ai import agent_to_a2a
     from pydantic_ai import Agent
-    from pydantic_ai.messages import ModelResponse, TextPart
     from pydantic_ai.models.function import FunctionModel
-
-    seen = []
-
-    def reply(messages, _info):
-        texts = [p.content for m in messages for p in getattr(m, "parts", []) if getattr(p, "part_kind", "") == "user-prompt"]
-        seen.append(texts)
-        return ModelResponse(parts=[TextPart(f"pong: {texts[-1] if texts else ''}")])
 
     port = _free_port()
     url = f"http://127.0.0.1:{port}"
@@ -52,7 +44,42 @@ def a2a_runtime():
         if server.started:
             break
         time.sleep(0.05)
+    return url, server, thread
+
+
+def _prompts(messages):
+    return [p.content for m in messages for p in getattr(m, "parts", []) if getattr(p, "part_kind", "") == "user-prompt"]
+
+
+@pytest.fixture(scope="module")
+def a2a_runtime():
+    from pydantic_ai.messages import ModelResponse, TextPart
+
+    seen = []
+
+    def reply(messages, _info):
+        texts = _prompts(messages)
+        seen.append(texts)
+        return ModelResponse(parts=[TextPart(f"pong: {texts[-1] if texts else ''}")])
+
+    url, server, thread = _serve(reply)
     yield url, seen
+    server.should_exit = True
+    thread.join(timeout=5)
+
+
+@pytest.fixture(scope="module")
+def slow_runtime():
+    """A turn that is still working when fasta2a answers message/send (a real model or tool call)."""
+    from pydantic_ai.messages import ModelResponse, TextPart
+
+    async def reply(messages, _info):
+        await asyncio.sleep(1.5)
+        texts = _prompts(messages)
+        return ModelResponse(parts=[TextPart(f"slow pong: {texts[-1] if texts else ''}")])
+
+    url, server, thread = _serve(reply)
+    yield url
     server.should_exit = True
     thread.join(timeout=5)
 
@@ -83,6 +110,26 @@ def test_bridge_round_trip_and_context_id_is_thread_id(a2a_runtime):
     assert ctx.runtime_session_id == "t-1"
     assert ctx.runtime_task_id
     assert len({e.key for e in events}) == len(events)
+
+
+def test_turn_ends_with_the_runtime_answer_not_its_first_task_snapshot(slow_runtime):
+    """fasta2a answers message/send with a submitted/working task. The turn must stay open until the
+    task is final: closing it early ends the sidecar run while the runtime still calls its tools
+    (409 on /run/active/mcp) and an A2A cancel then finds the task already completed (S-80)."""
+
+    async def go():
+        bridge = A2ABridge(slow_runtime)
+        msg = {"type": "human", "content": "hello slow", "id": "h1"}
+        started = time.monotonic()
+        events = await _turn(bridge, _ctx("t-slow"), [msg], [msg])
+        await bridge.close()
+        return events, time.monotonic() - started
+
+    events, took = asyncio.run(go())
+    texts = [e.data["content"] for e in events if e.kind == "message"]
+    assert took >= 1.0, f"turn returned after {took:.2f}s, before the runtime answered: {texts}"
+    assert texts and texts[-1].endswith("slow pong: hello slow"), texts
+    assert "hello slow" not in texts, "the user's own message came back as the agent answer"
 
 
 def test_unseen_thread_with_history_sends_transcript(a2a_runtime):

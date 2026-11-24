@@ -48,6 +48,9 @@ class SidecarA2AExecutor:
 
     def __init__(self, inbound: Any) -> None:
         self.inbound = inbound
+        # Tasks canceled by tasks/cancel. Aborting the runtime can end its turn normally (a last
+        # artifact, not CANCELED); execute() must then not complete a task the caller canceled.
+        self._canceled: set[str] = set()
 
     async def execute(self, context, event_queue) -> None:
         from a2a.server.tasks import TaskUpdater
@@ -77,6 +80,8 @@ class SidecarA2AExecutor:
         answer, error = "", ""
         async for event, data in self.inbound._run_events(
                 tenant, headers.get("authorization", ""), thread_id, body, headers.get("traceparent", "")):
+            if context.task_id in self._canceled:
+                continue  # drain the run (it persists its end); the task stays canceled
             if event == "updates":
                 for msg in (data.get("agent") or {}).get("messages") or []:
                     if msg.get("type") == "ai":
@@ -88,6 +93,9 @@ class SidecarA2AExecutor:
                             await updater.add_artifact([Part(text=text)], artifact_id=str(msg.get("id") or ""))
             elif event == "error":
                 error = str(data.get("message") or "run failed")
+        if context.task_id in self._canceled:
+            self._canceled.discard(context.task_id)
+            return
         if error:
             await updater.failed(updater.new_agent_message([Part(text=error[:500])]))
         else:
@@ -96,12 +104,14 @@ class SidecarA2AExecutor:
     async def cancel(self, context, event_queue) -> None:
         from a2a.server.tasks import TaskUpdater
 
+        # Canceled first, then abort: the runtime may answer the abort with a normal end of turn.
+        self._canceled.add(context.task_id)
+        await TaskUpdater(event_queue, context.task_id, context.context_id).cancel()
         executor = getattr(self.inbound, "executor", None)
         bridge = getattr(executor, "bridge", None)
         slot = getattr(executor, "slot", None)
         if bridge is not None and slot is not None and slot.active is not None:
             await bridge.abort(slot.active)
-        await TaskUpdater(event_queue, context.task_id, context.context_id).cancel()
 
 
 def mount_a2a(app: Any, inbound: Any) -> None:
