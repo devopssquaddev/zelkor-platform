@@ -75,14 +75,16 @@ def test_s72_rate_limit_per_tenant_and_tool():
     a = _client("tenant_a")
     if RATE_TOOL not in _names(a):
         pytest.skip(f"{RATE_TOOL} not on this gateway")
-    # The bucket is per pod: with N replicas behind the gateway, N*limit + 1 calls put limit + 1
-    # on at least one pod whatever the load balancing.
+    # The bucket is per pod and refills continuously (limit/60 per second), so a slow burst earns
+    # tokens back: call until the first refusal, capped well above N*limit + 1 for N replicas.
     errors: list[str] = []
-    for _ in range(limit * _backend_replicas(RATE_TOOL) + 1):
+    for _ in range(4 * limit * _backend_replicas(RATE_TOOL) + 1):
         try:
             a.call_tool(RATE_TOOL, _args({}))
         except Exception as exc:  # noqa: BLE001 — collect the tool error text
             errors.append(str(exc))
+            if "rate limit exceeded" in errors[-1]:
+                break
     assert any("rate limit exceeded" in e for e in errors), errors
     # Another tenant has its own bucket.
     _client("tenant_b").call_tool(RATE_TOOL, _args({}))

@@ -1,5 +1,5 @@
 # Your agent on the stock Zelkor Pydantic AI runtime: same A2A server, plus your own tools.
-FROM ghcr.io/devopssquaddev/zelkor-runtime-pydantic-ai:2.5.6
+FROM ghcr.io/devopssquaddev/zelkor-runtime-pydantic-ai:2.5.7
 USER root
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt

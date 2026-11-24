@@ -14,7 +14,7 @@ import re
 import pytest
 
 from tests.helpers.kube import kubectl_run, platform_contract
-from tests.helpers.langfuse import is_code_eval_observation, langfuse_get
+from tests.helpers.langfuse import is_code_eval_observation, observation_pages
 from tests.helpers.runtime_agents import require_kube
 
 ERROR_LINE = re.compile(r'"level": ?"(ERROR|CRITICAL)"|^Traceback \(most recent call last\)|\blevel=error\b')
@@ -38,21 +38,16 @@ def test_no_unexpected_error_observations_in_the_window():
     if contract.get("PROFILE") == "perimeter" or contract.get("OTLP_RELAY_SERVICE"):
         pytest.skip("no Langfuse on this install (perimeter / OTLP sink): the ERROR-log sweep covers the window")
     bad = []
-    for page in range(1, 60):
-        resp = langfuse_get("/api/public/v2/observations", params={
-            "fromStartTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"), "limit": 80, "page": page,
-            "fields": "core,basic,io"})
+    for resp in observation_pages({"fromStartTime": start.strftime("%Y-%m-%dT%H:%M:%SZ"), "limit": 80,
+                                   "fields": "core,basic,io"}):
         assert resp.status_code == 200, resp.text[:200]
-        rows = resp.json().get("data") or []
-        for o in rows:
+        for o in resp.json().get("data") or []:
             if str(o.get("level")).upper() != "ERROR" or is_code_eval_observation(o):
                 continue
             blob = json.dumps([o.get("statusMessage"), o.get("output")])[:2000]
             if REFUSAL.search(blob):
                 continue
             bad.append((o.get("traceId"), o.get("name"), str(o.get("statusMessage"))[:120]))
-        if len(rows) < 80:
-            break
     assert not bad, bad[:10]
 
 

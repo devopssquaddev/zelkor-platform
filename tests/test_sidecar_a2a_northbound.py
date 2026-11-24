@@ -157,3 +157,123 @@ def test_malformed_token_is_401_not_500(monkeypatch):
             return rpc.status_code, threads.status_code
 
     assert asyncio.run(go()) == (401, 401)
+
+
+class _AbortableRun:
+    """A run that waits for its runtime; on abort the runtime ends the turn with a last answer,
+    the way an A2A runtime can answer a cancel with a final artifact instead of CANCELED."""
+
+    def __init__(self):
+        self.aborted = asyncio.Event()
+        self.started = asyncio.Event()
+
+
+class _Bridge:
+    def __init__(self, run):
+        self.run = run
+
+    async def abort(self, _ctx):
+        self.run.aborted.set()
+        await asyncio.sleep(0)  # the runtime's last answer races the sidecar's cancel
+
+
+class _Slot:
+    active = object()
+
+
+class AbortableExecutor:
+    def __init__(self, store):
+        self.store = store
+        self.run = _AbortableRun()
+        self.bridge = _Bridge(self.run)
+        self.slot = _Slot()
+
+    async def execute(self, *, tenant, bearer, graph_id, thread_id, run_id, new_messages, traceparent):
+        from tests.test_sidecar_inbound import ai_message
+
+        self.run.started.set()
+        await self.run.aborted.wait()
+        reply = ai_message("partial answer after abort")
+        await self.store.append_messages(tenant, graph_id, thread_id, run_id, [reply])
+        yield "updates", {"agent": {"messages": [reply]}}
+
+
+def test_cancel_wins_over_the_runtime_answering_the_abort(monkeypatch):
+    """S-80 / UAT-27: tasks/cancel on a working task is canceled, even when aborting the runtime
+    makes it end the turn normally before the canceled status is written."""
+    monkeypatch.setenv("ZELKOR_A2A_PUBLIC_URL", f"{BASE}/a2a?graph_id={GRAPH}")
+    store = MemoryStore()
+    executor = AbortableExecutor(store)
+    inbound = Inbound(store, executor, graph_id=GRAPH, tenant_resolver=_resolver)
+    starlette_app = inbound.app()
+    mount_a2a(starlette_app, inbound)
+
+    async def go():
+        async with _http(starlette_app, "tok-a") as http:
+            sent = (await http.post("/a2a", json={
+                "jsonrpc": "2.0", "id": 1, "method": "message/send",
+                "params": {"message": {"role": "user", "messageId": "m-1", "kind": "message",
+                                       "parts": [{"kind": "text", "text": "long run"}]},
+                           "configuration": {"blocking": False}}})).json()
+            task = sent["result"]
+            await asyncio.wait_for(executor.run.started.wait(), 5)
+            cancel = (await http.post("/a2a", json={"jsonrpc": "2.0", "id": 2, "method": "tasks/cancel",
+                                                    "params": {"id": task["id"]}})).json()
+            await asyncio.sleep(0.2)  # let the runtime's late answer arrive
+            got = (await http.post("/a2a", json={"jsonrpc": "2.0", "id": 3, "method": "tasks/get",
+                                                 "params": {"id": task["id"]}})).json()
+            return task, cancel, got
+
+    task, cancel, got = asyncio.run(go())
+    assert task["status"]["state"] in ("submitted", "working"), task
+    assert cancel["result"]["status"]["state"] == "canceled", cancel
+    assert got["result"]["status"]["state"] == "canceled", got
+
+
+class _SerialBridge:
+    """fasta2a's worker takes one operation at a time: its tasks/cancel waits for the run to end."""
+
+    def __init__(self):
+        self.release = asyncio.Event()
+
+    async def abort(self, _ctx):
+        await self.release.wait()
+
+
+class SerialExecutor:
+    def __init__(self):
+        self.bridge = _SerialBridge()
+        self.slot = _Slot()
+        self.started = asyncio.Event()
+
+    async def execute(self, **_kw):
+        self.started.set()
+        await self.bridge.release.wait()
+        yield "updates", {"agent": {"messages": []}}
+
+
+def test_cancel_does_not_wait_for_a_runtime_that_answers_after_its_run(monkeypatch):
+    """S-80 / UAT-27: tasks/cancel returns canceled at once; the runtime abort runs in the background."""
+    monkeypatch.setenv("ZELKOR_A2A_PUBLIC_URL", f"{BASE}/a2a?graph_id={GRAPH}")
+    executor = SerialExecutor()
+    inbound = Inbound(MemoryStore(), executor, graph_id=GRAPH, tenant_resolver=_resolver)
+    starlette_app = inbound.app()
+    mount_a2a(starlette_app, inbound)
+
+    async def go():
+        async with _http(starlette_app, "tok-a") as http:
+            sent = (await http.post("/a2a", json={
+                "jsonrpc": "2.0", "id": 1, "method": "message/send",
+                "params": {"message": {"role": "user", "messageId": "m-1", "kind": "message",
+                                       "parts": [{"kind": "text", "text": "long run"}]},
+                           "configuration": {"blocking": False}}})).json()
+            await asyncio.wait_for(executor.started.wait(), 5)
+            try:
+                return (await asyncio.wait_for(http.post("/a2a", json={
+                    "jsonrpc": "2.0", "id": 2, "method": "tasks/cancel",
+                    "params": {"id": sent["result"]["id"]}}), 3)).json()
+            finally:
+                executor.bridge.release.set()
+
+    cancel = asyncio.run(go())
+    assert cancel["result"]["status"]["state"] == "canceled", cancel

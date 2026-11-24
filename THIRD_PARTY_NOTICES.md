@@ -7,7 +7,7 @@ updated whenever component pins change (see
 `internal/plan/component_compatibility_matrix.md` for the authoritative pin
 inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 
-**As of CE `2.5.6`** (2026-11-17).
+**As of CE `2.5.7`** (2026-11-23).
 
 ## Distribution paths
 
@@ -93,3 +93,4 @@ inventory; the CE-8a image scan SBOM is the exhaustive transitive list).
 | 2026-11-17 | CE `2.5.4`: no third-party pin changes (guardrails self-check trace tags, timeout default, onUnavailable). |
 | 2026-11-17 | CE `2.5.5`: no third-party pin changes (trace error levels, guardrail fields on the model call, sandbox `denied` status, CLI fixes). |
 | 2026-11-18 | CE `2.5.6`: no third-party pin changes (`zelkor verify` finds digest-pinned images). |
+| 2026-11-23 | CE `2.5.7`: no third-party image or chart pin changes (first-party Python floors: PyJWT `>=2.15.0`, starlette `>=1.3.1`, anyio `>=4.14.2`). |
