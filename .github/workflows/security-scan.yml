@@ -3,7 +3,9 @@
 # as an S-id PASS (the S-gate is a separate process — internal/requirements/security-assurance).
 # Findings become a harness PR or a GAP row, not a release gate here.
 # Verdict: findings are written to the job summary on every run. Scheduled and manual runs fail
-# red on a finding; pull_request runs stay soft so an unrelated pin PR is not blocked.
+# red on a finding; pull_request runs stay soft so an unrelated pin PR is not blocked. A release
+# PR bumps the chart to a tag that is not published yet: that image is skipped with a notice, not
+# scanned into a masked pull failure. Scheduled and manual runs fail red on a missing tag.
 name: security-scan
 
 on:
@@ -25,8 +27,8 @@ jobs:
     # CE-8b: audit the pinned Python deps of every first-party image build context.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
       - name: Install pip-audit
@@ -69,13 +71,34 @@ jobs:
           - zelkor-sidecar
           - zelkor-langfuse-seed
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Resolve CE image tag from Chart.yaml
         id: tag
         run: |
           tag=$(awk -F'[:"[:space:]]+' '/^appVersion:/{print $2}' charts/zelkor-platform/Chart.yaml)
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      - name: Check the image tag is published
+        id: published
+        env:
+          REF: ghcr.io/devopssquaddev/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
+          EVENT: ${{ github.event_name }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin >/dev/null
+          if docker manifest inspect "$REF" >/dev/null 2>&1; then
+            echo "scan=true" >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = pull_request ]; then
+            # A release PR bumps the chart before release.yml publishes the tag.
+            echo "::notice::${REF} is not published yet; it is scanned by the next scheduled or manual run"
+            echo "scan=false" >> "$GITHUB_OUTPUT"
+            printf '## Trivy %s\n\nnot scanned: `%s` is not published yet\n' "${{ matrix.image }}" "$REF" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::${REF} is not published"
+            exit 1
+          fi
       - name: Trivy scan
+        if: steps.published.outputs.scan == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ghcr.io/devopssquaddev/${{ matrix.image }}:${{ steps.tag.outputs.tag }}
@@ -89,7 +112,7 @@ jobs:
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: ${{ github.event_name == 'pull_request' }}
       - name: Write Trivy findings to job summary
-        if: always()
+        if: always() && steps.published.outputs.scan == 'true'
         env:
           IMAGE: ${{ matrix.image }}
         run: |
