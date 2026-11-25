@@ -1,0 +1,8 @@
+# Advisories pip-audit ignores for this requirements file only (.github/workflows/security-scan.yml).
+# Format: <advisory id> <review-by YYYY-MM-DD> <reason>. The scan fails once a review-by date passes.
+# chromadb 1.5.9 comes in through crewai[a2a]==1.15.30, which pins chromadb~=1.5.9; no fixed release
+# exists. runtime-crewai is an opt-in runtime image. Dev harness GAP G-6.
+PYSEC-2026-311 2026-12-31 chromadb 1.5.9 via crewai; no fix published (G-6)
+PYSEC-2026-3813 2026-12-31 chromadb 1.5.9 via crewai; no fix published (G-6)
+PYSEC-2026-3814 2026-12-31 chromadb 1.5.9 via crewai; no fix published (G-6)
+PYSEC-2026-3815 2026-12-31 chromadb 1.5.9 via crewai; no fix published (G-6)
